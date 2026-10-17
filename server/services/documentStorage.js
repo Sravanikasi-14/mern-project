@@ -69,7 +69,8 @@ export async function saveDocumentFile({ databaseName, employeeId, fileName, fil
     throw new HttpError(400, "File size exceeds the 10 MB maximum upload limit.");
   }
 
-  const baseDir = path.join(process.cwd(), "uploads", databaseName, String(employeeId));
+  const uploadsRoot = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+  const baseDir = path.join(uploadsRoot, databaseName, String(employeeId));
   await fs.promises.mkdir(baseDir, { recursive: true });
 
   const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -93,6 +94,7 @@ export function getDocumentAbsolutePath({ databaseName, employeeId, storageKey }
   }
   // Sanitize path to prevent path traversal
   const safeKey = path.basename(storageKey);
-  const filePath = path.join(process.cwd(), "uploads", databaseName, String(employeeId), safeKey);
+  const uploadsRoot = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+  const filePath = path.join(uploadsRoot, databaseName, String(employeeId), safeKey);
   return fs.existsSync(filePath) ? filePath : null;
 }

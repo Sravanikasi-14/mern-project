@@ -503,7 +503,7 @@ export async function createEmployee(req, res, next) {
       });
     }
 
-    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || "http://localhost:5173";
+    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
     const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
 
     const emailResult = await emailService.sendEmployeeInvitation({
@@ -848,7 +848,7 @@ export async function resendInvitation(req, res, next) {
       });
     }
 
-    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || "http://localhost:5173";
+    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
     const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
 
     const emailResult = await emailService.sendEmployeeInvitation({

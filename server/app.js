@@ -1,27 +1,43 @@
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export function createApp() {
   const app = express();
   const clientUrl = process.env.CLIENT_URL;
 
+  // Trust first proxy (Render, Heroku, Nginx) for secure cookies & req.protocol
+  app.set("trust proxy", 1);
+
   app.use(
     cors({
       origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. mobile apps, same-origin, curl)
         if (!origin) {
           return callback(null, true);
         }
-        if (clientUrl && origin === clientUrl) {
-          return callback(null, true);
+        if (clientUrl) {
+          const cleanClient = clientUrl.replace(/\/+$/, "");
+          const cleanOrigin = origin.replace(/\/+$/, "");
+          if (cleanOrigin === cleanClient) {
+            return callback(null, true);
+          }
         }
         try {
           const url = new URL(origin);
           if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+            return callback(null, true);
+          }
+          if (url.hostname.endsWith(".onrender.com")) {
             return callback(null, true);
           }
         } catch {
@@ -34,16 +50,44 @@ export function createApp() {
       allowedHeaders: ["Content-Type", "Authorization"],
     })
   );
+
   app.use(express.json({ limit: "15mb" }));
   app.use(cookieParser());
 
-  app.get("/", (_req, res) => {
-    res.json({ message: "MERN API is running" });
+  // Health check endpoint for Render service health monitoring
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok",
+      service: "hrms-api",
+      environment: process.env.NODE_ENV || "development",
+      timestamp: new Date().toISOString(),
+    });
   });
 
+  // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/employees", employeeRoutes);
+
+  // Serve static assets from production client build (Single-Service Architecture)
+  const distPath = path.resolve(__dirname, "../client/dist");
+  app.use(express.static(distPath));
+
+  // SPA fallback for React Router client-side routes (e.g. /login, /admin, /app, /onboard)
+  app.use((req, res, next) => {
+    if (req.method !== "GET") {
+      return next();
+    }
+    if (req.path.startsWith("/api/")) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "API endpoint not found" });
+    }
+    const indexPath = path.join(distPath, "index.html");
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(200).json({ message: "HRMS API is running. Client build not found." });
+      }
+    });
+  });
 
   app.use(errorHandler);
 
