@@ -7,9 +7,12 @@ export const EMPLOYEE_STATUSES = Object.freeze({
 
 export const DOCUMENT_TYPES = Object.freeze({
   APPOINTMENT_LETTER: "APPOINTMENT_LETTER",
-  NO_DUES_CERTIFICATE: "NO_DUES_CERTIFICATE",
-  RELIEVING_LETTER: "RELIEVING_LETTER",
+  OFFER_LETTER: "OFFER_LETTER",
+  EMPLOYMENT_CONTRACT: "EMPLOYMENT_CONTRACT",
   ID_PROOF: "ID_PROOF",
+  RELIEVING_LETTER: "RELIEVING_LETTER",
+  NO_DUES_CERTIFICATE: "NO_DUES_CERTIFICATE",
+  TAX_DOCUMENT: "TAX_DOCUMENT",
   OTHER: "OTHER",
 });
 
@@ -70,7 +73,31 @@ export function createEmployeeSchema() {
           trim: true,
           default: "",
         },
+        department: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        jobGrade: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        employmentType: {
+          type: String,
+          trim: true,
+          default: "Full-time",
+        },
+        workLocation: {
+          type: String,
+          trim: true,
+          default: "",
+        },
         joiningDate: {
+          type: Date,
+          default: null,
+        },
+        terminationDate: {
           type: Date,
           default: null,
         },
@@ -87,7 +114,7 @@ export function createEmployeeSchema() {
           },
           projectType: {
             type: String,
-            enum: ["MANDATE", "RETAIL", ""],
+            enum: ["MANDATE", "RETAIL", "BENCH", "INTERNAL", ""],
             default: "",
           },
         },
@@ -103,11 +130,35 @@ export function createEmployeeSchema() {
             title: { type: String, required: true },
             content: { type: String, default: "" },
             fileUrl: { type: String, default: "" },
+            fileName: { type: String, default: "" },
+            fileSize: { type: Number, default: 0 },
+            mimeType: { type: String, default: "" },
+            storageKey: { type: String, default: "" },
+            uploadedBy: {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "User",
+              default: null,
+            },
+            uploadedByRole: {
+              type: String,
+              enum: ["HR_ADMIN", "EMPLOYEE", "SYSTEM"],
+              default: "HR_ADMIN",
+            },
             createdAt: { type: Date, default: Date.now },
             emailedAt: { type: Date, default: null },
           },
         ],
         default: [],
+      },
+      invitation: {
+        status: {
+          type: String,
+          enum: ["PENDING", "ACCEPTED", "EXPIRED", "DELIVERY_FAILED"],
+          default: "PENDING",
+        },
+        token: { type: String, default: "" },
+        sentAt: { type: Date, default: null },
+        acceptedAt: { type: Date, default: null },
       },
       exit: {
         inactiveDate: { type: Date, default: null },
@@ -124,6 +175,71 @@ export function createEmployeeSchema() {
           },
         ],
         default: [],
+      },
+      preferredName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      personalEmail: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        default: "",
+      },
+      personalPhone: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      gender: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      residentialAddress: {
+        street: { type: String, default: "" },
+        city: { type: String, default: "" },
+        state: { type: String, default: "" },
+        postalCode: { type: String, default: "" },
+        country: { type: String, default: "India" },
+      },
+      workAddress: {
+        street: { type: String, default: "" },
+        city: { type: String, default: "" },
+        state: { type: String, default: "" },
+        postalCode: { type: String, default: "" },
+        country: { type: String, default: "India" },
+      },
+      emergencyContact: {
+        name: { type: String, default: "" },
+        relationship: { type: String, default: "" },
+        phone: { type: String, default: "" },
+      },
+      bankDetails: {
+        accountHolderName: { type: String, default: "" },
+        accountNumber: { type: String, default: "" },
+        bankName: { type: String, default: "" },
+        ifscCode: { type: String, default: "" },
+        accountType: { type: String, default: "SAVINGS" },
+      },
+      taxDetails: {
+        panNumber: { type: String, default: "" },
+        taxRegime: { type: String, default: "NEW" },
+      },
+      identityDetails: {
+        idType: { type: String, default: "PAN / AADHAAR" },
+        idNumber: { type: String, default: "" },
+        isVerified: { type: Boolean, default: true },
+      },
+      attendance: {
+        totalWorkingDays: { type: Number, default: 22 },
+        daysPresent: { type: Number, default: 21 },
+        leaveBalance: {
+          casual: { type: Number, default: 8 },
+          sick: { type: Number, default: 6 },
+          earned: { type: Number, default: 12 },
+        },
       },
       customFields: {
         type: mongoose.Schema.Types.Mixed,

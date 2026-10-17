@@ -21,6 +21,8 @@ router.post("/setup-initial-admin", loginLimiter, setupInitialAdmin);
 router.post("/onboarding/setup", loginLimiter, setupInitialAdmin);
 
 router.get("/onboarding/verify", verifyOnboardingInvitation);
+router.get("/onboard/verify", verifyOnboardingInvitation);
 router.post("/onboarding/complete", completeOnboarding);
+router.post("/onboard/complete", completeOnboarding);
 
 export default router;

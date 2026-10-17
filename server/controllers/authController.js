@@ -15,6 +15,7 @@ function isNonEmptyString(value) {
 function publicCompany(company) {
   return {
     _id: company._id,
+    name: company.companyName,
     companyName: company.companyName,
     companyCode: company.slug,
     slug: company.slug,
@@ -181,7 +182,53 @@ export async function verifyOnboardingInvitation(req, res, next) {
 
     const models = await getCompanyModels(company);
 
-    // If tracked in authTokens collection, verify token status
+    // If this is an employee onboarding invitation
+    if (payload.purpose === "employee_onboarding") {
+      if (models.AuthToken) {
+        const tokenDoc = await models.AuthToken.findOne({ token });
+        if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {
+          throw new HttpError(409, "This onboarding invitation has already been completed. Please log in.");
+        }
+      }
+
+      let employee = null;
+      if (payload.employeeId) {
+        employee = await models.Employee.findById(payload.employeeId);
+      }
+      if (!employee) {
+        employee = await models.Employee.findOne({ email: payload.sub });
+      }
+
+      if (!employee) {
+        throw new HttpError(404, "Employee record not found for this onboarding invitation.");
+      }
+
+      if (employee.invitation?.status === "ACCEPTED") {
+        throw new HttpError(409, "This onboarding invitation has already been completed. Please log in.");
+      }
+
+      return res.json({
+        valid: true,
+        type: "EMPLOYEE",
+        companyCode: company.slug,
+        companyName: company.companyName,
+        company: publicCompany(company),
+        email: payload.sub,
+        fullName: employee.fullName,
+        employeeCode: employee.employeeCode,
+        jobTitle: employee.job?.jobTitle || "",
+        department: employee.job?.department || "",
+        employee: {
+          _id: employee._id,
+          fullName: employee.fullName,
+          employeeCode: employee.employeeCode,
+          email: employee.email,
+          job: employee.job,
+        },
+      });
+    }
+
+    // Default HR Admin initial onboarding
     if (models.AuthToken) {
       const tokenDoc = await models.AuthToken.findOne({ token });
       if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {
@@ -196,6 +243,7 @@ export async function verifyOnboardingInvitation(req, res, next) {
 
     res.json({
       valid: true,
+      type: "HR_ADMIN",
       companyCode: company.slug,
       companyName: company.companyName,
       email: payload.sub,
@@ -236,6 +284,155 @@ export async function completeOnboarding(req, res, next) {
 
     const models = await getCompanyModels(company);
 
+    // Handle Employee Self-Service Onboarding Completion
+    if (payload.purpose === "employee_onboarding") {
+      if (models.AuthToken) {
+        const tokenDoc = await models.AuthToken.findOne({ token });
+        if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {
+          throw new HttpError(409, "An account has already been established for this invitation. Please log in.");
+        }
+      }
+
+      let employee = null;
+      if (payload.employeeId) {
+        employee = await models.Employee.findById(payload.employeeId);
+      }
+      if (!employee) {
+        employee = await models.Employee.findOne({ email: payload.sub });
+      }
+
+      if (!employee) {
+        throw new HttpError(404, "Employee record not found for this invitation.");
+      }
+
+      if (employee.invitation?.status === "ACCEPTED") {
+        throw new HttpError(409, "An account has already been established for this invitation. Please log in.");
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      let user = null;
+      if (employee.userId) {
+        user = await models.User.findById(employee.userId);
+      }
+      if (!user) {
+        user = await models.User.findOne({ email: payload.sub });
+      }
+
+      if (user) {
+        user.passwordHash = passwordHash;
+        user.isActive = true;
+        user.lastLoginAt = new Date();
+        await user.save();
+      } else {
+        user = await models.User.create({
+          email: payload.sub,
+          passwordHash,
+          role: USER_ROLES.EMPLOYEE,
+          isActive: true,
+          lastLoginAt: new Date(),
+          schemaVersion: 1,
+        });
+        employee.userId = user._id;
+      }
+
+      // Populate permitted self-service fields
+      const {
+        preferredName,
+        personalEmail,
+        personalPhone,
+        phoneNumber,
+        dateOfBirth,
+        gender,
+        residentialAddress,
+        emergencyContact,
+        bankDetails,
+        taxDetails,
+      } = req.body || {};
+
+      if (preferredName !== undefined) employee.preferredName = String(preferredName).trim();
+      if (personalEmail !== undefined) employee.personalEmail = String(personalEmail).trim().toLowerCase();
+      if (personalPhone !== undefined) employee.personalPhone = String(personalPhone).trim();
+      if (phoneNumber !== undefined) employee.phoneNumber = String(phoneNumber).trim();
+      if (dateOfBirth) employee.dateOfBirth = new Date(dateOfBirth);
+      if (gender !== undefined) employee.gender = String(gender).trim();
+
+      if (residentialAddress && typeof residentialAddress === "object") {
+        employee.residentialAddress = { ...employee.residentialAddress, ...residentialAddress };
+      }
+      if (emergencyContact && typeof emergencyContact === "object") {
+        employee.emergencyContact = { ...employee.emergencyContact, ...emergencyContact };
+      }
+      if (bankDetails && typeof bankDetails === "object") {
+        employee.bankDetails = { ...employee.bankDetails, ...bankDetails };
+      }
+      if (taxDetails && typeof taxDetails === "object") {
+        employee.taxDetails = { ...employee.taxDetails, ...taxDetails };
+      }
+
+      employee.invitation = {
+        status: "ACCEPTED",
+        token: "",
+        sentAt: employee.invitation?.sentAt || new Date(),
+        acceptedAt: new Date(),
+      };
+
+      await employee.save();
+
+      const authToken = signAuthToken({
+        userId: user._id,
+        companyId: company._id,
+      });
+      setAuthCookie(res, authToken);
+
+      if (models.AuthSession) {
+        const decoded = decodeAuthToken(authToken);
+        const expiresAt = decoded?.exp
+          ? new Date(decoded.exp * 1000)
+          : new Date(Date.now() + 8 * 60 * 60 * 1000);
+
+        await models.AuthSession.create({
+          userId: user._id,
+          token: authToken,
+          ipAddress: req.ip || "",
+          userAgent: req.headers["user-agent"] || "",
+          expiresAt,
+          isActive: true,
+        });
+      }
+
+      if (models.AuthToken) {
+        await models.AuthToken.updateMany(
+          { email: payload.sub, isActive: true },
+          { usedAt: new Date(), isActive: false }
+        );
+      }
+
+      if (models.AuditLog) {
+        try {
+          await models.AuditLog.create({
+            actorUserId: user._id,
+            actorEmail: user.email,
+            actorRole: USER_ROLES.EMPLOYEE,
+            action: "ONBOARDING_COMPLETED",
+            targetType: "Employee",
+            targetId: employee._id,
+            changes: { onboardingCompleted: true },
+            ipAddress: req.ip || "",
+            timestamp: new Date(),
+          });
+        } catch {}
+      }
+
+      return res.status(201).json({
+        message: "Employee onboarding completed successfully",
+        user: serializeUser(user),
+        employee,
+        company: publicCompany(company),
+      });
+    }
+
+    // Default HR Admin initial onboarding
     if (models.AuthToken) {
       const tokenDoc = await models.AuthToken.findOne({ token });
       if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {

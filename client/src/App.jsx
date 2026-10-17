@@ -1,8 +1,11 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import AdminHome from "./pages/AdminHome";
+import EditEmployee from "./pages/EditEmployee";
 import EmployeeHome from "./pages/EmployeeHome";
+import EmployeeProfile from "./pages/EmployeeProfile";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import "./index.css";
@@ -18,7 +21,29 @@ function App() {
             path="/admin"
             element={
               <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AdminHome />
+                <AppLayout>
+                  <AdminHome />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/employees/:id"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <EmployeeProfile />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/employees/:id/edit"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <EditEmployee />
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -26,7 +51,9 @@ function App() {
             path="/app"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
-                <EmployeeHome />
+                <AppLayout>
+                  <EmployeeHome />
+                </AppLayout>
               </ProtectedRoute>
             }
           />

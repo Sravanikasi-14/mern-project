@@ -5,8 +5,8 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: #f8fafc;
-  color: #0f172a;
+  background: #f4f4f5;
+  color: #09090b;
 }
 
 .container {
@@ -15,7 +15,8 @@ body {
   padding: 28px;
   background: white;
   border-radius: 16px;
-  box-shadow: 0 8px 30px #17203312;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e4e4e7;
 }
 
 .container-wide {
@@ -24,57 +25,98 @@ body {
   padding: 32px;
   background: white;
   border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e4e4e7;
 }
 
 h1 {
   margin: 0 0 8px;
   font-size: 24px;
   font-weight: 700;
-  color: #0f172a;
+  color: #09090b;
 }
 
 .subtitle,
 .count {
-  color: #64748b;
+  color: #71717a;
   font-size: 14px;
   margin: 0;
 }
 
 button {
   padding: 9px 15px;
-  border: 0;
+  border: 1px solid #18181b;
   border-radius: 8px;
-  background: #4338ca;
-  color: white;
+  background: #18181b;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
 button:hover:not(:disabled) {
-  background: #3730a3;
+  background: #27272a;
+  color: #ffffff;
+  border-color: #27272a;
+}
+
+button:focus-visible {
+  outline: 2px solid #09090b;
+  outline-offset: 2px;
+}
+
+button:active:not(:disabled) {
+  background: #09090b;
+  color: #ffffff;
+  border-color: #09090b;
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
+}
+
+button svg {
+  stroke: currentColor;
 }
 
 .btn-secondary {
-  background: #f1f5f9;
-  color: #334155;
-  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #18181b;
+  border: 1px solid #d4d4d8;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #e2e8f0;
+  background: #18181b;
+  color: #ffffff;
+  border-color: #18181b;
+}
+
+.btn-secondary:hover:not(:disabled) svg {
+  stroke: #ffffff;
+  color: #ffffff;
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: #09090b;
+  color: #ffffff;
+  border-color: #09090b;
+}
+
+.btn-secondary:focus-visible {
+  outline: 2px solid #09090b;
+  outline-offset: 2px;
 }
 
 .btn-sm {
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 12.5px;
 }
 
 .error {
@@ -136,8 +178,8 @@ button:disabled {
 
 .stat-card {
   padding: 18px 20px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -145,14 +187,14 @@ button:disabled {
 }
 
 .stat-card.highlight {
-  background: #eef2ff;
-  border-color: #c7d2fe;
+  background: #f4f4f5;
+  border-color: #d4d4d8;
 }
 
 .stat-label {
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
+  color: #71717a;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -160,11 +202,11 @@ button:disabled {
 .stat-value {
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: #09090b;
 }
 
 .stat-card.highlight .stat-value {
-  color: #4338ca;
+  color: #09090b;
 }
 
 /* Toolbar & Filters */
@@ -293,13 +335,14 @@ button:disabled {
 }
 
 .badge-active {
-  background: #dcfce7;
-  color: #15803d;
+  background: #18181b;
+  color: #ffffff;
 }
 
 .badge-inactive {
-  background: #f1f5f9;
-  color: #64748b;
+  background: #f4f4f5;
+  color: #71717a;
+  border: 1px solid #e4e4e7;
 }
 
 .row-actions {

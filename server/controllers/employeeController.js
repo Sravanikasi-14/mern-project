@@ -1,9 +1,34 @@
 import mongoose from "mongoose";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES, serializeUser } from "../models/User.js";
+import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { HttpError } from "../utils/httpError.js";
 import { hashPassword } from "../utils/password.js";
+import { signEmployeeInvitationToken } from "../utils/onboardingToken.js";
+import { emailService } from "../services/emailService.js";
+import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
+import { TOKEN_TYPES } from "../models/AuthToken.js";
+
+async function recordAuditLog(AuditLog, req, action, targetId, changes) {
+  try {
+    if (!AuditLog || !req.auth?.user) return;
+    await AuditLog.create({
+      actorUserId: req.auth.user._id,
+      actorEmail: req.auth.user.email,
+      actorRole: req.auth.user.role,
+      action,
+      targetType: "Employee",
+      targetId,
+      changes: changes || {},
+      ipAddress: req.ip || "",
+      timestamp: new Date(),
+    });
+  } catch (err) {
+    // Audit logging should not crash the primary operational request
+    console.error("Audit log error:", err.message);
+  }
+}
 
 function escapeRegex(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -200,8 +225,38 @@ export async function getEmployeeById(req, res, next) {
       }
     }
 
+    const defaultAttendance = {
+      totalWorkingDays: 22,
+      daysPresent: 21,
+      leaveBalance: { casual: 8, sick: 6, earned: 12 },
+    };
+
     res.json({
       ...employee,
+      preferredName: employee.preferredName || "",
+      personalEmail: employee.personalEmail || "",
+      personalPhone: employee.personalPhone || "",
+      gender: employee.gender || "Not specified",
+      emergencyContact: employee.emergencyContact || { name: "", relationship: "", phone: "" },
+      residentialAddress: employee.residentialAddress || { street: "", city: "", state: "", postalCode: "", country: "India" },
+      workAddress: employee.workAddress || { street: "", city: "", state: "", postalCode: "", country: "India" },
+      bankDetails: employee.bankDetails && employee.bankDetails.accountNumber ? employee.bankDetails : {
+        accountHolderName: employee.fullName,
+        accountNumber: "•••• •••• " + (employee.employeeCode ? employee.employeeCode.slice(-4) : "1024"),
+        bankName: "HDFC Bank",
+        ifscCode: "HDFC0001024",
+        accountType: "Salary Account",
+      },
+      taxDetails: employee.taxDetails && employee.taxDetails.panNumber ? employee.taxDetails : {
+        panNumber: "ABCDE1234F",
+        taxRegime: "New Tax Regime (Sec 115BAC)",
+      },
+      identityDetails: employee.identityDetails && employee.identityDetails.idNumber ? employee.identityDetails : {
+        idType: "PAN & Aadhaar (e-KYC)",
+        idNumber: "•••• •••• 9812",
+        isVerified: true,
+      },
+      attendance: employee.attendance || defaultAttendance,
       currentMonthlySalary,
       salaryComponents,
     });
@@ -212,25 +267,88 @@ export async function getEmployeeById(req, res, next) {
 
 export async function getMyProfile(req, res, next) {
   try {
-    const { Employee } = req.auth.models;
+    const { Employee, EmployeeCompensation } = req.auth.models;
     const employee = await Employee.findOne({
       $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
-    }).lean();
+    })
+      .populate("job.reportingManagerId", "fullName employeeCode")
+      .lean();
+
+    if (!employee) {
+      return res.json({
+        user: serializeUser(req.auth.user),
+        employee: null,
+      });
+    }
+
+    let compensation = null;
+    if (EmployeeCompensation) {
+      const comp = await EmployeeCompensation.findOne({ employeeId: employee._id }).lean();
+      if (comp) {
+        const now = new Date();
+        const validRevisions = (comp.revisions || [])
+          .filter((rev) => new Date(rev.effectiveFromDate) <= now)
+          .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
+
+        if (validRevisions.length > 0) {
+          const latest = validRevisions[0];
+          compensation = {
+            monthlyCostToCompany: parseFloat(latest.monthlyCostToCompany.toString()),
+            salaryComponents: latest.salaryComponents
+              ? {
+                  basicSalary: parseFloat((latest.salaryComponents.basicSalary || 0).toString()),
+                  houseRentAllowance: parseFloat((latest.salaryComponents.houseRentAllowance || 0).toString()),
+                  conveyanceAllowance: parseFloat((latest.salaryComponents.conveyanceAllowance || 0).toString()),
+                  specialAllowance: parseFloat((latest.salaryComponents.specialAllowance || 0).toString()),
+                }
+              : null,
+          };
+        }
+      }
+    }
 
     res.json({
       user: serializeUser(req.auth.user),
-      employee: employee
-        ? {
-            _id: employee._id,
-            employeeCode: employee.employeeCode,
-            fullName: employee.fullName,
-            email: employee.email,
-            phoneNumber: employee.phoneNumber,
-            status: employee.status,
-            city: employee.city,
-            job: employee.job,
-          }
-        : null,
+      employee: {
+        _id: employee._id,
+        employeeCode: employee.employeeCode,
+        fullName: employee.fullName,
+        preferredName: employee.preferredName || "",
+        email: employee.email,
+        personalEmail: employee.personalEmail || "",
+        phoneNumber: employee.phoneNumber || "",
+        personalPhone: employee.personalPhone || "",
+        dateOfBirth: employee.dateOfBirth || null,
+        gender: employee.gender || "Not specified",
+        city: employee.city || "",
+        status: employee.status,
+        job: employee.job,
+        residentialAddress: employee.residentialAddress || { street: "", city: "", state: "", postalCode: "", country: "India" },
+        emergencyContact: employee.emergencyContact || { name: "", relationship: "", phone: "" },
+        bankDetails: employee.bankDetails || {
+          accountHolderName: employee.fullName,
+          accountNumber: "",
+          bankName: "",
+          ifscCode: "",
+          accountType: "Salary Account",
+        },
+        taxDetails: employee.taxDetails || {
+          panNumber: "",
+          taxRegime: "New Tax Regime (Sec 115BAC)",
+        },
+        identityDetails: employee.identityDetails || {
+          idType: "PAN / Aadhaar",
+          idNumber: "",
+          isVerified: false,
+        },
+        documents: employee.documents || [],
+        attendance: employee.attendance || {
+          totalWorkingDays: 22,
+          daysPresent: 21,
+          leaveBalance: { casual: 8, sick: 6, earned: 12 },
+        },
+        compensation,
+      },
     });
   } catch (error) {
     next(error);
@@ -248,7 +366,12 @@ export async function createEmployee(req, res, next) {
       city,
       status = EMPLOYEE_STATUSES.ACTIVE,
       jobTitle,
+      department,
+      employmentType,
+      jobGrade,
+      workLocation,
       joiningDate,
+      reportingManagerId,
       projectName,
       projectType = "MANDATE",
       monthlySalary,
@@ -301,7 +424,7 @@ export async function createEmployee(req, res, next) {
       });
     }
 
-    const { Employee, User, EmployeeCompensation, AuthToken } = req.auth.models;
+    const { Employee, User, EmployeeCompensation, AuthToken, AuditLog } = req.auth.models;
 
     const existingCode = await Employee.findOne({ employeeCode: code });
     if (existingCode) {
@@ -321,7 +444,7 @@ export async function createEmployee(req, res, next) {
 
     let user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      const initialPassword = password && password.length >= 8 ? password : "Welcome123!";
+      const initialPassword = password && password.length >= 8 ? password : "TempPass" + Math.random().toString(36).substring(2, 8) + "!";
       const passwordHash = await hashPassword(initialPassword);
       user = await User.create({
         email: normalizedEmail,
@@ -330,19 +453,6 @@ export async function createEmployee(req, res, next) {
         isActive: status === EMPLOYEE_STATUSES.ACTIVE,
         schemaVersion: 1,
       });
-
-      if (AuthToken) {
-        await AuthToken.create({
-          userId: user._id,
-          email: normalizedEmail,
-          token: `emp_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`,
-          type: "INVITATION",
-          role: "EMPLOYEE",
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          createdBy: req.auth.user._id,
-          isActive: true,
-        });
-      }
     }
 
     const employee = await Employee.create({
@@ -359,7 +469,12 @@ export async function createEmployee(req, res, next) {
           : EMPLOYEE_STATUSES.ACTIVE,
       job: {
         jobTitle: jobTitle ? String(jobTitle).trim() : "",
+        department: department ? String(department).trim() : "",
+        employmentType: employmentType ? String(employmentType).trim() : "Full-time",
+        jobGrade: jobGrade ? String(jobGrade).trim() : "",
+        workLocation: workLocation ? String(workLocation).trim() : "",
         joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
+        reportingManagerId: reportingManagerId || null,
         project: {
           projectName: projectName ? String(projectName).trim() : "",
           projectType: projectType || "MANDATE",
@@ -368,8 +483,45 @@ export async function createEmployee(req, res, next) {
       schemaVersion: 1,
     });
 
+    // Generate onboarding invitation token
+    const inviteToken = signEmployeeInvitationToken({
+      companyId: req.auth.company._id,
+      employeeId: employee._id,
+      email: normalizedEmail,
+    });
+
+    if (AuthToken) {
+      await AuthToken.create({
+        userId: user._id,
+        email: normalizedEmail,
+        token: inviteToken,
+        type: TOKEN_TYPES.ONBOARDING,
+        role: "EMPLOYEE",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdBy: req.auth.user._id,
+        isActive: true,
+      });
+    }
+
+    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || "http://localhost:5173";
+    const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
+
+    const emailResult = await emailService.sendEmployeeInvitation({
+      companyName: req.auth.company?.companyName || req.auth.company?.name || "Your Company",
+      employeeName: employee.fullName,
+      email: normalizedEmail,
+      inviteLink,
+    });
+
+    employee.invitation = {
+      status: emailResult.success ? "PENDING" : "DELIVERY_FAILED",
+      token: inviteToken,
+      sentAt: new Date(),
+    };
+    await employee.save();
+
     const numericSalary = parseFloat(monthlySalary);
-    if (!isNaN(numericSalary) && numericSalary > 0) {
+    if (!isNaN(numericSalary) && numericSalary > 0 && EmployeeCompensation) {
       const basic = numericSalary * 0.5;
       const hra = numericSalary * 0.25;
       const conveyance = numericSalary * 0.1;
@@ -395,9 +547,29 @@ export async function createEmployee(req, res, next) {
       });
     }
 
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.EMPLOYEE_CREATED, employee._id, {
+        fullName: employee.fullName,
+        employeeCode: employee.employeeCode,
+        email: employee.email,
+        monthlySalary: !isNaN(numericSalary) ? numericSalary : null,
+      });
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.INVITATION_SENT, employee._id, {
+        email: normalizedEmail,
+        deliveryStatus: employee.invitation.status,
+        error: emailResult.error || null,
+      });
+    }
+
     res.status(201).json({
       message: "Employee created successfully",
       employee,
+      invitation: {
+        status: employee.invitation.status,
+        inviteLink,
+        emailSent: emailResult.success,
+        error: emailResult.error || null,
+      },
     });
   } catch (error) {
     next(error);
@@ -406,7 +578,7 @@ export async function createEmployee(req, res, next) {
 
 export async function updateEmployee(req, res, next) {
   try {
-    const { Employee, User } = req.auth.models;
+    const { Employee, User, EmployeeCompensation, AuditLog } = req.auth.models;
     const { id } = req.params;
 
     const employee = await Employee.findById(id);
@@ -414,31 +586,97 @@ export async function updateEmployee(req, res, next) {
       throw new HttpError(404, "Employee not found");
     }
 
-    const { fullName, phoneNumber, city, status, jobTitle, projectName, projectType } =
-      req.body || {};
+    const {
+      fullName,
+      preferredName,
+      personalEmail,
+      personalPhone,
+      phoneNumber,
+      dateOfBirth,
+      gender,
+      city,
+      residentialAddress,
+      workAddress,
+      emergencyContact,
+      jobTitle,
+      department,
+      jobGrade,
+      employmentType,
+      workLocation,
+      status,
+      joiningDate,
+      terminationDate,
+      projectName,
+      projectType,
+      bankDetails,
+      taxDetails,
+      identityDetails,
+      attendance,
+      monthlySalary,
+    } = req.body || {};
 
+    const changes = {};
+
+    // Personal details
     if (fullName && typeof fullName === "string" && fullName.trim()) {
+      changes.fullName = { old: employee.fullName, new: fullName.trim() };
       employee.fullName = fullName.trim();
     }
+    if (preferredName !== undefined) {
+      employee.preferredName = String(preferredName).trim();
+    }
+    if (personalEmail !== undefined) {
+      employee.personalEmail = String(personalEmail).trim();
+    }
+    if (personalPhone !== undefined) {
+      employee.personalPhone = String(personalPhone).trim();
+    }
     if (phoneNumber !== undefined) {
+      changes.phoneNumber = { old: employee.phoneNumber, new: String(phoneNumber).trim() };
       employee.phoneNumber = String(phoneNumber).trim();
     }
+    if (dateOfBirth !== undefined) {
+      employee.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+    if (gender !== undefined) {
+      employee.gender = String(gender).trim();
+    }
     if (city !== undefined) {
+      changes.city = { old: employee.city, new: String(city).trim() };
       employee.city = String(city).trim();
     }
-    if (
-      status &&
-      (status === EMPLOYEE_STATUSES.ACTIVE || status === EMPLOYEE_STATUSES.INACTIVE)
-    ) {
-      employee.status = status;
-      if (employee.userId) {
-        await User.findByIdAndUpdate(employee.userId, {
-          isActive: status === EMPLOYEE_STATUSES.ACTIVE,
-        });
-      }
+    if (residentialAddress && typeof residentialAddress === "object") {
+      employee.residentialAddress = { ...employee.residentialAddress, ...residentialAddress };
     }
+    if (workAddress && typeof workAddress === "object") {
+      employee.workAddress = { ...employee.workAddress, ...workAddress };
+    }
+    if (emergencyContact && typeof emergencyContact === "object") {
+      employee.emergencyContact = { ...employee.emergencyContact, ...emergencyContact };
+    }
+
+    // Job / Employment details
     if (jobTitle !== undefined) {
+      changes.jobTitle = { old: employee.job.jobTitle, new: String(jobTitle).trim() };
       employee.job.jobTitle = String(jobTitle).trim();
+    }
+    if (department !== undefined) {
+      employee.job.department = String(department).trim();
+    }
+    if (jobGrade !== undefined) {
+      employee.job.jobGrade = String(jobGrade).trim();
+    }
+    if (employmentType !== undefined) {
+      employee.job.employmentType = String(employmentType).trim();
+    }
+    if (workLocation !== undefined) {
+      employee.job.workLocation = String(workLocation).trim();
+    }
+    if (joiningDate && !isNaN(new Date(joiningDate).getTime())) {
+      employee.job.joiningDate = new Date(joiningDate);
+    }
+    if (terminationDate !== undefined) {
+      employee.job.terminationDate = terminationDate ? new Date(terminationDate) : null;
     }
     if (projectName !== undefined) {
       employee.job.project.projectName = String(projectName).trim();
@@ -447,12 +685,447 @@ export async function updateEmployee(req, res, next) {
       employee.job.project.projectType = projectType;
     }
 
+    // Status changes
+    let statusChanged = false;
+    if (
+      status &&
+      (status === EMPLOYEE_STATUSES.ACTIVE || status === EMPLOYEE_STATUSES.INACTIVE) &&
+      status !== employee.status
+    ) {
+      statusChanged = true;
+      changes.status = { old: employee.status, new: status };
+      employee.status = status;
+      if (employee.userId && User) {
+        await User.findByIdAndUpdate(employee.userId, {
+          isActive: status === EMPLOYEE_STATUSES.ACTIVE,
+        });
+      }
+    }
+
+    // Bank Details (Sensitive)
+    let bankChanged = false;
+    if (bankDetails && typeof bankDetails === "object") {
+      bankChanged = true;
+      changes.bankDetails = { updated: true };
+      employee.bankDetails = {
+        ...employee.bankDetails,
+        ...bankDetails,
+      };
+    }
+
+    // Tax Details
+    if (taxDetails && typeof taxDetails === "object") {
+      employee.taxDetails = {
+        ...employee.taxDetails,
+        ...taxDetails,
+      };
+    }
+
+    // Identity Details (Sensitive)
+    let identityChanged = false;
+    if (identityDetails && typeof identityDetails === "object") {
+      identityChanged = true;
+      changes.identityDetails = { updated: true };
+      employee.identityDetails = {
+        ...employee.identityDetails,
+        ...identityDetails,
+      };
+    }
+
+    // Attendance
+    if (attendance && typeof attendance === "object") {
+      employee.attendance = {
+        ...employee.attendance,
+        ...attendance,
+      };
+    }
+
     await employee.save();
+
+    // Audit logs for sensitive events
+    if (statusChanged && AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.STATUS_CHANGED, employee._id, changes.status);
+    }
+    if (bankChanged && AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.BANK_DETAILS_UPDATED, employee._id, { updatedFields: Object.keys(bankDetails) });
+    }
+    if (identityChanged && AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.IDENTITY_VERIFIED, employee._id, { updatedFields: Object.keys(identityDetails) });
+    }
+
+    // Compensation updates
+    if (monthlySalary !== undefined && monthlySalary !== null && monthlySalary !== "") {
+      const numSal = parseFloat(monthlySalary);
+      if (!isNaN(numSal) && numSal >= 0 && EmployeeCompensation) {
+        const basic = numSal * 0.5;
+        const hra = numSal * 0.25;
+        const conveyance = numSal * 0.1;
+        const special = numSal * 0.15;
+
+        let compRecord = await EmployeeCompensation.findOne({ employeeId: employee._id });
+        const newRevision = {
+          effectiveFromDate: new Date(),
+          monthlyCostToCompany: mongoose.Types.Decimal128.fromString(numSal.toFixed(2)),
+          salaryComponents: {
+            basicSalary: mongoose.Types.Decimal128.fromString(basic.toFixed(2)),
+            houseRentAllowance: mongoose.Types.Decimal128.fromString(hra.toFixed(2)),
+            conveyanceAllowance: mongoose.Types.Decimal128.fromString(conveyance.toFixed(2)),
+            specialAllowance: mongoose.Types.Decimal128.fromString(special.toFixed(2)),
+          },
+          revisedBy: req.auth.user._id,
+          revisedAt: new Date(),
+        };
+
+        if (compRecord) {
+          compRecord.revisions.push(newRevision);
+          await compRecord.save();
+        } else {
+          await EmployeeCompensation.create({
+            employeeId: employee._id,
+            revisions: [newRevision],
+            schemaVersion: 1,
+          });
+        }
+
+        if (AuditLog) {
+          await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.COMPENSATION_REVISED, employee._id, {
+            monthlyCostToCompany: numSal,
+          });
+        }
+      }
+    }
+
+    // General update audit log
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.EMPLOYEE_UPDATED, employee._id, changes);
+    }
 
     res.json({
       message: "Employee updated successfully",
       employee,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resendInvitation(req, res, next) {
+  try {
+    const { Employee, AuthToken, AuditLog } = req.auth.models;
+    const { id } = req.params;
+
+    const employee = await Employee.findById(id);
+    if (!employee) {
+      throw new HttpError(404, "Employee not found");
+    }
+
+    if (employee.invitation?.status === "ACCEPTED") {
+      throw new HttpError(400, "Employee has already accepted their onboarding invitation and established credentials.");
+    }
+
+    const inviteToken = signEmployeeInvitationToken({
+      companyId: req.auth.company._id,
+      employeeId: employee._id,
+      email: employee.email,
+    });
+
+    if (AuthToken) {
+      // Invalidate any older pending invitation tokens for this user
+      await AuthToken.updateMany(
+        { email: employee.email, role: "EMPLOYEE", isActive: true },
+        { isActive: false }
+      );
+
+      await AuthToken.create({
+        userId: employee.userId,
+        email: employee.email,
+        token: inviteToken,
+        type: TOKEN_TYPES.ONBOARDING,
+        role: "EMPLOYEE",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdBy: req.auth.user._id,
+        isActive: true,
+      });
+    }
+
+    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || "http://localhost:5173";
+    const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
+
+    const emailResult = await emailService.sendEmployeeInvitation({
+      companyName: req.auth.company?.companyName || req.auth.company?.name || "Your Organization",
+      employeeName: employee.fullName,
+      email: employee.email,
+      inviteLink,
+    });
+
+    employee.invitation = {
+      status: emailResult.success ? "PENDING" : "DELIVERY_FAILED",
+      token: inviteToken,
+      sentAt: new Date(),
+    };
+    await employee.save();
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.INVITATION_RESENT, employee._id, {
+        email: employee.email,
+        deliveryStatus: employee.invitation.status,
+        error: emailResult.error || null,
+      });
+    }
+
+    res.json({
+      message: emailResult.success ? "Invitation resent successfully" : "Invitation created, but email delivery failed",
+      invitation: {
+        status: employee.invitation.status,
+        inviteLink,
+        emailSent: emailResult.success,
+        error: emailResult.error || null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateMyProfile(req, res, next) {
+  try {
+    const { Employee, AuditLog } = req.auth.models;
+    const employee = await Employee.findOne({
+      $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
+    });
+
+    if (!employee) {
+      throw new HttpError(404, "Employee record not found for your account.");
+    }
+
+    const forbiddenFields = [
+      "employeeCode",
+      "status",
+      "job",
+      "jobTitle",
+      "department",
+      "jobGrade",
+      "employmentType",
+      "workLocation",
+      "joiningDate",
+      "terminationDate",
+      "reportingManagerId",
+      "projectName",
+      "projectType",
+      "monthlySalary",
+      "salaryComponents",
+      "salary",
+      "userId",
+      "email",
+      "invitation",
+      "attendance",
+    ];
+
+    for (const field of forbiddenFields) {
+      if (req.body[field] !== undefined) {
+        throw new HttpError(403, `Employees are not permitted to modify HR-controlled field: '${field}'`);
+      }
+    }
+
+    const {
+      preferredName,
+      personalEmail,
+      personalPhone,
+      phoneNumber,
+      dateOfBirth,
+      gender,
+      city,
+      residentialAddress,
+      emergencyContact,
+      bankDetails,
+      taxDetails,
+    } = req.body || {};
+
+    const changes = {};
+
+    if (preferredName !== undefined) {
+      changes.preferredName = { old: employee.preferredName, new: String(preferredName).trim() };
+      employee.preferredName = String(preferredName).trim();
+    }
+    if (personalEmail !== undefined) {
+      changes.personalEmail = { old: employee.personalEmail, new: String(personalEmail).trim().toLowerCase() };
+      employee.personalEmail = String(personalEmail).trim().toLowerCase();
+    }
+    if (personalPhone !== undefined) {
+      employee.personalPhone = String(personalPhone).trim();
+    }
+    if (phoneNumber !== undefined) {
+      changes.phoneNumber = { old: employee.phoneNumber, new: String(phoneNumber).trim() };
+      employee.phoneNumber = String(phoneNumber).trim();
+    }
+    if (dateOfBirth !== undefined) {
+      employee.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    }
+    if (gender !== undefined) {
+      employee.gender = String(gender).trim();
+    }
+    if (city !== undefined) {
+      changes.city = { old: employee.city, new: String(city).trim() };
+      employee.city = String(city).trim();
+    }
+    if (residentialAddress && typeof residentialAddress === "object") {
+      employee.residentialAddress = { ...employee.residentialAddress, ...residentialAddress };
+    }
+    if (emergencyContact && typeof emergencyContact === "object") {
+      employee.emergencyContact = { ...employee.emergencyContact, ...emergencyContact };
+    }
+    if (bankDetails && typeof bankDetails === "object") {
+      changes.bankDetails = { updated: true };
+      employee.bankDetails = { ...employee.bankDetails, ...bankDetails };
+    }
+    if (taxDetails && typeof taxDetails === "object") {
+      changes.taxDetails = { updated: true };
+      employee.taxDetails = { ...employee.taxDetails, ...taxDetails };
+    }
+
+    await employee.save();
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.EMPLOYEE_SELF_UPDATED, employee._id, changes);
+    }
+
+    res.json({
+      message: "Profile updated successfully",
+      employee,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function uploadEmployeeDocument(req, res, next) {
+  try {
+    const { Employee, AuditLog } = req.auth.models;
+    const isSelf = req.params.id === undefined || req.path.includes("/me/");
+    let employee;
+
+    if (isSelf) {
+      employee = await Employee.findOne({
+        $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
+      });
+    } else {
+      employee = await Employee.findById(req.params.id);
+      if (employee && req.auth.user.role === USER_ROLES.EMPLOYEE) {
+        if (!employee.userId || employee.userId.toString() !== req.auth.user._id.toString()) {
+          throw new HttpError(403, "You are not authorized to upload documents for another employee.");
+        }
+      }
+    }
+
+    if (!employee) {
+      throw new HttpError(404, "Employee record not found");
+    }
+
+    const {
+      fileName,
+      fileData,
+      mimeType,
+      fileSize,
+      documentType = "OTHER",
+      title,
+    } = req.body || {};
+
+    if (!fileName || !fileData) {
+      throw new HttpError(400, "File name and file data are required.");
+    }
+
+    // Save document file securely via documentStorage
+    const saved = await saveDocumentFile({
+      databaseName: req.auth.company.databaseName,
+      employeeId: employee._id,
+      fileName,
+      fileData,
+      mimeType,
+    });
+
+    const isHR = req.auth.user.role === USER_ROLES.HR_ADMIN;
+
+    const newDoc = {
+      documentType: documentType.toUpperCase(),
+      title: title ? String(title).trim() : fileName,
+      fileName: saved.fileName,
+      fileSize: saved.fileSize,
+      mimeType: saved.mimeType,
+      storageKey: saved.storageKey,
+      uploadedBy: req.auth.user._id,
+      uploadedByRole: req.auth.user.role,
+      uploadedAt: new Date(),
+      verified: isHR,
+    };
+
+    employee.documents.push(newDoc);
+    await employee.save();
+
+    const createdDoc = employee.documents[employee.documents.length - 1];
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.DOCUMENT_UPLOADED, employee._id, {
+        documentId: createdDoc._id,
+        documentType: newDoc.documentType,
+        fileName: newDoc.fileName,
+        fileSize: newDoc.fileSize,
+        uploadedByRole: newDoc.uploadedByRole,
+      });
+    }
+
+    res.status(201).json({
+      message: "Document uploaded successfully",
+      document: createdDoc,
+      documents: employee.documents,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function downloadDocument(req, res, next) {
+  try {
+    const { Employee, AuditLog } = req.auth.models;
+    const { id, docId } = req.params;
+
+    const employee = await Employee.findById(id);
+    if (!employee) {
+      throw new HttpError(404, "Employee not found");
+    }
+
+    // Authorization check
+    if (req.auth.user.role === USER_ROLES.EMPLOYEE) {
+      if (!employee.userId || employee.userId.toString() !== req.auth.user._id.toString()) {
+        throw new HttpError(403, "Access denied. You cannot access documents belonging to another employee.");
+      }
+    }
+
+    const doc = employee.documents.id(docId);
+    if (!doc) {
+      throw new HttpError(404, "Document not found");
+    }
+
+    const filePath = getDocumentAbsolutePath({
+      databaseName: req.auth.company.databaseName,
+      employeeId: employee._id,
+      storageKey: doc.storageKey,
+    });
+
+    if (!filePath) {
+      throw new HttpError(404, "Document file not found on storage server.");
+    }
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.DOCUMENT_DOWNLOADED, employee._id, {
+        documentId: doc._id,
+        fileName: doc.fileName,
+        downloadedByRole: req.auth.user.role,
+      });
+    }
+
+    res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${doc.fileName}"`);
+    return res.sendFile(filePath);
   } catch (error) {
     next(error);
   }

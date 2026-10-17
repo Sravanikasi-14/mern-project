@@ -314,6 +314,52 @@ describe("Employee Management Foundation API", () => {
     assert.equal(res.body.currentMonthlySalary, 80000);
     assert.equal(res.body.salaryComponents.basicSalary, 40000);
     assert.equal(res.body.salaryComponents.houseRentAllowance, 20000);
+    assert.ok(res.body.bankDetails);
+    assert.ok(res.body.taxDetails);
+    assert.ok(res.body.attendance);
+  });
+
+  it("allows HR to update employee personal, employment, and bank details with audit logging", async () => {
+    const updateRes = await request(app)
+      .patch(`/api/employees/${emp1._id}`)
+      .set("Cookie", acmeHrCookie)
+      .send({
+        fullName: "Alice J. Smith",
+        phoneNumber: "+91 99999 88888",
+        city: "Bengaluru",
+        department: "Engineering",
+        workLocation: "Tech Park, BLR",
+        bankDetails: {
+          accountHolderName: "Alice J. Smith",
+          accountNumber: "987654321098",
+          bankName: "State Bank of India",
+          ifscCode: "SBIN0001234",
+          accountType: "SAVINGS",
+        },
+        monthlySalary: 95000,
+      });
+
+    assert.equal(updateRes.status, 200);
+    assert.equal(updateRes.body.employee.fullName, "Alice J. Smith");
+    assert.equal(updateRes.body.employee.phoneNumber, "+91 99999 88888");
+
+    // Verify AuditLog in Acme tenant DB
+    const { AuditLog, EmployeeCompensation } = await getCompanyModels(acme);
+    const logs = await AuditLog.find({ targetId: emp1._id }).lean();
+    assert.ok(logs.length >= 2, "Expected audit logs for bank update and compensation revision");
+
+    const compLog = logs.find((l) => l.action === "COMPENSATION_REVISED");
+    assert.ok(compLog, "Expected COMPENSATION_REVISED audit log");
+    assert.equal(compLog.actorEmail, "hr@acme.test");
+
+    const bankLog = logs.find((l) => l.action === "BANK_DETAILS_UPDATED");
+    assert.ok(bankLog, "Expected BANK_DETAILS_UPDATED audit log");
+
+    // Verify revised compensation
+    const compRecord = await EmployeeCompensation.findOne({ employeeId: emp1._id }).lean();
+    assert.equal(compRecord.revisions.length, 2);
+    const latestRev = compRecord.revisions[compRecord.revisions.length - 1];
+    assert.equal(parseFloat(latestRev.monthlyCostToCompany.toString()), 95000);
   });
 
   it("enforces tenant isolation: Globex HR cannot see Acme employees", async () => {

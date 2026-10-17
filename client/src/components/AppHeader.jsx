@@ -11,7 +11,7 @@ export default function AppHeader({ title }) {
           {company?.companyName} · {user?.email} · {user?.role}
         </p>
       </div>
-      <button type="button" onClick={logout}>
+      <button type="button" className="btn-secondary btn-sm" onClick={logout}>
         Log out
       </button>
     </header>

@@ -172,7 +172,7 @@ export default function Login() {
 
       <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eaecf0", fontSize: "14px", color: "#667085", textAlign: "center" }}>
         <span>Setting up a provisioned company? </span>
-        <Link to="/onboard" style={{ color: "#4338ca", textDecoration: "none", fontWeight: "600" }}>
+        <Link to="/onboard" style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
           Set up initial HR Admin
         </Link>
       </div>
