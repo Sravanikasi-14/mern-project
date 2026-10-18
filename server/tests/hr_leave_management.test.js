@@ -103,6 +103,7 @@ before(async () => {
       allowEncashment: false,
     },
     weekendRules: { saturdayOff: true, sundayOff: true },
+    attendanceRules: { officeStartTime: "09:30", officeEndTime: "18:30" },
     holidays: [
       { name: "Republic Day", date: new Date("2026-01-26"), type: "National Holiday" },
     ],
@@ -168,8 +169,8 @@ describe("HR Leave Management Workflow & Approved Schema Integration", () => {
       .set("Cookie", employeeCookieA)
       .send({
         leaveType: "CASUAL",
-        startDate: "2026-06-10",
-        endDate: "2026-06-11",
+        startDate: "2026-11-10",
+        endDate: "2026-11-11",
         reason: "Personal family commitment",
       });
 
@@ -189,8 +190,8 @@ describe("HR Leave Management Workflow & Approved Schema Integration", () => {
       .set("Cookie", employeeCookieA)
       .send({
         leaveType: "CASUAL",
-        startDate: "2026-06-11", // Overlaps with 2026-06-10 to 2026-06-11
-        endDate: "2026-06-12",
+        startDate: "2026-11-11", // Overlaps with 2026-11-10 to 2026-11-11
+        endDate: "2026-11-12",
         reason: "Overlapping attempt",
       });
 
@@ -310,8 +311,8 @@ describe("HR Leave Management Workflow & Approved Schema Integration", () => {
       .set("Cookie", employeeCookieA)
       .send({
         leaveType: "SICK",
-        startDate: "2026-07-01",
-        endDate: "2026-07-01",
+        startDate: "2026-12-01",
+        endDate: "2026-12-01",
         reason: "Doctor appointment",
       });
     assert.equal(applyRes.status, 201);

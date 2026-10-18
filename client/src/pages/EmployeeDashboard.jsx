@@ -27,25 +27,157 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
   });
   const [leaveModalError, setLeaveModalError] = useState("");
 
-  const fetchDashboard = async () => {
+  const calculateLeaveEligibility = () => {
+    const leaveConfig = dashboardData?.leave?.config;
+    const tz = leaveConfig?.timezone || "Asia/Kolkata";
+    const officeStartTime = leaveConfig?.officeStartTime || "09:30";
+
     try {
-      setLoading(true);
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(new Date());
+      const getP = (t) => parts.find((p) => p.type === t)?.value;
+      const todayStr = `${getP("year")}-${getP("month")}-${getP("day")}`;
+      let hour = parseInt(getP("hour"), 10);
+      if (hour === 24) hour = 0;
+      const minute = parseInt(getP("minute"), 10);
+      const currentMinutes = hour * 60 + minute;
+
+      const match = typeof officeStartTime === "string" ? officeStartTime.match(/^([01]\d|2[0-3]):([0-5]\d)$/) : null;
+      const officeMinutes = match ? parseInt(match[1], 10) * 60 + parseInt(match[2], 10) : 9 * 60 + 30;
+      const cutoffMinutes = officeMinutes - 60;
+      const normCutoff = ((cutoffMinutes % 1440) + 1440) % 1440;
+      const cutoffH = Math.floor(normCutoff / 60);
+      const cutoffM = normCutoff % 60;
+      const cutoffTimeStr = `${String(cutoffH).padStart(2, "0")}:${String(cutoffM).padStart(2, "0")}`;
+
+      const [y, m, d] = todayStr.split("-").map(Number);
+      const tmrw = new Date(Date.UTC(y, m - 1, d));
+      tmrw.setUTCDate(tmrw.getUTCDate() + 1);
+      const tomorrowStr = tmrw.toISOString().split("T")[0];
+
+      const isTodayEligible = currentMinutes < cutoffMinutes;
+      const earliestEligibleDate = isTodayEligible ? todayStr : tomorrowStr;
+
+      return {
+        timezone: tz,
+        officeStartTime,
+        cutoffTime: cutoffTimeStr,
+        todayStr,
+        tomorrowStr,
+        isTodayEligible,
+        earliestEligibleDate,
+        hasConfigError: Boolean(leaveConfig?.error),
+        configError: leaveConfig?.error || null,
+      };
+    } catch {
+      const today = new Date().toISOString().split("T")[0];
+      return {
+        timezone: tz,
+        officeStartTime,
+        cutoffTime: "08:30",
+        todayStr: today,
+        tomorrowStr: today,
+        isTodayEligible: false,
+        earliestEligibleDate: today,
+        hasConfigError: false,
+        configError: null,
+      };
+    }
+  };
+
+  const leaveEligibility = calculateLeaveEligibility();
+
+  const handleOpenLeaveModal = () => {
+    const elig = calculateLeaveEligibility();
+    setLeaveModalError("");
+    if (elig.hasConfigError) {
+      setLeaveModalError(`Company attendance configuration error: ${elig.configError}`);
+    }
+    setLeaveForm((prev) => {
+      const start = prev.startDate && prev.startDate >= elig.earliestEligibleDate ? prev.startDate : elig.earliestEligibleDate;
+      const end = prev.endDate && prev.endDate >= start ? prev.endDate : start;
+      return { ...prev, startDate: start, endDate: end };
+    });
+    setShowLeaveModal(true);
+  };
+
+  const fetchDashboard = async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
       setError("");
       const response = await api.get("/employees/me/dashboard");
       setDashboardData(response.data);
     } catch (err) {
-      if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-        setError("Unable to connect to the server. Please check your connection and try again.");
-      } else {
-        setError(err.response?.data?.message || "Failed to load employee dashboard data.");
+      if (!silent) {
+        if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
+          setError("Unable to connect to the server. Please check your connection and try again.");
+        } else {
+          setError(err.response?.data?.message || "Failed to load employee dashboard data.");
+        }
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDashboard();
+
+    // Cross-portal real-time synchronization via Server-Sent Events
+    const baseURL = api.defaults.baseURL || "/api";
+    const eventsUrl = `${baseURL.replace(/\/$/, "")}/leave-requests/events`;
+
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(eventsUrl, { withCredentials: true });
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "LEAVE_DECIDED" || payload.type === "LEAVE_SUBMITTED") {
+            fetchDashboard(true);
+          }
+        } catch {
+          // ignore non-json
+        }
+      };
+      eventSource.onerror = () => {
+        // Reconnects automatically
+      };
+    } catch {
+      // EventSource fallback
+    }
+
+    // Visibility-aware background polling & tab focus refresh
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchDashboard(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchDashboard(true);
+      }
+    }, 10000);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      clearInterval(intervalId);
+    };
   }, []);
 
   // Check-In handler
@@ -80,7 +212,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
     }
   };
 
-  // Apply Leave handler
+  // Apply Leave handler with live cutoff validation and instant state updates
   const handleApplyLeave = async (e) => {
     e.preventDefault();
     setLeaveModalError("");
@@ -89,7 +221,36 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
       setLeaveModalError("Both start date and end date are required.");
       return;
     }
-    if (new Date(leaveForm.startDate) > new Date(leaveForm.endDate)) {
+
+    const elig = calculateLeaveEligibility();
+
+    if (elig.hasConfigError) {
+      setLeaveModalError(`Company attendance configuration error: ${elig.configError}. Please contact HR.`);
+      return;
+    }
+
+    // Rule 1: Past date check
+    if (leaveForm.startDate < elig.todayStr || leaveForm.endDate < elig.todayStr) {
+      setLeaveModalError("Leave cannot be applied for past dates.");
+      return;
+    }
+
+    // Rule 3 & 4: Cutoff check for same-day requests
+    if (!elig.isTodayEligible && (leaveForm.startDate === elig.todayStr || leaveForm.endDate === elig.todayStr)) {
+      setLeaveModalError(
+        `Same-day leave requests must be submitted at least 1 hour before office start time (${elig.officeStartTime}). The cutoff time for today was ${elig.cutoffTime} (${elig.timezone}). Earliest selectable date is tomorrow (${elig.tomorrowStr}).`
+      );
+      return;
+    }
+
+    if (leaveForm.startDate < elig.earliestEligibleDate) {
+      setLeaveModalError(
+        `Selected date is no longer eligible. Earliest selectable date is ${elig.earliestEligibleDate}.`
+      );
+      return;
+    }
+
+    if (leaveForm.startDate > leaveForm.endDate) {
       setLeaveModalError("Start date cannot be after end date.");
       return;
     }
@@ -99,8 +260,30 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
       const res = await api.post("/employees/me/leave-requests", leaveForm);
       setActionSuccess(res.data?.message || "Leave request submitted successfully!");
       setShowLeaveModal(false);
+
+      // Instant UI update: prepend pending request and increment pending count
+      const createdReq = res.data?.leaveRequest;
+      if (createdReq) {
+        setDashboardData((prev) => {
+          if (!prev) return prev;
+          const currentRequests = prev.leave?.recentRequests || [];
+          return {
+            ...prev,
+            leave: {
+              ...prev.leave,
+              summary: {
+                ...prev.leave?.summary,
+                total: (prev.leave?.summary?.total || 0) + 1,
+                pending: (prev.leave?.summary?.pending || 0) + 1,
+              },
+              recentRequests: [createdReq, ...currentRequests],
+            },
+          };
+        });
+      }
+
       setLeaveForm({ leaveType: "CASUAL", startDate: "", endDate: "", reason: "" });
-      await fetchDashboard();
+      await fetchDashboard(true);
     } catch (err) {
       setLeaveModalError(err.response?.data?.message || "Failed to submit leave request.");
     } finally {
@@ -245,7 +428,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
               </Link>
               <button
                 type="button"
-                onClick={() => setShowLeaveModal(true)}
+                onClick={handleOpenLeaveModal}
                 style={{
                   background: "#ffffff",
                   color: "#09090b",
@@ -437,7 +620,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 <button
                   type="button"
                   className="btn-sm"
-                  onClick={() => setShowLeaveModal(true)}
+                  onClick={handleOpenLeaveModal}
                 >
                   + Apply for Leave
                 </button>
@@ -924,8 +1107,16 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                   <input
                     type="date"
                     required
+                    min={leaveEligibility.earliestEligibleDate}
                     value={leaveForm.startDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setLeaveForm((prev) => ({
+                        ...prev,
+                        startDate: newStart,
+                        endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
+                      }));
+                    }}
                     style={{
                       width: "100%",
                       padding: "9px 12px",
@@ -942,6 +1133,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                   <input
                     type="date"
                     required
+                    min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
                     value={leaveForm.endDate}
                     onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
                     style={{
@@ -953,6 +1145,30 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                     }}
                   />
                 </div>
+              </div>
+
+              <div
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  background: leaveEligibility.isTodayEligible ? "#f0fdf4" : "#fffbeb",
+                  border: `1px solid ${leaveEligibility.isTodayEligible ? "#bbf7d0" : "#fde68a"}`,
+                  color: leaveEligibility.isTodayEligible ? "#166534" : "#92400e",
+                }}
+              >
+                {leaveEligibility.hasConfigError ? (
+                  <span>⚠️ Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
+                ) : leaveEligibility.isTodayEligible ? (
+                  <span>
+                    ℹ️ <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}), exactly 1 hour before office starts ({leaveEligibility.officeStartTime}).
+                  </span>
+                ) : (
+                  <span>
+                    ⏱️ <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
+                  </span>
+                )}
               </div>
 
               <div>

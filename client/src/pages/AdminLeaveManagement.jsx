@@ -67,9 +67,9 @@ export default function AdminLeaveManagement() {
   }, [search]);
 
   // Fetch Leave Requests and Summary
-  const fetchLeaveData = async () => {
+  const fetchLeaveData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
 
       const params = {
@@ -94,18 +94,70 @@ export default function AdminLeaveManagement() {
         }
       }
     } catch (err) {
-      if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-        setError("Unable to connect to the server. Please check your connection and try again.");
-      } else {
-        setError(err.response?.data?.message || "Failed to load leave requests.");
+      if (!silent) {
+        if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
+          setError("Unable to connect to the server. Please check your connection and try again.");
+        } else {
+          setError(err.response?.data?.message || "Failed to load leave requests.");
+        }
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchLeaveData();
+  }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
+
+  // Live Cross-Portal Synchronization via SSE & visibility-aware background sync
+  useEffect(() => {
+    const baseURL = api.defaults.baseURL || "/api";
+    const eventsUrl = `${baseURL.replace(/\/$/, "")}/leave-requests/events`;
+
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(eventsUrl, { withCredentials: true });
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "LEAVE_SUBMITTED" || payload.type === "LEAVE_DECIDED") {
+            // Live update of HR pending queue and summary counters without manual page refresh
+            fetchLeaveData(true);
+          }
+        } catch {
+          // ignore non-json
+        }
+      };
+      eventSource.onerror = () => {
+        // Browser reconnects automatically
+      };
+    } catch {
+      // EventSource fallback
+    }
+
+    // Visibility-aware background polling & window focus sync
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchLeaveData(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.addEventListener("focus", handleVisibilityOrFocus);
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchLeaveData(true);
+      }
+    }, 10000);
+
+    return () => {
+      if (eventSource) eventSource.close();
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      clearInterval(intervalId);
+    };
   }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
 
   // Open details modal

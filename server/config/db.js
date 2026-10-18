@@ -65,8 +65,21 @@ export async function getTenantConnection(databaseName) {
   }
 }
 
+const provisionedTenantDbs = new Set();
+
 export async function getCompanyModels(company) {
   const connection = await getTenantConnection(company.databaseName);
+
+  if (!provisionedTenantDbs.has(company.databaseName)) {
+    try {
+      const { provisionTenantDatabase } = await import("../services/tenantProvisioningService.js");
+      await provisionTenantDatabase(company, connection);
+      provisionedTenantDbs.add(company.databaseName);
+    } catch (provErr) {
+      console.warn(`[db] Tenant provisioning check warning for ${company.databaseName}:`, provErr.message);
+    }
+  }
+
   return {
     connection,
     User: getUserModel(connection),

@@ -7,6 +7,7 @@ import {
   parseDateOnly,
   toDateString,
 } from "../services/leaveService.js";
+import { emitLeaveEvent } from "../services/leaveEventsService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -348,6 +349,18 @@ export async function decideLeaveRequest(req, res, next) {
         }
       );
     }
+
+    // Cross-portal real-time synchronization: notify employee and HR portals of decision
+    emitLeaveEvent({
+      companyId: String(req.auth.company._id),
+      type: "LEAVE_DECIDED",
+      employeeId: String(leaveRequest.employeeId),
+      employeeEmail: employee ? employee.email : null,
+      leaveRequestId: String(leaveRequest._id),
+      status: leaveRequest.status,
+      action: cleanAction,
+      remarks: leaveRequest.decision.remarks,
+    });
 
     res.json({
       success: true,

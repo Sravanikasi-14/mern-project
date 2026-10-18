@@ -14,6 +14,10 @@ export const DEFAULT_HR_POLICY = Object.freeze({
     carryForwardLimitDays: 10,
     allowEncashment: false,
   },
+  attendanceRules: {
+    officeStartTime: "09:30",
+    officeEndTime: "18:30",
+  },
   weekendRules: {
     saturdayOff: true,
     sundayOff: true,
@@ -57,6 +61,10 @@ export function createCompanyHrPolicySchema() {
         leaveYearStartMonth: { type: Number, default: 1 },
         carryForwardLimitDays: { type: Number, default: 10 },
         allowEncashment: { type: Boolean, default: false },
+      },
+      attendanceRules: {
+        officeStartTime: { type: String, default: "09:30", trim: true },
+        officeEndTime: { type: String, default: "18:30", trim: true },
       },
       weekendRules: {
         saturdayOff: { type: Boolean, default: true },

@@ -76,6 +76,11 @@ async function run() {
   console.log(`   Primary Contact: ${contactName} <${contactEmail}>`);
   console.log("----------------------------------------------------------------");
 
+  // Provision leave collections and company HR policy idempotently
+  const { provisionTenantDatabase } = await import("../services/tenantProvisioningService.js");
+  const provOutcome = await provisionTenantDatabase(company);
+  console.log(`📁 Collections & Policies: ${provOutcome.message}`);
+
   if (password && password.length >= 8) {
     const { User } = await getCompanyModels(company);
     const passwordHash = await hashPassword(password);

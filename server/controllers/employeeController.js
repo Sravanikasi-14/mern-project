@@ -13,10 +13,13 @@ import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import {
   calculateEmployeeLeaveBalances,
   calculateLeaveDays,
+  getLeaveDateRestrictions,
   hasOverlappingLeave,
   parseDateOnly,
   toDateString,
+  validateLeaveDates,
 } from "../services/leaveService.js";
+import { emitLeaveEvent } from "../services/leaveEventsService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -553,6 +556,22 @@ export async function getEmployeeDashboard(req, res, next) {
     // Assigned company assets (laptops, peripherals, ID badges)
     const assignedAssets = customFields.assignedAssets || [];
 
+    let leaveConfig = null;
+    try {
+      leaveConfig = getLeaveDateRestrictions(
+        policy,
+        req.auth.company?.config?.timezone || "Asia/Kolkata",
+        new Date()
+      );
+    } catch (confErr) {
+      leaveConfig = {
+        error: confErr.message,
+        timezone: req.auth.company?.config?.timezone || "Asia/Kolkata",
+        officeStartTime: policy?.attendanceRules?.officeStartTime || null,
+        isTodayEligible: false,
+      };
+    }
+
     res.json({
       success: true,
       user: serializeUser(req.auth.user),
@@ -590,6 +609,7 @@ export async function getEmployeeDashboard(req, res, next) {
         detailed: leaveBalancesData.detailed || [],
         summary: leaveSummary,
         recentRequests: formattedRequests.slice(0, 10),
+        config: leaveConfig,
       },
       holidays: upcomingHolidays,
       payslips,
@@ -750,20 +770,16 @@ export async function applyLeave(req, res, next) {
       throw new HttpError(400, `Invalid or inactive leave type: '${leaveType}'. Must be CASUAL, SICK, or EARNED.`);
     }
 
-    if (!startDate || !endDate) {
-      throw new HttpError(400, "Start date and end date are required.");
-    }
-
-    const start = parseDateOnly(startDate);
-    const end = parseDateOnly(endDate);
-
-    if (!start || !end) {
-      throw new HttpError(400, "Invalid date format.");
-    }
-
-    if (start > end) {
-      throw new HttpError(400, "Start date cannot be after end date.");
-    }
+    // Authoritative date validation: past dates rejected, same-day cutoff enforced, start <= end
+    const validatedDates = validateLeaveDates(
+      startDate,
+      endDate,
+      policy,
+      req.auth.company?.config?.timezone || "Asia/Kolkata",
+      new Date()
+    );
+    const start = validatedDates.start;
+    const end = validatedDates.end;
 
     // Check for overlapping PENDING or APPROVED leave requests
     if (LeaveRequest) {
@@ -830,6 +846,21 @@ export async function applyLeave(req, res, next) {
         daysCount,
       });
     }
+
+    // Live cross-portal synchronization: Notify HR portal of new pending leave request
+    emitLeaveEvent({
+      companyId: String(req.auth.company._id),
+      type: "LEAVE_SUBMITTED",
+      employeeId: String(employee._id),
+      employeeEmail: employee.email,
+      employeeName: employee.fullName,
+      leaveRequestId: String(newLeave._id),
+      leaveTypeCode: newLeave.leaveTypeCode,
+      startDate: toDateString(newLeave.fromDate),
+      endDate: toDateString(newLeave.toDate),
+      daysCount,
+      status: "PENDING",
+    });
 
     // Do NOT deduct balance for pending requests!
     res.status(201).json({

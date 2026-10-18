@@ -15,6 +15,17 @@ const HOST = "0.0.0.0";
 const startServer = async () => {
   try {
     await connectCentralDB();
+
+    try {
+      const { provisionAllTenantDatabases } = await import("./services/tenantProvisioningService.js");
+      const provReport = await provisionAllTenantDatabases();
+      if (provReport.repaired.length > 0) {
+        console.log(`[Provisioning] Repaired/provisioned ${provReport.repaired.length} tenant database(s):`, provReport.repaired.map(r => r.databaseName));
+      }
+    } catch (provErr) {
+      console.warn("[Provisioning] Tenant provisioning warning on startup:", provErr.message);
+    }
+
     const app = createApp();
 
     app.listen(PORT, HOST, () => {
