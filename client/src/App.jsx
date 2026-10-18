@@ -3,6 +3,7 @@ import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import AdminHome from "./pages/AdminHome";
+import AdminLeaveManagement from "./pages/AdminLeaveManagement";
 import EditEmployee from "./pages/EditEmployee";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import EmployeeHome from "./pages/EmployeeHome";
@@ -44,6 +45,16 @@ function App() {
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
                   <EditEmployee />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/leave"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminLeaveManagement />
                 </AppLayout>
               </ProtectedRoute>
             }

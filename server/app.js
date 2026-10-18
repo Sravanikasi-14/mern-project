@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
+import leaveRoutes from "./routes/leaveRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -68,6 +69,7 @@ export function createApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/employees", employeeRoutes);
+  app.use("/api/leave-requests", leaveRoutes);
 
   // Serve static assets from production client build (Single-Service Architecture)
   const distPath = path.resolve(__dirname, "../client/dist");

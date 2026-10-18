@@ -9,6 +9,14 @@ import { signEmployeeInvitationToken } from "../utils/onboardingToken.js";
 import { emailService } from "../services/emailService.js";
 import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
 import { TOKEN_TYPES } from "../models/AuthToken.js";
+import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
+import {
+  calculateEmployeeLeaveBalances,
+  calculateLeaveDays,
+  hasOverlappingLeave,
+  parseDateOnly,
+  toDateString,
+} from "../services/leaveService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -357,7 +365,7 @@ export async function getMyProfile(req, res, next) {
 
 export async function getEmployeeDashboard(req, res, next) {
   try {
-    const { Employee, EmployeeCompensation } = req.auth.models;
+    const { Employee, EmployeeCompensation, LeaveRequest, CompanyHrPolicy } = req.auth.models;
     const employee = await Employee.findOne({
       $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
     })
@@ -377,12 +385,32 @@ export async function getEmployeeDashboard(req, res, next) {
       });
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = toDateString(new Date());
     const customFields = employee.customFields || {};
     const attendanceLogs = customFields.attendanceLogs || [];
 
     // Find today's log if present
     const todayLog = attendanceLogs.find((log) => log.date === todayStr) || null;
+
+    // Fetch active Company HR Policy
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
+
+    // Fetch leave requests from LeaveRequest collection
+    let dbRequests = [];
+    if (LeaveRequest) {
+      dbRequests = await LeaveRequest.find({ employeeId: employee._id })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    // Check if today falls in any APPROVED leave window
+    const todayDate = parseDateOnly(todayStr);
+    const approvedLeaveToday = dbRequests.find((r) => {
+      if (r.status !== "APPROVED") return false;
+      const s = parseDateOnly(r.fromDate);
+      const e = parseDateOnly(r.toDate);
+      return s && e && s <= todayDate && e >= todayDate;
+    });
 
     let todayStatus = "NOT_CHECKED_IN";
     if (todayLog) {
@@ -390,7 +418,11 @@ export async function getEmployeeDashboard(req, res, next) {
         todayStatus = "CHECKED_OUT";
       } else if (todayLog.checkIn) {
         todayStatus = "CHECKED_IN";
+      } else if (todayLog.status === "ON_LEAVE") {
+        todayStatus = "ON_LEAVE";
       }
+    } else if (approvedLeaveToday) {
+      todayStatus = "ON_LEAVE";
     }
 
     const totalWorkingDays = employee.attendance?.totalWorkingDays || 22;
@@ -403,7 +435,6 @@ export async function getEmployeeDashboard(req, res, next) {
       .slice(0, 7);
 
     if (recentAttendance.length === 0 && daysPresent > 0) {
-      // Provide synthesized recent records based on present count for historical context
       const recs = [];
       const cur = new Date();
       let added = 0;
@@ -426,37 +457,40 @@ export async function getEmployeeDashboard(req, res, next) {
       recentAttendance = recs;
     }
 
-    // Leave balances & summary
-    const leaveBalance = employee.attendance?.leaveBalance || {
-      casual: 8,
-      sick: 6,
-      earned: 12,
-    };
+    // Calculate live leave balances based on Company HR Policy and approved history
+    const leaveBalancesData = LeaveRequest
+      ? await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest)
+      : { balance: employee.attendance?.leaveBalance || { casual: 8, sick: 6, earned: 12 }, detailed: [] };
 
-    const leaveRequests = customFields.leaveRequests || [];
+    const formattedRequests = dbRequests.map((r) => ({
+      id: String(r._id),
+      _id: r._id,
+      leaveType: r.leaveTypeCode,
+      leaveTypeCode: r.leaveTypeCode,
+      startDate: toDateString(r.fromDate),
+      endDate: toDateString(r.toDate),
+      days: r.daysCount || 1,
+      reason: r.reason || "",
+      status: r.status,
+      decision: r.decision || null,
+      requestedAt: r.createdAt,
+    }));
+
     const leaveSummary = {
-      total: leaveRequests.length,
-      pending: leaveRequests.filter((r) => r.status === "PENDING").length,
-      approved: leaveRequests.filter((r) => r.status === "APPROVED").length,
-      rejected: leaveRequests.filter((r) => r.status === "REJECTED").length,
+      total: dbRequests.length,
+      pending: dbRequests.filter((r) => r.status === "PENDING").length,
+      approved: dbRequests.filter((r) => r.status === "APPROVED").length,
+      rejected: dbRequests.filter((r) => r.status === "REJECTED").length,
     };
 
-    // Upcoming holidays (company custom or gazetted standard)
-    const companyHolidays = req.auth.company?.customFields?.holidays || [
-      { name: "Republic Day", date: "2026-01-26", day: "Monday", type: "National Holiday" },
-      { name: "Holi", date: "2026-03-25", day: "Wednesday", type: "Gazetted Holiday" },
-      { name: "Good Friday", date: "2026-04-03", day: "Friday", type: "Observance" },
-      { name: "May Day / Labour Day", date: "2026-05-01", day: "Friday", type: "Gazetted Holiday" },
-      { name: "Independence Day", date: "2026-08-15", day: "Saturday", type: "National Holiday" },
-      { name: "Gandhi Jayanti", date: "2026-10-02", day: "Friday", type: "National Holiday" },
-      { name: "Dussehra", date: "2026-10-20", day: "Tuesday", type: "Gazetted Holiday" },
-      { name: "Diwali / Deepavali", date: "2026-11-08", day: "Sunday", type: "Festival Holiday" },
-      { name: "Guru Nanak Jayanti", date: "2026-11-24", day: "Tuesday", type: "Gazetted Holiday" },
-      { name: "Christmas Day", date: "2026-12-25", day: "Friday", type: "Gazetted Holiday" },
-    ];
-
-    // Filter upcoming holidays (from today onwards, sorted by date)
-    const upcomingHolidays = companyHolidays
+    // Upcoming company holidays from policy
+    const upcomingHolidays = (policy?.holidays || [])
+      .map((h) => ({
+        name: h.name,
+        date: toDateString(h.date),
+        day: new Date(h.date).toLocaleDateString("en-US", { weekday: "long" }),
+        type: h.type || "Gazetted Holiday",
+      }))
       .filter((h) => h.date >= todayStr)
       .slice(0, 5);
 
@@ -552,9 +586,10 @@ export async function getEmployeeDashboard(req, res, next) {
         recentRecords: recentAttendance,
       },
       leave: {
-        balance: leaveBalance,
+        balance: leaveBalancesData.balance,
+        detailed: leaveBalancesData.detailed || [],
         summary: leaveSummary,
-        recentRequests: [...leaveRequests].reverse().slice(0, 5),
+        recentRequests: formattedRequests.slice(0, 10),
       },
       holidays: upcomingHolidays,
       payslips,
@@ -691,7 +726,7 @@ export async function employeeCheckOut(req, res, next) {
 
 export async function applyLeave(req, res, next) {
   try {
-    const { Employee } = req.auth.models;
+    const { Employee, LeaveRequest, CompanyHrPolicy, AuditLog } = req.auth.models;
     const employee = await Employee.findOne({
       $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
     });
@@ -702,18 +737,27 @@ export async function applyLeave(req, res, next) {
 
     const { leaveType, startDate, endDate, reason } = req.body || {};
 
-    if (!leaveType || !["CASUAL", "SICK", "EARNED"].includes(leaveType.toUpperCase())) {
-      throw new HttpError(400, "Invalid leave type. Must be CASUAL, SICK, or EARNED.");
+    if (!leaveType) {
+      throw new HttpError(400, "Leave type is required.");
+    }
+
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
+    const activeLeaveType = (policy.leaveTypes || []).find(
+      (lt) => lt.code.toUpperCase() === String(leaveType).toUpperCase() && lt.isActive
+    );
+
+    if (!activeLeaveType) {
+      throw new HttpError(400, `Invalid or inactive leave type: '${leaveType}'. Must be CASUAL, SICK, or EARNED.`);
     }
 
     if (!startDate || !endDate) {
       throw new HttpError(400, "Start date and end date are required.");
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseDateOnly(startDate);
+    const end = parseDateOnly(endDate);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    if (!start || !end) {
       throw new HttpError(400, "Invalid date format.");
     }
 
@@ -721,49 +765,90 @@ export async function applyLeave(req, res, next) {
       throw new HttpError(400, "Start date cannot be after end date.");
     }
 
-    const daysCount = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
+    // Check for overlapping PENDING or APPROVED leave requests
+    if (LeaveRequest) {
+      const overlapping = await hasOverlappingLeave(LeaveRequest, employee._id, start, end);
+      if (overlapping) {
+        throw new HttpError(
+          400,
+          `You already have a ${overlapping.status.toLowerCase()} leave request (${toDateString(overlapping.fromDate)} to ${toDateString(overlapping.toDate)}) overlapping with this date range.`
+        );
+      }
+    }
 
-    const typeKey = leaveType.toLowerCase();
-    const currentBalance = employee.attendance?.leaveBalance?.[typeKey] ?? 0;
+    // Calculate working leave days based on company policy (weekends & holidays excluded)
+    const { workingDays } = calculateLeaveDays(start, end, policy);
+    const daysCount = workingDays;
 
-    if (currentBalance < daysCount) {
+    // Calculate balance from policy and approved leave history
+    const balances = LeaveRequest
+      ? await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest)
+      : { balance: { casual: 8, sick: 6, earned: 12 } };
+
+    const typeKey = activeLeaveType.code.toLowerCase();
+    const availableBalance = balances.balance[typeKey] ?? 0;
+
+    if (availableBalance < daysCount) {
       throw new HttpError(
         400,
-        `Insufficient ${leaveType} leave balance. Available: ${currentBalance} day(s), Requested: ${daysCount} day(s).`
+        `Insufficient ${activeLeaveType.code} leave balance. Available: ${availableBalance} day(s), Requested: ${daysCount} day(s).`
       );
     }
 
-    // Deduct leave balance
-    employee.attendance.leaveBalance[typeKey] -= daysCount;
+    // Create the approved LeaveRequest record in leave_requests collection
+    let newLeave;
+    if (LeaveRequest) {
+      newLeave = await LeaveRequest.create({
+        employeeId: employee._id,
+        leaveTypeCode: activeLeaveType.code,
+        fromDate: start,
+        toDate: end,
+        daysCount,
+        reason: reason ? String(reason).trim() : "",
+        status: "PENDING",
+        decision: { decidedBy: null, decidedAt: null, remarks: "" },
+      });
+    } else {
+      newLeave = {
+        _id: new mongoose.Types.ObjectId(),
+        leaveTypeCode: activeLeaveType.code,
+        fromDate: start,
+        toDate: end,
+        daysCount,
+        reason: reason ? String(reason).trim() : "",
+        status: "PENDING",
+        createdAt: new Date(),
+      };
+    }
 
-    const customFields = employee.customFields || {};
-    const leaveRequests = customFields.leaveRequests || [];
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.LEAVE_REQUESTED, newLeave._id, {
+        employeeId: employee._id,
+        leaveTypeCode: newLeave.leaveTypeCode,
+        fromDate: start,
+        toDate: end,
+        daysCount,
+      });
+    }
 
-    const newRequest = {
-      id: `LR-${Date.now().toString(36).toUpperCase()}`,
-      leaveType: leaveType.toUpperCase(),
-      startDate,
-      endDate,
-      days: daysCount,
-      reason: reason ? String(reason).trim() : "Personal leave",
-      status: "PENDING",
-      requestedAt: new Date().toISOString(),
-    };
-
-    leaveRequests.push(newRequest);
-    employee.customFields = {
-      ...customFields,
-      leaveRequests,
-    };
-    employee.markModified("customFields");
-    employee.markModified("attendance");
-    await employee.save();
-
+    // Do NOT deduct balance for pending requests!
     res.status(201).json({
       success: true,
       message: "Leave application submitted successfully.",
-      leaveRequest: newRequest,
-      remainingBalance: employee.attendance.leaveBalance,
+      leaveRequest: {
+        id: String(newLeave._id),
+        _id: newLeave._id,
+        leaveType: newLeave.leaveTypeCode,
+        leaveTypeCode: newLeave.leaveTypeCode,
+        startDate: toDateString(newLeave.fromDate),
+        endDate: toDateString(newLeave.toDate),
+        days: newLeave.daysCount,
+        daysCount: newLeave.daysCount,
+        reason: newLeave.reason,
+        status: newLeave.status,
+        requestedAt: newLeave.createdAt,
+      },
+      remainingBalance: balances.balance,
     });
   } catch (error) {
     next(error);

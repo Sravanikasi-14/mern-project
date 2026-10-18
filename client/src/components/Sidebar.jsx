@@ -42,7 +42,7 @@ const HR_NAV_ITEMS = [
   {
     id: "leave",
     label: "Leave Management",
-    path: null,
+    path: "/admin/leave",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -198,14 +198,14 @@ export default function Sidebar({
   // Determine which item is active based on current role and pathname
   const isItemActive = (item) => {
     if (user?.role === "HR_ADMIN") {
+      if (item.path && (location.pathname === item.path || location.pathname.startsWith(item.path + "/"))) {
+        return true;
+      }
       if (item.id === "people") {
         return (
           location.pathname === "/admin" ||
-          location.pathname.startsWith("/admin/")
+          location.pathname.startsWith("/admin/employees")
         );
-      }
-      if (item.path && location.pathname === item.path) {
-        return true;
       }
       return false;
     }

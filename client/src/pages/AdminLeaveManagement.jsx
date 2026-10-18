@@ -1,0 +1,942 @@
+import { useEffect, useState } from "react";
+import AppHeader from "../components/AppHeader";
+import api from "../services/api";
+
+const STATUS_OPTIONS = [
+  { value: "ALL", label: "All Statuses" },
+  { value: "PENDING", label: "Pending Approval" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+];
+
+const LEAVE_TYPE_OPTIONS = [
+  { value: "ALL", label: "All Types" },
+  { value: "CASUAL", label: "Casual Leave" },
+  { value: "SICK", label: "Sick Leave" },
+  { value: "EARNED", label: "Earned Leave" },
+];
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+export default function AdminLeaveManagement() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionSuccess, setActionSuccess] = useState("");
+  const [actionError, setActionError] = useState("");
+
+  const [requests, setRequests] = useState([]);
+  const [summary, setSummary] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    onLeaveToday: 0,
+  });
+
+  // Filters & Pagination state
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  });
+
+  // Details & Decision Modal State
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [requestDetailsLoading, setRequestDetailsLoading] = useState(false);
+  const [employeeBalance, setEmployeeBalance] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null); // "APPROVE" | "REJECT" | null
+  const [decisionRemarks, setDecisionRemarks] = useState("");
+  const [submittingDecision, setSubmittingDecision] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Fetch Leave Requests and Summary
+  const fetchLeaveData = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const params = {
+        page,
+        limit,
+        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        leaveType: typeFilter !== "ALL" ? typeFilter : undefined,
+        search: debouncedSearch || undefined,
+        fromDate: fromDateFilter || undefined,
+        toDate: toDateFilter || undefined,
+      };
+
+      const response = await api.get("/leave-requests", { params });
+
+      if (response.data?.success) {
+        setRequests(response.data.leaveRequests || []);
+        if (response.data.pagination) {
+          setPagination(response.data.pagination);
+        }
+        if (response.data.summary) {
+          setSummary(response.data.summary);
+        }
+      }
+    } catch (err) {
+      if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
+        setError("Unable to connect to the server. Please check your connection and try again.");
+      } else {
+        setError(err.response?.data?.message || "Failed to load leave requests.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLeaveData();
+  }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
+
+  // Open details modal
+  const handleOpenDetails = async (reqItem) => {
+    setSelectedRequest(reqItem);
+    setConfirmAction(null);
+    setDecisionRemarks("");
+    setDecisionError("");
+    setEmployeeBalance(null);
+
+    try {
+      setRequestDetailsLoading(true);
+      const res = await api.get(`/leave-requests/${reqItem._id}`);
+      if (res.data?.success) {
+        setSelectedRequest(res.data.leaveRequest);
+        setEmployeeBalance(res.data.leaveBalance);
+      }
+    } catch (err) {
+      // Non-blocking fallback to row data
+      console.warn("Could not fetch full details, using table data", err);
+    } finally {
+      setRequestDetailsLoading(false);
+    }
+  };
+
+  // Submit decision (APPROVE or REJECT)
+  const handleSubmitDecision = async () => {
+    if (!selectedRequest || !confirmAction) return;
+
+    try {
+      setSubmittingDecision(true);
+      setDecisionError("");
+
+      const res = await api.post(`/leave-requests/${selectedRequest._id}/decision`, {
+        action: confirmAction,
+        remarks: decisionRemarks,
+      });
+
+      setActionSuccess(res.data?.message || `Leave request ${confirmAction.toLowerCase()}d successfully.`);
+      setSelectedRequest(null);
+      setConfirmAction(null);
+      setDecisionRemarks("");
+      await fetchLeaveData();
+    } catch (err) {
+      setDecisionError(
+        err.response?.data?.message || `Failed to ${confirmAction.toLowerCase()} leave request.`
+      );
+    } finally {
+      setSubmittingDecision(false);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setDebouncedSearch("");
+    setStatusFilter("ALL");
+    setTypeFilter("ALL");
+    setFromDateFilter("");
+    setToDateFilter("");
+    setPage(1);
+  };
+
+  return (
+    <div className="container-wide" style={{ paddingBottom: 60 }}>
+      <AppHeader
+        title="Leave Management"
+        subtitle="Review employee leave applications, approve or reject requests, and monitor active leaves"
+      />
+
+      {/* Action alerts */}
+      {actionSuccess && (
+        <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>✓ {actionSuccess}</span>
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{actionError}</span>
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* SUMMARY STATS CARDS */}
+      <div className="stats-grid">
+        <div
+          className="stat-card"
+          style={{ cursor: "pointer", borderLeft: statusFilter === "PENDING" ? "4px solid #b45309" : undefined }}
+          onClick={() => {
+            setStatusFilter("PENDING");
+            setPage(1);
+          }}
+          title="Click to view pending requests"
+        >
+          <span className="stat-label">Pending Requests</span>
+          <div className="stat-value" style={{ color: "#b45309" }}>{summary.pending}</div>
+          <span style={{ fontSize: 12, color: "#71717a" }}>Awaiting HR action</span>
+        </div>
+
+        <div
+          className="stat-card"
+          style={{ cursor: "pointer", borderLeft: statusFilter === "APPROVED" ? "4px solid #15803d" : undefined }}
+          onClick={() => {
+            setStatusFilter("APPROVED");
+            setPage(1);
+          }}
+          title="Click to view approved requests"
+        >
+          <span className="stat-label">Approved Requests</span>
+          <div className="stat-value" style={{ color: "#15803d" }}>{summary.approved}</div>
+          <span style={{ fontSize: 12, color: "#71717a" }}>Authorized leaves</span>
+        </div>
+
+        <div
+          className="stat-card"
+          style={{ cursor: "pointer", borderLeft: statusFilter === "REJECTED" ? "4px solid #b91c1c" : undefined }}
+          onClick={() => {
+            setStatusFilter("REJECTED");
+            setPage(1);
+          }}
+          title="Click to view rejected requests"
+        >
+          <span className="stat-label">Rejected Requests</span>
+          <div className="stat-value" style={{ color: "#b91c1c" }}>{summary.rejected}</div>
+          <span style={{ fontSize: 12, color: "#71717a" }}>Declined by HR</span>
+        </div>
+
+        <div className="stat-card highlight">
+          <span className="stat-label">Currently On Leave</span>
+          <div className="stat-value" style={{ color: "#09090b" }}>{summary.onLeaveToday}</div>
+          <span style={{ fontSize: 12, color: "#71717a" }}>Employees away today</span>
+        </div>
+      </div>
+
+      {/* TOOLBAR & FILTERS */}
+      <div
+        className="toolbar"
+        style={{
+          background: "#ffffff",
+          padding: "16px 20px",
+          borderRadius: 12,
+          border: "1px solid #e4e4e7",
+          marginBottom: 20,
+        }}
+      >
+        <div className="toolbar-left" style={{ flexWrap: "wrap", gap: 10 }}>
+          {/* Search Input */}
+          <div style={{ position: "relative", minWidth: 260 }}>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search employee, email, code..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: "100%", paddingLeft: 34 }}
+            />
+            <svg
+              style={{ position: "absolute", left: 10, top: 11, color: "#71717a" }}
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+
+          {/* Status Filter */}
+          <select
+            className="filter-select"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Leave Type Filter */}
+          <select
+            className="filter-select"
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            {LEAVE_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Date range filters */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="date"
+              className="filter-select"
+              title="From date filter"
+              value={fromDateFilter}
+              onChange={(e) => {
+                setFromDateFilter(e.target.value);
+                setPage(1);
+              }}
+              style={{ fontSize: 13, padding: "7px 10px" }}
+            />
+            <span style={{ color: "#71717a", fontSize: 12 }}>to</span>
+            <input
+              type="date"
+              className="filter-select"
+              title="To date filter"
+              value={toDateFilter}
+              onChange={(e) => {
+                setToDateFilter(e.target.value);
+                setPage(1);
+              }}
+              style={{ fontSize: 13, padding: "7px 10px" }}
+            />
+          </div>
+
+          {(search || statusFilter !== "ALL" || typeFilter !== "ALL" || fromDateFilter || toDateFilter) && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={handleClearFilters}
+              title="Reset all search and filter conditions"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+
+        <div className="toolbar-right">
+          <label style={{ fontSize: 13, color: "#71717a", display: "flex", alignItems: "center", gap: 6 }}>
+            Show:
+            <select
+              className="filter-select"
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              style={{ padding: "6px 10px", fontSize: 13 }}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size} / page
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* ERROR STATE */}
+      {error && (
+        <div className="error" style={{ textAlign: "center", padding: 24, marginBottom: 20 }}>
+          <p style={{ margin: "0 0 14px", fontWeight: 600 }}>{error}</p>
+          <button type="button" onClick={fetchLeaveData}>
+            Retry Loading Requests
+          </button>
+        </div>
+      )}
+
+      {/* TABLE SECTION */}
+      <div
+        style={{
+          background: "#ffffff",
+          border: "1px solid #e4e4e7",
+          borderRadius: 14,
+          overflow: "hidden",
+        }}
+      >
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "60px 20px" }}>
+            <div className="spinner" style={{ margin: "0 auto 16px" }} />
+            <p style={{ color: "#71717a", fontSize: 14 }}>Loading leave requests...</p>
+          </div>
+        ) : requests.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "60px 20px", color: "#71717a" }}>
+            <svg
+              width="44"
+              height="44"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#a1a1aa"
+              strokeWidth="1.5"
+              style={{ margin: "0 auto 12px", display: "block" }}
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>No leave requests found</h4>
+            <p style={{ margin: 0, fontSize: 13.5 }}>
+              {statusFilter !== "ALL" || search || fromDateFilter || toDateFilter
+                ? "No records match the current filters. Try resetting your search filters."
+                : "No employee leave applications have been submitted yet."}
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <thead>
+                <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Employee</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Leave Type</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Dates</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Duration</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Reason</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Submitted</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Status</th>
+                  <th style={{ padding: "12px 16px", fontWeight: 600, textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((item) => (
+                  <tr
+                    key={item._id}
+                    style={{
+                      borderBottom: "1px solid #f4f4f5",
+                      transition: "background 0.15s ease",
+                    }}
+                  >
+                    {/* Employee code & name */}
+                    <td style={{ padding: "14px 16px" }}>
+                      <div style={{ fontWeight: 600, color: "#09090b" }}>{item.employeeName}</div>
+                      <div style={{ fontSize: 12, color: "#71717a" }}>
+                        {item.employeeCode} • {item.department}
+                      </div>
+                    </td>
+
+                    {/* Leave Type */}
+                    <td style={{ padding: "14px 16px" }}>
+                      <span
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: "#f4f4f5",
+                          color: "#18181b",
+                          border: "1px solid #e4e4e7",
+                        }}
+                      >
+                        {item.leaveTypeCode}
+                      </span>
+                    </td>
+
+                    {/* Dates */}
+                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                      <div style={{ fontWeight: 500, color: "#09090b" }}>{item.fromDate}</div>
+                      <div style={{ fontSize: 12, color: "#71717a" }}>to {item.toDate}</div>
+                    </td>
+
+                    {/* Calculated leave duration */}
+                    <td style={{ padding: "14px 16px", fontWeight: 600 }}>
+                      {item.daysCount} {item.daysCount === 1 ? "day" : "days"}
+                    </td>
+
+                    {/* Reason preview */}
+                    <td style={{ padding: "14px 16px", maxWidth: 220 }}>
+                      <div
+                        style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          color: "#52525b",
+                        }}
+                        title={item.reason}
+                      >
+                        {item.reason || "--"}
+                      </div>
+                    </td>
+
+                    {/* Submission Date */}
+                    <td style={{ padding: "14px 16px", color: "#71717a", fontSize: 12.5, whiteSpace: "nowrap" }}>
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "--"}
+                    </td>
+
+                    {/* Current Status */}
+                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
+                      <span
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 14,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background:
+                            item.status === "APPROVED"
+                              ? "#f0fdf4"
+                              : item.status === "REJECTED"
+                              ? "#fef2f2"
+                              : "#fef3c7",
+                          color:
+                            item.status === "APPROVED"
+                              ? "#15803d"
+                              : item.status === "REJECTED"
+                              ? "#b91c1c"
+                              : "#b45309",
+                          border: "1px solid #e4e4e7",
+                        }}
+                      >
+                        ● {item.status}
+                      </span>
+                    </td>
+
+                    {/* Actions */}
+                    <td style={{ padding: "14px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          className="btn-sm btn-secondary"
+                          onClick={() => handleOpenDetails(item)}
+                          title="View complete request details"
+                        >
+                          Review
+                        </button>
+
+                        {item.status === "PENDING" && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-sm"
+                              onClick={() => {
+                                handleOpenDetails(item);
+                                setConfirmAction("APPROVE");
+                              }}
+                              style={{ background: "#15803d", borderColor: "#15803d", color: "#ffffff" }}
+                              title="Quick approve"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-sm"
+                              onClick={() => {
+                                handleOpenDetails(item);
+                                setConfirmAction("REJECT");
+                              }}
+                              style={{ background: "#b91c1c", borderColor: "#b91c1c", color: "#ffffff" }}
+                              title="Quick reject"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* PAGINATION FOOTER */}
+        {!loading && requests.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "14px 20px",
+              borderTop: "1px solid #e4e4e7",
+              background: "#fafafa",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, color: "#71717a" }}>
+              Showing <strong>{(page - 1) * limit + 1}</strong> to{" "}
+              <strong>{Math.min(page * limit, pagination.total)}</strong> of{" "}
+              <strong>{pagination.total}</strong> leave requests
+            </div>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                ← Previous
+              </button>
+
+              <span style={{ fontSize: 13, color: "#52525b", padding: "0 6px" }}>
+                Page <strong>{page}</strong> of <strong>{pagination.totalPages || 1}</strong>
+              </span>
+
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* DETAILS & APPROVAL / REJECTION DRAWER/MODAL */}
+      {selectedRequest && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => !submittingDecision && setSelectedRequest(null)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 14,
+              padding: 24,
+              width: "100%",
+              maxWidth: 580,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, borderBottom: "1px solid #e4e4e7", paddingBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
+                  Leave Request Decision
+                </div>
+                <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+                  {selectedRequest.employeeName || selectedRequest.employee?.fullName || "Employee Leave"}
+                </h3>
+                <span style={{ fontSize: 13, color: "#71717a" }}>
+                  Code: {selectedRequest.employeeCode || selectedRequest.employee?.employeeCode || "N/A"} •{" "}
+                  {selectedRequest.department || selectedRequest.employee?.department || "General"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={() => setSelectedRequest(null)}
+                disabled={submittingDecision}
+              >
+                ✕
+              </button>
+            </div>
+
+            {decisionError && <div className="error">{decisionError}</div>}
+
+            {/* Request Summary Details */}
+            <div
+              style={{
+                background: "#f9fafb",
+                padding: "16px",
+                borderRadius: 10,
+                border: "1px solid #e4e4e7",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginBottom: 16,
+                fontSize: 13,
+              }}
+            >
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  Leave Type
+                </span>
+                <div style={{ fontWeight: 700, color: "#09090b", marginTop: 2 }}>
+                  {selectedRequest.leaveTypeCode}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  Duration
+                </span>
+                <div style={{ fontWeight: 700, color: "#09090b", marginTop: 2 }}>
+                  {selectedRequest.daysCount} working {selectedRequest.daysCount === 1 ? "day" : "days"}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  From Date
+                </span>
+                <div style={{ fontWeight: 600, color: "#09090b", marginTop: 2 }}>
+                  {selectedRequest.fromDate}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  To Date
+                </span>
+                <div style={{ fontWeight: 600, color: "#09090b", marginTop: 2 }}>
+                  {selectedRequest.toDate}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  Current Status
+                </span>
+                <div style={{ marginTop: 2 }}>
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      background:
+                        selectedRequest.status === "APPROVED"
+                          ? "#f0fdf4"
+                          : selectedRequest.status === "REJECTED"
+                          ? "#fef2f2"
+                          : "#fef3c7",
+                      color:
+                        selectedRequest.status === "APPROVED"
+                          ? "#15803d"
+                          : selectedRequest.status === "REJECTED"
+                          ? "#b91c1c"
+                          : "#b45309",
+                    }}
+                  >
+                    {selectedRequest.status}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
+                  Submitted Timestamp
+                </span>
+                <div style={{ fontSize: 12, color: "#52525b", marginTop: 2 }}>
+                  {selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString() : "--"}
+                </div>
+              </div>
+            </div>
+
+            {/* Employee's Leave Balance Context (if fetched) */}
+            {employeeBalance?.balance && (
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e4e4e7",
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 8 }}>
+                  Employee's Remaining Leave Balances
+                </div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
+                  <div>
+                    <span style={{ color: "#71717a" }}>Casual: </span>
+                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.casual ?? 0} days</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: "#71717a" }}>Sick: </span>
+                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.sick ?? 0} days</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: "#71717a" }}>Earned: </span>
+                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.earned ?? 0} days</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Reason */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 4 }}>
+                Employee Reason
+              </label>
+              <div
+                style={{
+                  padding: "10px 14px",
+                  background: "#f4f4f5",
+                  borderRadius: 8,
+                  fontSize: 13.5,
+                  color: "#09090b",
+                  border: "1px solid #e4e4e7",
+                }}
+              >
+                {selectedRequest.reason || "No written explanation provided."}
+              </div>
+            </div>
+
+            {/* Previous decision info if processed */}
+            {selectedRequest.status !== "PENDING" && selectedRequest.decision && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  background: selectedRequest.status === "APPROVED" ? "#f0fdf4" : "#fef2f2",
+                  borderRadius: 8,
+                  border: `1px solid ${selectedRequest.status === "APPROVED" ? "#bbf7d0" : "#fecaca"}`,
+                  marginBottom: 16,
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 600, color: selectedRequest.status === "APPROVED" ? "#15803d" : "#b91c1c", marginBottom: 4 }}>
+                  Decision Record: {selectedRequest.status}
+                </div>
+                <div style={{ color: "#52525b", fontSize: 12 }}>
+                  Decided by: <strong>{selectedRequest.decision.decidedBy || "HR Admin"}</strong> on{" "}
+                  {selectedRequest.decision.decidedAt ? new Date(selectedRequest.decision.decidedAt).toLocaleString() : "--"}
+                </div>
+                {selectedRequest.decision.remarks && (
+                  <div style={{ marginTop: 6, fontStyle: "italic", color: "#3f3f46" }}>
+                    HR Remarks: "{selectedRequest.decision.remarks}"
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PENDING Decision Form & Actions */}
+            {selectedRequest.status === "PENDING" && (
+              <div style={{ marginTop: 18, borderTop: "1px solid #e4e4e7", paddingTop: 16 }}>
+                {!confirmAction ? (
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setSelectedRequest(null)}
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction("REJECT")}
+                      style={{ background: "#b91c1c", borderColor: "#b91c1c", color: "#ffffff" }}
+                    >
+                      Reject Request
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction("APPROVE")}
+                      style={{ background: "#15803d", borderColor: "#15803d", color: "#ffffff" }}
+                    >
+                      Approve Request
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        background: confirmAction === "APPROVE" ? "#f0fdf4" : "#fef2f2",
+                        border: `1px solid ${confirmAction === "APPROVE" ? "#bbf7d0" : "#fecaca"}`,
+                        marginBottom: 12,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
+                      }}
+                    >
+                      Confirm Action: Are you sure you want to {confirmAction.toLowerCase()} this leave request?
+                    </div>
+
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#09090b", marginBottom: 6 }}>
+                        Decision Remarks (Optional)
+                      </label>
+                      <textarea
+                        rows="2"
+                        className="filter-select"
+                        placeholder="Add optional notes for the employee..."
+                        value={decisionRemarks}
+                        onChange={(e) => setDecisionRemarks(e.target.value)}
+                        style={{ width: "100%", padding: "8px 12px", fontFamily: "inherit" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setConfirmAction(null)}
+                        disabled={submittingDecision}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSubmitDecision}
+                        disabled={submittingDecision}
+                        style={{
+                          background: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
+                          borderColor: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
+                          color: "#ffffff",
+                        }}
+                      >
+                        {submittingDecision
+                          ? "Processing..."
+                          : `Confirm & ${confirmAction === "APPROVE" ? "Approve" : "Reject"}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

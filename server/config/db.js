@@ -6,6 +6,8 @@ import { getEmployeeModel } from "../models/Employee.js";
 import { getEmployeeCompensationModel } from "../models/EmployeeCompensation.js";
 import { getUserModel } from "../models/User.js";
 import { getAuditLogModel } from "../models/AuditLog.js";
+import { getLeaveRequestModel } from "../models/LeaveRequest.js";
+import { getCompanyHrPolicyModel } from "../models/CompanyHrPolicy.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -73,6 +75,8 @@ export async function getCompanyModels(company) {
     Employee: getEmployeeModel(connection),
     EmployeeCompensation: getEmployeeCompensationModel(connection),
     AuditLog: getAuditLogModel(connection),
+    LeaveRequest: getLeaveRequestModel(connection),
+    CompanyHrPolicy: getCompanyHrPolicyModel(connection),
   };
 }
 

@@ -212,19 +212,13 @@ describe("Dedicated Employee Portal Dashboard API", () => {
   });
 
   it("5. Employee applies for leave with valid balance", async () => {
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() + 5);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 6);
-
     const res = await request(app)
       .post("/api/employees/me/leave-requests")
       .set("Cookie", employeeCookie)
       .send({
         leaveType: "CASUAL",
-        startDate: start.toISOString().split("T")[0],
-        endDate: end.toISOString().split("T")[0],
+        startDate: "2026-11-18", // Wednesday
+        endDate: "2026-11-19",   // Thursday (2 working days)
         reason: "Family function",
       });
 
@@ -232,14 +226,14 @@ describe("Dedicated Employee Portal Dashboard API", () => {
     assert.equal(res.body.success, true);
     assert.equal(res.body.leaveRequest.leaveType, "CASUAL");
     assert.equal(res.body.leaveRequest.days, 2);
-    assert.equal(res.body.remainingBalance.casual, 6); // 8 - 2 = 6
+    assert.equal(res.body.remainingBalance.casual, 8); // Pending does not deduct balance until approved
 
     // Dashboard reflects leave summary
     const dashRes = await request(app)
       .get("/api/employees/me/dashboard")
       .set("Cookie", employeeCookie);
     assert.equal(dashRes.body.leave.summary.pending, 1);
-    assert.equal(dashRes.body.leave.balance.casual, 6);
+    assert.equal(dashRes.body.leave.balance.casual, 8);
   });
 
   it("6. Rejects leave application when requested days exceed balance", async () => {
