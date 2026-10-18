@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import AdminHome from "./pages/AdminHome";
 import EditEmployee from "./pages/EditEmployee";
+import EmployeeDashboard from "./pages/EmployeeDashboard";
 import EmployeeHome from "./pages/EmployeeHome";
 import EmployeeProfile from "./pages/EmployeeProfile";
 import Login from "./pages/Login";
@@ -52,7 +53,77 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeHome />
+                  <EmployeeDashboard activeSection="overview" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/attendance"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeDashboard activeSection="attendance" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/leave"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeDashboard activeSection="leave" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/payslips"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeDashboard activeSection="payslips" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/assets"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeDashboard activeSection="assets" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/profile"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeHome defaultTab="overview" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/settings"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeHome defaultTab="edit_profile" />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/documents"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeHome defaultTab="documents" />
                 </AppLayout>
               </ProtectedRoute>
             }

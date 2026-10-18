@@ -3,13 +3,19 @@ import AppHeader from "../components/AppHeader";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
-export default function EmployeeHome() {
+export default function EmployeeHome({ defaultTab = "overview" }) {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [activeTab, setActiveTab] = useState("overview"); // "overview" | "edit_profile" | "documents"
+  const [activeTab, setActiveTab] = useState(defaultTab); // "overview" | "edit_profile" | "documents"
+
+  useEffect(() => {
+    if (defaultTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [defaultTab]);
 
   // Self-service editable fields
   const [formData, setFormData] = useState({

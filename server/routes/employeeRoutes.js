@@ -2,7 +2,12 @@ import express from "express";
 import {
   createEmployee,
   downloadDocument,
+  downloadPayslip,
+  employeeCheckIn,
+  employeeCheckOut,
+  applyLeave,
   getEmployeeById,
+  getEmployeeDashboard,
   getEmployeeSummary,
   getEmployees,
   getMyProfile,
@@ -19,6 +24,11 @@ const router = express.Router();
 
 // Authenticated employee self-service routes
 router.get("/me", authenticate, getMyProfile);
+router.get("/me/dashboard", authenticate, getEmployeeDashboard);
+router.post("/me/attendance/check-in", authenticate, employeeCheckIn);
+router.post("/me/attendance/check-out", authenticate, employeeCheckOut);
+router.post("/me/leave-requests", authenticate, applyLeave);
+router.get("/me/payslips/:payslipId/download", authenticate, downloadPayslip);
 router.patch("/me", authenticate, updateMyProfile);
 router.post("/me/documents", authenticate, uploadEmployeeDocument);
 
