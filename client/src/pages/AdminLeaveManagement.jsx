@@ -57,6 +57,16 @@ export default function AdminLeaveManagement() {
   const [submittingDecision, setSubmittingDecision] = useState(false);
   const [decisionError, setDecisionError] = useState("");
 
+  // Change Leave Type State (HR action on APPROVED requests)
+  const [availableLeaveTypes, setAvailableLeaveTypes] = useState([]);
+  const [showChangeTypeForm, setShowChangeTypeForm] = useState(false);
+  const [selectedNewType, setSelectedNewType] = useState("");
+  const [changeTypeReason, setChangeTypeReason] = useState("");
+  const [confirmChangeType, setConfirmChangeType] = useState(false);
+  const [submittingChangeType, setSubmittingChangeType] = useState(false);
+  const [changeTypeError, setChangeTypeError] = useState("");
+  const [changeTypeSuccess, setChangeTypeSuccess] = useState("");
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -121,7 +131,11 @@ export default function AdminLeaveManagement() {
       eventSource.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.type === "LEAVE_SUBMITTED" || payload.type === "LEAVE_DECIDED") {
+          if (
+            payload.type === "LEAVE_SUBMITTED" ||
+            payload.type === "LEAVE_DECIDED" ||
+            payload.type === "LEAVE_TYPE_CHANGED"
+          ) {
             // Live update of HR pending queue and summary counters without manual page refresh
             fetchLeaveData(true);
           }
@@ -167,6 +181,12 @@ export default function AdminLeaveManagement() {
     setDecisionRemarks("");
     setDecisionError("");
     setEmployeeBalance(null);
+    setShowChangeTypeForm(false);
+    setSelectedNewType("");
+    setChangeTypeReason("");
+    setConfirmChangeType(false);
+    setChangeTypeError("");
+    setChangeTypeSuccess("");
 
     try {
       setRequestDetailsLoading(true);
@@ -174,6 +194,9 @@ export default function AdminLeaveManagement() {
       if (res.data?.success) {
         setSelectedRequest(res.data.leaveRequest);
         setEmployeeBalance(res.data.leaveBalance);
+        if (Array.isArray(res.data.availableLeaveTypes)) {
+          setAvailableLeaveTypes(res.data.availableLeaveTypes);
+        }
       }
     } catch (err) {
       // Non-blocking fallback to row data
@@ -207,6 +230,59 @@ export default function AdminLeaveManagement() {
       );
     } finally {
       setSubmittingDecision(false);
+    }
+  };
+
+  // Submit leave type change (HR action on APPROVED request)
+  const handleChangeLeaveType = async () => {
+    if (!selectedRequest || !selectedNewType || !changeTypeReason.trim()) {
+      setChangeTypeError("Please select a new leave type and enter a reason for the change.");
+      return;
+    }
+
+    try {
+      setSubmittingChangeType(true);
+      setChangeTypeError("");
+      setChangeTypeSuccess("");
+
+      const res = await api.patch(`/leave-requests/${selectedRequest._id}/leave-type`, {
+        newLeaveType: selectedNewType,
+        reason: changeTypeReason.trim(),
+      });
+
+      if (res.data?.success) {
+        const updated = res.data.leaveRequest;
+        setSelectedRequest((prev) => ({
+          ...prev,
+          leaveTypeCode: updated.leaveTypeCode,
+          updatedAt: updated.updatedAt,
+        }));
+        if (res.data.leaveBalance) {
+          setEmployeeBalance(res.data.leaveBalance);
+        }
+        const successMsg = res.data.message || "Leave type changed successfully.";
+        setChangeTypeSuccess(successMsg);
+        setActionSuccess(successMsg);
+        setShowChangeTypeForm(false);
+        setConfirmChangeType(false);
+        setSelectedNewType("");
+        setChangeTypeReason("");
+
+        // Immediately update item in table
+        setRequests((prev) =>
+          prev.map((r) =>
+            r._id === selectedRequest._id ? { ...r, leaveTypeCode: updated.leaveTypeCode } : r
+          )
+        );
+
+        await fetchLeaveData(true);
+      }
+    } catch (err) {
+      setChangeTypeError(
+        err.response?.data?.message || "Failed to change leave type. Please try again."
+      );
+    } finally {
+      setSubmittingChangeType(false);
     }
   };
 
@@ -984,6 +1060,257 @@ export default function AdminLeaveManagement() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* APPROVED: Change Leave Type Action */}
+            {selectedRequest.status === "APPROVED" && (
+              <div
+                style={{
+                  marginTop: 18,
+                  borderTop: "1px solid #e4e4e7",
+                  paddingTop: 16,
+                }}
+              >
+                {changeTypeSuccess && (
+                  <div className="success-alert" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13 }}>
+                    ✓ {changeTypeSuccess}
+                  </div>
+                )}
+                {changeTypeError && (
+                  <div className="error" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13 }}>
+                    {changeTypeError}
+                  </div>
+                )}
+
+                {!showChangeTypeForm ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 12.5, color: "#71717a" }}>
+                      Need to reclassify this approved leave (e.g. Casual to Sick)?
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setSelectedRequest(null)}
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-change-leave-type"
+                        className="btn-primary"
+                        onClick={() => {
+                          setShowChangeTypeForm(true);
+                          setChangeTypeError("");
+                          setChangeTypeSuccess("");
+                          setConfirmChangeType(false);
+                          const firstOther = availableLeaveTypes.find(
+                            (t) => t.code !== selectedRequest.leaveTypeCode
+                          );
+                          setSelectedNewType(firstOther?.code || "");
+                        }}
+                        style={{
+                          background: "#0284c7",
+                          borderColor: "#0284c7",
+                          color: "#ffffff",
+                          fontSize: 13,
+                          padding: "6px 14px",
+                        }}
+                      >
+                        🔄 Change Leave Type
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: "#f8fafc",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 10,
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>
+                        Change Approved Leave Type
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          background: "#e2e8f0",
+                          color: "#475569",
+                          fontWeight: 600,
+                        }}
+                      >
+                        HR Admin Authorization
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>
+                          Current Leave Type
+                        </label>
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            background: "#e2e8f0",
+                            borderRadius: 6,
+                            fontWeight: 700,
+                            color: "#334155",
+                            fontSize: 13,
+                          }}
+                        >
+                          {selectedRequest.leaveTypeCode}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#0284c7", textTransform: "uppercase", marginBottom: 4 }}>
+                          Proposed New Leave Type *
+                        </label>
+                        <select
+                          id="select-new-leave-type"
+                          value={selectedNewType}
+                          onChange={(e) => {
+                            setSelectedNewType(e.target.value);
+                            setConfirmChangeType(false);
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "8px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #94a3b8",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            background: "#ffffff",
+                          }}
+                        >
+                          <option value="">-- Select New Type --</option>
+                          {availableLeaveTypes
+                            .filter((t) => t.code !== selectedRequest.leaveTypeCode)
+                            .map((t) => (
+                              <option key={t.code} value={t.code}>
+                                {t.name} ({t.code})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#334155", marginBottom: 4 }}>
+                        Reason / Explanation for Change * <span style={{ fontWeight: 400, color: "#64748b" }}>(Mandatory for audit trail)</span>
+                      </label>
+                      <textarea
+                        id="input-change-type-reason"
+                        rows="2"
+                        className="filter-select"
+                        placeholder="e.g. Medical certificate provided by employee; converted Casual to Sick leave per company policy."
+                        value={changeTypeReason}
+                        onChange={(e) => {
+                          setChangeTypeReason(e.target.value);
+                          setConfirmChangeType(false);
+                        }}
+                        style={{ width: "100%", padding: "8px 12px", fontFamily: "inherit", fontSize: 13 }}
+                      />
+                    </div>
+
+                    {confirmChangeType ? (
+                      <div
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 8,
+                          background: "#fef3c7",
+                          border: "1px solid #fde68a",
+                          marginBottom: 12,
+                          fontSize: 12.5,
+                          color: "#92400e",
+                        }}
+                      >
+                        <strong>Please confirm:</strong> You are about to reclassify this approved leave from{" "}
+                        <span style={{ textDecoration: "line-through" }}>{selectedRequest.leaveTypeCode}</span> to{" "}
+                        <strong>{selectedNewType}</strong>. Employee leave balances will be recalculated.
+                      </div>
+                    ) : null}
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          setShowChangeTypeForm(false);
+                          setConfirmChangeType(false);
+                          setChangeTypeError("");
+                        }}
+                        disabled={submittingChangeType}
+                      >
+                        Cancel
+                      </button>
+
+                      {!confirmChangeType ? (
+                        <button
+                          type="button"
+                          id="btn-confirm-stage-leave-type"
+                          onClick={() => {
+                            if (!selectedNewType) {
+                              setChangeTypeError("Please select a new leave type.");
+                              return;
+                            }
+                            if (!changeTypeReason.trim()) {
+                              setChangeTypeError("An explanation is required for auditing purposes.");
+                              return;
+                            }
+                            setChangeTypeError("");
+                            setConfirmChangeType(true);
+                          }}
+                          style={{
+                            background: "#0284c7",
+                            borderColor: "#0284c7",
+                            color: "#ffffff",
+                            fontSize: 13,
+                            padding: "6px 14px",
+                          }}
+                        >
+                          Review & Confirm Change
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          id="btn-save-changed-leave-type"
+                          onClick={handleChangeLeaveType}
+                          disabled={submittingChangeType}
+                          style={{
+                            background: "#15803d",
+                            borderColor: "#15803d",
+                            color: "#ffffff",
+                            fontSize: 13,
+                            padding: "6px 16px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {submittingChangeType ? "Saving & Auditing..." : "✓ Confirm & Save Change"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* REJECTED: Close action */}
+            {selectedRequest.status === "REJECTED" && (
+              <div style={{ marginTop: 18, borderTop: "1px solid #e4e4e7", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setSelectedRequest(null)}
+                >
+                  Close
+                </button>
               </div>
             )}
           </div>

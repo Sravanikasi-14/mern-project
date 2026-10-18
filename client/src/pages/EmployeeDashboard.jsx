@@ -96,6 +96,32 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
 
   const leaveEligibility = calculateLeaveEligibility();
 
+  const getLeaveOverlapConflict = (startDate, endDate, scheduledRanges) => {
+    if (!startDate || !endDate || !Array.isArray(scheduledRanges) || scheduledRanges.length === 0) {
+      return null;
+    }
+    for (const item of scheduledRanges) {
+      if (item.status !== "PENDING" && item.status !== "APPROVED") continue;
+      const itemStart = item.startDate || item.fromDate;
+      const itemEnd = item.endDate || item.toDate;
+      if (!itemStart || !itemEnd) continue;
+
+      // Overlap: requested.start <= item.end AND requested.end >= item.start
+      if (startDate <= itemEnd && endDate >= itemStart) {
+        const conflictStart = startDate > itemStart ? startDate : itemStart;
+        const conflictEnd = endDate < itemEnd ? endDate : itemEnd;
+        return {
+          ...item,
+          conflictStart,
+          conflictEnd,
+          formattedConflict:
+            conflictStart === conflictEnd ? conflictStart : `${conflictStart} to ${conflictEnd}`,
+        };
+      }
+    }
+    return null;
+  };
+
   const handleOpenLeaveModal = () => {
     const elig = calculateLeaveEligibility();
     setLeaveModalError("");
@@ -142,7 +168,11 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
       eventSource.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.type === "LEAVE_DECIDED" || payload.type === "LEAVE_SUBMITTED") {
+          if (
+            payload.type === "LEAVE_DECIDED" ||
+            payload.type === "LEAVE_SUBMITTED" ||
+            payload.type === "LEAVE_TYPE_CHANGED"
+          ) {
             fetchDashboard(true);
           }
         } catch {
@@ -252,6 +282,16 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
 
     if (leaveForm.startDate > leaveForm.endDate) {
       setLeaveModalError("Start date cannot be after end date.");
+      return;
+    }
+
+    // Rule: Prevent overlapping or duplicate leave applications
+    const activeRanges = dashboardData?.leave?.scheduledRanges || [];
+    const conflict = getLeaveOverlapConflict(leaveForm.startDate, leaveForm.endDate, activeRanges);
+    if (conflict) {
+      setLeaveModalError(
+        `Date conflict: You already have an existing ${conflict.status} ${conflict.leaveType} leave request (${conflict.startDate} to ${conflict.endDate}). Conflicting date(s): ${conflict.formattedConflict}. An employee cannot apply for dates already covered by an existing pending or approved leave.`
+      );
       return;
     }
 
@@ -1099,112 +1139,167 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 </select>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    min={leaveEligibility.earliestEligibleDate}
-                    value={leaveForm.startDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setLeaveForm((prev) => ({
-                        ...prev,
-                        startDate: newStart,
-                        endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
-                      }));
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #d4d4d8",
-                      fontSize: 14,
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
-                    value={leaveForm.endDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #d4d4d8",
-                      fontSize: 14,
-                    }}
-                  />
-                </div>
-              </div>
+              {(() => {
+                const activeScheduledRanges = dashboardData?.leave?.scheduledRanges || [];
+                const dateConflict = getLeaveOverlapConflict(
+                  leaveForm.startDate,
+                  leaveForm.endDate,
+                  activeScheduledRanges
+                );
 
-              <div
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1.4,
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  background: leaveEligibility.isTodayEligible ? "#f0fdf4" : "#fffbeb",
-                  border: `1px solid ${leaveEligibility.isTodayEligible ? "#bbf7d0" : "#fde68a"}`,
-                  color: leaveEligibility.isTodayEligible ? "#166534" : "#92400e",
-                }}
-              >
-                {leaveEligibility.hasConfigError ? (
-                  <span>⚠️ Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
-                ) : leaveEligibility.isTodayEligible ? (
-                  <span>
-                    ℹ️ <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}), exactly 1 hour before office starts ({leaveEligibility.officeStartTime}).
-                  </span>
-                ) : (
-                  <span>
-                    ⏱️ <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
-                  </span>
-                )}
-              </div>
+                return (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                          Start Date
+                        </label>
+                        <input
+                          type="date"
+                          id="input-leave-start-date"
+                          required
+                          min={leaveEligibility.earliestEligibleDate}
+                          value={leaveForm.startDate}
+                          onChange={(e) => {
+                            const newStart = e.target.value;
+                            setLeaveForm((prev) => ({
+                              ...prev,
+                              startDate: newStart,
+                              endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
+                            }));
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
+                            fontSize: 14,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                          End Date
+                        </label>
+                        <input
+                          type="date"
+                          id="input-leave-end-date"
+                          required
+                          min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
+                          value={leaveForm.endDate}
+                          onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                          style={{
+                            width: "100%",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
+                            fontSize: 14,
+                          }}
+                        />
+                      </div>
+                    </div>
 
-              <div>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                  Reason for Leave
-                </label>
-                <textarea
-                  rows="3"
-                  required
-                  placeholder="Please state the purpose of your leave request..."
-                  value={leaveForm.reason}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #d4d4d8",
-                    fontSize: 14,
-                    fontFamily: "inherit",
-                  }}
-                />
-              </div>
+                    {/* CONFLICT ALERT BANNER */}
+                    {dateConflict && (
+                      <div
+                        id="leave-conflict-banner"
+                        style={{
+                          fontSize: 12.5,
+                          lineHeight: 1.45,
+                          padding: "10px 14px",
+                          borderRadius: 8,
+                          background: "#fef2f2",
+                          border: "1px solid #fecaca",
+                          color: "#991b1b",
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span>🚫 Overlapping Leave Date Conflict</span>
+                        </div>
+                        <div>
+                          The selected dates overlap with an existing <strong>{dateConflict.status}</strong>{" "}
+                          ({dateConflict.leaveType} leave from {dateConflict.startDate} to {dateConflict.endDate}).
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#7f1d1d" }}>
+                          Conflicting date(s): <strong>{dateConflict.formattedConflict}</strong>. Dates covered by a PENDING or APPROVED request cannot be re-applied for.
+                        </div>
+                      </div>
+                    )}
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowLeaveModal(false)}
-                  disabled={submittingLeave}
-                >
-                  Cancel
-                </button>
-                <button type="submit" disabled={submittingLeave}>
-                  {submittingLeave ? "Submitting..." : "Submit Leave Application"}
-                </button>
-              </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        lineHeight: 1.4,
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        background: leaveEligibility.isTodayEligible ? "#f0fdf4" : "#fffbeb",
+                        border: `1px solid ${leaveEligibility.isTodayEligible ? "#bbf7d0" : "#fde68a"}`,
+                        color: leaveEligibility.isTodayEligible ? "#166534" : "#92400e",
+                      }}
+                    >
+                      {leaveEligibility.hasConfigError ? (
+                        <span>⚠️ Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
+                      ) : leaveEligibility.isTodayEligible ? (
+                        <span>
+                          ℹ️ <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}), exactly 1 hour before office starts ({leaveEligibility.officeStartTime}).
+                        </span>
+                      ) : (
+                        <span>
+                          ⏱️ <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                        Reason for Leave
+                      </label>
+                      <textarea
+                        rows="3"
+                        required
+                        placeholder="Please state the purpose of your leave request..."
+                        value={leaveForm.reason}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #d4d4d8",
+                          fontSize: 14,
+                          fontFamily: "inherit",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setShowLeaveModal(false)}
+                        disabled={submittingLeave}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        id="btn-submit-leave-app"
+                        disabled={submittingLeave || Boolean(dateConflict)}
+                        style={
+                          dateConflict
+                            ? { opacity: 0.6, cursor: "not-allowed", background: "#9ca3af", borderColor: "#9ca3af" }
+                            : {}
+                        }
+                      >
+                        {submittingLeave
+                          ? "Submitting..."
+                          : dateConflict
+                          ? "Dates Unavailable (Conflict)"
+                          : "Submit Leave Application"}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </form>
           </div>
         </div>

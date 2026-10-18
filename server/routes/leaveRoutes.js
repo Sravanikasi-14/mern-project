@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  changeLeaveType,
   decideLeaveRequest,
   getCompanyHrPolicy,
   getLeaveRequestById,
@@ -25,5 +26,6 @@ router.get("/policy", getCompanyHrPolicy);
 router.get("/", getLeaveRequests);
 router.get("/:id", getLeaveRequestById);
 router.post("/:id/decision", decideLeaveRequest);
+router.patch("/:id/leave-type", changeLeaveType);
 
 export default router;

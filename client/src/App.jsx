@@ -9,6 +9,7 @@ import EmployeeDashboard from "./pages/EmployeeDashboard";
 import EmployeeHome from "./pages/EmployeeHome";
 import EmployeeProfile from "./pages/EmployeeProfile";
 import Login from "./pages/Login";
+import OfferLettersManagement from "./pages/OfferLettersManagement";
 import Onboarding from "./pages/Onboarding";
 import "./index.css";
 
@@ -55,6 +56,16 @@ function App() {
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
                   <AdminLeaveManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/offers"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <OfferLettersManagement />
                 </AppLayout>
               </ProtectedRoute>
             }

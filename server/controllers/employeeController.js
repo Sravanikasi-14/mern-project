@@ -14,10 +14,12 @@ import {
   calculateEmployeeLeaveBalances,
   calculateLeaveDays,
   getLeaveDateRestrictions,
+  getOverlappingConflictDetails,
   hasOverlappingLeave,
   parseDateOnly,
   toDateString,
   validateLeaveDates,
+  withLeaveSubmissionLock,
 } from "../services/leaveService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
 
@@ -609,6 +611,15 @@ export async function getEmployeeDashboard(req, res, next) {
         detailed: leaveBalancesData.detailed || [],
         summary: leaveSummary,
         recentRequests: formattedRequests.slice(0, 10),
+        scheduledRanges: dbRequests
+          .filter((r) => r.status === "PENDING" || r.status === "APPROVED")
+          .map((r) => ({
+            id: String(r._id),
+            leaveType: r.leaveTypeCode,
+            status: r.status,
+            startDate: toDateString(r.fromDate),
+            endDate: toDateString(r.toDate),
+          })),
         config: leaveConfig,
       },
       holidays: upcomingHolidays,
@@ -781,71 +792,79 @@ export async function applyLeave(req, res, next) {
     const start = validatedDates.start;
     const end = validatedDates.end;
 
-    // Check for overlapping PENDING or APPROVED leave requests
-    if (LeaveRequest) {
-      const overlapping = await hasOverlappingLeave(LeaveRequest, employee._id, start, end);
-      if (overlapping) {
+    // Concurrency protection: serialize submissions for the same employee to prevent race-condition duplicates
+    const lockKey = `${req.auth.company._id}:${employee._id}`;
+    let newLeave;
+    let daysCount;
+    let balances;
+
+    await withLeaveSubmissionLock(lockKey, async () => {
+      // Check for overlapping PENDING or APPROVED leave requests
+      if (LeaveRequest) {
+        const overlapping = await hasOverlappingLeave(LeaveRequest, employee._id, start, end);
+        if (overlapping) {
+          const conflict = getOverlappingConflictDetails(start, end, overlapping.fromDate, overlapping.toDate);
+          throw new HttpError(
+            400,
+            `Date conflict: You already have an overlapping ${overlapping.status} ${overlapping.leaveTypeCode} leave request (${toDateString(overlapping.fromDate)} to ${toDateString(overlapping.toDate)}). Conflicting date(s): ${conflict.formattedConflict}. An employee cannot apply for dates already covered by an existing pending or approved leave.`
+          );
+        }
+      }
+
+      // Calculate working leave days based on company policy (weekends & holidays excluded)
+      const { workingDays } = calculateLeaveDays(start, end, policy);
+      daysCount = workingDays;
+
+      // Calculate balance from policy and approved leave history
+      balances = LeaveRequest
+        ? await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest)
+        : { balance: { casual: 8, sick: 6, earned: 12 } };
+
+      const typeKey = activeLeaveType.code.toLowerCase();
+      const availableBalance = balances.balance[typeKey] ?? 0;
+
+      if (availableBalance < daysCount) {
         throw new HttpError(
           400,
-          `You already have a ${overlapping.status.toLowerCase()} leave request (${toDateString(overlapping.fromDate)} to ${toDateString(overlapping.toDate)}) overlapping with this date range.`
+          `Insufficient ${activeLeaveType.code} leave balance. Available: ${availableBalance} day(s), Requested: ${daysCount} day(s).`
         );
       }
-    }
 
-    // Calculate working leave days based on company policy (weekends & holidays excluded)
-    const { workingDays } = calculateLeaveDays(start, end, policy);
-    const daysCount = workingDays;
+      // Create the approved LeaveRequest record in leave_requests collection
+      if (LeaveRequest) {
+        newLeave = await LeaveRequest.create({
+          employeeId: employee._id,
+          leaveTypeCode: activeLeaveType.code,
+          fromDate: start,
+          toDate: end,
+          daysCount,
+          reason: reason ? String(reason).trim() : "",
+          status: "PENDING",
+          decision: { decidedBy: null, decidedAt: null, remarks: "" },
+        });
+      } else {
+        newLeave = {
+          _id: new mongoose.Types.ObjectId(),
+          leaveTypeCode: activeLeaveType.code,
+          fromDate: start,
+          toDate: end,
+          daysCount,
+          reason: reason ? String(reason).trim() : "",
+          status: "PENDING",
+          createdAt: new Date(),
+        };
+      }
 
-    // Calculate balance from policy and approved leave history
-    const balances = LeaveRequest
-      ? await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest)
-      : { balance: { casual: 8, sick: 6, earned: 12 } };
-
-    const typeKey = activeLeaveType.code.toLowerCase();
-    const availableBalance = balances.balance[typeKey] ?? 0;
-
-    if (availableBalance < daysCount) {
-      throw new HttpError(
-        400,
-        `Insufficient ${activeLeaveType.code} leave balance. Available: ${availableBalance} day(s), Requested: ${daysCount} day(s).`
-      );
-    }
-
-    // Create the approved LeaveRequest record in leave_requests collection
-    let newLeave;
-    if (LeaveRequest) {
-      newLeave = await LeaveRequest.create({
-        employeeId: employee._id,
-        leaveTypeCode: activeLeaveType.code,
-        fromDate: start,
-        toDate: end,
-        daysCount,
-        reason: reason ? String(reason).trim() : "",
-        status: "PENDING",
-        decision: { decidedBy: null, decidedAt: null, remarks: "" },
-      });
-    } else {
-      newLeave = {
-        _id: new mongoose.Types.ObjectId(),
-        leaveTypeCode: activeLeaveType.code,
-        fromDate: start,
-        toDate: end,
-        daysCount,
-        reason: reason ? String(reason).trim() : "",
-        status: "PENDING",
-        createdAt: new Date(),
-      };
-    }
-
-    if (AuditLog) {
-      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.LEAVE_REQUESTED, newLeave._id, {
-        employeeId: employee._id,
-        leaveTypeCode: newLeave.leaveTypeCode,
-        fromDate: start,
-        toDate: end,
-        daysCount,
-      });
-    }
+      if (AuditLog) {
+        await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.LEAVE_REQUESTED, newLeave._id, {
+          employeeId: employee._id,
+          leaveTypeCode: newLeave.leaveTypeCode,
+          fromDate: start,
+          toDate: end,
+          daysCount,
+        });
+      }
+    });
 
     // Live cross-portal synchronization: Notify HR portal of new pending leave request
     emitLeaveEvent({
@@ -982,6 +1001,7 @@ export async function createEmployee(req, res, next) {
       projectType = "MANDATE",
       monthlySalary,
       password,
+      offerLetterId,
     } = req.body || {};
 
     if (!fullName || typeof fullName !== "string" || !fullName.trim()) {
@@ -1030,7 +1050,38 @@ export async function createEmployee(req, res, next) {
       });
     }
 
-    const { Employee, User, EmployeeCompensation, AuthToken, AuditLog } = req.auth.models;
+    const { Employee, User, EmployeeCompensation, AuthToken, AuditLog, OfferLetter } = req.auth.models;
+
+    let linkedOffer = null;
+    if (offerLetterId) {
+      if (!mongoose.Types.ObjectId.isValid(offerLetterId)) {
+        throw new HttpError(400, "Invalid offer letter ID provided.", {
+          field: "offerLetterId",
+          errors: { offerLetterId: "Invalid offer letter ID provided." },
+        });
+      }
+      if (OfferLetter) {
+        linkedOffer = await OfferLetter.findById(offerLetterId);
+        if (!linkedOffer) {
+          throw new HttpError(404, "Referenced offer letter was not found.", {
+            field: "offerLetterId",
+            errors: { offerLetterId: "Referenced offer letter was not found." },
+          });
+        }
+        if (linkedOffer.status !== "ACCEPTED") {
+          throw new HttpError(400, `Cannot onboard candidate from offer letter with status '${linkedOffer.status}'. Only ACCEPTED offers can be onboarded.`, {
+            field: "offerLetterId",
+            errors: { offerLetterId: `Offer letter is in '${linkedOffer.status}' status. Only ACCEPTED offers can be onboarded.` },
+          });
+        }
+        if (linkedOffer.employeeId) {
+          throw new HttpError(409, "This offer letter has already been linked to an onboarded employee.", {
+            field: "offerLetterId",
+            errors: { offerLetterId: "This offer letter has already been linked to an onboarded employee." },
+          });
+        }
+      }
+    }
 
     const existingCode = await Employee.findOne({ employeeCode: code });
     if (existingCode) {
@@ -1165,6 +1216,17 @@ export async function createEmployee(req, res, next) {
         deliveryStatus: employee.invitation.status,
         error: emailResult.error || null,
       });
+
+      if (linkedOffer) {
+        linkedOffer.employeeId = employee._id;
+        await linkedOffer.save();
+        await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_LINKED, linkedOffer._id, {
+          offerLetterId: linkedOffer._id,
+          employeeId: employee._id,
+          employeeCode: employee.employeeCode,
+          candidateName: linkedOffer.candidate?.fullName,
+        });
+      }
     }
 
     res.status(201).json({

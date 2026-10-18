@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import api from "../services/api";
 
@@ -20,6 +20,8 @@ const AVAILABLE_COLUMNS = [
 
 export default function AdminHome() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const onboardOfferId = searchParams.get("onboardOfferId");
 
   const [summary, setSummary] = useState(null);
   const [employees, setEmployees] = useState([]);
@@ -77,7 +79,55 @@ export default function AdminHome() {
     projectName: "",
     monthlySalary: "",
     password: "",
+    offerLetterId: null,
   });
+
+  // Check for offer letter onboarding parameter
+  useEffect(() => {
+    if (!onboardOfferId) return;
+
+    let cancelled = false;
+    const fetchOfferForOnboarding = async () => {
+      try {
+        const res = await api.get(`/offer-letters/${onboardOfferId}`);
+        const offer = res.data?.offerLetter;
+        if (!cancelled && offer) {
+          if (offer.status !== "ACCEPTED") {
+            setError(`Cannot onboard: Offer letter is in '${offer.status}' status (must be ACCEPTED).`);
+            return;
+          }
+          if (offer.employeeId) {
+            setError("This offer letter has already been linked to an onboarded employee.");
+            return;
+          }
+          setNewEmployee({
+            fullName: offer.candidate?.fullName || "",
+            employeeCode: "",
+            email: offer.candidate?.email || "",
+            jobTitle: offer.position || "",
+            department: offer.department || "",
+            employmentType: "Full-time",
+            workLocation: offer.workLocation || "",
+            joiningDate: offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : "",
+            projectName: "",
+            monthlySalary: offer.monthlySalary ? String(offer.monthlySalary) : "",
+            password: "",
+            offerLetterId: offer._id,
+          });
+          setShowAddModal(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.response?.data?.message || "Failed to load offer details for onboarding.");
+        }
+      }
+    };
+    fetchOfferForOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardOfferId]);
 
   // Debounce search
   useEffect(() => {
@@ -202,6 +252,7 @@ export default function AdminHome() {
         fullName: newEmployee.fullName.trim(),
         employeeCode: newEmployee.employeeCode.trim(),
         email: newEmployee.email.trim(),
+        offerLetterId: newEmployee.offerLetterId || undefined,
       });
 
       setSuccessMsg("Employee created successfully! Onboarding invitation generated.");
@@ -261,7 +312,12 @@ export default function AdminHome() {
       projectName: "",
       monthlySalary: "",
       password: "",
+      offerLetterId: null,
     });
+    if (onboardOfferId) {
+      searchParams.delete("onboardOfferId");
+      setSearchParams(searchParams, { replace: true });
+    }
     setShowNewEmpPassword(false);
     setAddFieldErrors({});
     setAddError("");
@@ -661,6 +717,26 @@ export default function AdminHome() {
               </div>
             ) : (
               <form onSubmit={handleCreateEmployee} className="auth-form" noValidate>
+                {newEmployee.offerLetterId && (
+                  <div style={{
+                    marginBottom: "16px",
+                    padding: "10px 14px",
+                    background: "#ecfdf5",
+                    border: "1px solid #a7f3d0",
+                    borderRadius: "8px",
+                    color: "#065f46",
+                    fontSize: "13px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    <span><strong>Linked Offer Letter:</strong> Candidate details prefilled from accepted offer. Saving will automatically link this employee record to the offer letter.</span>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label>
                     Full Name *

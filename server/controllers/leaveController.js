@@ -215,10 +215,18 @@ export async function getLeaveRequestById(req, res, next) {
 
     const employee = leaveRequest.employeeId;
     let leaveBalance = null;
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
     if (employee && employee._id) {
-      const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
       leaveBalance = await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest);
     }
+
+    const availableLeaveTypes = (policy?.leaveTypes || [])
+      .filter((t) => t.isActive !== false)
+      .map((t) => ({
+        code: t.code,
+        name: t.name,
+        yearlyDays: t.yearlyDays,
+      }));
 
     res.json({
       success: true,
@@ -248,6 +256,129 @@ export async function getLeaveRequestById(req, res, next) {
             }
           : null,
         createdAt: leaveRequest.createdAt,
+        updatedAt: leaveRequest.updatedAt,
+      },
+      leaveBalance,
+      availableLeaveTypes,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Change leave type of an APPROVED leave request (HR-only)
+ */
+export async function changeLeaveType(req, res, next) {
+  try {
+    const { LeaveRequest, Employee, CompanyHrPolicy, AuditLog } = req.auth.models;
+    const { id } = req.params;
+    const { newLeaveType, reason } = req.body || {};
+
+    // 1. Authorization: Only HR_ADMIN users can change leave type
+    if (req.auth?.user?.role !== "HR_ADMIN") {
+      throw new HttpError(403, "Access denied. Only HR administrators are authorized to change leave types.");
+    }
+
+    // 2. Validate reason explanation for auditing
+    const cleanReason = typeof reason === "string" ? reason.trim() : "";
+    if (!cleanReason) {
+      throw new HttpError(400, "An explanation for changing the leave type is required for auditing purposes.");
+    }
+
+    // 3. Find target request
+    const leaveRequest = await LeaveRequest.findById(id);
+    if (!leaveRequest) {
+      throw new HttpError(404, "Leave request not found");
+    }
+
+    // 4. Validate status is APPROVED
+    if (leaveRequest.status !== "APPROVED") {
+      throw new HttpError(
+        400,
+        `Leave type can only be changed for APPROVED requests. Current status: '${leaveRequest.status}'.`
+      );
+    }
+
+    // 5. Validate new leave type exists and is active in company HR policy
+    const cleanNewType = String(newLeaveType || "").toUpperCase().trim();
+    if (!cleanNewType) {
+      throw new HttpError(400, "New leave type is required.");
+    }
+
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
+    const activeLeaveTypes = (policy?.leaveTypes || []).filter((t) => t.isActive !== false);
+    const matchedType = activeLeaveTypes.find((t) => t.code.toUpperCase() === cleanNewType);
+
+    if (!matchedType) {
+      throw new HttpError(
+        400,
+        `Leave type '${cleanNewType}' is invalid or inactive in the company HR policy.`
+      );
+    }
+
+    const currentType = (leaveRequest.leaveTypeCode || "").toUpperCase();
+    if (cleanNewType === currentType) {
+      throw new HttpError(
+        400,
+        `The leave request is already assigned to '${cleanNewType}'. Please select a different active leave type.`
+      );
+    }
+
+    // 6. Update leaveTypeCode on existing document without creating new document or altering employeeId, fromDate, toDate, status
+    const oldLeaveType = leaveRequest.leaveTypeCode;
+    leaveRequest.leaveTypeCode = cleanNewType;
+    leaveRequest.updatedAt = new Date();
+    await leaveRequest.save();
+
+    // 7. Recalculate employee leave balances
+    const employee = await Employee.findById(leaveRequest.employeeId);
+    let leaveBalance = null;
+    if (employee) {
+      leaveBalance = await calculateEmployeeLeaveBalances(employee, policy, LeaveRequest);
+    }
+
+    // 8. Record audit log using existing approved audit convention
+    if (AuditLog) {
+      await recordAuditLog(
+        AuditLog,
+        req,
+        AUDIT_ACTIONS.LEAVE_TYPE_CHANGED,
+        leaveRequest._id,
+        {
+          employeeId: leaveRequest.employeeId,
+          oldLeaveType,
+          newLeaveType: cleanNewType,
+          reason: cleanReason,
+          fromDate: leaveRequest.fromDate,
+          toDate: leaveRequest.toDate,
+          daysCount: leaveRequest.daysCount,
+        }
+      );
+    }
+
+    // 9. Real-time cross-portal event emission
+    emitLeaveEvent({
+      companyId: String(req.auth.company._id),
+      type: "LEAVE_TYPE_CHANGED",
+      employeeId: String(leaveRequest.employeeId),
+      employeeEmail: employee?.email || null,
+      leaveRequestId: String(leaveRequest._id),
+      oldLeaveType,
+      newLeaveType: cleanNewType,
+      reason: cleanReason,
+    });
+
+    res.json({
+      success: true,
+      message: `Leave type successfully changed from ${oldLeaveType} to ${cleanNewType}.`,
+      leaveRequest: {
+        _id: leaveRequest._id,
+        leaveTypeCode: leaveRequest.leaveTypeCode,
+        fromDate: toDateString(leaveRequest.fromDate),
+        toDate: toDateString(leaveRequest.toDate),
+        daysCount: leaveRequest.daysCount,
+        status: leaveRequest.status,
         updatedAt: leaveRequest.updatedAt,
       },
       leaveBalance,

@@ -8,6 +8,7 @@ import { getUserModel } from "../models/User.js";
 import { getAuditLogModel } from "../models/AuditLog.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getCompanyHrPolicyModel } from "../models/CompanyHrPolicy.js";
+import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -90,6 +91,7 @@ export async function getCompanyModels(company) {
     AuditLog: getAuditLogModel(connection),
     LeaveRequest: getLeaveRequestModel(connection),
     CompanyHrPolicy: getCompanyHrPolicyModel(connection),
+    OfferLetter: getOfferLetterModel(connection),
   };
 }
 

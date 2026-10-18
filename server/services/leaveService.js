@@ -242,6 +242,59 @@ export function calculateLeaveDays(fromDate, toDate, policy) {
 }
 
 /**
+ * Concurrency Mutex map to serialize simultaneous leave submissions per employee
+ */
+const submissionQueues = new Map();
+
+export async function withLeaveSubmissionLock(key, fn) {
+  const prevPromise = submissionQueues.get(key) || Promise.resolve();
+
+  let release;
+  const currentPromise = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  const nextPromise = prevPromise.then(() => currentPromise, () => currentPromise);
+  submissionQueues.set(key, nextPromise);
+
+  await prevPromise.catch(() => {});
+
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (submissionQueues.get(key) === nextPromise) {
+      submissionQueues.delete(key);
+    }
+  }
+}
+
+/**
+ * Calculates exact overlapping sub-range between requested and existing leave dates
+ */
+export function getOverlappingConflictDetails(reqStart, reqEnd, existingStart, existingEnd) {
+  const rStart = parseDateOnly(reqStart);
+  const rEnd = parseDateOnly(reqEnd);
+  const eStart = parseDateOnly(existingStart);
+  const eEnd = parseDateOnly(existingEnd);
+
+  const cStart = new Date(Math.max(rStart.getTime(), eStart.getTime()));
+  const cEnd = new Date(Math.min(rEnd.getTime(), eEnd.getTime()));
+  const conflictFrom = toDateString(cStart);
+  const conflictTo = toDateString(cEnd);
+
+  return {
+    conflictFrom,
+    conflictTo,
+    isSingleDay: conflictFrom === conflictTo,
+    formattedConflict:
+      conflictFrom === conflictTo
+        ? conflictFrom
+        : `${conflictFrom} to ${conflictTo}`,
+  };
+}
+
+/**
  * Check if the employee has any PENDING or APPROVED requests overlapping [fromDate, toDate]
  */
 export async function hasOverlappingLeave(LeaveRequest, employeeId, fromDate, toDate, excludeRequestId = null) {

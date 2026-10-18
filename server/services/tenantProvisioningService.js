@@ -2,6 +2,7 @@ import Company from "../models/Company.js";
 import { getCentralDbName, getTenantConnection } from "../config/db.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
+import { getOfferLetterModel } from "../models/OfferLetter.js";
 
 /**
  * Ensures leave_requests and company_hr_policies collections, approved indexes,
@@ -119,6 +120,21 @@ export async function provisionTenantDatabase(company, connection) {
       outcome.policyUpdated = true;
       outcome.repaired = true;
     }
+  }
+
+  // 5. Ensure offer_letters collection exists
+  if (!existingColNames.has("offer_letters")) {
+    await db.createCollection("offer_letters");
+    outcome.collectionsCreated.push("offer_letters");
+    outcome.repaired = true;
+  }
+
+  const OfferLetter = getOfferLetterModel(conn);
+  try {
+    await OfferLetter.createIndexes();
+    outcome.indexesCreated.push("offer_letters: { status: 1, createdAt: -1 }, { 'candidate.email': 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }
 
   outcome.message = outcome.repaired
