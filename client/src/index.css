@@ -127,6 +127,22 @@ button svg {
   border-radius: 8px;
   font-size: 14px;
   margin: 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.warning-alert {
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin: 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .success-alert {
@@ -137,6 +153,9 @@ button svg {
   border-radius: 8px;
   font-size: 14px;
   margin: 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .auth-form {
@@ -156,6 +175,30 @@ button svg {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-form input:focus {
+  outline: 2px solid #09090b;
+  outline-offset: 1px;
+}
+
+.auth-form input.has-error {
+  border-color: #ef4444 !important;
+  background-color: #fff5f5;
+}
+
+.auth-form input.has-error:focus {
+  outline: 2px solid #ef4444 !important;
+  outline-offset: 1px;
+}
+
+.field-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 2px;
+  display: block;
 }
 
 .app-header {

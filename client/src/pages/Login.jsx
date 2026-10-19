@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { IconAlertCircle, IconAlertTriangle } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { classifyLoginError } from "../services/api";
 
@@ -17,41 +18,64 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [warning, setWarning] = useState(
+    location.state?.logoutWarning || ""
+  );
   const [error, setError] = useState(
     location.state?.sessionExpired ? "Your session has expired. Please sign in again." : ""
   );
 
   if (loading) {
-    return <p className="container">Restoring session...</p>;
+    return (
+      <main className="container" style={{ textAlign: "center", padding: "48px 24px" }}>
+        <div className="spinner" style={{ margin: "0 auto 16px" }} />
+        <h2 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>Restoring Session</h2>
+        <p className="subtitle">Verifying your authentication credentials securely...</p>
+      </main>
+    );
   }
 
-  if (isAuthenticated) {
-    const destination = location.state?.from?.pathname || homeForRole(user.role);
+  if (isAuthenticated && user) {
+    const destination = homeForRole(user.role);
     return <Navigate to={destination} replace />;
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setWarning("");
     setFieldErrors({});
 
     const trimmedCode = companyCode.trim();
     const trimmedEmail = email.trim();
 
-    if (!trimmedCode || !trimmedEmail || !password) {
-      setError("Please enter your company code, email, and password.");
-      const errors = {};
-      if (!trimmedCode) errors.companyCode = "Company code is required.";
-      if (!trimmedEmail) errors.email = "Email is required.";
-      if (!password) errors.password = "Password is required.";
-      setFieldErrors(errors);
-      return;
+    const errors = {};
+    if (!trimmedCode) {
+      errors.companyCode = "Please enter your company code.";
+    }
+    if (!trimmedEmail) {
+      errors.email = "Please enter your email address.";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        errors.email = "Please enter a valid email address.";
+      }
+    }
+    if (!password) {
+      errors.password = "Please enter your password.";
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      setError("Please enter a valid email address.");
-      setFieldErrors({ email: "Please enter a valid email address." });
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      if (errors.email && !errors.companyCode && !errors.password) {
+        setError("Please enter your email address.");
+      } else if (errors.password && !errors.companyCode && !errors.email) {
+        setError("Please enter your password.");
+      } else if (errors.companyCode && !errors.email && !errors.password) {
+        setError("Please enter your company code.");
+      } else {
+        setError("Please fill in all required fields.");
+      }
       return;
     }
 
@@ -59,7 +83,19 @@ export default function Login() {
 
     try {
       const session = await login({ companyCode: trimmedCode, email: trimmedEmail, password });
-      const destination = location.state?.from?.pathname || homeForRole(session.user.role);
+      const from = location.state?.from;
+      const returnUrl =
+        typeof from === "string"
+          ? from
+          : from?.pathname
+          ? `${from.pathname}${from.search || ""}${from.hash || ""}`
+          : null;
+
+      const destination =
+        returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login")
+          ? returnUrl
+          : homeForRole(session.user.role);
+
       navigate(destination, { replace: true });
     } catch (err) {
       const classifiedMessage = classifyLoginError(err);
@@ -77,6 +113,20 @@ export default function Login() {
       <h1>Sign in</h1>
       <p className="subtitle">Company HR Admin and Employee login.</p>
 
+      {warning && (
+        <div role="status" className="warning-alert">
+          <IconAlertTriangle size={16} />
+          <span>{warning}</span>
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="error">
+          <IconAlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="auth-form" noValidate>
         <label>
           Company code
@@ -85,6 +135,7 @@ export default function Login() {
             onChange={(event) => {
               setCompanyCode(event.target.value);
               if (error) setError("");
+              if (warning) setWarning("");
               if (fieldErrors.companyCode) {
                 setFieldErrors((prev) => ({ ...prev, companyCode: undefined }));
               }
@@ -92,6 +143,7 @@ export default function Login() {
             placeholder="e.g. acme"
             autoComplete="organization"
             className={fieldErrors.companyCode ? "has-error" : ""}
+            aria-invalid={Boolean(fieldErrors.companyCode)}
             required
           />
           {fieldErrors.companyCode && (
@@ -106,6 +158,7 @@ export default function Login() {
             onChange={(event) => {
               setEmail(event.target.value);
               if (error) setError("");
+              if (warning) setWarning("");
               if (fieldErrors.email) {
                 setFieldErrors((prev) => ({ ...prev, email: undefined }));
               }
@@ -113,6 +166,7 @@ export default function Login() {
             placeholder="you@company.com"
             autoComplete="username"
             className={fieldErrors.email ? "has-error" : ""}
+            aria-invalid={Boolean(fieldErrors.email)}
             required
           />
           {fieldErrors.email && (
@@ -128,6 +182,7 @@ export default function Login() {
               onChange={(event) => {
                 setPassword(event.target.value);
                 if (error) setError("");
+                if (warning) setWarning("");
                 if (fieldErrors.password) {
                   setFieldErrors((prev) => ({ ...prev, password: undefined }));
                 }
@@ -135,6 +190,7 @@ export default function Login() {
               placeholder="••••••••"
               autoComplete="current-password"
               className={fieldErrors.password ? "has-error" : ""}
+              aria-invalid={Boolean(fieldErrors.password)}
               required
             />
             <button
@@ -160,11 +216,6 @@ export default function Login() {
             <span className="field-error">{fieldErrors.password}</span>
           )}
         </label>
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
         <button type="submit" disabled={submitting}>
           {submitting ? "Signing in..." : "Sign in"}
         </button>
@@ -172,7 +223,7 @@ export default function Login() {
 
       <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eaecf0", fontSize: "14px", color: "#667085", textAlign: "center" }}>
         <span>Setting up a provisioned company? </span>
-        <Link to="/onboard" style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
+        <Link to="/onboard" replace style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
           Set up initial HR Admin
         </Link>
       </div>

@@ -223,7 +223,7 @@ export default function Onboarding() {
           <p role="alert" className="error" style={{ marginBottom: "16px" }}>
             {verifyError}
           </p>
-          <Link to="/login">
+          <Link to="/login" replace>
             <button type="button">Go to Sign in</button>
           </Link>
         </div>
@@ -644,7 +644,7 @@ export default function Onboarding() {
             }}
           >
             <span>Already completed onboarding? </span>
-            <Link to="/login" style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
+            <Link to="/login" replace style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
               Sign in to your account
             </Link>
           </div>

@@ -1,7 +1,28 @@
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function AppHeader({ title }) {
   const { user, company, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      const res = await logout();
+      if (res && !res.serverRevoked) {
+        navigate("/login", {
+          replace: true,
+          state: {
+            logoutWarning:
+              "Logged out locally, but could not confirm session revocation on the server.",
+          },
+        });
+      } else {
+        navigate("/login", { replace: true });
+      }
+    } catch {
+      navigate("/login", { replace: true });
+    }
+  };
 
   return (
     <header className="app-header">
@@ -11,7 +32,7 @@ export default function AppHeader({ title }) {
           {company?.companyName} · {user?.email} · {user?.role}
         </p>
       </div>
-      <button type="button" className="btn-secondary btn-sm" onClick={logout}>
+      <button type="button" className="btn-secondary btn-sm" onClick={handleLogout}>
         Log out
       </button>
     </header>

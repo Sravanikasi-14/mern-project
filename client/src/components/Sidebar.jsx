@@ -208,6 +208,25 @@ export default function Sidebar({
 
   const navItems = user?.role === "HR_ADMIN" ? HR_NAV_ITEMS : EMPLOYEE_NAV_ITEMS;
 
+  const handleLogout = async () => {
+    try {
+      const res = await logout();
+      if (res && !res.serverRevoked) {
+        navigate("/login", {
+          replace: true,
+          state: {
+            logoutWarning:
+              "Logged out locally, but could not confirm session revocation on the server.",
+          },
+        });
+      } else {
+        navigate("/login", { replace: true });
+      }
+    } catch {
+      navigate("/login", { replace: true });
+    }
+  };
+
   // Determine which item is active based on current role and pathname
   const isItemActive = (item) => {
     const current = location.pathname;
@@ -372,7 +391,7 @@ export default function Sidebar({
         <button
           type="button"
           className="sidebar-logout-btn"
-          onClick={logout}
+          onClick={handleLogout}
           aria-label="Log out"
         >
           <div className="nav-icon-container">

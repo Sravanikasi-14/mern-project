@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminHome from "./pages/AdminHome";
 import AdminLeaveManagement from "./pages/AdminLeaveManagement";
 import EditEmployee from "./pages/EditEmployee";
@@ -12,6 +12,30 @@ import Login from "./pages/Login";
 import OfferLettersManagement from "./pages/OfferLettersManagement";
 import Onboarding from "./pages/Onboarding";
 import "./index.css";
+
+function IndexRedirect() {
+  const { isAuthenticated, user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div
+        className="auth-restore-screen"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f4f4f5",
+        }}
+      >
+        <div className="spinner" />
+      </div>
+    );
+  }
+  if (isAuthenticated && user) {
+    return <Navigate to={user.role === "HR_ADMIN" ? "/admin" : "/app"} replace />;
+  }
+  return <Navigate to="/login" replace />;
+}
 
 function App() {
   return (
@@ -150,8 +174,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<IndexRedirect />} />
+          <Route path="*" element={<IndexRedirect />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
