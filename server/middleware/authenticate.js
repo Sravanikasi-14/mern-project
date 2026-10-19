@@ -6,7 +6,11 @@ import { verifyAuthToken } from "../utils/token.js";
 
 export async function authenticate(req, res, next) {
   try {
-    const token = req.cookies?.[getAuthCookieName()];
+    const authHeader = req.headers?.authorization;
+    const headerToken = authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : null;
+    const token = req.cookies?.[getAuthCookieName()] || headerToken;
 
     if (!token) {
       throw new HttpError(401, "Authentication required");

@@ -39,7 +39,7 @@ export function createApp() {
           if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
             return callback(null, true);
           }
-          if (url.hostname.endsWith(".onrender.com")) {
+          if (url.hostname.endsWith(".onrender.com") || url.hostname.endsWith(".vercel.app")) {
             return callback(null, true);
           }
         } catch {
