@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import { IconClose, IconInfo } from "./Icons";
 import "./Sidebar.css";
 
 export default function AppLayout({ children }) {
@@ -62,7 +63,9 @@ export default function AppLayout({ children }) {
       {/* Toast Notification for un-implemented modules */}
       {toastMessage && (
         <div className="module-toast-notification" role="status">
-          <div className="toast-icon">ℹ️</div>
+          <div className="toast-icon">
+            <IconInfo size={16} />
+          </div>
           <div className="toast-text">{toastMessage}</div>
           <button
             type="button"
@@ -70,7 +73,7 @@ export default function AppLayout({ children }) {
             onClick={() => setToastMessage(null)}
             aria-label="Dismiss notification"
           >
-            ✕
+            <IconClose size={14} />
           </button>
         </div>
       )}

@@ -328,20 +328,56 @@ button svg {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background-color: currentColor;
+  flex-shrink: 0;
+}
+
+.badge-success,
 .badge-active {
-  background: #18181b;
-  color: #ffffff;
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
 }
 
+.badge-danger,
+.badge-rejected {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.badge-warning,
+.badge-pending {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.badge-info,
+.badge-sent {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-neutral,
 .badge-inactive {
   background: #f4f4f5;
-  color: #71717a;
+  color: #52525b;
   border: 1px solid #e4e4e7;
 }
 

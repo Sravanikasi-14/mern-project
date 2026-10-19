@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { IconClose } from "./Icons";
 
 const HR_NAV_ITEMS = [
   {
@@ -209,28 +210,35 @@ export default function Sidebar({
 
   // Determine which item is active based on current role and pathname
   const isItemActive = (item) => {
+    const current = location.pathname;
+
     if (user?.role === "HR_ADMIN") {
-      if (item.path && (location.pathname === item.path || location.pathname.startsWith(item.path + "/"))) {
-        return true;
-      }
       if (item.id === "people") {
         return (
-          location.pathname === "/admin" ||
-          location.pathname.startsWith("/admin/employees")
+          current === "/admin" ||
+          current.startsWith("/admin/employees")
         );
+      }
+      if (item.path) {
+        return current === item.path || current.startsWith(item.path + "/");
       }
       return false;
     }
 
     // EMPLOYEE Role:
     if (item.id === "dashboard") {
-      return location.pathname === "/app";
+      return current === "/app";
+    }
+    if (item.id === "profile") {
+      return (
+        current === "/app/profile" ||
+        current.startsWith("/app/profile/") ||
+        current === "/app/documents" ||
+        current.startsWith("/app/documents/")
+      );
     }
     if (item.path) {
-      return (
-        location.pathname === item.path ||
-        location.pathname.startsWith(item.path + "/")
-      );
+      return current === item.path || current.startsWith(item.path + "/");
     }
     return false;
   };
@@ -304,7 +312,7 @@ export default function Sidebar({
           onClick={onCloseMobile}
           aria-label="Close navigation"
         >
-          ✕
+          <IconClose size={16} />
         </button>
       </div>
 

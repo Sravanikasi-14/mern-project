@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import AppHeader from "../components/AppHeader";
+import StatusBadge from "../components/StatusBadge";
+import { IconDocument, IconArrowRight } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -316,9 +318,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   <h1 style={{ margin: 0, fontSize: "20px", color: "#09090b" }}>
                     {profile.fullName}
                   </h1>
-                  <span className={`status-badge ${profile.status === "ACTIVE" ? "status-active" : "status-inactive"}`}>
-                    {profile.status}
-                  </span>
+                  <StatusBadge status={profile.status} />
                 </div>
                 <div style={{ fontSize: "13px", color: "#71717a", marginTop: "4px" }}>
                   <span>Code: <strong>{profile.employeeCode}</strong></span> •{" "}
@@ -462,9 +462,10 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       type="button"
                       className="btn-secondary btn-sm"
                       onClick={() => setActiveTab("edit_profile")}
-                      style={{ fontSize: "12px", padding: "6px 12px" }}
+                      style={{ fontSize: "12px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
                     >
-                      Update Profile →
+                      <span>Update Profile</span>
+                      <IconArrowRight size={13} />
                     </button>
                   </div>
                 </div>
@@ -892,7 +893,9 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         {documents.map((doc, idx) => (
                           <div key={doc._id || idx} className="document-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                              <div className="doc-icon" aria-hidden="true" style={{ fontSize: "20px" }}>📄</div>
+                              <div className="doc-icon" aria-hidden="true" style={{ display: "flex", alignItems: "center" }}>
+                                <IconDocument size={20} />
+                              </div>
                               <div className="doc-meta">
                                 <span className="doc-name" style={{ fontWeight: "600", color: "#0f172a", display: "block" }}>
                                   {doc.title || doc.fileName}

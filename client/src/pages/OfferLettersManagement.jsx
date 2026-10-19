@@ -1,6 +1,21 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import StatusBadge from "../components/StatusBadge";
+import {
+  IconClose,
+  IconCheck,
+  IconDocument,
+  IconSearch,
+  IconUser,
+  IconBriefcase,
+  IconCurrency,
+  IconScroll,
+  IconChevronUp,
+  IconChevronDown,
+  IconClock,
+  IconDownload,
+} from "../components/Icons";
 import api from "../services/api";
 
 const STATUS_CONFIG = {
@@ -8,7 +23,7 @@ const STATUS_CONFIG = {
     label: "Draft",
     bg: "#f4f4f5",
     color: "#52525b",
-    border: "#d4d4d8",
+    border: "#e4e4e7",
   },
   SENT: {
     label: "Sent / Issued",
@@ -18,9 +33,9 @@ const STATUS_CONFIG = {
   },
   ACCEPTED: {
     label: "Accepted",
-    bg: "#ecfdf5",
-    color: "#047857",
-    border: "#a7f3d0",
+    bg: "#f0fdf4",
+    color: "#15803d",
+    border: "#bbf7d0",
   },
   REJECTED: {
     label: "Rejected",
@@ -612,9 +627,10 @@ export default function OfferLettersManagement() {
           <button
             type="button"
             onClick={() => setError("")}
-            style={{ background: "none", border: "none", color: "#991b1b", fontSize: "16px", padding: "0 4px", cursor: "pointer" }}
+            style={{ background: "none", border: "none", color: "#991b1b", padding: "0 4px", cursor: "pointer", display: "inline-flex", alignItems: "center" }}
+            aria-label="Dismiss error"
           >
-            ✕
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -636,9 +652,10 @@ export default function OfferLettersManagement() {
           <button
             type="button"
             onClick={() => setSuccessMsg("")}
-            style={{ background: "none", border: "none", color: "#065f46", fontSize: "16px", padding: "0 4px", cursor: "pointer" }}
+            style={{ background: "none", border: "none", color: "#065f46", padding: "0 4px", cursor: "pointer", display: "inline-flex", alignItems: "center" }}
+            aria-label="Dismiss message"
           >
-            ✕
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -697,8 +714,8 @@ export default function OfferLettersManagement() {
                 outline: "none",
               }}
             />
-            <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#a1a1aa" }}>
-              🔍
+            <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#a1a1aa", display: "flex", alignItems: "center" }}>
+              <IconSearch size={14} />
             </span>
           </div>
 
@@ -779,7 +796,9 @@ export default function OfferLettersManagement() {
           </div>
         ) : offers.length === 0 ? (
           <div style={{ padding: "60px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: "36px", marginBottom: "12px" }}>📄</div>
+            <div style={{ marginBottom: "12px", color: "#a1a1aa" }}>
+              <IconDocument size={40} />
+            </div>
             <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: "#18181b" }}>No offer letters found</h3>
             <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#71717a" }}>
               {search || statusFilter !== "ALL"
@@ -857,23 +876,14 @@ export default function OfferLettersManagement() {
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: "12px",
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            background: statusStyle.bg,
-                            color: statusStyle.color,
-                            border: `1px solid ${statusStyle.border}`,
-                          }}
-                        >
-                          {statusStyle.label}
-                        </span>
+                        <StatusBadge
+                          status={offer.status}
+                          label={statusStyle.label}
+                        />
                         {isAccepted && isLinked && (
-                          <div style={{ fontSize: "11px", color: "#059669", marginTop: "4px", display: "flex", alignItems: "center", gap: "3px" }}>
-                            ✓ Onboarded
+                          <div style={{ fontSize: "11px", color: "#15803d", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                            <IconCheck size={12} />
+                            <span>Onboarded</span>
                           </div>
                         )}
                       </td>
@@ -1150,12 +1160,14 @@ export default function OfferLettersManagement() {
                     background: "transparent",
                     border: "none",
                     color: "#71717a",
-                    fontSize: "20px",
                     cursor: "pointer",
                     padding: "4px 8px",
+                    display: "inline-flex",
+                    alignItems: "center",
                   }}
+                  aria-label="Close modal"
                 >
-                  ✕
+                  <IconClose size={18} />
                 </button>
               </div>
             </div>
@@ -1176,7 +1188,7 @@ export default function OfferLettersManagement() {
                     {/* Candidate Information Section */}
                     <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
                       <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span>👤</span> 1. Candidate Information
+                        <IconUser size={16} /> 1. Candidate Information
                       </h4>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                         <div>
@@ -1230,7 +1242,7 @@ export default function OfferLettersManagement() {
                     {/* Employment Terms Section */}
                     <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
                       <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span>💼</span> 2. Employment Terms
+                        <IconBriefcase size={16} /> 2. Employment Terms
                       </h4>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                         <div>
@@ -1363,7 +1375,7 @@ export default function OfferLettersManagement() {
                     {/* Compensation Section */}
                     <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
                       <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span>💰</span> 3. Compensation
+                        <IconCurrency size={16} /> 3. Compensation
                       </h4>
                       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "16px", alignItems: "flex-start" }}>
                         <div>
@@ -1414,8 +1426,9 @@ export default function OfferLettersManagement() {
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                         <div>
-                          <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#18181b" }}>
-                            📜 4. Offer Letter Clauses & Policy library
+                          <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <IconScroll size={16} />
+                            <span>4. Offer Letter Clauses & Policy library</span>
                           </h4>
                           <span style={{ fontSize: "12px", color: "#71717a" }}>
                             Check to include clauses, edit wording, and use arrows to reorder.
@@ -1485,34 +1498,38 @@ export default function OfferLettersManagement() {
                                   disabled={idx === 0}
                                   onClick={() => handleMoveClause(idx, -1)}
                                   style={{
-                                    padding: "2px 6px",
-                                    fontSize: "11px",
+                                    padding: "3px 6px",
                                     background: "#f1f5f9",
                                     border: "1px solid #cbd5e1",
                                     color: "#334155",
                                     borderRadius: "4px",
                                     cursor: idx === 0 ? "not-allowed" : "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
                                   }}
                                   title="Move Up"
+                                  aria-label="Move Up"
                                 >
-                                  ▲
+                                  <IconChevronUp size={12} />
                                 </button>
                                 <button
                                   type="button"
                                   disabled={idx === formData.clauses.length - 1}
                                   onClick={() => handleMoveClause(idx, 1)}
                                   style={{
-                                    padding: "2px 6px",
-                                    fontSize: "11px",
+                                    padding: "3px 6px",
                                     background: "#f1f5f9",
                                     border: "1px solid #cbd5e1",
                                     color: "#334155",
                                     borderRadius: "4px",
                                     cursor: idx === formData.clauses.length - 1 ? "not-allowed" : "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
                                   }}
                                   title="Move Down"
+                                  aria-label="Move Down"
                                 >
-                                  ▼
+                                  <IconChevronDown size={12} />
                                 </button>
                               </div>
                             </div>
@@ -1571,7 +1588,9 @@ export default function OfferLettersManagement() {
                       />
                     ) : (
                       <div style={{ textAlign: "center", padding: "100px 20px", color: "#a1a1aa" }}>
-                        <div style={{ fontSize: "32px", marginBottom: "8px" }}>⏳</div>
+                        <div style={{ marginBottom: "8px", display: "flex", justifyContent: "center" }}>
+                          <IconClock size={32} />
+                        </div>
                         <div>Generating live offer document preview...</div>
                       </div>
                     )}
@@ -1694,9 +1713,13 @@ export default function OfferLettersManagement() {
                     border: "none",
                     borderRadius: "6px",
                     fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {downloadingId === previewModalOffer._id ? "Downloading..." : "⬇ Download PDF"}
+                  <IconDownload size={14} />
+                  <span>{downloadingId === previewModalOffer._id ? "Downloading..." : "Download PDF"}</span>
                 </button>
                 <button
                   type="button"
@@ -1705,12 +1728,14 @@ export default function OfferLettersManagement() {
                     background: "transparent",
                     border: "none",
                     color: "#a1a1aa",
-                    fontSize: "20px",
                     cursor: "pointer",
                     padding: "0 4px",
+                    display: "inline-flex",
+                    alignItems: "center",
                   }}
+                  aria-label="Close modal"
                 >
-                  ✕
+                  <IconClose size={18} />
                 </button>
               </div>
             </div>

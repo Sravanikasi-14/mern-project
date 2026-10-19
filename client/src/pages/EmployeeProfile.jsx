@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import StatusBadge from "../components/StatusBadge";
+import { IconDocument, IconArrowLeft } from "../components/Icons";
 import api from "../services/api";
 
 export default function EmployeeProfile() {
@@ -124,9 +126,10 @@ export default function EmployeeProfile() {
             type="button"
             className="btn-secondary"
             onClick={() => navigate("/admin")}
-            style={{ marginTop: "16px" }}
+            style={{ marginTop: "16px", display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            ← Back to Employees
+            <IconArrowLeft size={14} />
+            <span>Back to Employees</span>
           </button>
         </div>
       </main>
@@ -171,9 +174,7 @@ export default function EmployeeProfile() {
           <div className="profile-header-info">
             <div className="profile-header-title-row">
               <h1 className="profile-name">{employee.fullName}</h1>
-              <span className={`badge ${isActive ? "badge-active" : "badge-inactive"}`}>
-                {employee.status || "ACTIVE"}
-              </span>
+              <StatusBadge status={employee.status || "ACTIVE"} />
             </div>
             <div className="profile-header-meta">
               <span className="meta-tag">
@@ -530,28 +531,34 @@ export default function EmployeeProfile() {
           <div className="profile-card-body">
             <div className="documents-list">
               <div className="document-row">
-                <div className="doc-icon" aria-hidden="true">📄</div>
+                <div className="doc-icon" aria-hidden="true">
+                  <IconDocument size={20} />
+                </div>
                 <div className="doc-meta">
                   <span className="doc-name">Government Identity (PAN / Aadhaar e-KYC)</span>
                   <span className="doc-desc">
                     {employee.identityDetails?.idType || "PAN & Aadhaar"} • ID: {employee.identityDetails?.idNumber || "•••• •••• 9812"}
                   </span>
                 </div>
-                <span className="badge badge-active">Verified</span>
+                <StatusBadge status="VERIFIED" label="Verified" withDot={false} />
               </div>
               <div className="document-row">
-                <div className="doc-icon" aria-hidden="true">📋</div>
+                <div className="doc-icon" aria-hidden="true">
+                  <IconDocument size={20} />
+                </div>
                 <div className="doc-meta">
                   <span className="doc-name">Employment Agreement & Code of Conduct</span>
                   <span className="doc-desc">Signed copy on company record</span>
                 </div>
-                <span className="badge badge-active">On File</span>
+                <StatusBadge status="ON_FILE" label="On File" withDot={false} />
               </div>
               {employee.documents && employee.documents.length > 0 && (
                 employee.documents.map((doc, idx) => (
                   <div key={doc._id || idx} className="document-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div className="doc-icon" aria-hidden="true">📄</div>
+                      <div className="doc-icon" aria-hidden="true">
+                        <IconDocument size={20} />
+                      </div>
                       <div className="doc-meta">
                         <span className="doc-name">{doc.title || doc.fileName}</span>
                         <span className="doc-desc">
@@ -580,14 +587,16 @@ export default function EmployeeProfile() {
               )}
               {employee.status === "INACTIVE" && (
                 <div className="document-row">
-                  <div className="doc-icon" aria-hidden="true">📑</div>
+                  <div className="doc-icon" aria-hidden="true">
+                    <IconDocument size={20} />
+                  </div>
                   <div className="doc-meta">
                     <span className="doc-name">Full and Final (FNF) Settlement Record</span>
                     <span className="doc-desc">
                       Processed for inactive employee exit record
                     </span>
                   </div>
-                  <span className="badge badge-inactive">FNF Processed</span>
+                  <StatusBadge status="NEUTRAL" label="FNF Processed" withDot={false} />
                 </div>
               )}
             </div>

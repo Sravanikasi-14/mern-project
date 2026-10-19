@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import AppHeader from "../components/AppHeader";
+import StatusBadge from "../components/StatusBadge";
+import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from "../components/Icons";
 import api from "../services/api";
 
 const STATUS_OPTIONS = [
@@ -306,9 +308,12 @@ export default function AdminLeaveManagement() {
       {/* Action alerts */}
       {actionSuccess && (
         <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>✓ {actionSuccess}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")}>
-            ✕
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconCheck size={16} />
+            <span>{actionSuccess}</span>
+          </span>
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")} aria-label="Dismiss alert">
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -316,8 +321,8 @@ export default function AdminLeaveManagement() {
       {actionError && (
         <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{actionError}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")}>
-            ✕
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")} aria-label="Dismiss alert">
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -631,29 +636,7 @@ export default function AdminLeaveManagement() {
 
                     {/* Current Status */}
                     <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                      <span
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 14,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background:
-                            item.status === "APPROVED"
-                              ? "#f0fdf4"
-                              : item.status === "REJECTED"
-                              ? "#fef2f2"
-                              : "#fef3c7",
-                          color:
-                            item.status === "APPROVED"
-                              ? "#15803d"
-                              : item.status === "REJECTED"
-                              ? "#b91c1c"
-                              : "#b45309",
-                          border: "1px solid #e4e4e7",
-                        }}
-                      >
-                        ● {item.status}
-                      </span>
+                      <StatusBadge status={item.status} />
                     </td>
 
                     {/* Actions */}
@@ -731,8 +714,10 @@ export default function AdminLeaveManagement() {
                 className="btn-secondary btn-sm"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                ← Previous
+                <IconArrowLeft size={14} />
+                <span>Previous</span>
               </button>
 
               <span style={{ fontSize: 13, color: "#52525b", padding: "0 6px" }}>
@@ -744,8 +729,10 @@ export default function AdminLeaveManagement() {
                 className="btn-secondary btn-sm"
                 disabled={page >= pagination.totalPages}
                 onClick={() => setPage((p) => p + 1)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                Next →
+                <span>Next</span>
+                <IconArrowRight size={14} />
               </button>
             </div>
           </div>
@@ -802,8 +789,9 @@ export default function AdminLeaveManagement() {
                 className="btn-sm btn-secondary"
                 onClick={() => setSelectedRequest(null)}
                 disabled={submittingDecision}
+                aria-label="Close modal"
               >
-                ✕
+                <IconClose size={14} />
               </button>
             </div>
 
@@ -864,28 +852,7 @@ export default function AdminLeaveManagement() {
                   Current Status
                 </span>
                 <div style={{ marginTop: 2 }}>
-                  <span
-                    style={{
-                      padding: "2px 8px",
-                      borderRadius: 10,
-                      fontSize: 11.5,
-                      fontWeight: 600,
-                      background:
-                        selectedRequest.status === "APPROVED"
-                          ? "#f0fdf4"
-                          : selectedRequest.status === "REJECTED"
-                          ? "#fef2f2"
-                          : "#fef3c7",
-                      color:
-                        selectedRequest.status === "APPROVED"
-                          ? "#15803d"
-                          : selectedRequest.status === "REJECTED"
-                          ? "#b91c1c"
-                          : "#b45309",
-                    }}
-                  >
-                    {selectedRequest.status}
-                  </span>
+                  <StatusBadge status={selectedRequest.status} />
                 </div>
               </div>
 
@@ -1073,8 +1040,9 @@ export default function AdminLeaveManagement() {
                 }}
               >
                 {changeTypeSuccess && (
-                  <div className="success-alert" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13 }}>
-                    ✓ {changeTypeSuccess}
+                  <div className="success-alert" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    <IconCheck size={14} />
+                    <span>{changeTypeSuccess}</span>
                   </div>
                 )}
                 {changeTypeError && (
@@ -1116,9 +1084,13 @@ export default function AdminLeaveManagement() {
                           color: "#ffffff",
                           fontSize: 13,
                           padding: "6px 14px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
                         }}
                       >
-                        🔄 Change Leave Type
+                        <IconRefresh size={14} />
+                        <span>Change Leave Type</span>
                       </button>
                     </div>
                   </div>
@@ -1290,9 +1262,19 @@ export default function AdminLeaveManagement() {
                             fontSize: 13,
                             padding: "6px 16px",
                             fontWeight: 600,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
                           }}
                         >
-                          {submittingChangeType ? "Saving & Auditing..." : "✓ Confirm & Save Change"}
+                          {submittingChangeType ? (
+                            "Saving & Auditing..."
+                          ) : (
+                            <>
+                              <IconCheck size={14} />
+                              <span>Confirm & Save Change</span>
+                            </>
+                          )}
                         </button>
                       )}
                     </div>

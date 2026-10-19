@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { IconDocument } from "../components/Icons";
 import api from "../services/api";
 
 export default function EditEmployee() {
@@ -798,7 +799,9 @@ export default function EditEmployee() {
                   {documents.map((doc, idx) => (
                     <div key={doc._id || idx} className="document-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <div className="doc-icon" aria-hidden="true" style={{ fontSize: "20px" }}>📄</div>
+                        <div className="doc-icon" aria-hidden="true" style={{ display: "flex", alignItems: "center" }}>
+                          <IconDocument size={20} />
+                        </div>
                         <div className="doc-meta">
                           <span className="doc-name" style={{ fontWeight: "600", color: "#0f172a", display: "block" }}>
                             {doc.title || doc.fileName}

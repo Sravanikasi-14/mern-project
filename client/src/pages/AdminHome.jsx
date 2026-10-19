@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import StatusBadge from "../components/StatusBadge";
+import { IconClose, IconCheck, IconChevronDown } from "../components/Icons";
 import api from "../services/api";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100, 200, 300];
@@ -427,8 +429,10 @@ export default function AdminHome() {
               type="button"
               className="btn-secondary"
               onClick={() => setShowColumnPicker((prev) => !prev)}
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
             >
-              Columns ▾
+              <span>Columns</span>
+              <IconChevronDown size={12} />
             </button>
             {showColumnPicker && (
               <div className="column-visibility-popover">
@@ -507,24 +511,21 @@ export default function AdminHome() {
                     )}
                     {visibleColumns.status && (
                       <td>
-                        <span
-                          className={`badge ${
-                            emp.status === "ACTIVE" ? "badge-active" : "badge-inactive"
-                          }`}
-                        >
-                          {emp.status}
-                        </span>
+                        <StatusBadge status={emp.status} />
                       </td>
                     )}
                     {visibleColumns.invitation && (
                       <td>
-                        {emp.invitation?.status === "ACCEPTED" ? (
-                          <span className="badge badge-active">Accepted</span>
-                        ) : emp.invitation?.status === "DELIVERY_FAILED" ? (
-                          <span className="badge" style={{ background: "#7f1d1d", color: "#fecaca" }}>Delivery Failed</span>
-                        ) : (
-                          <span className="badge" style={{ background: "#27272a", color: "#e4e4e7", border: "1px solid #3f3f46" }}>Invite Pending</span>
-                        )}
+                        <StatusBadge
+                          status={emp.invitation?.status || "PENDING"}
+                          label={
+                            emp.invitation?.status === "ACCEPTED"
+                              ? "Accepted"
+                              : emp.invitation?.status === "DELIVERY_FAILED"
+                              ? "Delivery Failed"
+                              : "Invite Pending"
+                          }
+                        />
                       </td>
                     )}
                     {visibleColumns.salary && (
@@ -615,8 +616,9 @@ export default function AdminHome() {
                 type="button"
                 className="btn-secondary btn-sm"
                 onClick={handleCloseAddModal}
+                aria-label="Close modal"
               >
-                ✕
+                <IconClose size={14} />
               </button>
             </div>
 
@@ -636,11 +638,10 @@ export default function AdminHome() {
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "20px",
                       marginBottom: "12px",
                     }}
                   >
-                    ✓
+                    <IconCheck size={24} />
                   </div>
                   <h3 style={{ margin: "0 0 6px", fontSize: "18px", color: "#f4f4f5" }}>
                     Official Employee Record Created
@@ -663,11 +664,12 @@ export default function AdminHome() {
                     <span style={{ color: "#a1a1aa" }}>Registered Work Email</span>
                     <strong style={{ color: "#f4f4f5" }}>{createdInvitationInfo.employee?.email}</strong>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "14px", fontSize: "13px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "14px", fontSize: "13px", alignItems: "center" }}>
                     <span style={{ color: "#a1a1aa" }}>Invitation Delivery Status</span>
-                    <span className="badge" style={{ background: "#27272a", color: "#e4e4e7", border: "1px solid #3f3f46" }}>
-                      {createdInvitationInfo.invitation?.status || "PENDING"}
-                    </span>
+                    <StatusBadge
+                      status={createdInvitationInfo.invitation?.status || "PENDING"}
+                      label={createdInvitationInfo.invitation?.status || "Invite Pending"}
+                    />
                   </div>
 
                   <label style={{ fontSize: "12px", color: "#a1a1aa", display: "block", marginBottom: "6px" }}>
@@ -702,10 +704,15 @@ export default function AdminHome() {
                       {copiedInvite ? "Copied!" : "Copy Link"}
                     </button>
                   </div>
-                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#71717a" }}>
-                    {createdInvitationInfo.invitation?.emailSent
-                      ? "✓ An invitation email was dispatched to the employee's work address."
-                      : "Note: In test or offline environment, copy and provide this secure link directly to the employee."}
+                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#71717a", display: "flex", alignItems: "center", gap: "6px" }}>
+                    {createdInvitationInfo.invitation?.emailSent ? (
+                      <>
+                        <IconCheck size={14} style={{ color: "#15803d" }} />
+                        <span>An invitation email was dispatched to the employee's work address.</span>
+                      </>
+                    ) : (
+                      <span>Note: In test or offline environment, copy and provide this secure link directly to the employee.</span>
+                    )}
                   </p>
                 </div>
 

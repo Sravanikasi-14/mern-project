@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import StatusBadge from "../components/StatusBadge";
+import {
+  IconClose,
+  IconCheck,
+  IconAlertTriangle,
+  IconAlertCircle,
+  IconInfo,
+  IconClock,
+  IconArrowRight,
+} from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -382,8 +392,8 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
       {actionSuccess && (
         <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{actionSuccess}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")}>
-            ✕
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")} aria-label="Dismiss alert">
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -391,8 +401,8 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
       {actionError && (
         <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{actionError}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")}>
-            ✕
+          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")} aria-label="Dismiss alert">
+            <IconClose size={14} />
           </button>
         </div>
       )}
@@ -548,29 +558,10 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
 
                 {/* Status Badge */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: 20,
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      background:
-                        todayStatus === "CHECKED_IN"
-                          ? "#f0fdf4"
-                          : todayStatus === "CHECKED_OUT"
-                          ? "#f4f4f5"
-                          : "#fef3c7",
-                      color:
-                        todayStatus === "CHECKED_IN"
-                          ? "#15803d"
-                          : todayStatus === "CHECKED_OUT"
-                          ? "#3f3f46"
-                          : "#b45309",
-                      border: "1px solid #e4e4e7",
-                    }}
-                  >
-                    ● {todayStatus === "CHECKED_IN" ? "Checked In (Active)" : todayStatus === "CHECKED_OUT" ? "Checked Out for Day" : "Not Checked In Yet"}
-                  </span>
+                  <StatusBadge
+                    status={todayStatus}
+                    label={todayStatus === "CHECKED_IN" ? "Checked In (Active)" : todayStatus === "CHECKED_OUT" ? "Checked Out for Day" : "Not Checked In Yet"}
+                  />
                 </div>
               </div>
 
@@ -638,7 +629,8 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
 
                 {todayStatus === "CHECKED_OUT" && (
                   <div style={{ fontSize: 13, color: "#71717a", display: "flex", alignItems: "center", gap: 6 }}>
-                    ✓ Attendance completed for today. Have a great evening!
+                    <IconCheck size={14} style={{ color: "#15803d" }} />
+                    <span>Attendance completed for today. Have a great evening!</span>
                   </div>
                 )}
               </div>
@@ -742,28 +734,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                             </td>
                             <td style={{ padding: "10px 6px" }}>{req.days}d</td>
                             <td style={{ padding: "10px 6px" }}>
-                              <span
-                                style={{
-                                  padding: "3px 8px",
-                                  borderRadius: 12,
-                                  fontSize: 11.5,
-                                  fontWeight: 600,
-                                  background:
-                                    req.status === "APPROVED"
-                                      ? "#f0fdf4"
-                                      : req.status === "REJECTED"
-                                      ? "#fef2f2"
-                                      : "#fef3c7",
-                                  color:
-                                    req.status === "APPROVED"
-                                      ? "#15803d"
-                                      : req.status === "REJECTED"
-                                      ? "#b91c1c"
-                                      : "#b45309",
-                                }}
-                              >
-                                {req.status}
-                              </span>
+                              <StatusBadge status={req.status} />
                             </td>
                           </tr>
                         ))}
@@ -1064,9 +1035,13 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 borderRadius: 8,
                 fontSize: 13,
                 fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
-              Go to Account Settings →
+              <span>Go to Account Settings</span>
+              <IconArrowRight size={14} />
             </Link>
           </div>
         </>
@@ -1110,8 +1085,9 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 className="btn-sm btn-secondary"
                 onClick={() => setShowLeaveModal(false)}
                 disabled={submittingLeave}
+                aria-label="Close modal"
               >
-                ✕
+                <IconClose size={14} />
               </button>
             </div>
 
@@ -1214,7 +1190,8 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                         }}
                       >
                         <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <span>🚫 Overlapping Leave Date Conflict</span>
+                          <IconAlertCircle size={16} />
+                          <span>Overlapping Leave Date Conflict</span>
                         </div>
                         <div>
                           The selected dates overlap with an existing <strong>{dateConflict.status}</strong>{" "}
@@ -1238,14 +1215,23 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                       }}
                     >
                       {leaveEligibility.hasConfigError ? (
-                        <span>⚠️ Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <IconAlertTriangle size={14} />
+                          <span>Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
+                        </span>
                       ) : leaveEligibility.isTodayEligible ? (
-                        <span>
-                          ℹ️ <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}), exactly 1 hour before office starts ({leaveEligibility.officeStartTime}).
+                        <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 6 }}>
+                          <IconInfo size={14} style={{ marginTop: 2, flexShrink: 0 }} />
+                          <span>
+                            <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}), exactly 1 hour before office starts ({leaveEligibility.officeStartTime}).
+                          </span>
                         </span>
                       ) : (
-                        <span>
-                          ⏱️ <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
+                        <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 6 }}>
+                          <IconClock size={14} style={{ marginTop: 2, flexShrink: 0 }} />
+                          <span>
+                            <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
+                          </span>
                         </span>
                       )}
                     </div>
