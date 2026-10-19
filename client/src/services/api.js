@@ -14,6 +14,18 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Request interceptor: attach Bearer token from localStorage when present.
+// withCredentials: true simultaneously transmits credentials cookies.
+api.interceptors.request.use((config) => {
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("hrms_token");
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
 // Response interceptor: preserves original status, response data, and error codes
 // without replacing all errors with a generic exception or breaking response rejection.
 api.interceptors.response.use(

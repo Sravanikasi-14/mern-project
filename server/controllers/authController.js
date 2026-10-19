@@ -118,6 +118,7 @@ export async function login(req, res, next) {
     }
 
     res.json({
+      token,
       user: serializeUser(user),
       company: publicCompany(company),
     });
@@ -127,7 +128,11 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
-  const token = req.cookies?.[getAuthCookieName()];
+  const authHeader = req.headers?.authorization;
+  const headerToken = authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : null;
+  const token = req.cookies?.[getAuthCookieName()] || headerToken;
   if (token) {
     try {
       const payload = verifyAuthToken(token);
@@ -426,6 +431,7 @@ export async function completeOnboarding(req, res, next) {
 
       return res.status(201).json({
         message: "Employee onboarding completed successfully",
+        token: authToken,
         user: serializeUser(user),
         employee,
         company: publicCompany(company),
@@ -488,6 +494,7 @@ export async function completeOnboarding(req, res, next) {
 
     res.status(201).json({
       message: "HR Admin account created successfully",
+      token: authToken,
       user: serializeUser(user),
       company: publicCompany(company),
     });
@@ -608,6 +615,7 @@ export async function setupInitialAdmin(req, res, next) {
 
     res.status(201).json({
       message: "Initial HR Admin account established successfully",
+      token: authToken,
       user: serializeUser(user),
       company: publicCompany(company),
     });

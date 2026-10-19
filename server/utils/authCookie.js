@@ -3,7 +3,13 @@ export function getAuthCookieName() {
 }
 
 export function getAuthCookieOptions() {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.RENDER) ||
+    Boolean(process.env.RENDER_SERVICE_ID) ||
+    Boolean(process.env.IS_RENDER) ||
+    Boolean(process.env.CLIENT_URL && !process.env.CLIENT_URL.includes("localhost")) ||
+    Boolean(process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"));
 
   return {
     httpOnly: true,

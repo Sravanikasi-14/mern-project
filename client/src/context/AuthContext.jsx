@@ -11,6 +11,9 @@ export function AuthProvider({ children }) {
   const applySession = (payload) => {
     setUser(payload?.user ?? null);
     setCompany(payload?.company ?? null);
+    if (payload?.token) {
+      localStorage.setItem("hrms_token", payload.token);
+    }
   };
 
   useEffect(() => {
@@ -24,6 +27,7 @@ export function AuthProvider({ children }) {
         }
       } catch {
         if (!cancelled) {
+          localStorage.removeItem("hrms_token");
           applySession(null);
         }
       } finally {
@@ -61,6 +65,7 @@ export function AuthProvider({ children }) {
     try {
       await api.post("/auth/logout");
     } finally {
+      localStorage.removeItem("hrms_token");
       applySession(null);
     }
   };

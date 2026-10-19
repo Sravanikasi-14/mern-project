@@ -20,38 +20,62 @@ export function createApp() {
   // Trust first proxy (Render, Heroku, Nginx) for secure cookies & req.protocol
   app.set("trust proxy", 1);
 
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. mobile apps, same-origin, curl)
-        if (!origin) {
+  const explicitOrigins = [
+    "https://mern-project-nu-nine.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+  ];
+
+  if (process.env.CLIENT_URL) {
+    explicitOrigins.push(process.env.CLIENT_URL.trim().replace(/\/+$/, ""));
+  }
+  if (process.env.FRONTEND_URL) {
+    explicitOrigins.push(process.env.FRONTEND_URL.trim().replace(/\/+$/, ""));
+  }
+
+  const corsOptions = {
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, same-origin, curl, server-to-server)
+      if (!origin) {
+        return callback(null, true);
+      }
+      const cleanOrigin = origin.trim().replace(/\/+$/, "");
+      if (explicitOrigins.includes(cleanOrigin)) {
+        return callback(null, true);
+      }
+      try {
+        const url = new URL(cleanOrigin);
+        if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
           return callback(null, true);
         }
-        if (clientUrl) {
-          const cleanClient = clientUrl.replace(/\/+$/, "");
-          const cleanOrigin = origin.replace(/\/+$/, "");
-          if (cleanOrigin === cleanClient) {
-            return callback(null, true);
-          }
+        if (url.hostname.endsWith(".vercel.app")) {
+          return callback(null, true);
         }
-        try {
-          const url = new URL(origin);
-          if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-            return callback(null, true);
-          }
-          if (url.hostname.endsWith(".onrender.com") || url.hostname.endsWith(".vercel.app")) {
-            return callback(null, true);
-          }
-        } catch {
-          // ignore parsing error
+        if (url.hostname.endsWith(".onrender.com")) {
+          return callback(null, true);
         }
-        return callback(null, false);
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
-    })
-  );
+      } catch {
+        // ignore parsing error
+      }
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+    ],
+    exposedHeaders: ["Set-Cookie"],
+    optionsSuccessStatus: 204,
+  };
+
+  app.use(cors(corsOptions));
 
   app.use(express.json({ limit: "15mb" }));
   app.use(cookieParser());
