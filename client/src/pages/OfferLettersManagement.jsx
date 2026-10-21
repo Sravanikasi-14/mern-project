@@ -1,10 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import AppHeader from "../components/AppHeader";
-import StatusBadge from "../components/StatusBadge";
 import {
   IconClose,
-  IconCheck,
   IconDocument,
   IconSearch,
   IconUser,
@@ -15,33 +12,28 @@ import {
   IconChevronDown,
   IconClock,
   IconDownload,
+  IconEye,
+  IconRefresh,
 } from "../components/Icons";
 import api from "../services/api";
+import "./OfferLetters.css";
 
 const STATUS_CONFIG = {
   DRAFT: {
     label: "Draft",
-    bg: "#f4f4f5",
-    color: "#52525b",
-    border: "#e4e4e7",
+    pillClass: "ol-pill-draft",
   },
   SENT: {
-    label: "Sent / Issued",
-    bg: "#eff6ff",
-    color: "#1d4ed8",
-    border: "#bfdbfe",
+    label: "Sent",
+    pillClass: "ol-pill-sent",
   },
   ACCEPTED: {
     label: "Accepted",
-    bg: "#f0fdf4",
-    color: "#15803d",
-    border: "#bbf7d0",
+    pillClass: "ol-pill-accepted",
   },
   REJECTED: {
     label: "Rejected",
-    bg: "#fef2f2",
-    color: "#b91c1c",
-    border: "#fecaca",
+    pillClass: "ol-pill-rejected",
   },
 };
 
@@ -719,234 +711,162 @@ export default function OfferLettersManagement() {
   };
 
   return (
-    <main className="container-wide" style={{ maxWidth: "1320px", padding: "28px" }}>
-      <AppHeader title="Offer Letter Management" />
-
-      {/* Top Banner Alert / Messages */}
-      {error && (
-        <div style={{
-          marginBottom: "16px",
-          padding: "12px 16px",
-          background: "#fef2f2",
-          border: "1px solid #fecaca",
-          borderRadius: "8px",
-          color: "#991b1b",
-          fontSize: "14px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}>
-          <span>{error}</span>
+    <main className="container-wide ol-page">
+      <div className="ol-header">
+        <div className="ol-header-copy">
+          <h1>Offer Letters</h1>
+          <p>Create, send, and track candidate offers. Everyone involved is updated when status changes.</p>
+        </div>
+        <div className="ol-header-actions">
           <button
             type="button"
-            onClick={() => setError("")}
-            style={{ background: "none", border: "none", color: "#991b1b", padding: "0 4px", cursor: "pointer", display: "inline-flex", alignItems: "center" }}
-            aria-label="Dismiss error"
+            className="ol-btn ol-btn-ghost"
+            onClick={() => {
+              fetchOffers();
+              fetchSummary();
+            }}
+            title="Refresh list"
           >
+            <IconRefresh size={14} />
+            Refresh
+          </button>
+          <button type="button" className="ol-btn ol-btn-primary" onClick={handleOpenCreate}>
+            <span aria-hidden="true">+</span>
+            Add offer
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="ol-alert ol-alert-error" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError("")} aria-label="Dismiss error">
             <IconClose size={14} />
           </button>
         </div>
       )}
 
       {successMsg && (
-        <div style={{
-          marginBottom: "16px",
-          padding: "12px 16px",
-          background: "#ecfdf5",
-          border: "1px solid #a7f3d0",
-          borderRadius: "8px",
-          color: "#065f46",
-          fontSize: "14px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}>
+        <div className="ol-alert ol-alert-success" role="status">
           <span>{successMsg}</span>
-          <button
-            type="button"
-            onClick={() => setSuccessMsg("")}
-            style={{ background: "none", border: "none", color: "#065f46", padding: "0 4px", cursor: "pointer", display: "inline-flex", alignItems: "center" }}
-            aria-label="Dismiss message"
-          >
+          <button type="button" onClick={() => setSuccessMsg("")} aria-label="Dismiss message">
             <IconClose size={14} />
           </button>
         </div>
       )}
 
-      {/* Summary KPI Cards */}
-      <div className="stats-grid" style={{ marginBottom: "28px" }}>
-        <div className="stat-card">
-          <span className="stat-label">Total</span>
-          <span className="stat-value">{summary.total}</span>
+      <div className="ol-kpis">
+        <div className="ol-kpi">
+          <span className="ol-kpi-label">Total</span>
+          <span className="ol-kpi-value">{summary.total}</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-label">Draft</span>
-          <span className="stat-value" style={{ color: "#71717a" }}>{summary.draft}</span>
+        <div className="ol-kpi">
+          <span className="ol-kpi-label">Draft</span>
+          <span className="ol-kpi-value is-draft">{summary.draft}</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-label">Sent</span>
-          <span className="stat-value" style={{ color: "#2563eb" }}>{summary.sent}</span>
+        <div className="ol-kpi">
+          <span className="ol-kpi-label">Sent</span>
+          <span className="ol-kpi-value is-sent">{summary.sent}</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-label">Accepted</span>
-          <span className="stat-value" style={{ color: "#059669" }}>{summary.accepted}</span>
+        <div className="ol-kpi">
+          <span className="ol-kpi-label">Accepted</span>
+          <span className="ol-kpi-value is-accepted">{summary.accepted}</span>
         </div>
-        <div className="stat-card">
-          <span className="stat-label">Rejected</span>
-          <span className="stat-value" style={{ color: "#dc2626" }}>{summary.rejected}</span>
+        <div className="ol-kpi">
+          <span className="ol-kpi-label">Rejected</span>
+          <span className="ol-kpi-value is-rejected">{summary.rejected}</span>
         </div>
       </div>
 
-      {/* Control Bar: Search, Filter, and Create Button */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "14px",
-        marginBottom: "20px",
-        background: "#ffffff",
-        padding: "16px 20px",
-        borderRadius: "12px",
-        border: "1px solid #e4e4e7",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", flex: 1 }}>
-          <div style={{ position: "relative", minWidth: "260px" }}>
-            <input
-              type="text"
-              placeholder="Search candidate name or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px 8px 34px",
-                borderRadius: "8px",
-                border: "1px solid #d4d4d8",
-                fontSize: "14px",
-                outline: "none",
-              }}
-            />
-            <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#a1a1aa", display: "flex", alignItems: "center" }}>
+      <div className="ol-toolbar">
+        <div className="ol-toolbar-left">
+          <div className="ol-search">
+            <span className="ol-search-icon">
               <IconSearch size={14} />
             </span>
+            <input
+              type="text"
+              placeholder="Search candidate or role…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "13px", color: "#71717a", fontWeight: "500" }}>Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "8px",
-                border: "1px solid #d4d4d8",
-                fontSize: "14px",
-                background: "#ffffff",
-                color: "#18181b",
-                cursor: "pointer",
-              }}
-            >
-              <option value="ALL">All ({summary.total})</option>
-              <option value="DRAFT">Draft ({summary.draft})</option>
-              <option value="SENT">Sent ({summary.sent})</option>
-              <option value="ACCEPTED">Accepted ({summary.accepted})</option>
-              <option value="REJECTED">Rejected ({summary.rejected})</option>
-            </select>
-          </div>
-
+          <select
+            className="ol-select"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            aria-label="Filter by status"
+          >
+            <option value="ALL">All statuses</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SENT">Sent</option>
+            <option value="ACCEPTED">Accepted</option>
+            <option value="REJECTED">Rejected</option>
+          </select>
           {(search || statusFilter !== "ALL") && (
             <button
               type="button"
-              className="btn-secondary"
+              className="ol-btn ol-btn-ghost ol-btn-sm"
               onClick={() => {
                 setSearch("");
                 setStatusFilter("ALL");
                 setCurrentPage(1);
               }}
-              style={{ padding: "7px 12px", fontSize: "13px" }}
             >
-              Clear Filters
+              Clear
             </button>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          style={{
-            background: "#09090b",
-            color: "#ffffff",
-            padding: "9px 18px",
-            borderRadius: "8px",
-            fontSize: "14px",
-            fontWeight: "500",
-            border: "none",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.06)",
-          }}
-        >
-          <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span> New Offer Letter
-        </button>
       </div>
 
-      {/* Offers Table */}
-      <div style={{
-        background: "#ffffff",
-        borderRadius: "12px",
-        border: "1px solid #e4e4e7",
-        overflow: "hidden",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
-      }}>
+      <div className="ol-table-card">
         {loading ? (
-          <div style={{ padding: "60px 20px", textAlign: "center", color: "#71717a" }}>
-            <div style={{ fontSize: "14px" }}>Loading offers...</div>
+          <div className="ol-empty">
+            <p>Loading offers…</p>
           </div>
         ) : offers.length === 0 ? (
-          <div style={{ padding: "60px 20px", textAlign: "center" }}>
-            <div style={{ marginBottom: "12px", color: "#a1a1aa" }}>
-              <IconDocument size={40} />
+          <div className="ol-empty">
+            <div className="ol-empty-icon">
+              <IconDocument size={36} />
             </div>
-            <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: "#18181b" }}>No offers found</h3>
-            <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#71717a" }}>
+            <h3>No offers yet</h3>
+            <p>
               {search || statusFilter !== "ALL"
-                ? "No offers match your search or filter."
-                : "Create your first offer letter to get started."}
+                ? "Nothing matches this search or filter."
+                : "Add an offer to start tracking candidates."}
             </p>
             {search || statusFilter !== "ALL" ? (
               <button
                 type="button"
-                className="btn-secondary"
+                className="ol-btn ol-btn-ghost"
                 onClick={() => {
                   setSearch("");
                   setStatusFilter("ALL");
                 }}
               >
-                Reset Filters
+                Reset filters
               </button>
             ) : (
-              <button type="button" onClick={handleOpenCreate}>
-                + New Offer Letter
+              <button type="button" className="ol-btn ol-btn-primary" onClick={handleOpenCreate}>
+                + Add offer
               </button>
             )}
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
+          <div className="ol-table-wrap">
+            <table className="ol-table">
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Candidate</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Job & Dept</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Start Date</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Salary</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Status</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Created</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase", textAlign: "right" }}>Actions</th>
+                <tr>
+                  <th>Candidate</th>
+                  <th>Role</th>
+                  <th>Start</th>
+                  <th>Salary</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -956,222 +876,154 @@ export default function OfferLettersManagement() {
                   const isSent = offer.status === "SENT";
                   const isAccepted = offer.status === "ACCEPTED";
                   const isLinked = Boolean(offer.employeeId);
+                  const deliveryFailed = offer.emailDelivery?.status === "DELIVERY_FAILED";
 
                   return (
-                    <tr
-                      key={offer._id}
-                      style={{
-                        borderBottom: "1px solid #f1f5f9",
-                        transition: "background 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#fcfcfc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
-                    >
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: "600", color: "#09090b" }}>{offer.candidate?.fullName || "—"}</div>
-                        <div style={{ fontSize: "12px", color: "#71717a" }}>{offer.candidate?.email || "—"}</div>
-                        {offer.employee && (
-                          <div style={{ marginTop: "4px" }}>
-                            <span style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              fontSize: "10px",
-                              fontWeight: "600",
-                              background: "#eff6ff",
-                              color: "#1d4ed8",
-                              border: "1px solid #bfdbfe",
-                            }}>
-                              Emp: {offer.employee.employeeCode || offer.employee.fullName}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ color: "#18181b", fontWeight: "500" }}>{offer.position || "—"}</div>
-                        <div style={{ fontSize: "12px", color: "#71717a" }}>{offer.department || offer.employmentType || "General"}</div>
-                      </td>
-
-                      <td style={{ padding: "14px 16px", color: "#3f3f46" }}>
-                        {formatDate(offer.joiningDate)}
-                      </td>
-
-                      <td style={{ padding: "14px 16px" }}>
-                        <div style={{ fontWeight: "600", color: "#09090b" }}>{formatINR(offer.monthlySalary)} / mo</div>
-                        <div style={{ fontSize: "11px", color: "#71717a" }}>
-                          Annualized: {formatINR(offer.monthlySalary * 12)}
+                    <tr key={offer._id}>
+                      <td>
+                        <div className="ol-cell-title">{offer.candidate?.fullName || "—"}</div>
+                        <div className="ol-cell-sub">
+                          {offer.candidate?.email || "—"}
+                          {offer.employee?.employeeCode
+                            ? ` · ${offer.employee.employeeCode}`
+                            : ""}
                         </div>
                       </td>
-
-                      <td style={{ padding: "14px 16px" }}>
-                        <StatusBadge
-                          status={offer.status}
-                          label={statusStyle.label}
-                        />
-                        {offer.emailDelivery?.status === "DELIVERY_FAILED" && (
-                          <div style={{ fontSize: "11px", color: "#dc2626", marginTop: "4px", fontWeight: "600" }} title={offer.emailDelivery?.error || "Delivery failed"}>
-                            Delivery Failed
-                          </div>
-                        )}
-                        {offer.emailedAt && (
-                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
-                            Emailed {formatDate(offer.emailedAt)}
+                      <td>
+                        <div className="ol-cell-title">{offer.position || "—"}</div>
+                        <div className="ol-cell-sub">
+                          {offer.department || offer.employmentType || "General"}
+                        </div>
+                      </td>
+                      <td className="ol-cell-muted">{formatDate(offer.joiningDate)}</td>
+                      <td>
+                        <div className="ol-cell-mono">{formatINR(offer.monthlySalary)}</div>
+                        <div className="ol-cell-sub">/ month</div>
+                      </td>
+                      <td>
+                        <span className={`ol-pill ${statusStyle.pillClass}`}>
+                          {statusStyle.label}
+                        </span>
+                        {deliveryFailed && (
+                          <div
+                            className="ol-pill ol-pill-failed"
+                            title={offer.emailDelivery?.error || "Delivery failed"}
+                          >
+                            Failed
                           </div>
                         )}
                         {isAccepted && isLinked && (
-                          <div style={{ fontSize: "11px", color: "#15803d", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-                            <IconCheck size={12} />
-                            <span>Onboarded</span>
+                          <div className="ol-cell-sub" style={{ color: "#047857", marginTop: 6 }}>
+                            Onboarded
                           </div>
                         )}
                       </td>
-
-                      <td style={{ padding: "14px 16px", fontSize: "12px", color: "#71717a" }}>
-                        {formatDate(offer.createdAt)}
-                      </td>
-
-                      <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {/* View Preview Button */}
+                      <td className="ol-cell-muted">{formatDate(offer.createdAt)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <div className="ol-actions">
                           <button
                             type="button"
-                            className="btn-secondary"
+                            className="ol-btn ol-btn-icon"
                             onClick={() => handleViewPreview(offer)}
-                            style={{ padding: "5px 10px", fontSize: "12px" }}
-                            title="View Preview"
+                            title="Preview"
                           >
-                            Preview
+                            <IconEye size={15} />
                           </button>
-
-                          {/* Download PDF Button */}
                           <button
                             type="button"
-                            className="btn-secondary"
-                            onClick={() => handleDownloadPdf(offer._id, offer.candidate?.fullName)}
+                            className="ol-btn ol-btn-icon"
+                            onClick={() =>
+                              handleDownloadPdf(offer._id, offer.candidate?.fullName)
+                            }
                             disabled={downloadingId === offer._id}
-                            style={{ padding: "5px 10px", fontSize: "12px" }}
                             title="Download PDF"
                           >
-                            {downloadingId === offer._id ? "Generating..." : "PDF"}
+                            <IconDownload size={15} />
                           </button>
 
-                          {/* DRAFT Actions */}
                           {isDraft && (
                             <>
                               <button
                                 type="button"
-                                onClick={() => setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })}
+                                className="ol-btn ol-btn-sm ol-btn-primary"
+                                onClick={() =>
+                                  setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })
+                                }
                                 disabled={sendingOfferId === offer._id}
-                                style={{
-                                  padding: "5px 10px",
-                                  fontSize: "12px",
-                                  background: "#2563eb",
-                                  borderColor: "#2563eb",
-                                  color: "#ffffff",
-                                  fontWeight: "600",
-                                }}
-                                title="Send official offer letter email with attached PDF to candidate"
+                                title="Send email"
                               >
-                                {sendingOfferId === offer._id ? "Sending..." : "Send Email"}
+                                {sendingOfferId === offer._id ? "…" : "Send"}
                               </button>
                               <button
                                 type="button"
-                                className="btn-secondary"
+                                className="ol-btn ol-btn-icon"
                                 onClick={() => handleOpenEdit(offer)}
-                                style={{ padding: "5px 10px", fontSize: "12px" }}
-                                title="Edit Draft"
+                                title="Edit"
                               >
-                                Edit
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
                               </button>
                               <button
                                 type="button"
-                                className="btn-secondary"
-                                onClick={() => setConfirmModal({ type: "SENT", offer, notes: "" })}
-                                style={{
-                                  padding: "5px 8px",
-                                  fontSize: "12px",
-                                }}
-                                title="Mark as Issued / Sent without emailing"
+                                className="ol-btn ol-btn-icon danger"
+                                onClick={() =>
+                                  setConfirmModal({ type: "DELETE", offer, notes: "" })
+                                }
+                                title="Delete"
                               >
-                                Mark Sent
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmModal({ type: "DELETE", offer, notes: "" })}
-                                style={{
-                                  padding: "5px 8px",
-                                  fontSize: "12px",
-                                  background: "#ffffff",
-                                  borderColor: "#fca5a5",
-                                  color: "#dc2626",
-                                }}
-                                title="Delete Draft"
-                              >
-                                Delete
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
                               </button>
                             </>
                           )}
 
-                          {/* SENT Actions */}
                           {isSent && (
                             <>
                               <button
                                 type="button"
-                                className="btn-secondary"
-                                onClick={() => setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })}
+                                className="ol-btn ol-btn-ghost ol-btn-sm"
+                                onClick={() =>
+                                  setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })
+                                }
                                 disabled={sendingOfferId === offer._id}
-                                style={{ padding: "5px 10px", fontSize: "12px" }}
-                                title="Resend official offer letter email with attached PDF"
+                                title="Resend email"
                               >
-                                {sendingOfferId === offer._id ? "Sending..." : "Resend"}
+                                {sendingOfferId === offer._id ? "…" : "Resend"}
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setConfirmModal({ type: "ACCEPTED", offer, notes: "" })}
-                                style={{
-                                  padding: "5px 10px",
-                                  fontSize: "12px",
-                                  background: "#059669",
-                                  borderColor: "#059669",
-                                  color: "#ffffff",
-                                }}
-                                title="Record Candidate Acceptance"
+                                className="ol-btn ol-btn-sm ol-btn-primary"
+                                onClick={() =>
+                                  setConfirmModal({ type: "ACCEPTED", offer, notes: "" })
+                                }
+                                title="Mark accepted"
                               >
                                 Accept
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setConfirmModal({ type: "REJECTED", offer, notes: "" })}
-                                style={{
-                                  padding: "5px 10px",
-                                  fontSize: "12px",
-                                  background: "#dc2626",
-                                  borderColor: "#dc2626",
-                                  color: "#ffffff",
-                                }}
-                                title="Record Candidate Rejection"
+                                className="ol-btn ol-btn-ghost ol-btn-sm"
+                                onClick={() =>
+                                  setConfirmModal({ type: "REJECTED", offer, notes: "" })
+                                }
+                                title="Mark rejected"
+                                style={{ color: "#b91c1c", borderColor: "#fecaca" }}
                               >
                                 Reject
                               </button>
                             </>
                           )}
 
-                          {/* ACCEPTED Action: Onboard as Employee */}
                           {isAccepted && !isLinked && (
                             <button
                               type="button"
+                              className="ol-btn ol-btn-sm ol-btn-primary"
                               onClick={() => navigate(`/admin?onboardOfferId=${offer._id}`)}
-                              style={{
-                                padding: "5px 10px",
-                                fontSize: "12px",
-                                background: "#09090b",
-                                borderColor: "#09090b",
-                                color: "#ffffff",
-                              }}
-                              title="Onboard candidate using standard HRMS workflow"
+                              title="Onboard candidate"
                             >
                               Onboard
                             </button>
@@ -1186,40 +1038,32 @@ export default function OfferLettersManagement() {
           </div>
         )}
 
-        {/* Pagination footer */}
         {pagination.totalPages > 1 && (
-          <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "12px 20px",
-            borderTop: "1px solid #e4e4e7",
-            background: "#fcfcfc",
-            fontSize: "13px",
-            color: "#71717a",
-          }}>
+          <div className="ol-pager">
             <div>
-              Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.totalOffers)} of {pagination.totalOffers} offers
+              {((currentPage - 1) * pagination.limit) + 1}–
+              {Math.min(currentPage * pagination.limit, pagination.totalOffers)} of{" "}
+              {pagination.totalOffers}
             </div>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div className="ol-pager-controls">
               <button
                 type="button"
-                className="btn-secondary"
+                className="ol-btn ol-btn-ghost ol-btn-sm"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                style={{ padding: "4px 10px", fontSize: "12px" }}
               >
-                Previous
+                Prev
               </button>
-              <span style={{ display: "flex", alignItems: "center", padding: "0 6px", fontWeight: "600", color: "#18181b" }}>
+              <span className="ol-pager-page">
                 {currentPage} / {pagination.totalPages}
               </span>
               <button
                 type="button"
-                className="btn-secondary"
+                className="ol-btn ol-btn-ghost ol-btn-sm"
                 disabled={currentPage >= pagination.totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))}
-                style={{ padding: "4px 10px", fontSize: "12px" }}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))
+                }
               >
                 Next
               </button>
@@ -1912,15 +1756,10 @@ export default function OfferLettersManagement() {
                 <span style={{ fontWeight: "600", fontSize: "15px" }}>
                   Offer Letter Preview: {previewModalOffer.candidate?.fullName}
                 </span>
-                <span style={{
-                  marginLeft: "10px",
-                  fontSize: "11px",
-                  padding: "2px 8px",
-                  borderRadius: "10px",
-                  background: STATUS_CONFIG[previewModalOffer.status]?.bg || "#3f3f46",
-                  color: STATUS_CONFIG[previewModalOffer.status]?.color || "#ffffff",
-                  fontWeight: "bold",
-                }}>
+                <span
+                  className={`ol-pill ${STATUS_CONFIG[previewModalOffer.status]?.pillClass || "ol-pill-draft"}`}
+                  style={{ marginLeft: "10px" }}
+                >
                   {STATUS_CONFIG[previewModalOffer.status]?.label || previewModalOffer.status}
                 </span>
               </div>
@@ -2016,88 +1855,84 @@ export default function OfferLettersManagement() {
           <div style={{
             background: "#ffffff",
             width: "100%",
-            maxWidth: "480px",
+            maxWidth: "420px",
             borderRadius: "14px",
-            padding: "24px",
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
-            border: "1px solid #e4e4e7",
+            padding: "22px 22px 18px",
+            boxShadow: "0 12px 40px rgba(17, 24, 39, 0.12)",
+            border: "1px solid #e5e7eb",
           }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: "16px", fontWeight: "700", color: "#09090b" }}>
-              {confirmModal.type === "SEND_EMAIL" && (confirmModal.offer?.status === "SENT" ? "Resend Offer Letter Email" : "Send Offer Letter Email")}
-              {confirmModal.type === "SENT" && "Confirm Manual Issuance (Mark as Sent)"}
-              {confirmModal.type === "ACCEPTED" && "Record Candidate Acceptance"}
-              {confirmModal.type === "REJECTED" && "Record Candidate Rejection"}
-              {confirmModal.type === "DELETE" && "Delete Offer Letter Draft"}
+            <h3 style={{ margin: "0 0 8px", fontSize: "17px", fontWeight: "700", color: "#111827", letterSpacing: "-0.02em" }}>
+              {confirmModal.type === "SEND_EMAIL" && (confirmModal.offer?.status === "SENT" ? "Resend email" : "Send email")}
+              {confirmModal.type === "SENT" && "Mark as sent"}
+              {confirmModal.type === "ACCEPTED" && "Mark accepted"}
+              {confirmModal.type === "REJECTED" && "Mark rejected"}
+              {confirmModal.type === "DELETE" && "Delete draft"}
             </h3>
 
-            <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#52525b", lineHeight: "1.5" }}>
+            <p style={{ margin: "0 0 18px", fontSize: "13.5px", color: "#6b7280", lineHeight: "1.45" }}>
               {confirmModal.type === "SEND_EMAIL" && (
                 <>
-                  Send official offer letter email with attached PDF to <strong>{confirmModal.offer?.candidate?.fullName}</strong> ({confirmModal.offer?.candidate?.email})?
-                  <br /><br />
-                  The candidate will receive the formal offer details and the generated PDF document directly via email.
+                  Send the offer PDF to{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer?.candidate?.fullName}</strong>
+                  {" "}({confirmModal.offer?.candidate?.email}).
                 </>
               )}
               {confirmModal.type === "SENT" && (
                 <>
-                  Are you sure you want to mark this offer letter for <strong>{confirmModal.offer.candidate?.fullName}</strong> as <strong>SENT</strong>?
-                  <br /><br />
-                  <span style={{ color: "#d97706", fontWeight: "600" }}>Note:</span> Once marked as Sent, the offer letter terms become locked and cannot be edited. You can share the downloaded PDF with the candidate manually.
+                  Mark the offer for{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.candidate?.fullName}</strong>{" "}
+                  as sent. Terms will lock after this.
                 </>
               )}
               {confirmModal.type === "ACCEPTED" && (
                 <>
-                  Record that candidate <strong>{confirmModal.offer.candidate?.fullName}</strong> has accepted the offer of employment as <strong>{confirmModal.offer.position}</strong>.
-                  <br /><br />
-                  This will enable the candidate to be onboarded as an employee through the standard HRMS onboarding workflow.
+                  Confirm{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.candidate?.fullName}</strong>{" "}
+                  accepted <strong style={{ color: "#111827" }}>{confirmModal.offer.position}</strong>.
                 </>
               )}
               {confirmModal.type === "REJECTED" && (
                 <>
-                  Record that candidate <strong>{confirmModal.offer.candidate?.fullName}</strong> has declined or rejected the offer.
+                  Confirm{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.candidate?.fullName}</strong>{" "}
+                  declined this offer.
                 </>
               )}
               {confirmModal.type === "DELETE" && (
                 <>
-                  Are you sure you want to delete the draft offer letter for <strong>{confirmModal.offer.candidate?.fullName}</strong>? This action cannot be undone.
+                  Delete the draft for{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.candidate?.fullName}</strong>?
+                  This can’t be undone.
                 </>
               )}
             </p>
 
             {confirmModal.type !== "DELETE" && confirmModal.type !== "SEND_EMAIL" && (
               <div style={{ marginBottom: "18px" }}>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px", color: "#374151" }}>
-                  Internal HR Notes (Optional):
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#6b7280" }}>
+                  Notes (optional)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="e.g. Shared PDF via manual corporate dispatch; candidate confirmed via signed acceptance copy."
+                  placeholder="Add a short internal note…"
                   value={confirmModal.notes}
                   onChange={(e) => setConfirmModal({ ...confirmModal, notes: e.target.value })}
                   style={{
                     width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: "6px",
-                    border: "1px solid #d4d4d8",
-                    fontSize: "13px",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #e5e7eb",
+                    fontSize: "13.5px",
                     fontFamily: "inherit",
+                    resize: "vertical",
                   }}
                 />
               </div>
             )}
 
             {modalError && (
-              <div style={{
-                marginBottom: "16px",
-                padding: "10px 14px",
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                borderRadius: "8px",
-                color: "#991b1b",
-                fontSize: "13px",
-                lineHeight: "1.5",
-              }}>
-                <strong>Error:</strong> {modalError}
+              <div className="ol-alert ol-alert-error" style={{ marginBottom: "16px" }}>
+                <span>{modalError}</span>
               </div>
             )}
 
@@ -2132,9 +1967,11 @@ export default function OfferLettersManagement() {
                 }}
               >
                 {actionLoading
-                  ? (confirmModal.type === "SEND_EMAIL" ? "Sending Email & PDF..." : "Processing...")
+                  ? (confirmModal.type === "SEND_EMAIL" ? "Sending…" : "Working…")
                   : confirmModal.type === "SEND_EMAIL"
-                  ? "Send Email"
+                  ? "Send"
+                  : confirmModal.type === "DELETE"
+                  ? "Delete"
                   : "Confirm"}
               </button>
             </div>
