@@ -26,7 +26,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.2",
     "nodemailer": "^10.1.7",
-    "puppeteer": "^25.14.0"
+    "puppeteer": "^25.14.0",
+    "resend": "^6.34.1"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.3.0",

@@ -2035,7 +2035,7 @@ export default function OfferLettersManagement() {
                 <>
                   Send official offer letter email with attached PDF to <strong>{confirmModal.offer?.candidate?.fullName}</strong> ({confirmModal.offer?.candidate?.email})?
                   <br /><br />
-                  The candidate will receive the formal offer details and the generated PDF document directly via Gmail SMTP.
+                  The candidate will receive the formal offer details and the generated PDF document directly via email.
                 </>
               )}
               {confirmModal.type === "SENT" && (
