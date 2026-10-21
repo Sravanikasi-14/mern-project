@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://mern-project-rvdl.onrender.com/api/$1"
+      "destination": "https://mern-hrms-api.vercel.app/api/$1"
     },
     {
       "source": "/(.*)",

@@ -72,7 +72,12 @@ const provisionedTenantDbs = new Set();
 export async function getCompanyModels(company) {
   const connection = await getTenantConnection(company.databaseName);
 
-  if (!provisionedTenantDbs.has(company.databaseName)) {
+  // On Vercel cold starts, skip index/provision work — schemas already exist in Atlas.
+  if (
+    process.env.VERCEL !== "1" &&
+    process.env.SKIP_TENANT_PROVISION !== "true" &&
+    !provisionedTenantDbs.has(company.databaseName)
+  ) {
     try {
       const { provisionTenantDatabase } = await import("../services/tenantProvisioningService.js");
       await provisionTenantDatabase(company, connection);
@@ -80,6 +85,8 @@ export async function getCompanyModels(company) {
     } catch (provErr) {
       console.warn(`[db] Tenant provisioning check warning for ${company.databaseName}:`, provErr.message);
     }
+  } else if (process.env.VERCEL === "1") {
+    provisionedTenantDbs.add(company.databaseName);
   }
 
   return {
