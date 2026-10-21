@@ -2,59 +2,68 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { emailService } from "../services/emailService.js";
 
-describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
+describe("EmailService Nodemailer SMTP Integration & Safety Suite", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
     emailService.setSimulateFailure(false);
+    emailService.setTransporter(null);
+    emailService.rateLimiter.reset();
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
     emailService.setSimulateFailure(false);
-    emailService.setClient(null);
+    emailService.setTransporter(null);
+    emailService.rateLimiter.reset();
   });
 
-  it("1. isConfigured() accurately reports presence of Resend API key", () => {
-    delete process.env.RESEND_API_KEY;
+  it("1. isConfigured() accurately reports presence of SMTP credentials", () => {
     delete process.env.SMTP_USER;
     delete process.env.SMTP_APP_PASSWORD;
+    delete process.env.SMTP_PASS;
+    delete process.env.EMAIL_USER;
+    delete process.env.RESEND_API_KEY;
     assert.equal(emailService.isConfigured(), false);
 
-    process.env.RESEND_API_KEY = "invalid_key_without_prefix";
+    process.env.SMTP_USER = "hr@acme.test";
     assert.equal(emailService.isConfigured(), false);
 
-    process.env.RESEND_API_KEY = "re_test_api_key_123456789";
+    process.env.SMTP_APP_PASSWORD = "abcd efgh ijkl mnop";
     assert.equal(emailService.isConfigured(), true);
   });
 
-  it("2. getFromAddress() respects EMAIL_FROM and falls back to onboarding@resend.dev", () => {
+  it("2. getFromAddress() respects EMAIL_FROM and SMTP user fallback", () => {
     delete process.env.EMAIL_FROM;
-    assert.equal(emailService.getFromAddress(), "HRMS Platform <onboarding@resend.dev>");
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_APP_PASSWORD;
+    assert.equal(
+      emailService.getFromAddress(),
+      "HRMS Platform <noreply@localhost>"
+    );
 
     process.env.EMAIL_FROM = "Acme HR <hr@acme.com>";
     assert.equal(emailService.getFromAddress(), "Acme HR <hr@acme.com>");
   });
 
-  it("3. resolveSender() redirects public webmail to onboarding@resend.dev with replyTo preserved", () => {
-    // If user configured a gmail address
+  it("3. resolveSender() uses the configured from address (no Resend rewrite)", () => {
     const gmailSender = emailService.resolveSender("sravanikasi14@gmail.com");
-    assert.equal(gmailSender.from, "HRMS Platform <onboarding@resend.dev>");
-    assert.equal(gmailSender.replyTo, "sravanikasi14@gmail.com");
+    assert.equal(gmailSender.from, "sravanikasi14@gmail.com");
 
-    // If user configured a verified custom domain
     const customSender = emailService.resolveSender("Acme HR <recruiting@acme.corp>");
     assert.equal(customSender.from, "Acme HR <recruiting@acme.corp>");
-    assert.equal(customSender.replyTo, undefined);
   });
 
-  it("4. sanitizeError() completely strips RESEND_API_KEY and re_ tokens from error messages", () => {
+  it("4. sanitizeError() strips SMTP app passwords and Resend tokens", () => {
+    process.env.SMTP_APP_PASSWORD = "my-secret-app-pass-99";
     process.env.RESEND_API_KEY = "re_secret_key_999888777";
-    const rawError = "Resend API call failed with key re_secret_key_999888777 at endpoint";
+    const rawError =
+      "SMTP failed with key my-secret-app-pass-99 and re_secret_key_999888777";
     const sanitized = emailService.sanitizeError(rawError);
 
+    assert.ok(!sanitized.includes("my-secret-app-pass-99"));
     assert.ok(!sanitized.includes("re_secret_key_999888777"));
-    assert.ok(sanitized.includes("re_********"));
+    assert.ok(sanitized.includes("********"));
   });
 
   it("5. Rejects invalid recipient email addresses", async () => {
@@ -81,8 +90,11 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     assert.ok(result.error.includes("simulated delivery failure"));
   });
 
-  it("7. Safely handles unconfigured Resend in test/local environments with simulation fallback", async () => {
-    delete process.env.RESEND_API_KEY;
+  it("7. Safely handles unconfigured SMTP with simulation fallback", async () => {
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_APP_PASSWORD;
+    delete process.env.SMTP_PASS;
+    delete process.env.EMAIL_USER;
 
     const result = await emailService.sendEmployeeInvitation({
       companyName: "Acme Corp",
@@ -99,35 +111,40 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
   });
 
   it("8. verifyConnection() returns clear failure message when credentials are not configured", async () => {
-    delete process.env.RESEND_API_KEY;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_APP_PASSWORD;
+    delete process.env.SMTP_PASS;
+    delete process.env.EMAIL_USER;
+    emailService.setTransporter(null);
 
     const result = await emailService.verifyConnection();
     assert.equal(result.success, false);
-    assert.ok(result.error.includes("Resend API key not configured"));
+    assert.ok(result.error.toLowerCase().includes("smtp"));
   });
 
-  it("9. sendTestEmail() fails cleanly when recipient is missing and EMAIL_FROM is unset", async () => {
-    delete process.env.RESEND_API_KEY;
+  it("9. sendTestEmail() fails cleanly when recipient is missing and SMTP is unset", async () => {
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_APP_PASSWORD;
     delete process.env.EMAIL_FROM;
     delete process.env.TEST_EMAIL_RECIPIENT;
+    emailService.setTransporter(null);
 
     const result = await emailService.sendTestEmail();
     assert.equal(result.success, false);
-    assert.ok(result.error.includes("No test email recipient provided"));
+    assert.ok(result.error.includes("No test email recipient"));
   });
 
-  it("10. sendOfferLetter() attaches PDF with proper filename, contentType, and Buffer content to Resend", async () => {
+  it("10. sendOfferLetter() attaches PDF via Nodemailer transporter", async () => {
     let capturedPayload = null;
-    const mockClient = {
-      emails: {
-        send: async (payload) => {
-          capturedPayload = payload;
-          return { data: { id: "resend_mock_offer_id_123" }, error: null };
-        },
+    const mockTransporter = {
+      sendMail: async (options) => {
+        capturedPayload = options;
+        return { messageId: "smtp_mock_offer_id_123" };
       },
+      verify: async () => true,
     };
 
-    emailService.setClient(mockClient);
+    emailService.setTransporter(mockTransporter);
 
     const dummyPdf = Buffer.from("%PDF-1.4 sample pdf binary data");
     const result = await emailService.sendOfferLetter({
@@ -141,10 +158,10 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     });
 
     assert.equal(result.success, true);
-    assert.equal(result.messageId, "resend_mock_offer_id_123");
-    assert.equal(result.provider, "resend");
+    assert.equal(result.messageId, "smtp_mock_offer_id_123");
+    assert.equal(result.provider, "nodemailer");
     assert.equal(result.providerStatus, "accepted");
-    assert.ok(capturedPayload, "Resend send should have been called");
+    assert.ok(capturedPayload, "sendMail should have been called");
     assert.equal(capturedPayload.to, "priya.sharma@example.test");
     assert.ok(Array.isArray(capturedPayload.attachments), "attachments should be an array");
     assert.equal(capturedPayload.attachments.length, 1);
@@ -156,19 +173,15 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     assert.deepEqual(attachment.content, dummyPdf);
   });
 
-  it("11. sendOfferLetter() fails cleanly without calling Resend when PDF is missing, empty, or invalid", async () => {
+  it("11. sendOfferLetter() fails cleanly without calling SMTP when PDF is missing", async () => {
     let sendCalled = false;
-    const mockClient = {
-      emails: {
-        send: async () => {
-          sendCalled = true;
-          return { data: { id: "should_not_be_called" }, error: null };
-        },
+    emailService.setTransporter({
+      sendMail: async () => {
+        sendCalled = true;
+        return { messageId: "should_not_be_called" };
       },
-    };
-    emailService.setClient(mockClient);
+    });
 
-    // Missing PDF
     const missingRes = await emailService.sendOfferLetter({
       candidateName: "Jane Doe",
       candidateEmail: "jane@example.test",
@@ -178,7 +191,6 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     assert.ok(missingRes.error.includes("missing, empty, or invalid"));
     assert.equal(sendCalled, false);
 
-    // Empty Buffer
     const emptyRes = await emailService.sendOfferLetter({
       candidateName: "Jane Doe",
       candidateEmail: "jane@example.test",
@@ -188,7 +200,6 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     assert.ok(emptyRes.error.includes("missing, empty, or invalid"));
     assert.equal(sendCalled, false);
 
-    // Invalid non-buffer/non-view object
     const invalidRes = await emailService.sendOfferLetter({
       candidateName: "Jane Doe",
       candidateEmail: "jane@example.test",
@@ -201,17 +212,14 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
 
   it("12. sendOfferLetter() normalizes Uint8Array (Puppeteer format) to Buffer attachment", async () => {
     let capturedPayload = null;
-    const mockClient = {
-      emails: {
-        send: async (payload) => {
-          capturedPayload = payload;
-          return { data: { id: "resend_uint8_id" }, error: null };
-        },
+    emailService.setTransporter({
+      sendMail: async (options) => {
+        capturedPayload = options;
+        return { messageId: "smtp_uint8_id" };
       },
-    };
-    emailService.setClient(mockClient);
+    });
 
-    const uint8Pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // %PDF-1.4
+    const uint8Pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
     const result = await emailService.sendOfferLetter({
       candidateName: "Candidate",
       candidateEmail: "candidate@example.test",
@@ -226,22 +234,12 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     assert.equal(capturedPayload.attachments[0].content.length, 8);
   });
 
-  it("13. Handles Resend provider error responses cleanly without throwing unhandled exceptions", async () => {
-    const mockClient = {
-      emails: {
-        send: async () => {
-          return {
-            data: null,
-            error: {
-              name: "validation_error",
-              message: "The domain is not verified",
-              statusCode: 403,
-            },
-          };
-        },
+  it("13. Handles SMTP provider errors cleanly without throwing", async () => {
+    emailService.setTransporter({
+      sendMail: async () => {
+        throw new Error("Invalid login: 535 Authentication failed");
       },
-    };
-    emailService.setClient(mockClient);
+    });
 
     const result = await emailService.sendOfferLetter({
       candidateName: "Jane Doe",
@@ -250,23 +248,22 @@ describe("EmailService Resend HTTP API Integration & Safety Suite", () => {
     });
 
     assert.equal(result.success, false);
-    assert.ok(result.error.includes("The domain is not verified"));
+    assert.ok(result.error.includes("Authentication failed"));
   });
 
-  it("14. Backward compatibility adapter setTransporter() works seamlessly", async () => {
+  it("14. setTransporter() works for direct Nodemailer-style mocks", async () => {
     let captured = null;
-    const mockTransporter = {
+    emailService.setTransporter({
       sendMail: async (options) => {
         captured = options;
         return { messageId: "legacy_msg_id_777" };
       },
-    };
-    emailService.setTransporter(mockTransporter);
+    });
 
     const result = await emailService.sendMail({
       to: "legacy@example.test",
       subject: "Legacy Test",
-      text: "Testing backwards compatibility",
+      text: "Testing transporter",
     });
 
     assert.equal(result.success, true);

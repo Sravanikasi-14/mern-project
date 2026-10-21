@@ -52,6 +52,21 @@ const companySchema = new mongoose.Schema(
       email: { type: String, default: "" },
       phoneNumber: { type: String, default: "" },
     },
+    /**
+     * Outbound mail via Nodemailer (Gmail app password or custom SMTP).
+     * App password is stored encrypted — never returned to the client.
+     */
+    emailSettings: {
+      fromName: { type: String, default: "" },
+      fromEmail: { type: String, default: "" },
+      smtpHost: { type: String, default: "smtp.gmail.com" },
+      smtpPort: { type: Number, default: 587 },
+      smtpSecure: { type: Boolean, default: false },
+      appPasswordEncrypted: { type: String, default: "" },
+      isConfigured: { type: Boolean, default: false },
+      lastVerifiedAt: { type: Date, default: null },
+      updatedAt: { type: Date, default: null },
+    },
     customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
     schemaVersion: { type: Number, default: 1 },
   },
@@ -65,6 +80,9 @@ companySchema.set("toJSON", {
   transform(_doc, ret) {
     delete ret.__v;
     delete ret.databaseName;
+    if (ret.emailSettings) {
+      delete ret.emailSettings.appPasswordEncrypted;
+    }
     return ret;
   },
 });

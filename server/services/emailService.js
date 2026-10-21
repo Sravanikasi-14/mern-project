@@ -1,229 +1,317 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
+import { decryptSecret } from "../utils/secretCrypto.js";
+
+/**
+ * In-process send throttle to avoid Gmail/SMTP burst lockouts.
+ */
+class SendRateLimiter {
+  constructor() {
+    this.timestamps = [];
+  }
+
+  get maxPerMinute() {
+    return parseInt(process.env.EMAIL_RATE_LIMIT_PER_MINUTE, 10) || 20;
+  }
+
+  /**
+   * @returns {{ allowed: boolean, retryAfterMs?: number, error?: string }}
+   */
+  tryAcquire() {
+    const now = Date.now();
+    const windowMs = 60_000;
+    this.timestamps = this.timestamps.filter((t) => now - t < windowMs);
+
+    if (this.timestamps.length >= this.maxPerMinute) {
+      const oldest = this.timestamps[0];
+      const retryAfterMs = Math.max(1000, windowMs - (now - oldest));
+      return {
+        allowed: false,
+        retryAfterMs,
+        error: `Email rate limit exceeded (${this.maxPerMinute}/min). Try again in ${Math.ceil(retryAfterMs / 1000)}s.`,
+      };
+    }
+
+    this.timestamps.push(now);
+    return { allowed: true };
+  }
+
+  reset() {
+    this.timestamps = [];
+  }
+}
 
 /**
  * Service handling email dispatch for HRMS invitations, onboarding notifications,
- * system communications, and offer letter delivery via Resend HTTP API.
+ * system communications, and offer letter delivery via Nodemailer (SMTP / Gmail).
  */
 class EmailService {
   constructor() {
     this.failureSimulation = false;
-    this.resendClient = null;
-    this._customClient = null;
-    this._cachedApiKey = null;
+    this._customTransporter = null;
     this.transporter = null;
+    this._transporterCacheKey = null;
     this.history = [];
+    this.rateLimiter = new SendRateLimiter();
   }
 
-  /**
-   * Returns list of dispatched emails (useful for tests and inspection).
-   */
   getHistory() {
     return [...this.history];
   }
 
-  /**
-   * Clears the dispatched email history.
-   */
   clearHistory() {
     this.history = [];
   }
 
-  /**
-   * Enables or disables simulated delivery failure (useful for testing error handling).
-   * @param {boolean} value
-   */
   setSimulateFailure(value) {
     this.failureSimulation = Boolean(value);
   }
 
   /**
-   * Sanitizes error messages to ensure sensitive credentials are never exposed in logs or return values.
-   * @param {Error|string} err
-   * @returns {string}
+   * Sanitizes error messages so credentials never leak into logs or API responses.
    */
   sanitizeError(err) {
     if (!err) return "Unknown email delivery error";
     let msg = typeof err === "string" ? err : err.message || String(err);
-    const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey && apiKey.length > 0) {
-      msg = msg.replaceAll(apiKey, "re_********");
+
+    const secrets = [
+      process.env.SMTP_APP_PASSWORD,
+      process.env.SMTP_PASS,
+      process.env.RESEND_API_KEY,
+    ].filter(Boolean);
+
+    for (const secret of secrets) {
+      if (secret.length > 0) {
+        msg = msg.replaceAll(secret, "********");
+      }
     }
-    // Mask any re_ API key tokens
+
     msg = msg.replace(/re_[A-Za-z0-9_]{10,}/g, "re_********");
-    const pass = process.env.SMTP_APP_PASSWORD;
-    if (pass && pass.length > 0) {
-      msg = msg.replaceAll(pass, "********");
-    }
+    // Mask typical 16-char Google app passwords (with optional spaces)
+    msg = msg.replace(/\b([a-z]{4}\s?){4}\b/gi, "********");
+
     return msg;
   }
 
   /**
-   * Sets a custom client (useful for testing and message inspection).
-   * Pass null to reset to default environment configuration.
-   * @param {Object|null} client
-   */
-  setClient(client) {
-    this._customClient = client;
-    this.resendClient = client;
-    this._cachedApiKey = client ? "custom" : null;
-  }
-
-  /**
-   * Sets a custom transporter (provided for test adapter backwards compatibility).
-   * Pass null to reset.
-   * @param {Object|null} transporter
+   * Sets a custom transporter (tests / adapters). Pass null to reset.
    */
   setTransporter(transporter) {
-    this.transporter = transporter;
-    if (transporter && typeof transporter.sendMail === "function") {
-      this._customClient = {
-        emails: {
-          send: async (options) => {
-            try {
-              const res = await transporter.sendMail(options);
-              return { data: { id: res.messageId || `msg_${Date.now()}` }, error: null };
-            } catch (err) {
-              return { data: null, error: err };
-            }
-          },
+    this._customTransporter = transporter || null;
+    this.transporter = transporter || null;
+    this._transporterCacheKey = transporter ? "custom" : null;
+  }
+
+  /**
+   * Backward-compatible alias used by older tests (Resend-style client).
+   * Adapts client.emails.send → transporter.sendMail.
+   */
+  setClient(client) {
+    if (!client) {
+      this.setTransporter(null);
+      return;
+    }
+    if (client.emails && typeof client.emails.send === "function") {
+      this.setTransporter({
+        sendMail: async (options) => {
+          const payload = {
+            from: options.from,
+            to: options.to,
+            subject: options.subject,
+            text: options.text,
+            html: options.html,
+            replyTo: options.replyTo,
+            attachments: options.attachments,
+          };
+          const { data, error } = await client.emails.send(payload);
+          if (error) {
+            throw typeof error === "string" ? new Error(error) : new Error(error.message || JSON.stringify(error));
+          }
+          return { messageId: data?.id || `msg_${Date.now()}` };
         },
+        verify: async () => true,
+      });
+      return;
+    }
+    this.setTransporter(client);
+  }
+
+  /**
+   * Resolves SMTP credentials from company settings (preferred) or environment.
+   * @param {object} [company]
+   * @returns {{ user: string, pass: string, from: string, host: string, port: number, secure: boolean } | null}
+   */
+  resolveSmtpConfig(company) {
+    const settings = company?.emailSettings;
+
+    if (settings?.fromEmail && settings?.appPasswordEncrypted) {
+      try {
+        const pass = decryptSecret(settings.appPasswordEncrypted);
+        const user = normalizeEmail(settings.fromEmail);
+        const fromName = (settings.fromName || "").trim();
+        return {
+          user,
+          pass,
+          from: fromName ? `${fromName} <${user}>` : user,
+          host: (settings.smtpHost || "smtp.gmail.com").trim(),
+          port: Number(settings.smtpPort) || 587,
+          secure: Boolean(settings.smtpSecure),
+        };
+      } catch (err) {
+        console.error("[EmailService] Failed to decrypt company SMTP password:", this.sanitizeError(err));
+      }
+    }
+
+    const envUser = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
+    const envPass = (process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASS || "").trim();
+    if (envUser && envPass) {
+      const user = normalizeEmail(envUser);
+      const fromEnv = (process.env.EMAIL_FROM || "").trim();
+      return {
+        user,
+        pass: envPass,
+        from: fromEnv || user,
+        host: (process.env.SMTP_HOST || "smtp.gmail.com").trim(),
+        port: parseInt(process.env.SMTP_PORT, 10) || 587,
+        secure: process.env.SMTP_SECURE === "true",
       };
-      this._cachedApiKey = "custom";
-    } else {
-      this._customClient = null;
-      this._cachedApiKey = null;
     }
+
+    return null;
   }
 
   /**
-   * Returns whether Resend HTTP delivery credentials are fully configured.
-   * @returns {boolean}
+   * Returns whether SMTP delivery credentials are configured.
+   * @param {object} [company]
    */
-  isConfigured() {
-    if (this._customClient) {
-      return true;
-    }
-    const apiKey = (process.env.RESEND_API_KEY || "").trim();
-    return Boolean(apiKey && apiKey.startsWith("re_"));
+  isConfigured(company) {
+    if (this._customTransporter) return true;
+    return Boolean(this.resolveSmtpConfig(company));
   }
 
-  /**
-   * Resolves the configured sender address (EMAIL_FROM with safe fallback to onboarding@resend.dev).
-   * @returns {string}
-   */
-  getFromAddress() {
+  getFromAddress(company) {
+    const config = this.resolveSmtpConfig(company);
+    if (config?.from) return config.from;
     const from = (process.env.EMAIL_FROM || "").trim();
     if (from) return from;
-    return "HRMS Platform <onboarding@resend.dev>";
+    return "HRMS Platform <noreply@localhost>";
   }
 
   /**
-   * Resolves sender and reply-to configuration to comply with Resend domain verification requirements.
-   * If a public webmail domain (e.g. gmail.com) is configured without domain verification,
-   * routes sender through onboarding@resend.dev while preserving reply-to to the administrator's email.
-   * @param {string} [from]
-   * @returns {{from: string, replyTo?: string}}
+   * Sender is always the configured SMTP mailbox (no Resend test-domain rewrite).
    */
-  resolveSender(from) {
-    const rawSender = (from || this.getFromAddress()).trim();
-    const isPublicWebmail = /@(gmail\.com|yahoo\.com|outlook\.com|hotmail\.com)/i.test(rawSender);
-    if (isPublicWebmail) {
-      const emailOnly = rawSender.includes("<")
-        ? rawSender.replace(/^.*?<([^>]+)>.*$/, "$1").trim()
-        : rawSender;
-      return {
-        from: "HRMS Platform <onboarding@resend.dev>",
-        replyTo: emailOnly,
-      };
-    }
-    return {
-      from: rawSender,
-      replyTo: undefined,
-    };
+  resolveSender(from, company) {
+    const rawSender = (from || this.getFromAddress(company)).trim();
+    return { from: rawSender, replyTo: undefined };
+  }
+
+  _cacheKeyForConfig(config) {
+    if (!config) return null;
+    return `${config.host}|${config.port}|${config.secure}|${config.user}|${config.pass.length}`;
   }
 
   /**
-   * Returns an initialized Resend client.
-   * Reuses client instance unless API key changes.
-   * @returns {Resend|Object|null}
+   * Returns a Nodemailer transporter for the given company/env config.
    */
-  getClient() {
-    if (this._customClient) {
-      return this._customClient;
+  getTransporter(company) {
+    if (this._customTransporter) {
+      return this._customTransporter;
     }
-    if (!this.isConfigured()) {
-      return null;
+
+    const config = this.resolveSmtpConfig(company);
+    if (!config) return null;
+
+    const cacheKey = this._cacheKeyForConfig(config);
+    if (this.transporter && this._transporterCacheKey === cacheKey) {
+      return this.transporter;
     }
-    const apiKey = process.env.RESEND_API_KEY.trim();
-    if (this.resendClient && this._cachedApiKey === apiKey) {
-      return this.resendClient;
-    }
-    this.resendClient = new Resend(apiKey);
-    this._cachedApiKey = apiKey;
-    return this.resendClient;
+
+    this.transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: config.pass,
+      },
+      connectionTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000,
+      greetingTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000,
+      socketTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 20000,
+    });
+    this._transporterCacheKey = cacheKey;
+    return this.transporter;
   }
 
   /**
-   * Verifies the Resend HTTP API connection and authentication status.
-   * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+   * Verifies SMTP credentials (AUTH) against the mail server.
+   * @param {object} [company]
+   * @param {{ user: string, pass: string, host?: string, port?: number, secure?: boolean }} [overrideConfig]
    */
-  async verifyConnection() {
-    if (!this.isConfigured()) {
-      return {
-        success: false,
-        error: "Resend API key not configured. Please set RESEND_API_KEY in environment.",
-      };
-    }
-
+  async verifyConnection(company, overrideConfig) {
     try {
-      const client = this.getClient();
-      if (!client) {
+      let transporter;
+      if (overrideConfig?.user && overrideConfig?.pass) {
+        transporter = nodemailer.createTransport({
+          host: overrideConfig.host || "smtp.gmail.com",
+          port: Number(overrideConfig.port) || 587,
+          secure: Boolean(overrideConfig.secure),
+          auth: {
+            user: normalizeEmail(overrideConfig.user),
+            pass: overrideConfig.pass,
+          },
+          connectionTimeout: 15000,
+          greetingTimeout: 15000,
+        });
+      } else if (this._customTransporter) {
+        transporter = this._customTransporter;
+      } else if (!this.isConfigured(company)) {
         return {
           success: false,
-          error: "Failed to initialize Resend client.",
+          error:
+            "SMTP is not configured. Set your Gmail address and app password under Settings → Email.",
         };
+      } else {
+        transporter = this.getTransporter(company);
       }
 
-      if (client.apiKeys && typeof client.apiKeys.list === "function") {
-        const timeoutMs = parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 10000;
-        const { data, error } = await client.apiKeys.list({ signal: AbortSignal.timeout(timeoutMs) });
-        if (error) {
-          const safeError = this.sanitizeError(error.message || JSON.stringify(error));
-          return {
-            success: false,
-            error: `Resend authentication failed: ${safeError}`,
-          };
-        }
+      if (!transporter) {
+        return { success: false, error: "Failed to initialize SMTP transporter." };
+      }
+
+      if (typeof transporter.verify === "function") {
+        await transporter.verify();
       }
 
       return {
         success: true,
-        message: "Resend HTTP API connection established and authenticated successfully.",
+        message: "SMTP connection verified successfully. You can send emails to any recipient.",
+        provider: "nodemailer",
       };
     } catch (err) {
       const safeError = this.sanitizeError(err);
       return {
         success: false,
-        error: `Resend connection verification failed: ${safeError}`,
+        error: `SMTP verification failed: ${safeError}`,
+        provider: "nodemailer",
       };
     }
   }
 
   /**
-   * Core method to send an email via Resend HTTP API or fallback when unconfigured.
-   *
-   * @param {Object} options
-   * @param {string} options.to
-   * @param {string} options.subject
-   * @param {string} [options.text]
-   * @param {string} [options.html]
-   * @param {string} [options.from]
-   * @param {string} [options.replyTo]
-   * @param {Array} [options.attachments]
-   * @returns {Promise<{success: boolean, messageId?: string, error?: string, simulated?: boolean, recipient?: string, sentAt?: Date, provider?: string, providerStatus?: string}>}
+   * Core method to send an email via Nodemailer SMTP.
    */
-  async sendMail({ to, subject, text, html, from, replyTo, attachments, ...extra }) {
+  async sendMail({
+    to,
+    subject,
+    text,
+    html,
+    from,
+    replyTo,
+    attachments,
+    company,
+    skipRateLimit = false,
+    ...extra
+  }) {
     const normalizedRecipient = normalizeEmail(to);
     if (!isValidEmail(normalizedRecipient)) {
       return {
@@ -239,85 +327,93 @@ class EmailService {
       };
     }
 
-    const { from: resolvedFrom, replyTo: fallbackReplyTo } = this.resolveSender(from);
+    if (!skipRateLimit && process.env.NODE_ENV !== "test") {
+      const gate = this.rateLimiter.tryAcquire();
+      if (!gate.allowed) {
+        return {
+          success: false,
+          error: gate.error,
+          provider: "nodemailer",
+          rateLimited: true,
+          retryAfterMs: gate.retryAfterMs,
+        };
+      }
+    }
+
+    const { from: resolvedFrom, replyTo: fallbackReplyTo } = this.resolveSender(from, company);
     const finalReplyTo = replyTo || fallbackReplyTo;
 
-    // If Resend is not configured, preserve fallback tracking behavior (safe for test/local environments)
-    if (!this.isConfigured()) {
-      const messageId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      if (process.env.NODE_ENV !== "test") {
-        console.log(`[EmailService] Resend not configured. Simulated dispatch to ${normalizedRecipient} with subject "${subject}"`);
+    if (!this.isConfigured(company)) {
+      // Only simulate success in automated tests — never mark real sends as delivered.
+      if (process.env.NODE_ENV === "test") {
+        const messageId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const record = {
+          success: true,
+          messageId,
+          recipient: normalizedRecipient,
+          to: normalizedRecipient,
+          subject,
+          text,
+          html,
+          attachments,
+          sentAt: new Date(),
+          simulated: true,
+          provider: "simulated",
+          ...extra,
+        };
+        this.history.push(record);
+        return {
+          success: true,
+          messageId,
+          recipient: normalizedRecipient,
+          sentAt: record.sentAt,
+          simulated: true,
+          provider: "simulated",
+        };
       }
-      const record = {
-        success: true,
-        messageId,
-        recipient: normalizedRecipient,
-        to: normalizedRecipient,
-        subject,
-        text,
-        html,
-        attachments,
-        sentAt: new Date(),
-        simulated: true,
-        provider: "simulated",
-        ...extra,
-      };
-      this.history.push(record);
+
       return {
-        success: true,
-        messageId,
-        recipient: normalizedRecipient,
-        sentAt: record.sentAt,
-        simulated: true,
-        provider: "simulated",
+        success: false,
+        error:
+          "Email is not configured. Open Settings → Email and save your Gmail address + app password, then try again.",
+        provider: "nodemailer",
       };
     }
 
     try {
-      const client = this.getClient();
-      if (!client || !client.emails || typeof client.emails.send !== "function") {
+      const transporter = this.getTransporter(company);
+      if (!transporter || typeof transporter.sendMail !== "function") {
         return {
           success: false,
-          error: "Resend client is not properly initialized",
+          error: "SMTP transporter is not properly initialized",
+          provider: "nodemailer",
         };
       }
 
-      const resendPayload = {
+      const mailOptions = {
         from: resolvedFrom,
         to: normalizedRecipient,
         subject,
         ...(html ? { html } : {}),
         ...(text ? { text } : {}),
-        ...(finalReplyTo ? { reply_to: finalReplyTo } : {}),
+        ...(finalReplyTo ? { replyTo: finalReplyTo } : {}),
       };
 
       if (Array.isArray(attachments) && attachments.length > 0) {
-        resendPayload.attachments = attachments.map((att) => ({
+        mailOptions.attachments = attachments.map((att) => ({
           filename: att.filename,
           content: att.content,
           contentType: att.contentType || "application/pdf",
         }));
       }
 
-      const timeoutMs = parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000;
-      const { data, error } = await client.emails.send(
-        resendPayload,
-        { signal: AbortSignal.timeout(timeoutMs) }
-      );
+      const info = await transporter.sendMail(mailOptions);
+      const messageId = info?.messageId || `smtp_${Date.now()}`;
 
-      if (error) {
-        const safeError = this.sanitizeError(error.message || (typeof error === "string" ? error : JSON.stringify(error)));
-        console.error(`[EmailService] Resend HTTP API error delivering to ${normalizedRecipient}:`, safeError);
-        return {
-          success: false,
-          error: safeError,
-          provider: "resend",
-        };
-      }
-
-      const messageId = data?.id || `resend_${Date.now()}`;
       if (process.env.NODE_ENV !== "test") {
-        console.log(`[EmailService] Email accepted by Resend HTTP API for ${normalizedRecipient}. Message ID: ${messageId}`);
+        console.log(
+          `[EmailService] Email accepted by SMTP for ${normalizedRecipient}. Message ID: ${messageId}`
+        );
       }
 
       const record = {
@@ -330,7 +426,7 @@ class EmailService {
         html,
         attachments,
         sentAt: new Date(),
-        provider: "resend",
+        provider: "nodemailer",
         providerStatus: "accepted",
         ...extra,
       };
@@ -341,37 +437,27 @@ class EmailService {
         messageId,
         recipient: normalizedRecipient,
         sentAt: record.sentAt,
-        provider: "resend",
+        provider: "nodemailer",
         providerStatus: "accepted",
       };
     } catch (err) {
       const safeError = this.sanitizeError(err);
-      console.error(`[EmailService] Error delivering email via Resend to ${normalizedRecipient}:`, safeError);
+      console.error(
+        `[EmailService] Error delivering email via SMTP to ${normalizedRecipient}:`,
+        safeError
+      );
       return {
         success: false,
         error: safeError,
-        provider: "resend",
+        provider: "nodemailer",
       };
     }
   }
 
-  /**
-   * Dispatches an employee onboarding invitation email.
-   *
-   * @param {Object} options
-   * @param {string} options.companyName
-   * @param {string} options.employeeName
-   * @param {string} options.email
-   * @param {string} options.inviteLink
-   * @returns {Promise<{success: boolean, messageId?: string, error?: string, recipient?: string, sentAt?: Date}>}
-   */
-  async sendEmployeeInvitation({ companyName, employeeName, email, inviteLink }) {
+  async sendEmployeeInvitation({ companyName, employeeName, email, inviteLink, company }) {
     const normalized = normalizeEmail(email);
     if (!isValidEmail(normalized)) {
-      return {
-        success: false,
-        error: "Invalid recipient email address",
-      };
+      return { success: false, error: "Invalid recipient email address" };
     }
 
     if (this.failureSimulation || process.env.SIMULATE_EMAIL_FAILURE === "true") {
@@ -428,22 +514,10 @@ class EmailService {
       subject,
       text,
       html,
+      company,
     });
   }
 
-  /**
-   * Dispatches an offer letter email with attached PDF document.
-   *
-   * @param {Object} options
-   * @param {string} options.companyName
-   * @param {string} options.candidateName
-   * @param {string} options.candidateEmail
-   * @param {string} options.position
-   * @param {Buffer} [options.pdfBuffer]
-   * @param {Date|string} [options.joiningDate]
-   * @param {number} [options.monthlySalary]
-   * @returns {Promise<{success: boolean, messageId?: string, error?: string, recipient?: string, sentAt?: Date}>}
-   */
   async sendOfferLetter({
     companyName,
     candidateName,
@@ -453,13 +527,11 @@ class EmailService {
     joiningDate,
     monthlySalary,
     reviewLink,
+    company,
   }) {
     const normalized = normalizeEmail(candidateEmail);
     if (!isValidEmail(normalized)) {
-      return {
-        success: false,
-        error: "Invalid recipient email address",
-      };
+      return { success: false, error: "Invalid recipient email address" };
     }
 
     if (this.failureSimulation || process.env.SIMULATE_EMAIL_FAILURE === "true") {
@@ -573,7 +645,6 @@ class EmailService {
       </div>
     `.trim();
 
-    // Ensure PDF buffer is present, non-empty, and a valid Node.js Buffer
     if (pdfBuffer && !Buffer.isBuffer(pdfBuffer)) {
       if (pdfBuffer instanceof Uint8Array || ArrayBuffer.isView(pdfBuffer)) {
         pdfBuffer = Buffer.from(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
@@ -594,7 +665,9 @@ class EmailService {
     }
 
     const safeCandidate = cName.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
-    const filename = safeCandidate ? `Offer_Letter_${safeCandidate}.pdf` : "Offer_Letter_Candidate.pdf";
+    const filename = safeCandidate
+      ? `Offer_Letter_${safeCandidate}.pdf`
+      : "Offer_Letter_Candidate.pdf";
 
     const attachments = [
       {
@@ -612,12 +685,10 @@ class EmailService {
       attachments,
       type: "offer_letter",
       reviewLink,
+      company,
     });
   }
 
-  /**
-   * Sends candidate onboarding invitation email with secure onboarding portal link.
-   */
   async sendCandidateOnboardingInvite({
     companyName,
     candidateName,
@@ -625,6 +696,7 @@ class EmailService {
     onboardingLink,
     joiningDate,
     position,
+    company,
   }) {
     const normalized = normalizeEmail(candidateEmail);
     if (!isValidEmail(normalized)) {
@@ -683,18 +755,17 @@ class EmailService {
       html,
       type: "candidate_onboarding_invite",
       onboardingLink,
+      company,
     });
   }
 
-  /**
-   * Sends email notification when HR requests corrections on submitted onboarding information.
-   */
   async sendOnboardingCorrectionRequest({
     companyName,
     candidateName,
     candidateEmail,
     correctionReason,
     updateLink,
+    company,
   }) {
     const normalized = normalizeEmail(candidateEmail);
     if (!isValidEmail(normalized)) {
@@ -758,17 +829,16 @@ class EmailService {
       type: "onboarding_correction_request",
       correctionReason,
       updateLink,
+      company,
     });
   }
 
-  /**
-   * Sends candidate onboarding rejection notification email.
-   */
   async sendOnboardingRejectionEmail({
     companyName,
     candidateName,
     candidateEmail,
     rejectionReason,
+    company,
   }) {
     const normalized = normalizeEmail(candidateEmail);
     if (!isValidEmail(normalized)) {
@@ -790,7 +860,9 @@ class EmailService {
       ``,
       `Best regards,`,
       `${org} People Team`,
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; color: #09090b; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 10px;">
@@ -824,18 +896,17 @@ class EmailService {
       html,
       type: "onboarding_rejection",
       rejectionReason,
+      company,
     });
   }
 
-  /**
-   * Sends employee account activation email after HR approves onboarding and creates the employee.
-   */
   async sendEmployeeActivationEmail({
     companyName,
     employeeName,
     email,
     activationLink,
     employeeCode,
+    company,
   }) {
     const normalized = normalizeEmail(email);
     if (!isValidEmail(normalized)) {
@@ -907,41 +978,46 @@ class EmailService {
       type: "employee_activation",
       activationLink,
       employeeCode,
+      company,
     });
   }
 
   /**
-   * Sends a test email to verify Resend HTTP API delivery.
-   *
-   * @param {string} [recipient] Defaults to EMAIL_FROM or TEST_EMAIL_RECIPIENT
-   * @returns {Promise<{success: boolean, messageId?: string, error?: string, recipient?: string, sentAt?: Date}>}
+   * Sends a test email to verify SMTP delivery.
    */
-  async sendTestEmail(recipient) {
-    const target = recipient || process.env.TEST_EMAIL_RECIPIENT || process.env.EMAIL_FROM;
+  async sendTestEmail(recipient, company) {
+    const config = this.resolveSmtpConfig(company);
+    const target =
+      recipient ||
+      process.env.TEST_EMAIL_RECIPIENT ||
+      config?.user ||
+      process.env.EMAIL_FROM;
+
     if (!target) {
       return {
         success: false,
-        error: "No test email recipient provided and EMAIL_FROM is not set in environment.",
+        error:
+          "No test email recipient provided and SMTP from-address is not set.",
       };
     }
 
     const timestamp = new Date().toISOString();
-    const subject = `HRMS Resend HTTP API Test — ${new Date().toLocaleTimeString()}`;
-    const text = `This is a verification email from HRMS.\n\nResend HTTP API delivery is functioning properly.\nTimestamp: ${timestamp}`;
+    const subject = `HRMS SMTP Test — ${new Date().toLocaleTimeString()}`;
+    const text = `This is a verification email from HRMS.\n\nNodemailer SMTP delivery is functioning properly.\nTimestamp: ${timestamp}`;
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; color: #09090b; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 8px;">
         <h3 style="margin-top: 0; color: #2563eb;">HRMS Email Verification</h3>
         <p style="font-size: 14px; line-height: 1.5; color: #3f3f46;">
-          Your email integration with <strong>Resend HTTP API</strong> is <strong>working successfully</strong>.
+          Your email integration with <strong>Nodemailer (SMTP)</strong> is <strong>working successfully</strong>.
         </p>
         <div style="background-color: #f4f4f5; border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 12px; color: #27272a; margin: 16px 0;">
-          <div><strong>Sender:</strong> ${this.getFromAddress()}</div>
+          <div><strong>Sender:</strong> ${this.getFromAddress(company)}</div>
           <div><strong>Recipient:</strong> ${target}</div>
           <div><strong>Timestamp:</strong> ${timestamp}</div>
-          <div><strong>Provider:</strong> Resend HTTP API</div>
+          <div><strong>Provider:</strong> Nodemailer SMTP</div>
         </div>
         <p style="font-size: 12px; color: #71717a; margin-bottom: 0;">
-          This email was triggered by the HRMS email verification utility.
+          This email was triggered from HRMS Settings.
         </p>
       </div>
     `.trim();
@@ -951,6 +1027,7 @@ class EmailService {
       subject,
       text,
       html,
+      company,
     });
   }
 }

@@ -1192,6 +1192,7 @@ export async function createEmployee(req, res, next) {
       employeeName: employee.fullName,
       email: normalizedEmail,
       inviteLink,
+      company: req.auth.company,
     });
 
     employee.invitation = {
@@ -1548,6 +1549,7 @@ export async function resendInvitation(req, res, next) {
       employeeName: employee.fullName,
       email: employee.email,
       inviteLink,
+      company: req.auth.company,
     });
 
     employee.invitation = {

@@ -301,6 +301,7 @@ export async function requestOnboardingCorrections(req, res, next) {
         candidateEmail,
         correctionReason: cleanReason,
         updateLink,
+        company: req.auth.company,
       });
     } catch (eErr) {
       console.error("[onboardingReviewController] Email dispatch warning:", eErr.message);
@@ -401,6 +402,7 @@ export async function rejectOnboardingSubmission(req, res, next) {
           candidateName: candidateUser.onboarding.candidate?.fullName || "Candidate",
           candidateEmail,
           rejectionReason: cleanReason,
+          company: req.auth.company,
         });
       }
     } catch (eErr) {
@@ -815,6 +817,7 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
         email: candidateEmail,
         activationLink,
         employeeCode,
+        company: req.auth.company,
       });
       activationEmailSent = Boolean(emailResult.success);
       if (!emailResult.success) {
@@ -943,6 +946,7 @@ export async function resendEmployeeActivationEmail(req, res, next) {
       email: employee.email,
       activationLink,
       employeeCode: employee.employeeCode,
+      company: req.auth.company,
     });
 
     if (AuditLog) {

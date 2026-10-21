@@ -12,24 +12,24 @@ dotenv.config();
 
 async function run() {
   console.log("========================================================");
-  console.log("   HRMS Offer Letter PDF Attachment Resend Verification   ");
+  console.log("   HRMS Offer Letter PDF Attachment SMTP Verification   ");
   console.log("========================================================");
 
-  const targetRecipient = process.argv[2] || process.env.TEST_EMAIL_RECIPIENT || process.env.EMAIL_FROM || "sravanikasi14@gmail.com";
+  const targetRecipient = process.argv[2] || process.env.TEST_EMAIL_RECIPIENT || process.env.SMTP_USER || process.env.EMAIL_FROM || "sravanikasi14@gmail.com";
 
   if (!emailService.isConfigured()) {
-    console.error("[Error] Resend credentials not configured in server/.env");
+    console.error("[Error] SMTP credentials not configured in server/.env or Settings UI");
     process.exit(1);
   }
 
-  console.log(`[1] API Key Configured : Yes`);
+  console.log(`[1] SMTP Configured    : Yes`);
   console.log(`[2] Sender Address     : ${emailService.getFromAddress()}`);
   console.log(`[3] Target Candidate   : ${targetRecipient}\n`);
 
-  console.log("Step 1: Verifying Resend HTTP API connection...");
+  console.log("Step 1: Verifying SMTP connection...");
   const connResult = await emailService.verifyConnection();
   if (!connResult.success) {
-    console.error(`[Failed] Resend connection error: ${connResult.error}`);
+    console.error(`[Failed] SMTP connection error: ${connResult.error}`);
     process.exit(1);
   }
   console.log(`[Success] ${connResult.message}\n`);
@@ -89,7 +89,7 @@ async function run() {
   }
 
   console.log("\n========================================================");
-  console.log("[Success] Offer Letter email accepted by Resend HTTP API!");
+  console.log("[Success] Offer Letter email accepted by SMTP!");
   console.log(`   Message ID   : ${sendResult.messageId}`);
   console.log(`   Recipient    : ${sendResult.recipient}`);
   console.log(`   Sent At      : ${sendResult.sentAt?.toISOString()}`);

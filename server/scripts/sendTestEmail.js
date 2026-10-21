@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { emailService } from "../services/emailService.js";
 
-// Load environment variables via existing server pattern
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -11,32 +10,37 @@ dotenv.config();
 
 async function run() {
   console.log("=================================================");
-  console.log("    HRMS Resend HTTP API Verification Utility    ");
+  console.log("    HRMS Nodemailer SMTP Verification Utility    ");
   console.log("=================================================");
 
-  const targetRecipient = process.argv[2] || process.env.TEST_EMAIL_RECIPIENT || process.env.EMAIL_FROM || "sravanikasi14@gmail.com";
+  const targetRecipient =
+    process.argv[2] ||
+    process.env.TEST_EMAIL_RECIPIENT ||
+    process.env.SMTP_USER ||
+    process.env.EMAIL_FROM;
 
-  console.log("Checking Resend configuration...");
+  console.log("Checking SMTP configuration...");
   if (!emailService.isConfigured()) {
-    console.error("\n[Error] Resend credentials are not configured in your environment.");
-    console.error("Please add the following variables to server/.env:");
-    console.error("  RESEND_API_KEY=re_your_api_key");
-    console.error("  EMAIL_FROM=sravanikasi14@gmail.com (or your domain)\n");
+    console.error("\n[Error] SMTP credentials are not configured.");
+    console.error("Either configure email in the HRMS Settings UI, or add to server/.env:");
+    console.error("  SMTP_USER=your.email@gmail.com");
+    console.error("  SMTP_APP_PASSWORD=your_16_char_google_app_password");
+    console.error("  EMAIL_FROM=Your Name <your.email@gmail.com>\n");
     process.exit(1);
   }
 
-  console.log(`[Config] RESEND_API_KEY: Configured`);
   console.log(`[Config] Sender address: ${emailService.getFromAddress()}`);
   console.log(`[Config] Target recipient: ${targetRecipient}\n`);
 
-  console.log("Step 1: Verifying Resend HTTP API credentials...");
+  console.log("Step 1: Verifying SMTP credentials...");
   const verifyResult = await emailService.verifyConnection();
 
   if (!verifyResult.success) {
     console.error(`\n[Failed] ${verifyResult.error}\n`);
     console.error("Troubleshooting tips:");
-    console.error("1. Confirm your RESEND_API_KEY begins with 're_'.");
-    console.error("2. Verify that your API key has 'Sending access' enabled in https://resend.com/api-keys.");
+    console.error("1. Use a Gmail App Password (not your normal login password).");
+    console.error("2. Enable 2-Step Verification, then create an app password at:");
+    console.error("   https://myaccount.google.com/apppasswords");
     process.exit(1);
   }
 
@@ -51,11 +55,11 @@ async function run() {
   }
 
   console.log("\n=================================================");
-  console.log("[Success] Test email accepted by Resend HTTP API!");
+  console.log("[Success] Test email accepted by SMTP!");
   console.log(`   Message ID : ${sendResult.messageId}`);
   console.log(`   Recipient  : ${sendResult.recipient}`);
   console.log(`   Sent At    : ${sendResult.sentAt.toISOString()}`);
-  console.log(`   Provider   : ${sendResult.provider || "resend"}`);
+  console.log(`   Provider   : ${sendResult.provider || "nodemailer"}`);
   console.log("=================================================\n");
   process.exit(0);
 }

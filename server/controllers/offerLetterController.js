@@ -860,6 +860,7 @@ export async function sendOfferLetterEmail(req, res, next) {
       joiningDate: offerLetter.joiningDate,
       monthlySalary: offerLetter.monthlySalary,
       reviewLink,
+      company: req.auth.company,
     });
 
     // Initialize delivery record if missing

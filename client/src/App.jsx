@@ -15,6 +15,7 @@ import AdminPayroll from "./pages/AdminPayroll";
 import CandidateOfferReview from "./pages/CandidateOfferReview";
 import CandidateOnboardingPage from "./pages/CandidateOnboardingPage";
 import AdminOnboardingReview from "./pages/AdminOnboardingReview";
+import AdminSettings from "./pages/AdminSettings";
 import AccountActivation from "./pages/AccountActivation";
 import "./index.css";
 
@@ -118,6 +119,16 @@ function App() {
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
                   <AdminPayroll />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminSettings />
                 </AppLayout>
               </ProtectedRoute>
             }

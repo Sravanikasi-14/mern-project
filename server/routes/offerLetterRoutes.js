@@ -16,6 +16,7 @@ import {
 } from "../controllers/offerLetterController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
+import { emailSendLimiter } from "../middleware/emailLimiter.js";
 import { USER_ROLES } from "../models/User.js";
 
 const router = express.Router();
@@ -36,7 +37,7 @@ router.get("/:id", getOfferLetterById);
 router.put("/:id", updateOfferLetter);
 router.delete("/:id", deleteOfferLetter);
 
-router.post("/:id/send", sendOfferLetterEmail);
+router.post("/:id/send", emailSendLimiter, sendOfferLetterEmail);
 router.patch("/:id/status", updateOfferStatus);
 router.post("/:id/status", updateOfferStatus);
 router.get("/:id/pdf", downloadOfferLetterPdf);

@@ -12,6 +12,7 @@ import settlementRoutes from "./routes/settlementRoutes.js";
 import candidateOfferRoutes from "./routes/candidateOfferRoutes.js";
 import candidateOnboardingRoutes from "./routes/candidateOnboardingRoutes.js";
 import onboardingReviewRoutes from "./routes/onboardingReviewRoutes.js";
+import settingsRoutes from "./routes/settingsRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,6 +108,7 @@ export function createApp() {
   app.use("/api/offers", candidateOfferRoutes);
   app.use("/api/candidate/onboarding", candidateOnboardingRoutes);
   app.use("/api/onboarding", onboardingReviewRoutes);
+  app.use("/api/settings", settingsRoutes);
 
   // Serve static assets from production client build (Single-Service Architecture)
   const distPath = path.resolve(__dirname, "../client/dist");

@@ -332,6 +332,7 @@ export async function acceptAndSignOffer(req, res, next) {
         onboardingLink,
         joiningDate: offerLetter.joiningDate,
         position: offerLetter.position,
+        company,
       });
     } catch (eErr) {
       console.error("[candidateOfferController] Warning sending onboarding invitation:", eErr.message);
