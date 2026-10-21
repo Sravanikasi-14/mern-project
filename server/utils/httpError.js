@@ -28,6 +28,9 @@ export class HttpError extends Error {
     if (details.errors) {
       this.errors = details.errors;
     }
+    if (details.missingFields) {
+      this.missingFields = details.missingFields;
+    }
     if (details.field) {
       this.field = details.field;
     }

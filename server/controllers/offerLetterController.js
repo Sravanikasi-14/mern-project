@@ -1,12 +1,17 @@
+import crypto from "node:crypto";
+import mongoose from "mongoose";
 import { HttpError } from "../utils/httpError.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
+import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import {
   DEFAULT_OFFER_CLAUSES,
   renderOfferLetterHtml,
 } from "../services/offerTemplateService.js";
 import { generateOfferLetterPdf } from "../services/pdfService.js";
+import { emailService } from "../services/emailService.js";
+import { signOfferSigningToken } from "../utils/onboardingToken.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -53,29 +58,102 @@ export async function getDefaultClauses(req, res, next) {
 }
 
 /**
+ * Get active employees as potential offer recipients with relevant populated fields
+ */
+export async function getOfferRecipients(req, res, next) {
+  try {
+    const { Employee, EmployeeCompensation } = req.auth.models;
+
+    const employees = await Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE })
+      .select("fullName email employeeCode job status")
+      .populate("job.reportingManagerId", "fullName employeeCode")
+      .sort({ fullName: 1 })
+      .lean();
+
+    const employeeIds = employees.map((emp) => emp._id);
+    let compensations = [];
+    if (EmployeeCompensation && employeeIds.length > 0) {
+      compensations = await EmployeeCompensation.find({
+        employeeId: { $in: employeeIds },
+      })
+        .select("employeeId revisions")
+        .lean();
+    }
+
+    const compensationMap = new Map();
+    const now = new Date();
+    for (const comp of compensations) {
+      const validRevisions = (comp.revisions || [])
+        .filter((rev) => new Date(rev.effectiveFromDate) <= now)
+        .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
+
+      if (validRevisions.length > 0 && validRevisions[0].monthlyCostToCompany != null) {
+        compensationMap.set(
+          String(comp.employeeId),
+          parseFloat(validRevisions[0].monthlyCostToCompany.toString())
+        );
+      }
+    }
+
+    const recipients = employees.map((emp) => ({
+      _id: emp._id,
+      fullName: emp.fullName,
+      email: emp.email,
+      employeeCode: emp.employeeCode,
+      position: emp.job?.jobTitle || "",
+      department: emp.job?.department || "",
+      workLocation: emp.job?.workLocation || "",
+      employmentType: emp.job?.employmentType || "Full-time Permanent",
+      joiningDate: emp.job?.joiningDate || null,
+      reportingManager: emp.job?.reportingManagerId?.fullName || "",
+      monthlySalary: compensationMap.get(String(emp._id)) ?? null,
+      status: emp.status,
+    }));
+
+    res.json({
+      success: true,
+      recipients,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * Get summary counters for Offer Letters management page
  */
 export async function getOfferSummary(req, res, next) {
   try {
     const { OfferLetter } = req.auth.models;
 
-    const [total, draft, sent, accepted, rejected] = await Promise.all([
-      OfferLetter.countDocuments({}),
-      OfferLetter.countDocuments({ status: OFFER_LETTER_STATUSES.DRAFT }),
-      OfferLetter.countDocuments({ status: OFFER_LETTER_STATUSES.SENT }),
-      OfferLetter.countDocuments({ status: OFFER_LETTER_STATUSES.ACCEPTED }),
-      OfferLetter.countDocuments({ status: OFFER_LETTER_STATUSES.REJECTED }),
+    const counts = await OfferLetter.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
     ]);
+
+    const summary = {
+      total: 0,
+      draft: 0,
+      sent: 0,
+      accepted: 0,
+      rejected: 0,
+    };
+
+    for (const item of counts) {
+      summary.total += item.count;
+      if (item._id === OFFER_LETTER_STATUSES.DRAFT) summary.draft = item.count;
+      else if (item._id === OFFER_LETTER_STATUSES.SENT) summary.sent = item.count;
+      else if (item._id === OFFER_LETTER_STATUSES.ACCEPTED) summary.accepted = item.count;
+      else if (item._id === OFFER_LETTER_STATUSES.REJECTED) summary.rejected = item.count;
+    }
 
     res.json({
       success: true,
-      summary: {
-        total,
-        draft,
-        sent,
-        accepted,
-        rejected,
-      },
+      summary,
     });
   } catch (error) {
     next(error);
@@ -132,6 +210,8 @@ export async function getOfferLetters(req, res, next) {
       annualSalary: offer.annualSalary || offer.monthlySalary * 12,
       joiningDate: offer.joiningDate,
       status: offer.status,
+      emailedAt: offer.emailedAt || null,
+      emailDelivery: offer.emailDelivery || null,
       issuedAt: offer.issuedAt || null,
       decisionAt: offer.decisionAt || null,
       employeeId: offer.employeeId?._id || offer.employeeId || null,
@@ -208,6 +288,20 @@ export async function previewOfferLetter(req, res, next) {
     const numSalary = parseFloat(monthlySalary) || 0;
     const annualSalary = numSalary * 12;
 
+    const validatedClauses = Array.isArray(clauses) && clauses.length > 0
+      ? clauses.map((c, i) => ({
+          id: c.id || c.clauseId || `clause_${i + 1}`,
+          clauseId: c.clauseId || c.id || `clause_${i + 1}`,
+          title: String(c.title || "").trim(),
+          body: String(c.body || "").trim(),
+          isIncluded: c.isIncluded !== false && c.enabled !== false,
+          enabled: c.isIncluded !== false && c.enabled !== false,
+          isCustom: Boolean(c.isCustom),
+          isRequired: Boolean(c.isRequired),
+          order: typeof c.order === "number" ? c.order : i + 1,
+        }))
+      : DEFAULT_OFFER_CLAUSES;
+
     const offerData = {
       candidate: {
         fullName: candidate?.fullName?.trim() || "Candidate Name",
@@ -221,7 +315,7 @@ export async function previewOfferLetter(req, res, next) {
       monthlySalary: numSalary,
       annualSalary,
       joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
-      clauses: Array.isArray(clauses) && clauses.length > 0 ? clauses : DEFAULT_OFFER_CLAUSES,
+      clauses: validatedClauses,
       createdAt: new Date(),
     };
 
@@ -241,8 +335,9 @@ export async function previewOfferLetter(req, res, next) {
  */
 export async function createOfferLetter(req, res, next) {
   try {
-    const { OfferLetter, AuditLog } = req.auth.models;
+    const { OfferLetter, Employee, AuditLog } = req.auth.models;
     const {
+      employeeId,
       candidate,
       position,
       department,
@@ -253,6 +348,21 @@ export async function createOfferLetter(req, res, next) {
       joiningDate,
       clauses,
     } = req.body || {};
+
+    let validEmployeeId = null;
+    if (employeeId) {
+      if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+        throw new HttpError(400, "Invalid recipient employee ID.");
+      }
+      const existingEmployee = await Employee.findById(employeeId);
+      if (!existingEmployee) {
+        throw new HttpError(404, "Selected recipient employee record was not found in company database.");
+      }
+      if (existingEmployee.status !== EMPLOYEE_STATUSES.ACTIVE) {
+        throw new HttpError(400, "Cannot create an offer letter for an inactive employee record.");
+      }
+      validEmployeeId = existingEmployee._id;
+    }
 
     // Validate inputs
     const errors = {};
@@ -315,6 +425,7 @@ export async function createOfferLetter(req, res, next) {
 
     const newOffer = await OfferLetter.create({
       ...offerData,
+      employeeId: validEmployeeId,
       content: renderedHtml,
       status: OFFER_LETTER_STATUSES.DRAFT,
       createdBy: req.auth.user._id,
@@ -323,6 +434,7 @@ export async function createOfferLetter(req, res, next) {
     if (AuditLog) {
       await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_CREATED, newOffer._id, {
         candidate: candidateClean,
+        employeeId: validEmployeeId,
         position: newOffer.position,
         monthlySalary: salaryNum,
         joiningDate: newOffer.joiningDate,
@@ -345,9 +457,10 @@ export async function createOfferLetter(req, res, next) {
  */
 export async function updateOfferLetter(req, res, next) {
   try {
-    const { OfferLetter, AuditLog } = req.auth.models;
+    const { OfferLetter, Employee, AuditLog } = req.auth.models;
     const { id } = req.params;
     const {
+      employeeId,
       candidate,
       position,
       department,
@@ -370,6 +483,24 @@ export async function updateOfferLetter(req, res, next) {
         400,
         `Cannot edit an offer letter with status '${offerLetter.status}'. Once an offer is issued or closed, content is locked for audit integrity.`
       );
+    }
+
+    if (employeeId !== undefined) {
+      if (!employeeId) {
+        offerLetter.employeeId = null;
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+          throw new HttpError(400, "Invalid recipient employee ID.");
+        }
+        const existingEmployee = await Employee.findById(employeeId);
+        if (!existingEmployee) {
+          throw new HttpError(404, "Selected recipient employee record was not found in company database.");
+        }
+        if (existingEmployee.status !== EMPLOYEE_STATUSES.ACTIVE) {
+          throw new HttpError(400, "Cannot link an offer letter to an inactive employee record.");
+        }
+        offerLetter.employeeId = existingEmployee._id;
+      }
     }
 
     // Validate candidate
@@ -539,7 +670,11 @@ export async function downloadOfferLetterPdf(req, res, next) {
     }
 
     // Generate real PDF buffer using server-side Puppeteer renderer
-    const pdfBuffer = await generateOfferLetterPdf(offerLetter.content);
+    let htmlContent = offerLetter.content;
+    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED) {
+      htmlContent = renderOfferLetterHtml(offerLetter, req.auth.company);
+    }
+    const pdfBuffer = await generateOfferLetterPdf(htmlContent);
 
     const safeName = (offerLetter.candidate?.fullName || "Candidate")
       .replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -643,3 +778,159 @@ export async function linkEmployeeToOffer(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * Send offer letter via Gmail SMTP to candidate's email address with attached PDF
+ */
+export async function sendOfferLetterEmail(req, res, next) {
+  try {
+    const { OfferLetter, AuditLog } = req.auth.models;
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new HttpError(400, "Invalid offer letter ID.");
+    }
+
+    const offerLetter = await OfferLetter.findById(id);
+    if (!offerLetter) {
+      throw new HttpError(404, "Offer letter not found.");
+    }
+
+    // Terminal state protection
+    if (
+      offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED ||
+      offerLetter.status === OFFER_LETTER_STATUSES.REJECTED
+    ) {
+      throw new HttpError(
+        400,
+        `Cannot send an offer letter with status '${offerLetter.status}'. Candidate has already recorded a decision.`
+      );
+    }
+
+    const candidateEmail = offerLetter.candidate?.email?.trim();
+    if (!candidateEmail || !isValidEmail(candidateEmail)) {
+      throw new HttpError(400, "Candidate email address is missing or invalid.");
+    }
+
+    if (!offerLetter.candidate?.fullName || !offerLetter.position || !offerLetter.monthlySalary) {
+      throw new HttpError(400, "Offer letter details are incomplete and cannot be sent.");
+    }
+
+    // Ensure content is rendered
+    if (!offerLetter.content) {
+      offerLetter.content = renderOfferLetterHtml(offerLetter, req.auth.company);
+      await offerLetter.save();
+    }
+
+    // Generate PDF attachment using existing pdfService
+    let pdfBuffer;
+    try {
+      pdfBuffer = await generateOfferLetterPdf(offerLetter.content);
+    } catch (pdfErr) {
+      console.error("[offerLetterController] PDF generation error:", pdfErr.message);
+      throw new HttpError(500, `Failed to generate offer letter PDF attachment: ${pdfErr.message}`);
+    }
+
+    if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+      throw new HttpError(500, "Offer letter PDF attachment is missing or empty.");
+    }
+
+    const companyName = req.auth.company?.companyName || req.auth.company?.name || "Company";
+
+    // Generate secure, expiring candidate review and signing token
+    const signingToken = signOfferSigningToken({
+      companyId: req.auth.company._id,
+      offerId: offerLetter._id,
+      email: candidateEmail,
+    });
+    const tokenHash = crypto.createHash("sha256").update(signingToken).digest("hex");
+    offerLetter.signingTokenHash = tokenHash;
+    offerLetter.signingTokenExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+    const reviewLink = `${clientUrl}/offers/review/${signingToken}`;
+
+    // Dispatch email
+    const emailResult = await emailService.sendOfferLetter({
+      companyName,
+      candidateName: offerLetter.candidate.fullName,
+      candidateEmail,
+      position: offerLetter.position,
+      pdfBuffer,
+      joiningDate: offerLetter.joiningDate,
+      monthlySalary: offerLetter.monthlySalary,
+      reviewLink,
+    });
+
+    // Initialize delivery record if missing
+    if (!offerLetter.emailDelivery) {
+      offerLetter.emailDelivery = {
+        status: "NOT_SENT",
+        attempts: 0,
+        history: [],
+      };
+    }
+
+    const attemptRecord = {
+      sentAt: new Date(),
+      recipient: candidateEmail,
+      status: emailResult.success ? "SENT" : "DELIVERY_FAILED",
+      messageId: emailResult.messageId || "",
+      error: emailResult.error || "",
+    };
+
+    offerLetter.emailDelivery.attempts = (offerLetter.emailDelivery.attempts || 0) + 1;
+    offerLetter.emailDelivery.sentTo = candidateEmail;
+    offerLetter.emailDelivery.history.push(attemptRecord);
+
+    if (!emailResult.success) {
+      offerLetter.emailDelivery.status = "DELIVERY_FAILED";
+      offerLetter.emailDelivery.error = emailResult.error || "Email delivery failed";
+      await offerLetter.save();
+
+      if (AuditLog) {
+        await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_SEND_FAILED, offerLetter._id, {
+          candidateEmail,
+          error: emailResult.error,
+        });
+      }
+
+      return res.status(502).json({
+        success: false,
+        message: `Failed to deliver offer letter email to ${candidateEmail}: ${emailResult.error}`,
+        offerLetter,
+      });
+    }
+
+    // Mark as SENT
+    offerLetter.status = OFFER_LETTER_STATUSES.SENT;
+    offerLetter.emailedAt = new Date();
+    offerLetter.issuedAt = offerLetter.issuedAt || new Date();
+    offerLetter.emailDelivery.status = "SENT";
+    offerLetter.emailDelivery.sentAt = new Date();
+    offerLetter.emailDelivery.messageId = emailResult.messageId || "";
+    offerLetter.emailDelivery.error = "";
+    offerLetter.updatedAt = new Date();
+
+    await offerLetter.save();
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_SENT, offerLetter._id, {
+        candidateEmail,
+        messageId: emailResult.messageId,
+        sentAt: offerLetter.emailDelivery.sentAt,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Offer letter successfully sent to ${candidateEmail}.`,
+      offerLetter,
+      reviewLink,
+      signingToken,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

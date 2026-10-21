@@ -35,8 +35,12 @@ export async function authenticate(req, res, next) {
     const models = await getCompanyModels(company);
     const user = await models.User.findById(payload.sub);
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || user.role === "CANDIDATE") {
       throw new HttpError(401, "Invalid or expired credentials");
+    }
+
+    if (user.onboarding && user.onboarding.status && user.onboarding.status !== "APPROVED") {
+      throw new HttpError(401, "Candidate onboarding must be approved before employee portal access is permitted");
     }
 
     if (models.AuthSession) {

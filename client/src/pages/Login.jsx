@@ -29,8 +29,8 @@ export default function Login() {
     return (
       <main className="container" style={{ textAlign: "center", padding: "48px 24px" }}>
         <div className="spinner" style={{ margin: "0 auto 16px" }} />
-        <h2 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>Restoring Session</h2>
-        <p className="subtitle">Verifying your authentication credentials securely...</p>
+        <h2 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>Signing in</h2>
+        <p className="subtitle">Verifying your session...</p>
       </main>
     );
   }
@@ -111,7 +111,7 @@ export default function Login() {
   return (
     <main className="container">
       <h1>Sign in</h1>
-      <p className="subtitle">Company HR Admin and Employee login.</p>
+      <p className="subtitle">Sign in to your account.</p>
 
       {warning && (
         <div role="status" className="warning-alert">
@@ -129,7 +129,7 @@ export default function Login() {
 
       <form onSubmit={handleSubmit} className="auth-form" noValidate>
         <label>
-          Company code
+          Company Code
           <input
             value={companyCode}
             onChange={(event) => {
@@ -222,9 +222,9 @@ export default function Login() {
       </form>
 
       <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #eaecf0", fontSize: "14px", color: "#667085", textAlign: "center" }}>
-        <span>Setting up a provisioned company? </span>
+        <span>New company? </span>
         <Link to="/onboard" replace style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
-          Set up initial HR Admin
+          Set up HR Admin
         </Link>
       </div>
     </main>

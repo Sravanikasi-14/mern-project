@@ -18,7 +18,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "people",
-    label: "People Management",
+    label: "Employees",
     path: "/admin",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -31,7 +31,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "attendance",
-    label: "Attendance Tracking",
+    label: "Attendance",
     path: null,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -42,7 +42,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "leave",
-    label: "Leave Management",
+    label: "Leave",
     path: "/admin/leave",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -67,9 +67,22 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
+    id: "onboarding",
+    label: "Onboarding",
+    path: "/admin/onboarding",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <line x1="19" y1="8" x2="19" y2="14" />
+        <line x1="22" y1="11" x2="16" y2="11" />
+      </svg>
+    ),
+  },
+  {
     id: "payroll",
-    label: "Payroll & Payslips",
-    path: null,
+    label: "Payroll",
+    path: "/admin/payroll",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="5" width="20" height="14" rx="2" />
@@ -81,7 +94,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "assets",
-    label: "Company Assets",
+    label: "Assets",
     path: null,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -93,7 +106,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "policies",
-    label: "Company HR Policies",
+    label: "Policies",
     path: null,
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -123,7 +136,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "profile",
-    label: "My Profile",
+    label: "Profile",
     path: "/app/profile",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -134,7 +147,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "attendance",
-    label: "My Attendance",
+    label: "Attendance",
     path: "/app/attendance",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -145,7 +158,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "leave",
-    label: "My Leave",
+    label: "Leave",
     path: "/app/leave",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -159,7 +172,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "payslips",
-    label: "My Payslips",
+    label: "Payslips",
     path: "/app/payslips",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -172,7 +185,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "assets",
-    label: "My Assets",
+    label: "Assets",
     path: "/app/assets",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -184,7 +197,7 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "settings",
-    label: "Account Settings",
+    label: "Settings",
     path: "/app/settings",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -216,7 +229,7 @@ export default function Sidebar({
           replace: true,
           state: {
             logoutWarning:
-              "Logged out locally, but could not confirm session revocation on the server.",
+              "You have been signed out.",
           },
         });
       } else {

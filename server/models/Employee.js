@@ -22,8 +22,6 @@ export function createEmployeeSchema() {
       userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        unique: true,
-        sparse: true,
       },
       employeeCode: {
         type: String,
@@ -46,6 +44,7 @@ export function createEmployeeSchema() {
         required: true,
         lowercase: true,
         trim: true,
+        unique: true,
       },
       phoneNumber: {
         type: String,
@@ -257,8 +256,14 @@ export function createEmployeeSchema() {
   );
 
   employeeSchema.index({ status: 1 });
+  employeeSchema.index({ createdAt: -1 });
+  employeeSchema.index({ status: 1, createdAt: -1 });
   employeeSchema.index({ "job.reportingManagerId": 1 });
-  employeeSchema.index({ email: 1 });
+  employeeSchema.index({ fullName: 1 });
+  employeeSchema.index(
+    { userId: 1 },
+    { unique: true, partialFilterExpression: { userId: { $type: "objectId" } } }
+  );
 
   return employeeSchema;
 }

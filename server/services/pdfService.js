@@ -33,9 +33,10 @@ export async function generateOfferLetterPdf(htmlContent) {
     });
 
     // Generate A4 PDF buffer with consistent margins and footer page numbers
-    const pdfBuffer = await page.pdf({
+    const rawPdf = await page.pdf({
       format: "A4",
       printBackground: true,
+      preferCSSPageSize: true,
       margin: {
         top: "16mm",
         bottom: "18mm",
@@ -50,6 +51,11 @@ export async function generateOfferLetterPdf(htmlContent) {
         </div>
       `,
     });
+
+    const pdfBuffer = Buffer.isBuffer(rawPdf) ? rawPdf : Buffer.from(rawPdf);
+    if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+      throw new HttpError(500, "Failed to generate PDF document: generated buffer is empty.");
+    }
 
     return pdfBuffer;
   } catch (error) {

@@ -153,6 +153,24 @@ export function formatDate(dateInput) {
 }
 
 /**
+ * Format date and time nicely with standard Indian application locale
+ */
+export function formatDateTime(dateInput) {
+  if (!dateInput) return "--";
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return String(dateInput);
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+}
+
+/**
  * Builds the placeholder replacement dictionary
  */
 export function buildPlaceholders(offerData, company) {
@@ -233,7 +251,7 @@ export function renderOfferLetterHtml(offerData, company) {
 
   // Filter and sort included clauses
   const activeClauses = (offerData.clauses && offerData.clauses.length > 0 ? offerData.clauses : DEFAULT_OFFER_CLAUSES)
-    .filter((c) => c.isIncluded !== false)
+    .filter((c) => c.isIncluded !== false && c.enabled !== false)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const clausesHtml = activeClauses
@@ -271,11 +289,15 @@ export function renderOfferLetterHtml(offerData, company) {
       color: #1e293b;
       background: #ffffff;
       padding: 24px;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .letter-container {
       max-width: 800px;
       margin: 0 auto;
       background: #ffffff;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .header-bar {
       display: flex;
@@ -284,6 +306,8 @@ export function renderOfferLetterHtml(offerData, company) {
       border-bottom: 2px solid #0f172a;
       padding-bottom: 14px;
       margin-bottom: 20px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .company-brand {
       font-size: 22px;
@@ -316,10 +340,16 @@ export function renderOfferLetterHtml(offerData, company) {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 4px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .recipient-info {
       margin-bottom: 18px;
       font-size: 13px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .recipient-name {
       font-weight: 700;
@@ -329,16 +359,23 @@ export function renderOfferLetterHtml(offerData, company) {
     .recipient-detail {
       color: #475569;
       margin-top: 1px;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .salutation {
       margin-bottom: 14px;
       font-weight: 600;
       color: #0f172a;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .opening-paragraph {
       margin-bottom: 16px;
       text-align: justify;
       color: #334155;
+      line-height: 1.55;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .summary-card {
       background: #f8fafc;
@@ -350,10 +387,14 @@ export function renderOfferLetterHtml(offerData, company) {
       grid-template-columns: 1fr 1fr;
       gap: 10px 18px;
       page-break-inside: avoid;
+      break-inside: avoid;
     }
     .summary-item {
       display: flex;
       flex-direction: column;
+      min-width: 0;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .summary-label {
       font-size: 10.5px;
@@ -367,6 +408,8 @@ export function renderOfferLetterHtml(offerData, company) {
       font-weight: 700;
       color: #0f172a;
       margin-top: 1px;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .clauses-container {
       margin-bottom: 24px;
@@ -374,18 +417,25 @@ export function renderOfferLetterHtml(offerData, company) {
     .clause-block {
       margin-bottom: 14px;
       page-break-inside: avoid;
+      break-inside: avoid;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .clause-title {
       font-size: 12.5px;
       font-weight: 700;
       color: #0f172a;
       margin-bottom: 3px;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .clause-body {
       font-size: 12px;
       color: #334155;
       text-align: justify;
       line-height: 1.5;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .closing-text {
       margin: 18px 0 24px 0;
@@ -393,6 +443,9 @@ export function renderOfferLetterHtml(offerData, company) {
       color: #334155;
       line-height: 1.5;
       page-break-inside: avoid;
+      break-inside: avoid;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .signatures-grid {
       display: grid;
@@ -402,10 +455,12 @@ export function renderOfferLetterHtml(offerData, company) {
       padding-top: 16px;
       border-top: 1px dashed #cbd5e1;
       page-break-inside: avoid;
+      break-inside: avoid;
     }
     .sig-col {
       display: flex;
       flex-direction: column;
+      min-width: 0;
     }
     .sig-heading {
       font-size: 12px;
@@ -418,6 +473,8 @@ export function renderOfferLetterHtml(offerData, company) {
       padding-top: 6px;
       font-size: 11.5px;
       color: #334155;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .footer-note {
       text-align: center;
@@ -426,6 +483,8 @@ export function renderOfferLetterHtml(offerData, company) {
       color: #94a3b8;
       border-top: 1px solid #f1f5f9;
       padding-top: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
   </style>
 </head>
@@ -511,11 +570,54 @@ export function renderOfferLetterHtml(offerData, company) {
       </div>
       <div class="sig-col">
         <div class="sig-heading">Candidate Acceptance:</div>
+        ${
+          offerData.status === "ACCEPTED" || offerData.signature?.signedAt
+            ? `
+        <div class="sig-line" style="border-top: 1px solid #16a34a; padding-top: 8px;">
+          <div style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">
+            Accepted Electronically
+          </div>
+          <div style="font-size: 12px; margin-bottom: 3px;">
+            <strong>Electronically Signed By:</strong> ${escapeHtml(
+              offerData.signature?.signerName || offerData.candidate?.fullName || candidateName
+            )}
+          </div>
+          <div style="font-size: 11.5px; color: #475569; margin-bottom: 3px;">
+            <strong>Email:</strong> ${escapeHtml(
+              offerData.signature?.signerEmail || offerData.candidate?.email || candidateEmail
+            )}
+          </div>
+          <div style="font-size: 11.5px; color: #475569; margin-bottom: 6px;">
+            <strong>Signed On:</strong> ${formatDateTime(
+              offerData.signature?.signedAt || offerData.decisionAt || new Date()
+            )}
+          </div>
+          ${
+            offerData.signature?.legalStatement
+              ? `
+          <div style="font-size: 10.5px; color: #64748b; font-style: italic; line-height: 1.4; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+            "${escapeHtml(offerData.signature.legalStatement)}"
+          </div>`
+              : ""
+          }
+          ${
+            offerData.signature?.documentHash
+              ? `
+          <div style="font-size: 9.5px; color: #94a3b8; font-family: monospace; margin-top: 5px;">
+            Document Verification Hash: ${escapeHtml(offerData.signature.documentHash.substring(0, 16))}...
+          </div>`
+              : ""
+          }
+        </div>
+        `
+            : `
         <div class="sig-line">
           <strong>Signature:</strong> _______________________<br>
           <strong>Name:</strong> ${candidateName}<br>
           <strong>Date:</strong> _________________________
         </div>
+        `
+        }
       </div>
     </div>
 

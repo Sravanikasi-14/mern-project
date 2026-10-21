@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import StatusBadge from "../components/StatusBadge";
-import { IconDocument, IconArrowLeft } from "../components/Icons";
+import { IconDocument, IconArrowLeft, IconClose, IconCheck, IconAlertCircle } from "../components/Icons";
 import api from "../services/api";
 
 export default function EmployeeProfile() {
@@ -11,6 +11,65 @@ export default function EmployeeProfile() {
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // F&F Initiation Modal state
+  const [showFnFModal, setShowFnFModal] = useState(false);
+  const [submittingFnF, setSubmittingFnF] = useState(false);
+  const [fnfForm, setFnfForm] = useState({
+    lastWorkingDay: "",
+    exitReason: "Resignation",
+    hrRemarks: "",
+  });
+  const [fnfError, setFnfError] = useState("");
+  const [fnfSuccess, setFnfSuccess] = useState("");
+
+  const handleInitiateFnF = async (e) => {
+    e.preventDefault();
+    setFnfError("");
+    setFnfSuccess("");
+
+    if (!fnfForm.lastWorkingDay) {
+      setFnfError("Please specify the employee's last working day.");
+      return;
+    }
+    if (!fnfForm.exitReason || !fnfForm.exitReason.trim()) {
+      setFnfError("Please select or enter the exit reason.");
+      return;
+    }
+
+    setSubmittingFnF(true);
+    try {
+      const res = await api.post("/settlements/initiate", {
+        employeeId: employee._id,
+        lastWorkingDay: fnfForm.lastWorkingDay,
+        exitReason: fnfForm.exitReason,
+        hrRemarks: fnfForm.hrRemarks,
+      });
+
+      const settlement = res.data?.settlement;
+      setFnfSuccess(res.data?.message || "F&F settlement initiated successfully.");
+
+      // Refresh employee profile state to reflect new settlement
+      setEmployee((prev) => ({
+        ...prev,
+        settlement: {
+          id: settlement?._id,
+          _id: settlement?._id,
+          status: settlement?.status || "DRAFT",
+          netSettlementAmount: settlement?.financialBreakdown?.netSettlementAmount || 0,
+        },
+      }));
+
+      setTimeout(() => {
+        setShowFnFModal(false);
+        navigate(`/admin/payroll?settlementId=${settlement?._id}`);
+      }, 700);
+    } catch (err) {
+      setFnfError(err.response?.data?.message || "Failed to initiate F&F settlement.");
+    } finally {
+      setSubmittingFnF(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -113,8 +172,6 @@ export default function EmployeeProfile() {
     return (
       <main className="container-wide">
         <nav className="breadcrumb-bar" aria-label="Breadcrumb">
-          <Link to="/admin" className="breadcrumb-link">People Management</Link>
-          <span className="breadcrumb-separator">/</span>
           <Link to="/admin" className="breadcrumb-link">Employees</Link>
           <span className="breadcrumb-separator">/</span>
           <span className="breadcrumb-current">Error</span>
@@ -143,8 +200,6 @@ export default function EmployeeProfile() {
     <main className="container-wide profile-page-container">
       {/* Breadcrumb Navigation */}
       <nav className="breadcrumb-bar" aria-label="Breadcrumb">
-        <Link to="/admin" className="breadcrumb-link">People Management</Link>
-        <span className="breadcrumb-separator">/</span>
         <Link to="/admin" className="breadcrumb-link">Employees</Link>
         <span className="breadcrumb-separator">/</span>
         <span className="breadcrumb-current">{employee.fullName}</span>
@@ -175,6 +230,22 @@ export default function EmployeeProfile() {
             <div className="profile-header-title-row">
               <h1 className="profile-name">{employee.fullName}</h1>
               <StatusBadge status={employee.status || "ACTIVE"} />
+              {employee.settlement && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "3px 9px",
+                    borderRadius: 12,
+                    background: "#eff6ff",
+                    color: "#1d4ed8",
+                    border: "1px solid #bfdbfe",
+                    marginLeft: 6,
+                  }}
+                >
+                  F&F: {employee.settlement.status?.replace("_", " ")}
+                </span>
+              )}
             </div>
             <div className="profile-header-meta">
               <span className="meta-tag">
@@ -200,7 +271,46 @@ export default function EmployeeProfile() {
           </div>
         </div>
 
-        <div className="profile-header-right">
+        <div className="profile-header-right" style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          {employee.settlement ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => navigate(`/admin/payroll?settlementId=${employee.settlement.id || employee.settlement._id}`)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, padding: "8px 14px", borderRadius: 8 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
+              <span>View F&F ({employee.settlement.status?.replace("_", " ")})</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setFnfForm({
+                  lastWorkingDay: new Date().toISOString().split("T")[0],
+                  exitReason: "Resignation",
+                  hrRemarks: "",
+                });
+                setFnfError("");
+                setFnfSuccess("");
+                setShowFnFModal(true);
+              }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, padding: "8px 14px", borderRadius: 8 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+              <span>Initiate F&F</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="edit-profile-btn"
@@ -603,6 +713,160 @@ export default function EmployeeProfile() {
           </div>
         </div>
       </div>
+
+      {/* INITIATE F&F SETTLEMENT MODAL */}
+      {showFnFModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => !submittingFnF && setShowFnFModal(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 14,
+              padding: 24,
+              width: "100%",
+              maxWidth: 520,
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <div>
+                <h3 style={{ margin: "0 0 2px", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+                  Initiate Full & Final (F&F) Settlement
+                </h3>
+                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
+                  For {employee.fullName} ({employee.employeeCode})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={() => setShowFnFModal(false)}
+                disabled={submittingFnF}
+                aria-label="Close modal"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            {fnfError && (
+              <div role="alert" className="error" style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                <IconAlertCircle size={15} />
+                <span>{fnfError}</span>
+              </div>
+            )}
+
+            {fnfSuccess && (
+              <div role="status" style={{ marginBottom: 14, padding: "10px 12px", background: "#f0fdf4", color: "#166534", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <IconCheck size={15} />
+                <span>{fnfSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleInitiateFnF} style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                  Last Working Day <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={fnfForm.lastWorkingDay}
+                  onChange={(e) => setFnfForm({ ...fnfForm, lastWorkingDay: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d4d4d8",
+                    fontSize: 14,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#71717a", marginTop: 4, display: "block" }}>
+                  Pending salary and leave balances will be computed up to this date.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                  Exit Reason <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <select
+                  value={fnfForm.exitReason}
+                  onChange={(e) => setFnfForm({ ...fnfForm, exitReason: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d4d4d8",
+                    fontSize: 14,
+                  }}
+                >
+                  <option value="Resignation">Resignation (Voluntary Separation)</option>
+                  <option value="Retirement">Retirement</option>
+                  <option value="Mutual Separation">Mutual Separation</option>
+                  <option value="End of Contract">End of Employment Contract</option>
+                  <option value="Termination">Involuntary Separation / Termination</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                  HR Remarks & Offboarding Notes
+                </label>
+                <textarea
+                  rows="3"
+                  placeholder="Optional internal notes regarding handover, asset return, or settlement approval..."
+                  value={fnfForm.hrRemarks}
+                  onChange={(e) => setFnfForm({ ...fnfForm, hrRemarks: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d4d4d8",
+                    fontSize: 14,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowFnFModal(false)}
+                  disabled={submittingFnF}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={submittingFnF}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <span>{submittingFnF ? "Initiating..." : "Initiate Settlement"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

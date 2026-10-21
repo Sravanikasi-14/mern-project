@@ -207,16 +207,16 @@ export default function Onboarding() {
     >
       <h1>
         {isEmployeeFlow
-          ? "Employee Onboarding & Account Setup"
-          : "Initial HR Admin Setup"}
+          ? "Employee Onboarding"
+          : "HR Admin Setup"}
       </h1>
       <p className="subtitle">
         {isEmployeeFlow
-          ? `Welcome to ${invitation?.companyName || "the organization"}! Set your secure password and complete your official employee record.`
-          : "Set up the administrator account for your provisioned company workspace."}
+          ? `Welcome to ${invitation?.companyName || "the organization"}! Set your password and complete your profile.`
+          : "Set up the administrator account for your company."}
       </p>
 
-      {verifying && <p style={{ marginTop: "16px", color: "#64748b" }}>Verifying onboarding invitation token...</p>}
+      {verifying && <p style={{ marginTop: "16px", color: "#64748b" }}>Verifying invitation...</p>}
 
       {!verifying && verifyError && (
         <div style={{ marginTop: "20px" }}>
@@ -261,17 +261,17 @@ export default function Onboarding() {
               )}
               {invitation.employeeCode && (
                 <div>
-                  <strong style={{ color: "#475569" }}>Employee Code: </strong>
+                  <strong style={{ color: "#475569" }}>Code: </strong>
                   <span>{invitation.employeeCode}</span>
                 </div>
               )}
               <div>
-                <strong style={{ color: "#475569" }}>Official Work Email: </strong>
+                <strong style={{ color: "#475569" }}>Work Email: </strong>
                 <span>{invitation.email}</span>
               </div>
               {invitation.jobTitle && (
                 <div>
-                  <strong style={{ color: "#475569" }}>Assigned Designation: </strong>
+                  <strong style={{ color: "#475569" }}>Job Title: </strong>
                   <span>{invitation.jobTitle}</span>
                 </div>
               )}
@@ -282,7 +282,7 @@ export default function Onboarding() {
             {!invitation && (
               <>
                 <label>
-                  Company code *
+                  Company Code *
                   <input
                     value={companyCode}
                     onChange={(e) => {
@@ -295,7 +295,7 @@ export default function Onboarding() {
                   />
                 </label>
                 <label>
-                  Authorized Primary Contact Email *
+                  Email *
                   <input
                     type="email"
                     value={email}
@@ -314,11 +314,11 @@ export default function Onboarding() {
             {/* Section 1: Account Security (Always Required) */}
             <div style={{ marginBottom: "20px" }}>
               <h3 style={{ fontSize: "15px", color: "#0f172a", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px", margin: "0 0 14px" }}>
-                1. Account Credentials & Security
+                1. Password
               </h3>
               <div className="auth-row">
                 <label>
-                  Create password (min 8 characters) *
+                  Password (min 8 characters) *
                   <div className="password-input-wrapper">
                     <input
                       type={showPassword ? "text" : "password"}
@@ -395,7 +395,7 @@ export default function Onboarding() {
                 {/* Section 2: Personal Information */}
                 <div style={{ marginBottom: "20px" }}>
                   <h3 style={{ fontSize: "15px", color: "#0f172a", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px", margin: "0 0 14px" }}>
-                    2. Personal & Contact Details
+                    2. Personal Details
                   </h3>
                   <div className="auth-row">
                     <label>
@@ -419,7 +419,7 @@ export default function Onboarding() {
                   </div>
                   <div className="auth-row" style={{ marginTop: "12px" }}>
                     <label>
-                      Mobile Phone (Official/Work)
+                      Work Phone
                       <input
                         type="tel"
                         value={phoneNumber}
@@ -428,7 +428,7 @@ export default function Onboarding() {
                       />
                     </label>
                     <label>
-                      Personal Mobile Phone
+                      Personal Phone
                       <input
                         type="tel"
                         value={personalPhone}
@@ -467,7 +467,7 @@ export default function Onboarding() {
                 {/* Section 3: Residential Address */}
                 <div style={{ marginBottom: "20px" }}>
                   <h3 style={{ fontSize: "15px", color: "#0f172a", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px", margin: "0 0 14px" }}>
-                    3. Residential Address
+                    3. Address
                   </h3>
                   <label>
                     Street Address
@@ -498,7 +498,7 @@ export default function Onboarding() {
                       />
                     </label>
                     <label>
-                      Postal Code / PIN
+                      PIN Code
                       <input
                         type="text"
                         value={residentialPostalCode}
@@ -548,7 +548,7 @@ export default function Onboarding() {
                 {/* Section 5: Bank & Tax Information */}
                 <div style={{ marginBottom: "20px" }}>
                   <h3 style={{ fontSize: "15px", color: "#0f172a", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px", margin: "0 0 14px" }}>
-                    5. Banking & Tax Compliance
+                    5. Bank & Tax Details
                   </h3>
                   <div className="auth-row">
                     <label>
@@ -557,7 +557,7 @@ export default function Onboarding() {
                         type="text"
                         value={accountHolderName}
                         onChange={(e) => setAccountHolderName(e.target.value)}
-                        placeholder="Name as per Bank Record"
+                        placeholder="Name on bank account"
                       />
                     </label>
                     <label>
@@ -597,15 +597,15 @@ export default function Onboarding() {
                         className="filter-select"
                         style={{ width: "100%", height: "42px" }}
                       >
-                        <option value="SAVINGS">Savings Account</option>
-                        <option value="CURRENT">Current Account</option>
-                        <option value="SALARY">Salary Account</option>
+                        <option value="SAVINGS">Savings</option>
+                        <option value="CURRENT">Current</option>
+                        <option value="SALARY">Salary</option>
                       </select>
                     </label>
                   </div>
                   <div className="auth-row" style={{ marginTop: "12px" }}>
                     <label>
-                      Permanent Account Number (PAN)
+                      PAN Number
                       <input
                         type="text"
                         value={panNumber}
@@ -626,10 +626,10 @@ export default function Onboarding() {
 
             <button type="submit" disabled={submitting} style={{ width: "100%", padding: "12px" }}>
               {submitting
-                ? "Submitting and finalizing account..."
+                ? "Setting up your account..."
                 : isEmployeeFlow
-                ? "Complete Onboarding & Access Portal"
-                : "Complete setup & log in"}
+                ? "Complete Onboarding"
+                : "Complete Setup"}
             </button>
           </form>
 
@@ -643,9 +643,9 @@ export default function Onboarding() {
               textAlign: "center",
             }}
           >
-            <span>Already completed onboarding? </span>
+            <span>Already have an account? </span>
             <Link to="/login" replace style={{ color: "#18181b", textDecoration: "none", fontWeight: "600" }}>
-              Sign in to your account
+              Sign in
             </Link>
           </div>
         </>

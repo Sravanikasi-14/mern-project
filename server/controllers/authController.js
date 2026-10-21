@@ -83,6 +83,22 @@ export async function login(req, res, next) {
       );
     }
 
+    if (user.role === USER_ROLES.CANDIDATE) {
+      throw new HttpError(
+        403,
+        "Candidate accounts cannot log in directly. Please complete your onboarding and activate your employee account.",
+        { code: "CANDIDATE_ACCESS_DENIED" }
+      );
+    }
+
+    if (user.onboarding && user.onboarding.status && user.onboarding.status !== "APPROVED") {
+      throw new HttpError(
+        403,
+        "Candidate onboarding must be approved before logging in.",
+        { code: "ONBOARDING_NOT_APPROVED" }
+      );
+    }
+
     if (!user.isActive) {
       throw new HttpError(
         403,

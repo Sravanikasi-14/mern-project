@@ -1,3 +1,4 @@
+process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -572,6 +573,159 @@ describe("Offer Letter Generation & Lifecycle Management Module", () => {
         .get(`/api/offer-letters/${acmeOfferId}`)
         .set("Cookie", hrCookieGlobex);
       assert.equal(crossRes.status, 404);
+    });
+  });
+
+  describe("7. People Management & Offer Letter Recipient Integration", () => {
+    let activeEmpId;
+    let inactiveEmpId;
+
+    before(async () => {
+      const { Employee: EmployeeAcme, EmployeeCompensation: CompAcme } = await getCompanyModels(companyAcme);
+
+      const activeEmp = await EmployeeAcme.findOne({ email: "emp@acme.test" });
+      activeEmpId = activeEmp._id.toString();
+
+      // Create compensation for active employee
+      await CompAcme.create({
+        employeeId: activeEmp._id,
+        revisions: [
+          {
+            effectiveFromDate: new Date("2026-01-01"),
+            monthlyCostToCompany: mongoose.Types.Decimal128.fromString("85000.00"),
+            salaryComponents: {
+              basicSalary: mongoose.Types.Decimal128.fromString("42500.00"),
+            },
+          },
+        ],
+      });
+
+      // Create an inactive employee
+      const inactiveEmp = await EmployeeAcme.create({
+        employeeCode: "ACM-INACT-099",
+        fullName: "Retired Staff",
+        email: "retired@acme.test",
+        status: "INACTIVE",
+        job: {
+          jobTitle: "Former Consultant",
+          department: "Advisory",
+          joiningDate: new Date("2024-01-01"),
+        },
+      });
+      inactiveEmpId = inactiveEmp._id.toString();
+    });
+
+    it("should fetch eligible recipients list containing active employees with compensation and excluding inactive", async () => {
+      const res = await request(app)
+        .get("/api/offer-letters/recipients")
+        .set("Cookie", hrCookieAcme);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.ok(Array.isArray(res.body.recipients));
+
+      const activeRecipient = res.body.recipients.find((r) => r.email === "emp@acme.test");
+      assert.ok(activeRecipient, "Active employee must be present in recipients list");
+      assert.equal(activeRecipient.fullName, "Maya Rao");
+      assert.equal(activeRecipient.employeeCode, "ACM-001");
+      assert.equal(activeRecipient.position, "Software Engineer");
+      assert.equal(activeRecipient.department, "Engineering");
+      assert.equal(activeRecipient.monthlySalary, 85000);
+
+      const inactiveRecipient = res.body.recipients.find((r) => r.email === "retired@acme.test");
+      assert.equal(inactiveRecipient, undefined, "Inactive employee must NOT be present in recipients list");
+    });
+
+    it("should enforce tenant isolation on recipient list", async () => {
+      const res = await request(app)
+        .get("/api/offer-letters/recipients")
+        .set("Cookie", hrCookieGlobex);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.recipients.length, 0, "Globex must not see Acme employees");
+    });
+
+    it("should create an offer draft linked to an active employee", async () => {
+      const res = await request(app)
+        .post("/api/offer-letters")
+        .set("Cookie", hrCookieAcme)
+        .send({
+          employeeId: activeEmpId,
+          candidate: {
+            fullName: "Maya Rao",
+            email: "emp@acme.test",
+          },
+          position: "Senior Software Engineer",
+          department: "Engineering",
+          employmentType: "Full-time Permanent",
+          workLocation: "Bengaluru HQ",
+          monthlySalary: 95000,
+          joiningDate: "2026-06-01",
+        });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.offerLetter.employeeId, activeEmpId);
+      assert.equal(res.body.offerLetter.monthlySalary, 95000);
+    });
+
+    it("should reject creating an offer linked to an inactive employee", async () => {
+      const res = await request(app)
+        .post("/api/offer-letters")
+        .set("Cookie", hrCookieAcme)
+        .send({
+          employeeId: inactiveEmpId,
+          candidate: {
+            fullName: "Retired Staff",
+            email: "retired@acme.test",
+          },
+          position: "Consultant",
+          monthlySalary: 50000,
+          joiningDate: "2026-06-01",
+        });
+
+      assert.equal(res.status, 400);
+      assert.ok(res.body.message.includes("inactive employee"));
+    });
+
+    it("should reject creating an offer linked to an employee from a different company", async () => {
+      const res = await request(app)
+        .post("/api/offer-letters")
+        .set("Cookie", hrCookieGlobex)
+        .send({
+          employeeId: activeEmpId, // Acme's employee
+          candidate: {
+            fullName: "Maya Rao",
+            email: "emp@acme.test",
+          },
+          position: "Lead Engineer",
+          monthlySalary: 120000,
+          joiningDate: "2026-06-01",
+        });
+
+      assert.equal(res.status, 404);
+      assert.ok(res.body.message.includes("not found in company database"));
+    });
+
+    it("should allow creating an offer for a prospective candidate without an employeeId", async () => {
+      const res = await request(app)
+        .post("/api/offer-letters")
+        .set("Cookie", hrCookieAcme)
+        .send({
+          employeeId: null,
+          candidate: {
+            fullName: "Prospective Candidate",
+            email: "prospective@external.test",
+          },
+          position: "DevOps Engineer",
+          monthlySalary: 80000,
+          joiningDate: "2026-07-01",
+        });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.offerLetter.employeeId, null);
     });
   });
 });

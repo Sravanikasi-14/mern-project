@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
@@ -174,7 +174,8 @@ export default function OfferLettersManagement() {
 
   // Action states
   const [downloadingId, setDownloadingId] = useState(null);
-  const [confirmModal, setConfirmModal] = useState(null); // { type: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'DELETE', offer: obj, notes: '' }
+  const [sendingOfferId, setSendingOfferId] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null); // { type: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'DELETE' | 'SEND_EMAIL', offer: obj, notes: '' }
   const [actionLoading, setActionLoading] = useState(false);
 
   // View / Preview Modal state
@@ -188,6 +189,15 @@ export default function OfferLettersManagement() {
   const [editorTab, setEditorTab] = useState("split"); // 'form' | 'preview' | 'split'
   const [savingOffer, setSavingOffer] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+
+  // Recipient directory state
+  const [recipients, setRecipients] = useState([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
+  const [selectedRecipientId, setSelectedRecipientId] = useState("");
+
+  // Request sequencing refs to prevent out-of-order responses overwriting newer data
+  const previewRequestIdRef = useRef(0);
+  const fetchOffersRequestIdRef = useRef(0);
 
   // Editor Form Fields
   const [formData, setFormData] = useState({
@@ -205,7 +215,6 @@ export default function OfferLettersManagement() {
 
   // Live preview HTML state
   const [livePreviewHtml, setLivePreviewHtml] = useState("");
-  const [previewDebounceTimer, setPreviewDebounceTimer] = useState(null);
 
   // Debounce search
   useEffect(() => {
@@ -216,8 +225,42 @@ export default function OfferLettersManagement() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Load offers and summary
+  // Load recipient directory
+  const fetchRecipients = async () => {
+    try {
+      setLoadingRecipients(true);
+      const res = await api.get("/offer-letters/recipients");
+      if (res.data?.success) {
+        setRecipients(res.data.recipients || []);
+      }
+    } catch (err) {
+      console.warn("[OfferLetters] Could not load recipients list:", err.message);
+    } finally {
+      setLoadingRecipients(false);
+    }
+  };
+
+  // Load summary KPI counters
+  const fetchSummary = async () => {
+    try {
+      const res = await api.get("/offer-letters/summary");
+      if (res.data?.success) {
+        setSummary(res.data.summary);
+      }
+    } catch {
+      // Graceful fallback
+    }
+  };
+
+  // Fetch recipients and summary on mount
+  useEffect(() => {
+    fetchRecipients();
+    fetchSummary();
+  }, []);
+
+  // Load offer letters with request sequence guarding
   const fetchOffers = async () => {
+    const requestId = ++fetchOffersRequestIdRef.current;
     try {
       setLoading(true);
       setError("");
@@ -234,24 +277,22 @@ export default function OfferLettersManagement() {
         queryParams.set("status", statusFilter);
       }
 
-      const [listRes, summaryRes] = await Promise.all([
-        api.get(`/offer-letters?${queryParams.toString()}`),
-        api.get("/offer-letters/summary"),
-      ]);
+      const listRes = await api.get(`/offer-letters?${queryParams.toString()}`);
 
-      if (listRes.data?.success) {
+      if (requestId === fetchOffersRequestIdRef.current && listRes.data?.success) {
         setOffers(listRes.data.offerLetters || []);
         if (listRes.data.pagination) {
           setPagination(listRes.data.pagination);
         }
       }
-      if (summaryRes.data?.success) {
-        setSummary(summaryRes.data.summary);
-      }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to load offer letters.");
+      if (requestId === fetchOffersRequestIdRef.current) {
+        setError(err.response?.data?.message || "Failed to load offer letters.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === fetchOffersRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -259,13 +300,12 @@ export default function OfferLettersManagement() {
     fetchOffers();
   }, [currentPage, debouncedSearch, statusFilter]);
 
-  // Compute live preview HTML using backend preview endpoint or local interpolation
+  // Compute live preview HTML safely using sequence tracking
   useEffect(() => {
     if (!showEditorModal) return;
 
-    if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
-
     const timer = setTimeout(async () => {
+      const requestId = ++previewRequestIdRef.current;
       try {
         const payload = {
           candidate: {
@@ -279,19 +319,22 @@ export default function OfferLettersManagement() {
           joiningDate: formData.joiningDate,
           reportingManager: formData.reportingManager,
           monthlySalary: parseFloat(formData.monthlySalary) || 0,
-          clauses: formData.clauses,
+          clauses: formData.clauses.map((c, i) => ({
+            ...c,
+            isIncluded: c.enabled !== false && c.isIncluded !== false,
+            enabled: c.enabled !== false && c.isIncluded !== false,
+            order: typeof c.order === "number" ? c.order : i,
+          })),
         };
 
         const res = await api.post("/offer-letters/preview", payload);
-        if (res.data?.success && res.data.html) {
+        if (requestId === previewRequestIdRef.current && res.data?.success && res.data.html) {
           setLivePreviewHtml(res.data.html);
         }
-      } catch (err) {
+      } catch {
         // Fallback: don't crash preview on transient incomplete inputs
       }
-    }, 350);
-
-    setPreviewDebounceTimer(timer);
+    }, 250);
 
     return () => clearTimeout(timer);
   }, [
@@ -335,10 +378,43 @@ export default function OfferLettersManagement() {
     });
   };
 
+  // Handle Recipient Dropdown Selection
+  const handleRecipientSelect = (eOrValue) => {
+    const empId = (eOrValue && typeof eOrValue === "object" && "target" in eOrValue)
+      ? eOrValue.target?.value
+      : (typeof eOrValue === "string" ? eOrValue : "");
+
+    setSelectedRecipientId(empId || "");
+    if (!empId) {
+      // Prospective candidate selected: clear employee reference and allow manual entry
+      return;
+    }
+
+    const emp = recipients.find((r) => String(r._id) === String(empId));
+    if (emp) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: emp.fullName || "",
+        email: emp.email || "",
+        position: emp.position || "",
+        department: emp.department || "",
+        workLocation: emp.workLocation || "",
+        employmentType: emp.employmentType || "Full-time",
+        reportingManager: emp.reportingManager || "",
+        monthlySalary: emp.monthlySalary != null && emp.monthlySalary !== "" ? String(emp.monthlySalary) : prev.monthlySalary,
+        joiningDate: emp.joiningDate
+          ? new Date(emp.joiningDate).toISOString().slice(0, 10)
+          : prev.joiningDate,
+      }));
+      setFormErrors({});
+    }
+  };
+
   // Handle Opening Create Modal
   const handleOpenCreate = () => {
     setEditorMode("create");
     setEditingOfferId(null);
+    setSelectedRecipientId("");
     setFormErrors({});
     setFormData({
       fullName: "",
@@ -354,6 +430,7 @@ export default function OfferLettersManagement() {
     });
     setLivePreviewHtml("");
     setShowEditorModal(true);
+    fetchRecipients();
   };
 
   // Handle Opening Edit Modal (DRAFT only)
@@ -364,12 +441,14 @@ export default function OfferLettersManagement() {
     }
     setEditorMode("edit");
     setEditingOfferId(offer._id);
+    setSelectedRecipientId(offer.employeeId?._id || offer.employeeId || "");
     setFormErrors({});
 
     try {
       const res = await api.get(`/offer-letters/${offer._id}`);
       const freshOffer = res.data?.offerLetter || offer;
 
+      setSelectedRecipientId(freshOffer.employeeId?._id || freshOffer.employeeId || "");
       setFormData({
         fullName: freshOffer.candidate?.fullName || "",
         email: freshOffer.candidate?.email || "",
@@ -383,11 +462,17 @@ export default function OfferLettersManagement() {
         reportingManager: freshOffer.reportingManager || "",
         monthlySalary: freshOffer.monthlySalary ? String(freshOffer.monthlySalary) : "",
         clauses: freshOffer.clauses && freshOffer.clauses.length > 0
-          ? freshOffer.clauses
+          ? freshOffer.clauses.map((c, idx) => ({
+              ...c,
+              enabled: c.isIncluded !== false && c.enabled !== false,
+              isIncluded: c.isIncluded !== false && c.enabled !== false,
+              order: typeof c.order === "number" ? c.order : idx,
+            }))
           : JSON.parse(JSON.stringify(DEFAULT_CLAUSES_PRESET)),
       });
       setShowEditorModal(true);
-    } catch (err) {
+      fetchRecipients();
+    } catch {
       setError("Failed to fetch offer details for editing.");
     }
   };
@@ -395,7 +480,9 @@ export default function OfferLettersManagement() {
   // Clause manipulation helpers
   const handleToggleClause = (index) => {
     const updated = [...formData.clauses];
-    updated[index].enabled = !updated[index].enabled;
+    const newEnabled = !updated[index].enabled;
+    updated[index].enabled = newEnabled;
+    updated[index].isIncluded = newEnabled;
     setFormData({ ...formData, clauses: updated });
   };
 
@@ -429,6 +516,8 @@ export default function OfferLettersManagement() {
       isRequired: false,
       order: formData.clauses.length,
       enabled: true,
+      isIncluded: true,
+      isCustom: true,
     };
     setFormData({
       ...formData,
@@ -471,8 +560,8 @@ export default function OfferLettersManagement() {
     return Object.keys(errors).length === 0;
   };
 
-  // Save Offer Draft
-  const handleSaveOffer = async (andDownloadPdf = false) => {
+  // Save Offer: Draft, Download, or Send
+  const handleSaveOffer = async (mode = "draft") => {
     if (!validateForm()) return;
 
     setSavingOffer(true);
@@ -480,6 +569,7 @@ export default function OfferLettersManagement() {
 
     try {
       const payload = {
+        employeeId: selectedRecipientId || null,
         candidate: {
           fullName: formData.fullName.trim(),
           email: formData.email.trim().toLowerCase(),
@@ -491,30 +581,43 @@ export default function OfferLettersManagement() {
         joiningDate: formData.joiningDate,
         reportingManager: formData.reportingManager.trim(),
         monthlySalary: parseFloat(formData.monthlySalary),
-        clauses: formData.clauses,
+        clauses: formData.clauses.map((c, i) => ({
+          ...c,
+          isIncluded: c.enabled !== false && c.isIncluded !== false,
+          enabled: c.enabled !== false && c.isIncluded !== false,
+          order: typeof c.order === "number" ? c.order : i,
+        })),
       };
 
       let savedOffer;
       if (editorMode === "create") {
         const res = await api.post("/offer-letters", payload);
         savedOffer = res.data?.offerLetter;
-        setSuccessMsg("Offer letter draft created successfully!");
       } else {
         const res = await api.put(`/offer-letters/${editingOfferId}`, payload);
         savedOffer = res.data?.offerLetter;
-        setSuccessMsg("Offer letter draft updated successfully!");
+      }
+
+      if (mode === "send" && savedOffer?._id) {
+        try {
+          const sendRes = await api.post(`/offer-letters/${savedOffer._id}/send`);
+          setSuccessMsg(sendRes.data?.message || `Offer letter sent to ${savedOffer.candidate?.email}.`);
+        } catch (sendErr) {
+          const sendErrMsg = sendErr.response?.data?.message || "Offer saved as draft, but email delivery failed.";
+          setError(sendErrMsg);
+        }
+      } else if (mode === "download" && savedOffer?._id) {
+        setSuccessMsg(editorMode === "create" ? "Offer letter created." : "Offer letter updated.");
+        await handleDownloadPdf(savedOffer._id, savedOffer.candidate?.fullName);
+      } else {
+        setSuccessMsg(editorMode === "create" ? "Offer letter draft created." : "Offer letter draft updated.");
       }
 
       setShowEditorModal(false);
-      await fetchOffers();
-
-      if (andDownloadPdf && savedOffer?._id) {
-        await handleDownloadPdf(savedOffer._id, savedOffer.candidate?.fullName);
-      }
-
+      await Promise.all([fetchOffers(), fetchSummary()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
-      const msg = err.response?.data?.message || "Failed to save offer letter.";
+      const msg = err.response?.data?.message || "Couldn't save offer letter. Please try again.";
       const backendErrors = err.response?.data?.errors || {};
       setError(msg);
       if (Object.keys(backendErrors).length > 0) {
@@ -544,10 +647,10 @@ export default function OfferLettersManagement() {
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
 
-      setSuccessMsg("Offer letter PDF downloaded successfully.");
+      setSuccessMsg("Offer letter downloaded.");
       setTimeout(() => setSuccessMsg(""), 4000);
-    } catch (err) {
-      setError("Failed to generate or download offer letter PDF. Please try again.");
+    } catch {
+      setError("Couldn't download offer letter. Please try again.");
       setTimeout(() => setError(""), 5000);
     } finally {
       setDownloadingId(null);
@@ -564,8 +667,8 @@ export default function OfferLettersManagement() {
       if (res.data?.offerLetter) {
         setPreviewModalOffer(res.data.offerLetter);
       }
-    } catch (err) {
-      setError("Failed to load offer letter preview.");
+    } catch {
+      setError("Couldn't load preview. Please try again.");
     } finally {
       setPreviewModalLoading(false);
     }
@@ -582,6 +685,10 @@ export default function OfferLettersManagement() {
       if (type === "DELETE") {
         await api.delete(`/offer-letters/${offer._id}`);
         setSuccessMsg("Draft offer letter deleted successfully.");
+      } else if (type === "SEND_EMAIL") {
+        setSendingOfferId(offer._id);
+        const sendRes = await api.post(`/offer-letters/${offer._id}/send`);
+        setSuccessMsg(sendRes.data?.message || `Offer letter sent to ${offer.candidate?.email}.`);
       } else {
         await api.patch(`/offer-letters/${offer._id}/status`, {
           status: type,
@@ -595,13 +702,14 @@ export default function OfferLettersManagement() {
       if (previewModalOffer && previewModalOffer._id === confirmModal.offer._id) {
         setPreviewModalOffer(null);
       }
-      await fetchOffers();
+      await Promise.all([fetchOffers(), fetchSummary()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to update offer letter status.");
       setTimeout(() => setError(""), 5000);
     } finally {
       setActionLoading(false);
+      setSendingOfferId(null);
     }
   };
 
@@ -663,15 +771,15 @@ export default function OfferLettersManagement() {
       {/* Summary KPI Cards */}
       <div className="stats-grid" style={{ marginBottom: "28px" }}>
         <div className="stat-card">
-          <span className="stat-label">Total Offers</span>
+          <span className="stat-label">Total</span>
           <span className="stat-value">{summary.total}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Drafts</span>
+          <span className="stat-label">Draft</span>
           <span className="stat-value" style={{ color: "#71717a" }}>{summary.draft}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Sent / Issued</span>
+          <span className="stat-label">Sent</span>
           <span className="stat-value" style={{ color: "#2563eb" }}>{summary.sent}</span>
         </div>
         <div className="stat-card">
@@ -737,9 +845,9 @@ export default function OfferLettersManagement() {
                 cursor: "pointer",
               }}
             >
-              <option value="ALL">All Statuses ({summary.total})</option>
+              <option value="ALL">All ({summary.total})</option>
               <option value="DRAFT">Draft ({summary.draft})</option>
-              <option value="SENT">Sent / Issued ({summary.sent})</option>
+              <option value="SENT">Sent ({summary.sent})</option>
               <option value="ACCEPTED">Accepted ({summary.accepted})</option>
               <option value="REJECTED">Rejected ({summary.rejected})</option>
             </select>
@@ -778,7 +886,7 @@ export default function OfferLettersManagement() {
             boxShadow: "0 2px 4px rgba(0,0,0,0.06)",
           }}
         >
-          <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span> Create Offer Letter
+          <span style={{ fontSize: "16px", fontWeight: "bold" }}>+</span> New Offer Letter
         </button>
       </div>
 
@@ -792,18 +900,18 @@ export default function OfferLettersManagement() {
       }}>
         {loading ? (
           <div style={{ padding: "60px 20px", textAlign: "center", color: "#71717a" }}>
-            <div style={{ fontSize: "14px" }}>Loading offer letters...</div>
+            <div style={{ fontSize: "14px" }}>Loading offers...</div>
           </div>
         ) : offers.length === 0 ? (
           <div style={{ padding: "60px 20px", textAlign: "center" }}>
             <div style={{ marginBottom: "12px", color: "#a1a1aa" }}>
               <IconDocument size={40} />
             </div>
-            <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: "#18181b" }}>No offer letters found</h3>
+            <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: "#18181b" }}>No offers found</h3>
             <p style={{ margin: "0 0 16px", fontSize: "14px", color: "#71717a" }}>
               {search || statusFilter !== "ALL"
-                ? "No offer letters matched your active search and filter criteria."
-                : "Get started by generating your first template-based offer letter."}
+                ? "No offers match your search or filter."
+                : "Create your first offer letter to get started."}
             </p>
             {search || statusFilter !== "ALL" ? (
               <button
@@ -818,7 +926,7 @@ export default function OfferLettersManagement() {
               </button>
             ) : (
               <button type="button" onClick={handleOpenCreate}>
-                + Create Offer Letter
+                + New Offer Letter
               </button>
             )}
           </div>
@@ -828,9 +936,9 @@ export default function OfferLettersManagement() {
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Candidate</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Position & Dept</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Joining Date</th>
-                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Compensation</th>
+                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Job & Dept</th>
+                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Start Date</th>
+                  <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Salary</th>
                   <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Status</th>
                   <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase" }}>Created</th>
                   <th style={{ padding: "12px 16px", color: "#64748b", fontWeight: "600", fontSize: "12px", textTransform: "uppercase", textAlign: "right" }}>Actions</th>
@@ -857,6 +965,24 @@ export default function OfferLettersManagement() {
                       <td style={{ padding: "14px 16px" }}>
                         <div style={{ fontWeight: "600", color: "#09090b" }}>{offer.candidate?.fullName || "—"}</div>
                         <div style={{ fontSize: "12px", color: "#71717a" }}>{offer.candidate?.email || "—"}</div>
+                        {offer.employee && (
+                          <div style={{ marginTop: "4px" }}>
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontSize: "10px",
+                              fontWeight: "600",
+                              background: "#eff6ff",
+                              color: "#1d4ed8",
+                              border: "1px solid #bfdbfe",
+                            }}>
+                              Emp: {offer.employee.employeeCode || offer.employee.fullName}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       <td style={{ padding: "14px 16px" }}>
@@ -880,6 +1006,16 @@ export default function OfferLettersManagement() {
                           status={offer.status}
                           label={statusStyle.label}
                         />
+                        {offer.emailDelivery?.status === "DELIVERY_FAILED" && (
+                          <div style={{ fontSize: "11px", color: "#dc2626", marginTop: "4px", fontWeight: "600" }} title={offer.emailDelivery?.error || "Delivery failed"}>
+                            Delivery Failed
+                          </div>
+                        )}
+                        {offer.emailedAt && (
+                          <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                            Emailed {formatDate(offer.emailedAt)}
+                          </div>
+                        )}
                         {isAccepted && isLinked && (
                           <div style={{ fontSize: "11px", color: "#15803d", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
                             <IconCheck size={12} />
@@ -922,6 +1058,22 @@ export default function OfferLettersManagement() {
                             <>
                               <button
                                 type="button"
+                                onClick={() => setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })}
+                                disabled={sendingOfferId === offer._id}
+                                style={{
+                                  padding: "5px 10px",
+                                  fontSize: "12px",
+                                  background: "#2563eb",
+                                  borderColor: "#2563eb",
+                                  color: "#ffffff",
+                                  fontWeight: "600",
+                                }}
+                                title="Send official offer letter email with attached PDF to candidate"
+                              >
+                                {sendingOfferId === offer._id ? "Sending..." : "Send Email"}
+                              </button>
+                              <button
+                                type="button"
                                 className="btn-secondary"
                                 onClick={() => handleOpenEdit(offer)}
                                 style={{ padding: "5px 10px", fontSize: "12px" }}
@@ -931,15 +1083,13 @@ export default function OfferLettersManagement() {
                               </button>
                               <button
                                 type="button"
+                                className="btn-secondary"
                                 onClick={() => setConfirmModal({ type: "SENT", offer, notes: "" })}
                                 style={{
-                                  padding: "5px 10px",
+                                  padding: "5px 8px",
                                   fontSize: "12px",
-                                  background: "#2563eb",
-                                  borderColor: "#2563eb",
-                                  color: "#ffffff",
                                 }}
-                                title="Mark as Issued / Sent"
+                                title="Mark as Issued / Sent without emailing"
                               >
                                 Mark Sent
                               </button>
@@ -963,6 +1113,16 @@ export default function OfferLettersManagement() {
                           {/* SENT Actions */}
                           {isSent && (
                             <>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })}
+                                disabled={sendingOfferId === offer._id}
+                                style={{ padding: "5px 10px", fontSize: "12px" }}
+                                title="Resend official offer letter email with attached PDF"
+                              >
+                                {sendingOfferId === offer._id ? "Sending..." : "Resend"}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => setConfirmModal({ type: "ACCEPTED", offer, notes: "" })}
@@ -1099,11 +1259,8 @@ export default function OfferLettersManagement() {
             }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "700", color: "#09090b" }}>
-                  {editorMode === "create" ? "Create New Offer Letter" : "Edit Offer Letter Draft"}
+                  {editorMode === "create" ? "New Offer Letter" : "Edit Offer Letter"}
                 </h2>
-                <div style={{ fontSize: "12px", color: "#71717a", marginTop: "2px" }}>
-                  Customize candidate terms and reusable clauses with live document rendering.
-                </div>
               </div>
 
               {/* View Toggle on smaller displays */}
@@ -1121,7 +1278,7 @@ export default function OfferLettersManagement() {
                       boxShadow: editorTab === "form" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
                     }}
                   >
-                    Form Only
+                    Form
                   </button>
                   <button
                     type="button"
@@ -1135,7 +1292,7 @@ export default function OfferLettersManagement() {
                       boxShadow: editorTab === "split" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
                     }}
                   >
-                    Split View
+                    Split
                   </button>
                   <button
                     type="button"
@@ -1149,7 +1306,7 @@ export default function OfferLettersManagement() {
                       boxShadow: editorTab === "preview" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
                     }}
                   >
-                    Preview Only
+                    Preview
                   </button>
                 </div>
 
@@ -1184,16 +1341,59 @@ export default function OfferLettersManagement() {
                   background: "#ffffff",
                   borderRight: editorTab === "split" ? "1px solid #e4e4e7" : "none",
                 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                    {/* Recipient Source Selection */}
+                    <div style={{
+                      background: "#f0fdf4",
+                      padding: "14px 16px",
+                      borderRadius: "8px",
+                      border: "1px solid #bbf7d0",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                        <label style={{ fontSize: "13px", fontWeight: "600", color: "#166534", display: "flex", alignItems: "center", gap: "6px" }}>
+                          <IconUser size={15} /> Select Recipient
+                        </label>
+                        {loadingRecipients && <span style={{ fontSize: "11px", color: "#16a34a" }}>Loading...</span>}
+                      </div>
+                      <select
+                        value={selectedRecipientId}
+                        onChange={handleRecipientSelect}
+                        disabled={editorMode === "edit"}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid #86efac",
+                          background: editorMode === "edit" ? "#f4f4f5" : "#ffffff",
+                          fontSize: "13px",
+                          fontWeight: "500",
+                          color: "#14532d",
+                          cursor: editorMode === "edit" ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        <option value="">New Candidate (Manual Entry)</option>
+                        {recipients.map((emp) => (
+                          <option key={emp._id} value={emp._id}>
+                            {emp.fullName} - {emp.employeeCode} ({emp.position || "Staff"})
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: "11px", color: "#15803d", marginTop: "5px" }}>
+                        {selectedRecipientId
+                          ? "Details loaded from employee directory."
+                          : "Enter candidate details below."}
+                      </div>
+                    </div>
+
                     {/* Candidate Information Section */}
-                    <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
-                      <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <IconUser size={16} /> 1. Candidate Information
+                    <div style={{ background: "#fbfbfc", padding: "16px", borderRadius: "8px", border: "1px solid #ebecee" }}>
+                      <h4 style={{ margin: "0 0 12px", fontSize: "13.5px", fontWeight: "600", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <IconUser size={15} /> Candidate Details
                       </h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Candidate Full Name *
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Full Name *
                           </label>
                           <input
                             type="text"
@@ -1208,15 +1408,15 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: `1px solid ${formErrors.fullName ? "#ef4444" : "#d4d4d8"}`,
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                           {formErrors.fullName && <div style={{ color: "#ef4444", fontSize: "11px", marginTop: "3px" }}>{formErrors.fullName}</div>}
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Email Address *
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Email *
                           </label>
                           <input
                             type="email"
@@ -1231,7 +1431,7 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: `1px solid ${formErrors.email ? "#ef4444" : "#d4d4d8"}`,
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                           {formErrors.email && <div style={{ color: "#ef4444", fontSize: "11px", marginTop: "3px" }}>{formErrors.email}</div>}
@@ -1240,14 +1440,14 @@ export default function OfferLettersManagement() {
                     </div>
 
                     {/* Employment Terms Section */}
-                    <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
-                      <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <IconBriefcase size={16} /> 2. Employment Terms
+                    <div style={{ background: "#fbfbfc", padding: "16px", borderRadius: "8px", border: "1px solid #ebecee" }}>
+                      <h4 style={{ margin: "0 0 12px", fontSize: "13.5px", fontWeight: "600", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <IconBriefcase size={15} /> Job & Terms
                       </h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Position / Job Title *
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Job Title *
                           </label>
                           <input
                             type="text"
@@ -1262,14 +1462,14 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: `1px solid ${formErrors.position ? "#ef4444" : "#d4d4d8"}`,
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                           {formErrors.position && <div style={{ color: "#ef4444", fontSize: "11px", marginTop: "3px" }}>{formErrors.position}</div>}
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
                             Department
                           </label>
                           <input
@@ -1282,13 +1482,13 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: "1px solid #d4d4d8",
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
                             Employment Type
                           </label>
                           <select
@@ -1299,7 +1499,7 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: "1px solid #d4d4d8",
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                               background: "#ffffff",
                             }}
                           >
@@ -1311,8 +1511,8 @@ export default function OfferLettersManagement() {
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Joining Date *
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Start Date *
                           </label>
                           <input
                             type="date"
@@ -1326,19 +1526,19 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: `1px solid ${formErrors.joiningDate ? "#ef4444" : "#d4d4d8"}`,
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                           {formErrors.joiningDate && <div style={{ color: "#ef4444", fontSize: "11px", marginTop: "3px" }}>{formErrors.joiningDate}</div>}
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Work Location
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Location
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g. Bengaluru, India / Remote"
+                            placeholder="e.g. Bengaluru / Remote"
                             value={formData.workLocation}
                             onChange={(e) => setFormData({ ...formData, workLocation: e.target.value })}
                             style={{
@@ -1346,14 +1546,14 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: "1px solid #d4d4d8",
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                         </div>
 
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Reporting Manager (Optional)
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Reporting Manager
                           </label>
                           <input
                             type="text"
@@ -1365,7 +1565,7 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: "1px solid #d4d4d8",
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                         </div>
@@ -1373,14 +1573,14 @@ export default function OfferLettersManagement() {
                     </div>
 
                     {/* Compensation Section */}
-                    <div style={{ background: "#fbfbfc", padding: "18px", borderRadius: "10px", border: "1px solid #ebecee" }}>
-                      <h4 style={{ margin: "0 0 14px", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <IconCurrency size={16} /> 3. Compensation
+                    <div style={{ background: "#fbfbfc", padding: "16px", borderRadius: "8px", border: "1px solid #ebecee" }}>
+                      <h4 style={{ margin: "0 0 12px", fontSize: "13.5px", fontWeight: "600", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <IconCurrency size={15} /> Compensation
                       </h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "16px", alignItems: "flex-start" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "14px", alignItems: "flex-start" }}>
                         <div>
-                          <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "4px", color: "#27272a" }}>
-                            Monthly Salary (INR) *
+                          <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "4px", color: "#27272a" }}>
+                            Monthly Salary (₹) *
                           </label>
                           <input
                             type="number"
@@ -1397,7 +1597,7 @@ export default function OfferLettersManagement() {
                               padding: "8px 12px",
                               borderRadius: "6px",
                               border: `1px solid ${formErrors.monthlySalary ? "#ef4444" : "#d4d4d8"}`,
-                              fontSize: "14px",
+                              fontSize: "13.5px",
                             }}
                           />
                           {formErrors.monthlySalary && <div style={{ color: "#ef4444", fontSize: "11px", marginTop: "3px" }}>{formErrors.monthlySalary}</div>}
@@ -1410,13 +1610,13 @@ export default function OfferLettersManagement() {
                           border: "1px solid #e4e4e7",
                         }}>
                           <div style={{ fontSize: "11px", textTransform: "uppercase", color: "#71717a", fontWeight: "600" }}>
-                            Annualized Reference
+                            Annual Reference
                           </div>
-                          <div style={{ fontSize: "18px", fontWeight: "700", color: "#09090b", marginTop: "2px" }}>
+                          <div style={{ fontSize: "17px", fontWeight: "700", color: "#09090b", marginTop: "2px" }}>
                             {formatINR(annualizedSalary)}
                           </div>
                           <div style={{ fontSize: "11px", color: "#a1a1aa", marginTop: "2px" }}>
-                            (Monthly × 12 annualized reference)
+                            12 months annualized
                           </div>
                         </div>
                       </div>
@@ -1424,14 +1624,14 @@ export default function OfferLettersManagement() {
 
                     {/* Predefined Reusable Clause Library Section */}
                     <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                         <div>
-                          <h4 style={{ margin: "0", fontSize: "14px", fontWeight: "700", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <IconScroll size={16} />
-                            <span>4. Offer Letter Clauses & Policy library</span>
+                          <h4 style={{ margin: "0", fontSize: "13.5px", fontWeight: "600", color: "#18181b", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <IconScroll size={15} />
+                            <span>Offer Letter Clauses</span>
                           </h4>
                           <span style={{ fontSize: "12px", color: "#71717a" }}>
-                            Check to include clauses, edit wording, and use arrows to reorder.
+                            Select and customize clauses included in this letter.
                           </span>
                         </div>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -1441,15 +1641,15 @@ export default function OfferLettersManagement() {
                             onClick={handleResetClauses}
                             style={{ padding: "4px 8px", fontSize: "11px" }}
                           >
-                            Reset Defaults
+                            Reset Clauses
                           </button>
                           <button
                             type="button"
                             className="btn-secondary"
                             onClick={handleAddCustomClause}
-                            style={{ padding: "4px 10px", fontSize: "12px", background: "#f8fafc" }}
+                            style={{ padding: "4px 10px", fontSize: "11.5px" }}
                           >
-                            + Add Custom Clause
+                            + Add Clause
                           </button>
                         </div>
                       </div>
@@ -1467,13 +1667,13 @@ export default function OfferLettersManagement() {
                               transition: "all 0.15s ease",
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: "600", fontSize: "13px", color: "#0f172a" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginBottom: "8px" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: "600", fontSize: "13px", color: "#0f172a", flex: 1, minWidth: 0 }}>
                                 <input
                                   type="checkbox"
                                   checked={clause.enabled}
                                   onChange={() => handleToggleClause(idx)}
-                                  style={{ cursor: "pointer" }}
+                                  style={{ cursor: "pointer", flexShrink: 0 }}
                                 />
                                 <input
                                   type="text"
@@ -1487,7 +1687,9 @@ export default function OfferLettersManagement() {
                                     border: "none",
                                     background: "transparent",
                                     outline: "none",
-                                    width: "360px",
+                                    flex: 1,
+                                    minWidth: 0,
+                                    padding: "2px 4px",
                                   }}
                                 />
                               </label>
@@ -1572,19 +1774,29 @@ export default function OfferLettersManagement() {
                 }}>
                   <div style={{
                     width: "100%",
-                    maxWidth: "800px",
+                    maxWidth: "850px",
                     background: "#ffffff",
-                    borderRadius: "4px",
+                    borderRadius: "6px",
                     boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
-                    padding: "36px 44px",
-                    minHeight: "1050px",
+                    minHeight: "1000px",
                     color: "#18181b",
                     boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
                   }}>
                     {livePreviewHtml ? (
-                      <div
-                        dangerouslySetInnerHTML={{ __html: livePreviewHtml }}
-                        style={{ width: "100%" }}
+                      <iframe
+                        srcDoc={livePreviewHtml}
+                        title="Offer Document Preview"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          minHeight: "1000px",
+                          border: "none",
+                          display: "block",
+                          background: "#ffffff",
+                        }}
                       />
                     ) : (
                       <div style={{ textAlign: "center", padding: "100px 20px", color: "#a1a1aa" }}>
@@ -1609,7 +1821,7 @@ export default function OfferLettersManagement() {
               alignItems: "center",
             }}>
               <div style={{ fontSize: "12px", color: "#71717a" }}>
-                * All entries are saved under strict tenant isolation. Changes are auto-rendered in preview.
+                Preview updates automatically.
               </div>
 
               <div style={{ display: "flex", gap: "10px" }}>
@@ -1624,17 +1836,25 @@ export default function OfferLettersManagement() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => handleSaveOffer(true)}
+                  onClick={() => handleSaveOffer("download")}
                   disabled={savingOffer}
                 >
                   {savingOffer ? "Saving..." : "Save & Download PDF"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSaveOffer(false)}
+                  className="btn-secondary"
+                  onClick={() => handleSaveOffer("draft")}
+                  disabled={savingOffer}
+                >
+                  {savingOffer ? "Saving..." : "Save Draft"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveOffer("send")}
                   disabled={savingOffer}
                   style={{
-                    background: "#09090b",
+                    background: "#2563eb",
                     color: "#ffffff",
                     border: "none",
                     padding: "9px 20px",
@@ -1642,7 +1862,7 @@ export default function OfferLettersManagement() {
                     fontWeight: "600",
                   }}
                 >
-                  {savingOffer ? "Saving..." : "Save Draft"}
+                  {savingOffer ? "Processing..." : "Save & Send Offer"}
                 </button>
               </div>
             </div>
@@ -1741,20 +1961,34 @@ export default function OfferLettersManagement() {
             </div>
 
             {/* Document Body */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "30px", display: "flex", justifyContent: "center" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", justifyContent: "center" }}>
               <div style={{
                 width: "100%",
-                maxWidth: "800px",
+                maxWidth: "850px",
                 background: "#ffffff",
-                padding: "40px",
-                borderRadius: "4px",
+                borderRadius: "6px",
                 boxShadow: "0 10px 25px rgba(0,0,0,0.4)",
-                minHeight: "900px",
+                minHeight: "850px",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
               }}>
                 {previewModalLoading ? (
                   <div style={{ textAlign: "center", padding: "100px", color: "#71717a" }}>Loading document...</div>
                 ) : (
-                  <div dangerouslySetInnerHTML={{ __html: previewModalOffer.content || "<p>No content rendered</p>" }} />
+                  <iframe
+                    srcDoc={previewModalOffer.content || "<p>No content rendered</p>"}
+                    title="Full Offer Document Preview"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      minHeight: "850px",
+                      border: "none",
+                      display: "block",
+                      background: "#ffffff",
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -1784,6 +2018,7 @@ export default function OfferLettersManagement() {
             border: "1px solid #e4e4e7",
           }}>
             <h3 style={{ margin: "0 0 10px", fontSize: "16px", fontWeight: "700", color: "#09090b" }}>
+              {confirmModal.type === "SEND_EMAIL" && (confirmModal.offer?.status === "SENT" ? "Resend Offer Letter Email" : "Send Offer Letter Email")}
               {confirmModal.type === "SENT" && "Confirm Manual Issuance (Mark as Sent)"}
               {confirmModal.type === "ACCEPTED" && "Record Candidate Acceptance"}
               {confirmModal.type === "REJECTED" && "Record Candidate Rejection"}
@@ -1791,6 +2026,13 @@ export default function OfferLettersManagement() {
             </h3>
 
             <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#52525b", lineHeight: "1.5" }}>
+              {confirmModal.type === "SEND_EMAIL" && (
+                <>
+                  Send official offer letter email with attached PDF to <strong>{confirmModal.offer?.candidate?.fullName}</strong> ({confirmModal.offer?.candidate?.email})?
+                  <br /><br />
+                  The candidate will receive the formal offer details and the generated PDF document directly via Gmail SMTP.
+                </>
+              )}
               {confirmModal.type === "SENT" && (
                 <>
                   Are you sure you want to mark this offer letter for <strong>{confirmModal.offer.candidate?.fullName}</strong> as <strong>SENT</strong>?
@@ -1817,7 +2059,7 @@ export default function OfferLettersManagement() {
               )}
             </p>
 
-            {confirmModal.type !== "DELETE" && (
+            {confirmModal.type !== "DELETE" && confirmModal.type !== "SEND_EMAIL" && (
               <div style={{ marginBottom: "18px" }}>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "4px", color: "#374151" }}>
                   Internal HR Notes (Optional):
@@ -1865,7 +2107,7 @@ export default function OfferLettersManagement() {
                   fontWeight: "600",
                 }}
               >
-                {actionLoading ? "Processing..." : "Confirm"}
+                {actionLoading ? "Sending..." : confirmModal.type === "SEND_EMAIL" ? "Send Email" : "Confirm"}
               </button>
             </div>
           </div>

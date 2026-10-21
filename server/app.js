@@ -8,6 +8,10 @@ import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import offerLetterRoutes from "./routes/offerLetterRoutes.js";
+import settlementRoutes from "./routes/settlementRoutes.js";
+import candidateOfferRoutes from "./routes/candidateOfferRoutes.js";
+import candidateOnboardingRoutes from "./routes/candidateOnboardingRoutes.js";
+import onboardingReviewRoutes from "./routes/onboardingReviewRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -96,6 +100,13 @@ export function createApp() {
   app.use("/api/employees", employeeRoutes);
   app.use("/api/leave-requests", leaveRoutes);
   app.use("/api/offer-letters", offerLetterRoutes);
+  app.use("/api/settlements", settlementRoutes);
+
+  // Hiring pipeline: Candidate offer review & signing, onboarding form, and HR review
+  app.use("/api/candidate/offers", candidateOfferRoutes);
+  app.use("/api/offers", candidateOfferRoutes);
+  app.use("/api/candidate/onboarding", candidateOnboardingRoutes);
+  app.use("/api/onboarding", onboardingReviewRoutes);
 
   // Serve static assets from production client build (Single-Service Architecture)
   const distPath = path.resolve(__dirname, "../client/dist");

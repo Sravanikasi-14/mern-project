@@ -11,6 +11,11 @@ import EmployeeProfile from "./pages/EmployeeProfile";
 import Login from "./pages/Login";
 import OfferLettersManagement from "./pages/OfferLettersManagement";
 import Onboarding from "./pages/Onboarding";
+import AdminPayroll from "./pages/AdminPayroll";
+import CandidateOfferReview from "./pages/CandidateOfferReview";
+import CandidateOnboardingPage from "./pages/CandidateOnboardingPage";
+import AdminOnboardingReview from "./pages/AdminOnboardingReview";
+import AccountActivation from "./pages/AccountActivation";
 import "./index.css";
 
 function IndexRedirect() {
@@ -44,6 +49,9 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/onboard" element={<Onboarding />} />
+          <Route path="/offers/review/:token" element={<CandidateOfferReview />} />
+          <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
+          <Route path="/activate" element={<AccountActivation />} />
           <Route
             path="/admin"
             element={
@@ -90,6 +98,26 @@ function App() {
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
                   <OfferLettersManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/onboarding"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminOnboardingReview />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/payroll"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminPayroll />
                 </AppLayout>
               </ProtectedRoute>
             }

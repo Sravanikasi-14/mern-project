@@ -324,15 +324,13 @@ export default function EditEmployee() {
     <main className="container-wide profile-page-container">
       {/* Breadcrumb Bar */}
       <nav className="breadcrumb-bar" aria-label="Breadcrumb">
-        <Link to="/admin" className="breadcrumb-link">People Management</Link>
-        <span className="breadcrumb-separator">/</span>
         <Link to="/admin" className="breadcrumb-link">Employees</Link>
         <span className="breadcrumb-separator">/</span>
         <Link to={`/admin/employees/${id}`} className="breadcrumb-link">
           {formData.fullName || "Profile"}
         </Link>
         <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">Edit Employee</span>
+        <span className="breadcrumb-current">Edit</span>
       </nav>
 
       {/* Top Action Header */}
@@ -346,7 +344,7 @@ export default function EditEmployee() {
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
           </svg>
-          Cancel & Return to Profile
+          Back to Profile
         </button>
       </div>
 
@@ -356,7 +354,7 @@ export default function EditEmployee() {
             Edit Employee: {formData.fullName}
           </h1>
           <p className="subtitle">
-            Update employee personal records, job assignments, compensation, or account status.
+            Update employee details, role, and salary.
           </p>
         </div>
         <span className="meta-tag">Code: {formData.employeeCode}</span>
@@ -376,13 +374,12 @@ export default function EditEmployee() {
               </svg>
             </div>
             <div>
-              <h2>Personal & Contact Information</h2>
-              <span className="card-subtitle">Employee personal details and emergency contacts</span>
+              <h2>Personal Details</h2>
             </div>
           </div>
           <div className="profile-card-body edit-form-grid">
             <label className="form-group">
-              Full Legal Name *
+              Full Name *
               <input
                 type="text"
                 className={fieldErrors.fullName ? "has-error" : ""}
@@ -407,7 +404,7 @@ export default function EditEmployee() {
             </label>
 
             <label className="form-group">
-              Official Work Email (System Identity)
+              Work Email
               <input
                 type="email"
                 value={formData.email}
@@ -428,7 +425,7 @@ export default function EditEmployee() {
             </label>
 
             <label className="form-group">
-              Official Work Phone
+              Work Phone
               <input
                 type="tel"
                 value={formData.phoneNumber}
@@ -499,13 +496,12 @@ export default function EditEmployee() {
               </svg>
             </div>
             <div>
-              <h2>Employment & Job Details</h2>
-              <span className="card-subtitle">Role title, department, grade, and project assignment</span>
+              <h2>Job Details</h2>
             </div>
           </div>
           <div className="profile-card-body edit-form-grid">
             <label className="form-group">
-              Job Title / Designation
+              Job Title
               <input
                 type="text"
                 value={formData.jobTitle}
@@ -571,7 +567,7 @@ export default function EditEmployee() {
             </label>
 
             <label className="form-group">
-              Assigned Project Name
+              Project Name
               <input
                 type="text"
                 value={formData.projectName}
@@ -587,7 +583,7 @@ export default function EditEmployee() {
                 onChange={(e) => handleChange("projectType", e.target.value)}
                 className="filter-select"
               >
-                <option value="MANDATE">MANDATE (Dedicated Client Project)</option>
+                <option value="MANDATE">MANDATE (Client Project)</option>
                 <option value="BENCH">BENCH (Internal Reserve)</option>
                 <option value="INTERNAL">INTERNAL (Internal Operations)</option>
               </select>
@@ -608,12 +604,11 @@ export default function EditEmployee() {
             </div>
             <div>
               <h2>Compensation & Banking</h2>
-              <span className="card-subtitle">Monthly salary revision and payroll disbursement accounts</span>
             </div>
           </div>
           <div className="profile-card-body edit-form-grid">
             <label className="form-group">
-              Monthly CTC (₹)
+              Monthly Salary (₹)
               <input
                 type="number"
                 min="0"

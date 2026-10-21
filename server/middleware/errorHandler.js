@@ -36,6 +36,7 @@ export function errorHandler(err, _req, res, _next) {
 
   // Distinguish service unavailable (503) from unexpected server errors (500)
   if (status >= 500) {
+    console.error("SERVER ERROR IN TEST:", err);
     if (process.env.NODE_ENV !== "test") {
       console.error(err.name || "ServerError", err.message);
     }
@@ -50,6 +51,13 @@ export function errorHandler(err, _req, res, _next) {
     }
   }
 
+  // Handle Mongoose CastError (e.g. invalid ObjectId)
+  if (err.name === "CastError") {
+    status = 404;
+    code = "NOT_FOUND";
+    message = "Resource not found.";
+  }
+
   if (!code) {
     code = status >= 500 ? "SERVER_ERROR" : "ERROR";
   }
@@ -58,5 +66,6 @@ export function errorHandler(err, _req, res, _next) {
     code,
     message,
     ...(errors ? { errors } : {}),
+    ...(err.missingFields ? { missingFields: err.missingFields } : {}),
   });
 }

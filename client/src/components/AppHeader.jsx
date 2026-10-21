@@ -13,7 +13,7 @@ export default function AppHeader({ title }) {
           replace: true,
           state: {
             logoutWarning:
-              "Logged out locally, but could not confirm session revocation on the server.",
+              "You have been signed out.",
           },
         });
       } else {

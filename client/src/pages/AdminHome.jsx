@@ -140,12 +140,32 @@ export default function AdminHome() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Load summary and list
+  // Load summary only on mount and when mutations occur
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSummary = async () => {
+      try {
+        const res = await api.get("/employees/summary");
+        if (!cancelled) {
+          setSummary(res.data);
+        }
+      } catch {
+        // Handled gracefully without blocking list load
+      }
+    };
+    fetchSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTrigger]);
+
+  // Load paginated and filtered employee list
   useEffect(() => {
     let cancelled = false;
 
-    const fetchData = async () => {
+    const fetchEmployees = async () => {
       try {
+        setLoading(true);
         const queryParams = new URLSearchParams({
           page: String(currentPage),
           limit: String(pageSize),
@@ -159,13 +179,9 @@ export default function AdminHome() {
           queryParams.set("status", statusFilter);
         }
 
-        const [summaryRes, employeesRes] = await Promise.all([
-          api.get("/employees/summary"),
-          api.get(`/employees?${queryParams.toString()}`),
-        ]);
+        const employeesRes = await api.get(`/employees?${queryParams.toString()}`);
 
         if (!cancelled) {
-          setSummary(summaryRes.data);
           setEmployees(employeesRes.data.employees || []);
           setPagination(employeesRes.data.pagination);
           setError("");
@@ -181,7 +197,7 @@ export default function AdminHome() {
       }
     };
 
-    fetchData();
+    fetchEmployees();
 
     return () => {
       cancelled = true;
@@ -346,34 +362,34 @@ export default function AdminHome() {
 
   return (
     <main className="container-wide">
-      <AppHeader title="Employee Management" />
+      <AppHeader title="Employees" />
 
       {/* Summary Cards */}
       <div className="stats-grid">
         <div className="stat-card">
-          <span className="stat-label">Total Employees</span>
+          <span className="stat-label">Total</span>
           <span className="stat-value">{summary ? summary.totalEmployees : "—"}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Active Employees</span>
+          <span className="stat-label">Active</span>
           <span className="stat-value" style={{ color: "#09090b" }}>
             {summary ? summary.activeEmployees : "—"}
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Inactive Employees</span>
+          <span className="stat-label">Inactive</span>
           <span className="stat-value" style={{ color: "#71717a" }}>
             {summary ? summary.inactiveEmployees : "—"}
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Assigned to Projects</span>
+          <span className="stat-label">On Projects</span>
           <span className="stat-value" style={{ color: "#27272a" }}>
             {summary ? summary.assignedEmployees : "—"}
           </span>
         </div>
         <div className="stat-card highlight">
-          <span className="stat-label">Total Monthly Salary</span>
+          <span className="stat-label">Monthly Payroll</span>
           <span className="stat-value">
             {summary ? formatCurrency(summary.totalMonthlySalary) : "—"}
           </span>
@@ -390,7 +406,7 @@ export default function AdminHome() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email, or code..."
+            placeholder="Search employees..."
             className="search-input"
           />
 
@@ -403,8 +419,8 @@ export default function AdminHome() {
             className="filter-select"
           >
             <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active Only</option>
-            <option value="INACTIVE">Inactive Only</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
           </select>
 
           <select
@@ -464,15 +480,15 @@ export default function AdminHome() {
       {/* Table & States */}
       {loading ? (
         <div className="state-box">
-          <p>Loading employee records...</p>
+          <p>Loading employees...</p>
         </div>
       ) : employees.length === 0 ? (
         <div className="state-box">
           <h3>No employees found</h3>
           <p className="subtitle">
             {debouncedSearch || statusFilter !== "ALL"
-              ? "Try adjusting your search terms or status filters."
-              : "There are no employee records registered in this company database yet."}
+              ? "No employees match your search or filter."
+              : "No employees have been added yet."}
           </p>
         </div>
       ) : (
@@ -489,8 +505,8 @@ export default function AdminHome() {
                   {visibleColumns.project && <th>Project</th>}
                   {visibleColumns.status && <th>Status</th>}
                   {visibleColumns.invitation && <th>Invitation</th>}
-                  {visibleColumns.salary && <th>Monthly Salary</th>}
-                  {visibleColumns.joiningDate && <th>Joining Date</th>}
+                  {visibleColumns.salary && <th>Salary</th>}
+                  {visibleColumns.joiningDate && <th>Start Date</th>}
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -611,7 +627,7 @@ export default function AdminHome() {
         <div className="modal-overlay" onClick={handleCloseAddModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "620px" }}>
             <div className="modal-header">
-              <h2>{createdInvitationInfo ? "Employee Onboarding Invitation" : "Add New Employee"}</h2>
+              <h2>{createdInvitationInfo ? "Invitation Sent" : "Add Employee"}</h2>
               <button
                 type="button"
                 className="btn-secondary btn-sm"
@@ -643,11 +659,11 @@ export default function AdminHome() {
                   >
                     <IconCheck size={24} />
                   </div>
-                  <h3 style={{ margin: "0 0 6px", fontSize: "18px", color: "#f4f4f5" }}>
-                    Official Employee Record Created
+                  <h3 style={{ margin: "0 0 6px", fontSize: "17px", color: "#f4f4f5" }}>
+                    Employee Created
                   </h3>
-                  <p style={{ margin: 0, fontSize: "14px", color: "#a1a1aa" }}>
-                    {createdInvitationInfo.employee?.fullName} ({createdInvitationInfo.employee?.employeeCode}) has been created.
+                  <p style={{ margin: 0, fontSize: "13.5px", color: "#a1a1aa" }}>
+                    {createdInvitationInfo.employee?.fullName} ({createdInvitationInfo.employee?.employeeCode})
                   </p>
                 </div>
 
@@ -661,19 +677,19 @@ export default function AdminHome() {
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "13px" }}>
-                    <span style={{ color: "#a1a1aa" }}>Registered Work Email</span>
+                    <span style={{ color: "#a1a1aa" }}>Email</span>
                     <strong style={{ color: "#f4f4f5" }}>{createdInvitationInfo.employee?.email}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "14px", fontSize: "13px", alignItems: "center" }}>
-                    <span style={{ color: "#a1a1aa" }}>Invitation Delivery Status</span>
+                    <span style={{ color: "#a1a1aa" }}>Invite Status</span>
                     <StatusBadge
                       status={createdInvitationInfo.invitation?.status || "PENDING"}
-                      label={createdInvitationInfo.invitation?.status || "Invite Pending"}
+                      label={createdInvitationInfo.invitation?.status || "Pending"}
                     />
                   </div>
 
                   <label style={{ fontSize: "12px", color: "#a1a1aa", display: "block", marginBottom: "6px" }}>
-                    Secure Employee Onboarding Link (Single-use, 7 days validity)
+                    Onboarding Link (Valid for 7 days)
                   </label>
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input
@@ -701,17 +717,17 @@ export default function AdminHome() {
                       }}
                       style={{ whiteSpace: "nowrap" }}
                     >
-                      {copiedInvite ? "Copied!" : "Copy Link"}
+                      {copiedInvite ? "Copied" : "Copy Link"}
                     </button>
                   </div>
                   <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#71717a", display: "flex", alignItems: "center", gap: "6px" }}>
                     {createdInvitationInfo.invitation?.emailSent ? (
                       <>
                         <IconCheck size={14} style={{ color: "#15803d" }} />
-                        <span>An invitation email was dispatched to the employee's work address.</span>
+                        <span>Invitation email sent.</span>
                       </>
                     ) : (
-                      <span>Note: In test or offline environment, copy and provide this secure link directly to the employee.</span>
+                      <span>You can copy and send this link directly to the employee.</span>
                     )}
                   </p>
                 </div>
@@ -741,7 +757,7 @@ export default function AdminHome() {
                       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                       <polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
-                    <span><strong>Linked Offer Letter:</strong> Candidate details prefilled from accepted offer. Saving will automatically link this employee record to the offer letter.</span>
+                    <span><strong>Linked Offer:</strong> Details prefilled from accepted offer letter.</span>
                   </div>
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -763,7 +779,7 @@ export default function AdminHome() {
                     )}
                   </label>
                   <label>
-                    Employee ID / Code *
+                    Employee Code *
                     <input
                       className={addFieldErrors.employeeCode ? "has-error" : ""}
                       value={newEmployee.employeeCode}
@@ -783,7 +799,7 @@ export default function AdminHome() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label>
-                    Work Email *
+                    Email *
                     <input
                       type="email"
                       className={addFieldErrors.email ? "has-error" : ""}
@@ -801,7 +817,7 @@ export default function AdminHome() {
                     )}
                   </label>
                   <label>
-                    Designation / Job Title
+                    Job Title
                     <input
                       value={newEmployee.jobTitle}
                       onChange={(e) =>
@@ -842,7 +858,7 @@ export default function AdminHome() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label>
-                    Joining Date
+                    Start Date
                     <input
                       type="date"
                       className={addFieldErrors.joiningDate ? "has-error" : ""}
@@ -858,7 +874,7 @@ export default function AdminHome() {
                     )}
                   </label>
                   <label>
-                    Approved Monthly CTC (₹)
+                    Monthly Salary (₹)
                     <input
                       type="number"
                       className={addFieldErrors.monthlySalary ? "has-error" : ""}
@@ -879,7 +895,7 @@ export default function AdminHome() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label>
-                    Project Assignment
+                    Project
                     <input
                       value={newEmployee.projectName}
                       onChange={(e) =>
@@ -889,7 +905,7 @@ export default function AdminHome() {
                     />
                   </label>
                   <label>
-                    Initial Password (Optional)
+                    Password (Optional)
                     <div className="password-input-wrapper">
                       <input
                         type={showNewEmpPassword ? "text" : "password"}
@@ -900,7 +916,7 @@ export default function AdminHome() {
                           if (addFieldErrors.password) setAddFieldErrors((prev) => ({ ...prev, password: "" }));
                           if (addError) setAddError("");
                         }}
-                        placeholder="Leave blank for self-service"
+                        placeholder="Leave blank for employee invite"
                       />
                       <button
                         type="button"
@@ -936,7 +952,7 @@ export default function AdminHome() {
                     Cancel
                   </button>
                   <button type="submit" disabled={savingAdd} className="btn-primary">
-                    {savingAdd ? "Creating..." : "Create & Send Invite"}
+                    {savingAdd ? "Adding..." : "Add Employee"}
                   </button>
                 </div>
               </form>

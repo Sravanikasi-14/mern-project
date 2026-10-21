@@ -5,17 +5,17 @@ import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from
 import api from "../services/api";
 
 const STATUS_OPTIONS = [
-  { value: "ALL", label: "All Statuses" },
-  { value: "PENDING", label: "Pending Approval" },
+  { value: "ALL", label: "All Status" },
+  { value: "PENDING", label: "Pending" },
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
 ];
 
 const LEAVE_TYPE_OPTIONS = [
   { value: "ALL", label: "All Types" },
-  { value: "CASUAL", label: "Casual Leave" },
-  { value: "SICK", label: "Sick Leave" },
-  { value: "EARNED", label: "Earned Leave" },
+  { value: "CASUAL", label: "Casual" },
+  { value: "SICK", label: "Sick" },
+  { value: "EARNED", label: "Earned" },
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -301,8 +301,8 @@ export default function AdminLeaveManagement() {
   return (
     <div className="container-wide" style={{ paddingBottom: 60 }}>
       <AppHeader
-        title="Leave Management"
-        subtitle="Review employee leave applications, approve or reject requests, and monitor active leaves"
+        title="Leave"
+        subtitle="Review and manage employee leave requests."
       />
 
       {/* Action alerts */}
@@ -338,9 +338,8 @@ export default function AdminLeaveManagement() {
           }}
           title="Click to view pending requests"
         >
-          <span className="stat-label">Pending Requests</span>
+          <span className="stat-label">Pending</span>
           <div className="stat-value" style={{ color: "#b45309" }}>{summary.pending}</div>
-          <span style={{ fontSize: 12, color: "#71717a" }}>Awaiting HR action</span>
         </div>
 
         <div
@@ -352,9 +351,8 @@ export default function AdminLeaveManagement() {
           }}
           title="Click to view approved requests"
         >
-          <span className="stat-label">Approved Requests</span>
+          <span className="stat-label">Approved</span>
           <div className="stat-value" style={{ color: "#15803d" }}>{summary.approved}</div>
-          <span style={{ fontSize: 12, color: "#71717a" }}>Authorized leaves</span>
         </div>
 
         <div
@@ -366,15 +364,13 @@ export default function AdminLeaveManagement() {
           }}
           title="Click to view rejected requests"
         >
-          <span className="stat-label">Rejected Requests</span>
+          <span className="stat-label">Rejected</span>
           <div className="stat-value" style={{ color: "#b91c1c" }}>{summary.rejected}</div>
-          <span style={{ fontSize: 12, color: "#71717a" }}>Declined by HR</span>
         </div>
 
         <div className="stat-card highlight">
-          <span className="stat-label">Currently On Leave</span>
+          <span className="stat-label">On Leave Today</span>
           <div className="stat-value" style={{ color: "#09090b" }}>{summary.onLeaveToday}</div>
-          <span style={{ fontSize: 12, color: "#71717a" }}>Employees away today</span>
         </div>
       </div>
 
@@ -395,7 +391,7 @@ export default function AdminLeaveManagement() {
             <input
               type="text"
               className="search-input"
-              placeholder="Search employee, email, code..."
+              placeholder="Search by name, email, or code..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ width: "100%", paddingLeft: 34 }}
@@ -550,8 +546,8 @@ export default function AdminLeaveManagement() {
             <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>No leave requests found</h4>
             <p style={{ margin: 0, fontSize: 13.5 }}>
               {statusFilter !== "ALL" || search || fromDateFilter || toDateFilter
-                ? "No records match the current filters. Try resetting your search filters."
-                : "No employee leave applications have been submitted yet."}
+                ? "No requests match your filters."
+                : "No leave requests submitted yet."}
             </p>
           </div>
         ) : (
@@ -774,13 +770,13 @@ export default function AdminLeaveManagement() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, borderBottom: "1px solid #e4e4e7", paddingBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                  Leave Request Decision
+                  Leave Request
                 </div>
                 <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
                   {selectedRequest.employeeName || selectedRequest.employee?.fullName || "Employee Leave"}
                 </h3>
                 <span style={{ fontSize: 13, color: "#71717a" }}>
-                  Code: {selectedRequest.employeeCode || selectedRequest.employee?.employeeCode || "N/A"} •{" "}
+                  {selectedRequest.employeeCode || selectedRequest.employee?.employeeCode || "N/A"} •{" "}
                   {selectedRequest.department || selectedRequest.employee?.department || "General"}
                 </span>
               </div>
@@ -825,7 +821,7 @@ export default function AdminLeaveManagement() {
                   Duration
                 </span>
                 <div style={{ fontWeight: 700, color: "#09090b", marginTop: 2 }}>
-                  {selectedRequest.daysCount} working {selectedRequest.daysCount === 1 ? "day" : "days"}
+                  {selectedRequest.daysCount} {selectedRequest.daysCount === 1 ? "day" : "days"}
                 </div>
               </div>
 
@@ -849,7 +845,7 @@ export default function AdminLeaveManagement() {
 
               <div>
                 <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Current Status
+                  Status
                 </span>
                 <div style={{ marginTop: 2 }}>
                   <StatusBadge status={selectedRequest.status} />
@@ -858,7 +854,7 @@ export default function AdminLeaveManagement() {
 
               <div>
                 <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Submitted Timestamp
+                  Submitted
                 </span>
                 <div style={{ fontSize: 12, color: "#52525b", marginTop: 2 }}>
                   {selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString() : "--"}
@@ -878,7 +874,7 @@ export default function AdminLeaveManagement() {
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 8 }}>
-                  Employee's Remaining Leave Balances
+                  Leave Balances
                 </div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
                   <div>
@@ -900,7 +896,7 @@ export default function AdminLeaveManagement() {
             {/* Reason */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 4 }}>
-                Employee Reason
+                Reason
               </label>
               <div
                 style={{
@@ -937,7 +933,7 @@ export default function AdminLeaveManagement() {
                 </div>
                 {selectedRequest.decision.remarks && (
                   <div style={{ marginTop: 6, fontStyle: "italic", color: "#3f3f46" }}>
-                    HR Remarks: "{selectedRequest.decision.remarks}"
+                    Remarks: "{selectedRequest.decision.remarks}"
                   </div>
                 )}
               </div>
@@ -960,14 +956,14 @@ export default function AdminLeaveManagement() {
                       onClick={() => setConfirmAction("REJECT")}
                       style={{ background: "#b91c1c", borderColor: "#b91c1c", color: "#ffffff" }}
                     >
-                      Reject Request
+                      Reject
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmAction("APPROVE")}
                       style={{ background: "#15803d", borderColor: "#15803d", color: "#ffffff" }}
                     >
-                      Approve Request
+                      Approve
                     </button>
                   </div>
                 ) : (
@@ -984,17 +980,17 @@ export default function AdminLeaveManagement() {
                         color: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
                       }}
                     >
-                      Confirm Action: Are you sure you want to {confirmAction.toLowerCase()} this leave request?
+                      Are you sure you want to {confirmAction === "APPROVE" ? "approve" : "reject"} this leave request?
                     </div>
 
                     <div style={{ marginBottom: 14 }}>
                       <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#09090b", marginBottom: 6 }}>
-                        Decision Remarks (Optional)
+                        Remarks (Optional)
                       </label>
                       <textarea
                         rows="2"
                         className="filter-select"
-                        placeholder="Add optional notes for the employee..."
+                        placeholder="Add notes for the employee..."
                         value={decisionRemarks}
                         onChange={(e) => setDecisionRemarks(e.target.value)}
                         style={{ width: "100%", padding: "8px 12px", fontFamily: "inherit" }}
@@ -1021,8 +1017,8 @@ export default function AdminLeaveManagement() {
                         }}
                       >
                         {submittingDecision
-                          ? "Processing..."
-                          : `Confirm & ${confirmAction === "APPROVE" ? "Approve" : "Reject"}`}
+                          ? "Saving..."
+                          : (confirmAction === "APPROVE" ? "Approve" : "Reject")}
                       </button>
                     </div>
                   </div>
@@ -1142,7 +1138,7 @@ export default function AdminLeaveManagement() {
 
                       <div>
                         <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#0284c7", textTransform: "uppercase", marginBottom: 4 }}>
-                          Proposed New Leave Type *
+                          New Leave Type *
                         </label>
                         <select
                           id="select-new-leave-type"
@@ -1175,13 +1171,13 @@ export default function AdminLeaveManagement() {
 
                     <div style={{ marginBottom: 14 }}>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#334155", marginBottom: 4 }}>
-                        Reason / Explanation for Change * <span style={{ fontWeight: 400, color: "#64748b" }}>(Mandatory for audit trail)</span>
+                        Reason for Change *
                       </label>
                       <textarea
                         id="input-change-type-reason"
                         rows="2"
                         className="filter-select"
-                        placeholder="e.g. Medical certificate provided by employee; converted Casual to Sick leave per company policy."
+                        placeholder="Reason for changing the leave type..."
                         value={changeTypeReason}
                         onChange={(e) => {
                           setChangeTypeReason(e.target.value);
@@ -1203,9 +1199,9 @@ export default function AdminLeaveManagement() {
                           color: "#92400e",
                         }}
                       >
-                        <strong>Please confirm:</strong> You are about to reclassify this approved leave from{" "}
+                        <strong>Please confirm:</strong> You are changing this leave from{" "}
                         <span style={{ textDecoration: "line-through" }}>{selectedRequest.leaveTypeCode}</span> to{" "}
-                        <strong>{selectedNewType}</strong>. Employee leave balances will be recalculated.
+                        <strong>{selectedNewType}</strong>. Leave balances will be updated.
                       </div>
                     ) : null}
 
@@ -1233,7 +1229,7 @@ export default function AdminLeaveManagement() {
                               return;
                             }
                             if (!changeTypeReason.trim()) {
-                              setChangeTypeError("An explanation is required for auditing purposes.");
+                              setChangeTypeError("Please enter a reason for the change.");
                               return;
                             }
                             setChangeTypeError("");
@@ -1247,7 +1243,7 @@ export default function AdminLeaveManagement() {
                             padding: "6px 14px",
                           }}
                         >
-                          Review & Confirm Change
+                          Continue
                         </button>
                       ) : (
                         <button
@@ -1268,11 +1264,11 @@ export default function AdminLeaveManagement() {
                           }}
                         >
                           {submittingChangeType ? (
-                            "Saving & Auditing..."
+                            "Saving..."
                           ) : (
                             <>
                               <IconCheck size={14} />
-                              <span>Confirm & Save Change</span>
+                              <span>Save Change</span>
                             </>
                           )}
                         </button>

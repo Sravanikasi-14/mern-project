@@ -160,7 +160,6 @@ export async function getEmployeeSummary(req, res, next) {
       inactiveEmployees,
       assignedEmployees,
       activeEmployeeDocs,
-      compensations,
     ] = await Promise.all([
       Employee.countDocuments({}),
       Employee.countDocuments({ status: EMPLOYEE_STATUSES.ACTIVE }),
@@ -170,14 +169,20 @@ export async function getEmployeeSummary(req, res, next) {
         "job.project.projectName": { $exists: true, $nin: ["", null] },
       }),
       Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE }).select("_id").lean(),
-      EmployeeCompensation.find({}).lean(),
     ]);
 
-    const activeIdSet = new Set(activeEmployeeDocs.map((emp) => String(emp._id)));
-    let totalMonthlySalary = 0;
+    const activeIds = activeEmployeeDocs.map((emp) => emp._id);
+    let compensations = [];
+    if (EmployeeCompensation && activeIds.length > 0) {
+      compensations = await EmployeeCompensation.find({
+        employeeId: { $in: activeIds },
+      })
+        .select("employeeId revisions.effectiveFromDate revisions.monthlyCostToCompany")
+        .lean();
+    }
 
+    let totalMonthlySalary = 0;
     for (const comp of compensations) {
-      if (!activeIdSet.has(String(comp.employeeId))) continue;
 
       const validRevisions = (comp.revisions || [])
         .filter((rev) => new Date(rev.effectiveFromDate) <= now)
@@ -202,7 +207,7 @@ export async function getEmployeeSummary(req, res, next) {
 
 export async function getEmployeeById(req, res, next) {
   try {
-    const { Employee, EmployeeCompensation } = req.auth.models;
+    const { Employee, EmployeeCompensation, Settlement } = req.auth.models;
     const employee = await Employee.findById(req.params.id)
       .populate("job.reportingManagerId", "fullName employeeCode")
       .lean();
@@ -244,6 +249,24 @@ export async function getEmployeeById(req, res, next) {
       leaveBalance: { casual: 8, sick: 6, earned: 12 },
     };
 
+    let settlement = null;
+    if (Settlement) {
+      const sRecord = await Settlement.findOne({ employeeId: employee._id })
+        .sort({ createdAt: -1 })
+        .lean();
+      if (sRecord) {
+        settlement = {
+          id: sRecord._id,
+          _id: sRecord._id,
+          status: sRecord.status,
+          netSettlementAmount: sRecord.financialBreakdown?.netSettlementAmount || 0,
+          lastWorkingDay: sRecord.exitDetails?.lastWorkingDay || null,
+          exitReason: sRecord.exitDetails?.exitReason || "",
+          initiatedAt: sRecord.exitDetails?.initiatedAt || null,
+        };
+      }
+    }
+
     res.json({
       ...employee,
       preferredName: employee.preferredName || "",
@@ -272,6 +295,7 @@ export async function getEmployeeById(req, res, next) {
       attendance: employee.attendance || defaultAttendance,
       currentMonthlySalary,
       salaryComponents,
+      settlement,
     });
   } catch (error) {
     next(error);

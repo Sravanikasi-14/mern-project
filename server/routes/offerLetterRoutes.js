@@ -6,9 +6,11 @@ import {
   getDefaultClauses,
   getOfferLetterById,
   getOfferLetters,
+  getOfferRecipients,
   getOfferSummary,
   linkEmployeeToOffer,
   previewOfferLetter,
+  sendOfferLetterEmail,
   updateOfferLetter,
   updateOfferStatus,
 } from "../controllers/offerLetterController.js";
@@ -24,6 +26,7 @@ router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN));
 router.get("/clauses", getDefaultClauses);
 router.get("/clauses/defaults", getDefaultClauses);
 router.get("/summary", getOfferSummary);
+router.get("/recipients", getOfferRecipients);
 router.post("/preview", previewOfferLetter);
 
 router.get("/", getOfferLetters);
@@ -33,6 +36,7 @@ router.get("/:id", getOfferLetterById);
 router.put("/:id", updateOfferLetter);
 router.delete("/:id", deleteOfferLetter);
 
+router.post("/:id/send", sendOfferLetterEmail);
 router.patch("/:id/status", updateOfferStatus);
 router.post("/:id/status", updateOfferStatus);
 router.get("/:id/pdf", downloadOfferLetterPdf);

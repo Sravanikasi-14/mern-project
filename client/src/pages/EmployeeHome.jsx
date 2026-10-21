@@ -87,9 +87,9 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
       }
     } catch (err) {
       if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-        setError("We're unable to connect right now. Please try again in a moment.");
+        setError("Unable to connect. Please try again in a moment.");
       } else {
-        setError(err.response?.data?.message || "Unable to load employee profile.");
+        setError(err.response?.data?.message || "Couldn't load profile. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -265,11 +265,11 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
 
   return (
     <main className="container-wide" style={{ margin: "20px auto" }}>
-      <AppHeader title="Employee Self-Service Portal" />
+      <AppHeader title="My Profile" />
 
       {loading && (
         <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b" }}>
-          <p>Loading your employee profile...</p>
+          <p>Loading profile...</p>
         </div>
       )}
 
@@ -337,7 +337,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                 onClick={() => setActiveTab("overview")}
                 style={{ fontSize: "13px", padding: "8px 14px" }}
               >
-                Overview & Official Record
+                Overview
               </button>
               <button
                 type="button"
@@ -345,7 +345,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                 onClick={() => setActiveTab("edit_profile")}
                 style={{ fontSize: "13px", padding: "8px 14px" }}
               >
-                My Profile Details
+                Profile
               </button>
               <button
                 type="button"
@@ -353,12 +353,12 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                 onClick={() => setActiveTab("documents")}
                 style={{ fontSize: "13px", padding: "8px 14px" }}
               >
-                My Documents ({documents.length})
+                Documents ({documents.length})
               </button>
             </div>
           </div>
 
-          {/* TAB 1: OVERVIEW & OFFICIAL RECORD (READ-ONLY HR DETAILS) */}
+          {/* TAB 1: OVERVIEW (READ-ONLY HR DETAILS) */}
           {activeTab === "overview" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px" }}>
               <section className="profile-card">
@@ -370,9 +370,9 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </svg>
                   </div>
                   <div>
-                    <h2>Official Employment Record</h2>
+                    <h2>Job Details</h2>
                     <span className="card-subtitle">
-                      Company-managed official job assignments, grade, and organizational records (Read-Only)
+                      Managed by HR
                     </span>
                   </div>
                 </div>
@@ -391,8 +391,8 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       gap: "8px",
                     }}
                   >
-                    <span style={{ fontWeight: "600", color: "#0f172a" }}>Notice:</span>
-                    These official employment details are controlled by HR Administration. To request modifications, contact your HR department.
+                    <span style={{ fontWeight: "600", color: "#0f172a" }}>Note:</span>
+                    To update your official job details, contact your HR administrator.
                   </div>
 
                   <div className="detail-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
@@ -401,11 +401,11 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       <span className="font-mono">{profile.employeeCode}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Official Work Email</strong>
+                      <strong>Work Email</strong>
                       <span>{profile.email}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Designation / Job Title</strong>
+                      <strong>Job Title</strong>
                       <span>{profile.job?.jobTitle || "—"}</span>
                     </div>
                     <div className="detail-item">
@@ -413,7 +413,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       <span>{profile.job?.department || "—"}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Job Grade</strong>
+                      <strong>Grade</strong>
                       <span>{profile.job?.jobGrade || "—"}</span>
                     </div>
                     <div className="detail-item">
@@ -433,7 +433,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       <span>{profile.job?.project?.projectType || "MANDATE"}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Date of Joining</strong>
+                      <strong>Joining Date</strong>
                       <span>
                         {profile.job?.joiningDate
                           ? new Date(profile.job.joiningDate).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })
@@ -455,8 +455,8 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                     <div>
-                      <h2>Personal & Contact Summary</h2>
-                      <span className="card-subtitle">Your self-service contact details and banking information</span>
+                      <h2>Personal Details</h2>
+                      <span className="card-subtitle">Your contact details and banking information</span>
                     </div>
                     <button
                       type="button"
@@ -464,7 +464,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       onClick={() => setActiveTab("edit_profile")}
                       style={{ fontSize: "12px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
                     >
-                      <span>Update Profile</span>
+                      <span>Edit Profile</span>
                       <IconArrowRight size={13} />
                     </button>
                   </div>
@@ -480,15 +480,15 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       <span>{profile.personalEmail || "Not provided"}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Mobile Number</strong>
+                      <strong>Primary Phone</strong>
                       <span>{profile.phoneNumber || "Not provided"}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Personal Mobile</strong>
+                      <strong>Personal Phone</strong>
                       <span>{profile.personalPhone || "Not provided"}</span>
                     </div>
                     <div className="detail-item">
-                      <strong>Residential City</strong>
+                      <strong>City</strong>
                       <span>{profile.residentialAddress?.city || profile.city || "Not provided"}</span>
                     </div>
                     <div className="detail-item">
@@ -517,7 +517,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
             </div>
           )}
 
-          {/* TAB 2: EDIT MY PROFILE (SELF-SERVICE) */}
+          {/* TAB 2: EDIT PROFILE */}
           {activeTab === "edit_profile" && (
             <form onSubmit={handleProfileSubmit} noValidate>
               <section className="profile-card" style={{ marginBottom: "20px" }}>
@@ -529,8 +529,8 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </svg>
                   </div>
                   <div>
-                    <h2>Update My Personal Profile</h2>
-                    <span className="card-subtitle">Keep your contact information, residential address, and payroll accounts up to date</span>
+                    <h2>Edit Profile</h2>
+                    <span className="card-subtitle">Keep your contact information and bank details up to date</span>
                   </div>
                 </div>
                 <div className="profile-card-body">
@@ -542,7 +542,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   </h3>
                   <div className="edit-form-grid" style={{ marginBottom: "20px" }}>
                     <label className="form-group">
-                      Preferred / Nick Name
+                      Preferred Name
                       <input
                         type="text"
                         value={formData.preferredName}
@@ -552,7 +552,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </label>
 
                     <label className="form-group">
-                      Personal Email Address
+                      Personal Email
                       <input
                         type="email"
                         value={formData.personalEmail}
@@ -562,7 +562,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </label>
 
                     <label className="form-group">
-                      Work / Primary Mobile Phone
+                      Primary Phone
                       <input
                         type="tel"
                         value={formData.phoneNumber}
@@ -572,7 +572,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </label>
 
                     <label className="form-group">
-                      Personal Mobile Phone
+                      Personal Phone
                       <input
                         type="tel"
                         value={formData.personalPhone}
@@ -616,7 +616,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         type="text"
                         value={formData.residentialStreet}
                         onChange={(e) => handleInputChange("residentialStreet", e.target.value)}
-                        placeholder="House / Flat No, Street, Landmark"
+                        placeholder="Flat / Building, Street, Landmark"
                       />
                     </label>
                   </div>
@@ -642,7 +642,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </label>
 
                     <label className="form-group">
-                      Postal Code / PIN
+                      PIN Code
                       <input
                         type="text"
                         value={formData.residentialPostalCode}
@@ -688,7 +688,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   </div>
 
                   <h3 style={{ margin: "20px 0 12px", fontSize: "14px", color: "#0f172a", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
-                    Payroll Banking & Tax Details
+                    Bank & Tax Details
                   </h3>
                   <div className="edit-form-grid" style={{ marginBottom: "24px" }}>
                     <label className="form-group">
@@ -697,7 +697,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         type="text"
                         value={formData.accountHolderName}
                         onChange={(e) => handleInputChange("accountHolderName", e.target.value)}
-                        placeholder="Name as registered with Bank"
+                        placeholder="Name on bank account"
                       />
                     </label>
 
@@ -738,9 +738,9 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         onChange={(e) => handleInputChange("accountType", e.target.value)}
                         className="filter-select"
                       >
-                        <option value="SAVINGS">Savings Account</option>
-                        <option value="CURRENT">Current Account</option>
-                        <option value="SALARY">Salary Account</option>
+                        <option value="SAVINGS">Savings</option>
+                        <option value="CURRENT">Current</option>
+                        <option value="SALARY">Salary</option>
                       </select>
                     </label>
 
@@ -768,7 +768,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                       className="btn-primary"
                       disabled={savingProfile}
                     >
-                      {savingProfile ? "Saving Profile..." : "Save Profile Changes"}
+                      {savingProfile ? "Saving..." : "Save Changes"}
                     </button>
                   </div>
                 </div>
@@ -776,7 +776,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
             </form>
           )}
 
-          {/* TAB 3: MY DOCUMENTS (UPLOAD & DOWNLOAD) */}
+          {/* TAB 3: DOCUMENTS */}
           {activeTab === "documents" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px" }}>
               <section className="profile-card">
@@ -791,8 +791,8 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     </svg>
                   </div>
                   <div>
-                    <h2>My Documents & Verification Records</h2>
-                    <span className="card-subtitle">Upload your identity proofs, tax filings, and certifications</span>
+                    <h2>Documents</h2>
+                    <span className="card-subtitle">Upload and view identity proofs and tax documents</span>
                   </div>
                 </div>
                 <div className="profile-card-body">
@@ -807,7 +807,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     }}
                   >
                     <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#0f172a", fontWeight: "600" }}>
-                      Upload New Document
+                      Upload Document
                     </h3>
 
                     {docSuccess && (
@@ -824,7 +824,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", alignItems: "flex-end" }}>
                       <label className="form-group" style={{ margin: 0 }}>
                         <span style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", fontWeight: "600", display: "block", marginBottom: "4px" }}>
-                          Document Category *
+                          Category *
                         </span>
                         <select
                           value={uploadCategory}
@@ -832,10 +832,10 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                           className="filter-select"
                           style={{ width: "100%", height: "38px" }}
                         >
-                          <option value="ID_PROOF">ID Proof / Aadhaar / PAN</option>
-                          <option value="RESUME">Resume / Updated CV</option>
-                          <option value="TAX_DOCUMENT">Tax Document / Form 16</option>
-                          <option value="OTHER">Other Personal Document</option>
+                          <option value="ID_PROOF">ID Proof</option>
+                          <option value="RESUME">Resume</option>
+                          <option value="TAX_DOCUMENT">Tax Document</option>
+                          <option value="OTHER">Other</option>
                         </select>
                       </label>
 
@@ -854,7 +854,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
 
                       <label className="form-group" style={{ margin: 0 }}>
                         <span style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", fontWeight: "600", display: "block", marginBottom: "4px" }}>
-                          File (PDF, PNG, JPG, DOC up to 10MB) *
+                          File (PDF, PNG, JPG up to 10MB) *
                         </span>
                         <input
                           id="emp-self-file-input"
@@ -881,12 +881,12 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   {/* Documents List */}
                   <div>
                     <h3 style={{ margin: "0 0 10px", fontSize: "13px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      My Uploaded Documents ({documents.length})
+                      Uploaded Documents ({documents.length})
                     </h3>
 
                     {documents.length === 0 ? (
                       <p style={{ margin: 0, fontSize: "13px", color: "#94a3b8", fontStyle: "italic" }}>
-                        You have not uploaded any documents yet.
+                        No documents uploaded yet.
                       </p>
                     ) : (
                       <div className="documents-list">
