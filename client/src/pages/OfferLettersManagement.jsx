@@ -176,6 +176,7 @@ export default function OfferLettersManagement() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [sendingOfferId, setSendingOfferId] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null); // { type: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'DELETE' | 'SEND_EMAIL', offer: obj, notes: '' }
+  const [modalError, setModalError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   // View / Preview Modal state
@@ -679,6 +680,7 @@ export default function OfferLettersManagement() {
     if (!confirmModal) return;
 
     setActionLoading(true);
+    setModalError("");
     try {
       const { type, offer, notes } = confirmModal;
 
@@ -699,14 +701,17 @@ export default function OfferLettersManagement() {
       }
 
       setConfirmModal(null);
+      setModalError("");
       if (previewModalOffer && previewModalOffer._id === confirmModal.offer._id) {
         setPreviewModalOffer(null);
       }
       await Promise.all([fetchOffers(), fetchSummary()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to update offer letter status.");
-      setTimeout(() => setError(""), 5000);
+      const errText = err.response?.data?.message || err.message || "Failed to update offer letter status.";
+      setModalError(errText);
+      setError(errText);
+      setTimeout(() => setError(""), 8000);
     } finally {
       setActionLoading(false);
       setSendingOfferId(null);
@@ -2081,12 +2086,30 @@ export default function OfferLettersManagement() {
               </div>
             )}
 
+            {modalError && (
+              <div style={{
+                marginBottom: "16px",
+                padding: "10px 14px",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: "8px",
+                color: "#991b1b",
+                fontSize: "13px",
+                lineHeight: "1.5",
+              }}>
+                <strong>Error:</strong> {modalError}
+              </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
               <button
                 type="button"
                 className="btn-secondary"
                 disabled={actionLoading}
-                onClick={() => setConfirmModal(null)}
+                onClick={() => {
+                  setConfirmModal(null);
+                  setModalError("");
+                }}
               >
                 Cancel
               </button>
@@ -2105,9 +2128,14 @@ export default function OfferLettersManagement() {
                   padding: "8px 16px",
                   borderRadius: "6px",
                   fontWeight: "600",
+                  cursor: actionLoading ? "not-allowed" : "pointer",
                 }}
               >
-                {actionLoading ? "Sending..." : confirmModal.type === "SEND_EMAIL" ? "Send Email" : "Confirm"}
+                {actionLoading
+                  ? (confirmModal.type === "SEND_EMAIL" ? "Sending Email & PDF..." : "Processing...")
+                  : confirmModal.type === "SEND_EMAIL"
+                  ? "Send Email"
+                  : "Confirm"}
               </button>
             </div>
           </div>
