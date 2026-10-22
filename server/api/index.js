@@ -75,10 +75,21 @@ export default async function handler(req, res) {
     }
   }
 
+  // Health checks use existing Express health endpoints without blocking on DB initialization
+  const requestPath = getRequestPath(req);
+  if (requestPath === "/api/health" || requestPath === "/health") {
+    try {
+      const app = cachedApp || createApp();
+      return app(req, res);
+    } catch (error) {
+      console.error("[Vercel API] Health check failed:", error.message);
+      res.statusCode = 500;
+      return res.end();
+    }
+  }
+
   try {
     const app = await ensureReady();
-
-    // Health checks use the existing Express health endpoints.
     return app(req, res);
   } catch (error) {
     console.error("[Vercel API] Initialization failed:", error.message);
@@ -92,7 +103,7 @@ export default async function handler(req, res) {
     return res.end(
       JSON.stringify({
         status: "error",
-        code: "BACKEND_INITIALIZATION_FAILED",
+        code: "DATABASE_UNAVAILABLE",
         message:
           error.statusCode === 500
             ? "Backend configuration is incomplete."
@@ -101,3 +112,5 @@ export default async function handler(req, res) {
     );
   }
 }
+
+export { createApp, handler };

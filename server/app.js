@@ -136,3 +136,12 @@ export function createApp() {
 
   return app;
 }
+
+/**
+ * Default export conforming to Vercel Node.js Serverless Function conventions.
+ * If Vercel resolves app.js directly, it delegates to the serverless entrypoint.
+ */
+export default async function handler(req, res) {
+  const { default: apiHandler } = await import("./api/index.js");
+  return apiHandler(req, res);
+}
