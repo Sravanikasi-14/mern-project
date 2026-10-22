@@ -28,21 +28,35 @@ export function getMongoUri() {
   return uri;
 }
 
+let centralConnectionPromise = null;
+
 export async function connectCentralDB() {
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
 
-  try {
-    await mongoose.connect(getMongoUri(), { dbName: getCentralDbName() });
-    if (process.env.NODE_ENV !== "test") {
-      console.log("Central MongoDB connected");
-    }
-    return mongoose.connection;
-  } catch (error) {
-    console.error("MongoDB connection failed");
-    throw error;
+  if (centralConnectionPromise) {
+    return centralConnectionPromise;
   }
+
+  centralConnectionPromise = (async () => {
+    try {
+      await mongoose.connect(getMongoUri(), {
+        dbName: getCentralDbName(),
+        serverSelectionTimeoutMS: 8000,
+      });
+      if (process.env.NODE_ENV !== "test") {
+        console.log("Central MongoDB connected");
+      }
+      return mongoose.connection;
+    } catch (error) {
+      centralConnectionPromise = null;
+      console.error("MongoDB connection failed:", error.message || error);
+      throw error;
+    }
+  })();
+
+  return centralConnectionPromise;
 }
 
 export async function getTenantConnection(databaseName) {
@@ -51,33 +65,45 @@ export async function getTenantConnection(databaseName) {
   }
 
   const cached = tenantConnections.get(databaseName);
-  if (cached && cached.readyState === 1) {
-    return cached;
+  if (cached) {
+    if (cached.readyState === 1) {
+      return cached;
+    }
+    if (cached.readyState === 2) {
+      await cached.asPromise();
+      return cached;
+    }
+    tenantConnections.delete(databaseName);
   }
 
   try {
     const connection = mongoose.createConnection(getMongoUri(), {
       dbName: databaseName,
+      serverSelectionTimeoutMS: 8000,
     });
-    await connection.asPromise();
     tenantConnections.set(databaseName, connection);
+    await connection.asPromise();
     return connection;
   } catch (error) {
+    tenantConnections.delete(databaseName);
     throw new HttpError(503, "Company database is not available");
   }
 }
 
 const provisionedTenantDbs = new Set();
 
-export async function getCompanyModels(company) {
+export async function getCompanyModels(company, { provision = false } = {}) {
   const connection = await getTenantConnection(company.databaseName);
 
-  // On Vercel cold starts, skip index/provision work — schemas already exist in Atlas.
-  if (
-    process.env.VERCEL !== "1" &&
-    process.env.SKIP_TENANT_PROVISION !== "true" &&
-    !provisionedTenantDbs.has(company.databaseName)
-  ) {
+  // In serverless production execution, skip automatic tenant provisioning on cold start.
+  // Tenant collections, indexes, and initial policies are maintained via explicit provisioning
+  // scripts (e.g. provisionCompany, provisionAllTenants) or registration workflows.
+  const isServerlessProd =
+    Boolean(process.env.VERCEL) ||
+    Boolean(process.env.VERCEL_ENV) ||
+    (process.env.NODE_ENV === "production" && process.env.ENABLE_AUTO_PROVISIONING !== "true");
+
+  if ((!isServerlessProd || provision) && !provisionedTenantDbs.has(company.databaseName)) {
     try {
       const { provisionTenantDatabase } = await import("../services/tenantProvisioningService.js");
       await provisionTenantDatabase(company, connection);
@@ -85,8 +111,6 @@ export async function getCompanyModels(company) {
     } catch (provErr) {
       console.warn(`[db] Tenant provisioning check warning for ${company.databaseName}:`, provErr.message);
     }
-  } else if (process.env.VERCEL === "1") {
-    provisionedTenantDbs.add(company.databaseName);
   }
 
   return {
@@ -113,6 +137,7 @@ export async function findCompanyById(companyId) {
 }
 
 export async function disconnectAll() {
+  centralConnectionPromise = null;
   await Promise.all(
     [...tenantConnections.values()].map(async (connection) => {
       if (connection.readyState !== 0) {

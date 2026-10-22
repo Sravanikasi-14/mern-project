@@ -85,15 +85,17 @@ export function createApp() {
   app.use(express.json({ limit: "15mb" }));
   app.use(cookieParser());
 
-  // Health check endpoint for Render service health monitoring
-  app.get("/api/health", (_req, res) => {
+  // Health check endpoint for service health monitoring and serverless deployment verification
+  const healthHandler = (_req, res) => {
     res.status(200).json({
       status: "ok",
       service: "hrms-api",
       environment: process.env.NODE_ENV || "development",
       timestamp: new Date().toISOString(),
     });
-  });
+  };
+  app.get("/api/health", healthHandler);
+  app.get("/health", healthHandler);
 
   // API Routes
   app.use("/api/auth", authRoutes);

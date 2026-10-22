@@ -132,6 +132,12 @@ export async function generateOfferLetterPdf(htmlContent) {
     throw new HttpError(400, "HTML content is required to generate PDF.");
   }
 
+  // In serverless environments (e.g. Vercel) without a custom Chromium binary,
+  // skip attempting native Chrome launch and use the built-in pure-JS PDF generator directly.
+  if ((process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) && !process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return generatePureJsPdf(htmlContent);
+  }
+
   let browser = null;
   try {
     browser = await puppeteer.launch({

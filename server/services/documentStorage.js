@@ -1,7 +1,19 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { HttpError } from "../utils/httpError.js";
+
+export function getUploadsRoot() {
+  if (process.env.UPLOADS_DIR) {
+    return process.env.UPLOADS_DIR;
+  }
+  // On Vercel / serverless runtime, the root filesystem outside /tmp is read-only.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), "hrms_uploads");
+  }
+  return path.join(process.cwd(), "uploads");
+}
 
 const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
@@ -69,7 +81,7 @@ export async function saveDocumentFile({ databaseName, employeeId, fileName, fil
     throw new HttpError(400, "File size exceeds the 10 MB maximum upload limit.");
   }
 
-  const uploadsRoot = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const baseDir = path.join(uploadsRoot, databaseName, String(employeeId));
   await fs.promises.mkdir(baseDir, { recursive: true });
 
@@ -94,7 +106,7 @@ export function getDocumentAbsolutePath({ databaseName, employeeId, storageKey }
   }
   // Sanitize path to prevent path traversal
   const safeKey = path.basename(storageKey);
-  const uploadsRoot = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const filePath = path.join(uploadsRoot, databaseName, String(employeeId), safeKey);
   return fs.existsSync(filePath) ? filePath : null;
 }
