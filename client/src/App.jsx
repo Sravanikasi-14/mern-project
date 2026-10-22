@@ -17,6 +17,7 @@ import CandidateOnboardingPage from "./pages/CandidateOnboardingPage";
 import AdminOnboardingReview from "./pages/AdminOnboardingReview";
 import AdminSettings from "./pages/AdminSettings";
 import AccountActivation from "./pages/AccountActivation";
+import AdminAttendanceOverview from "./pages/AdminAttendanceOverview";
 import "./index.css";
 
 function IndexRedirect() {
@@ -79,6 +80,16 @@ function App() {
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
                   <EditEmployee />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/attendance"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminAttendanceOverview />
                 </AppLayout>
               </ProtectedRoute>
             }

@@ -32,7 +32,7 @@ const HR_NAV_ITEMS = [
   {
     id: "attendance",
     label: "Attendance",
-    path: null,
+    path: "/admin/attendance",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />

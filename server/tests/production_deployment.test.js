@@ -20,10 +20,15 @@ describe("Production Deployment & Static Serving", () => {
     assert.equal(res.body.code, "NOT_FOUND");
   });
 
-  it("GET / and React Router paths (/login, /admin, /app) return 200", async () => {
+  it("GET / returns 200 JSON with status, service, and message", async () => {
     const resRoot = await request(app).get("/");
     assert.equal(resRoot.status, 200);
+    assert.equal(resRoot.body.status, "ok");
+    assert.equal(resRoot.body.service, "hrms-api");
+    assert.equal(resRoot.body.message, "API is running");
+  });
 
+  it("React Router paths (/login, /admin, /app) return 200", async () => {
     const resAdmin = await request(app).get("/admin");
     assert.equal(resAdmin.status, 200);
 

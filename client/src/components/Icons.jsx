@@ -425,4 +425,51 @@ export function IconEyeOff({ size = 18, className = "", style = {} }) {
   );
 }
 
+export function IconClipboardList({ size = 24, className = "", style = {} }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", ...style }}
+      aria-hidden="true"
+    >
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <line x1="12" y1="11" x2="16" y2="11" />
+      <line x1="12" y1="16" x2="16" y2="16" />
+      <circle cx="9" cy="11" r="1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="16" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function IconMapPin({ size = 24, className = "", style = {} }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", ...style }}
+      aria-hidden="true"
+    >
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+
 

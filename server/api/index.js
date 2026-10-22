@@ -75,14 +75,14 @@ export default async function handler(req, res) {
     }
   }
 
-  // Health checks use existing Express health endpoints without blocking on DB initialization
+  // Root endpoint and health checks use existing Express endpoints without blocking on DB initialization
   const requestPath = getRequestPath(req);
-  if (requestPath === "/api/health" || requestPath === "/health") {
+  if (requestPath === "/" || requestPath === "/api/health" || requestPath === "/health") {
     try {
       const app = cachedApp || createApp();
       return app(req, res);
     } catch (error) {
-      console.error("[Vercel API] Health check failed:", error.message);
+      console.error("[Vercel API] Root/health request failed:", error.message);
       res.statusCode = 500;
       return res.end();
     }

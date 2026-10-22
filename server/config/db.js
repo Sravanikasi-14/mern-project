@@ -10,6 +10,8 @@ import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getCompanyHrPolicyModel } from "../models/CompanyHrPolicy.js";
 import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getSettlementModel } from "../models/Settlement.js";
+import { getAttendanceModel } from "../models/Attendance.js";
+import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -125,6 +127,8 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     CompanyHrPolicy: getCompanyHrPolicyModel(connection),
     OfferLetter: getOfferLetterModel(connection),
     Settlement: getSettlementModel(connection),
+    Attendance: getAttendanceModel(connection),
+    LiveTrackingSession: getLiveTrackingSessionModel(connection),
   };
 }
 

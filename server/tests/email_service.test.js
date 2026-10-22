@@ -95,6 +95,7 @@ describe("EmailService Nodemailer SMTP Integration & Safety Suite", () => {
     delete process.env.SMTP_APP_PASSWORD;
     delete process.env.SMTP_PASS;
     delete process.env.EMAIL_USER;
+    delete process.env.RESEND_API_KEY;
 
     const result = await emailService.sendEmployeeInvitation({
       companyName: "Acme Corp",

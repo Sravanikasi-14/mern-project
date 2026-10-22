@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
@@ -13,6 +13,7 @@ import {
 } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
 
 export default function EmployeeDashboard({ activeSection = "overview" }) {
   const { user } = useAuth();
@@ -25,6 +26,23 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
 
   const [dashboardData, setDashboardData] = useState(null);
   const [checkingAttendance, setCheckingAttendance] = useState(false);
+
+  // Geolocation & Attendance Capture State
+  const [geoStatus, setGeoStatus] = useState("IDLE"); // IDLE | ACQUIRING | SUCCESS | ERROR
+  const [geoError, setGeoError] = useState("");
+  const [lastCapturedLocation, setLastCapturedLocation] = useState(null);
+
+  // Live Employee Tracking State
+  const [isLiveTracking, setIsLiveTracking] = useState(false);
+  const [trackingSession, setTrackingSession] = useState(null);
+  const [trackingError, setTrackingError] = useState("");
+  const unwatchRef = useRef(null);
+
+  // Attendance History State
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState([]);
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
 
   // Apply Leave Modal
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -244,37 +262,161 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
     };
   }, []);
 
-  // Check-In handler
+  // Check-In handler with browser geolocation capture
   const handleCheckIn = async () => {
     try {
       setCheckingAttendance(true);
       setActionError("");
       setActionSuccess("");
-      const response = await api.post("/employees/me/attendance/check-in");
-      setActionSuccess(response.data?.message || "Checked in successfully!");
+      setGeoError("");
+      setGeoStatus("ACQUIRING");
+
+      let loc = null;
+      try {
+        loc = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
+        setLastCapturedLocation(loc);
+        setGeoStatus("SUCCESS");
+      } catch (err) {
+        setGeoStatus("ERROR");
+        const msg = `${err.message} ${err.action || "Please enable location in browser settings to punch in."}`;
+        setGeoError(msg);
+        setActionError(msg);
+        return;
+      }
+
+      const response = await api.post("/employees/me/attendance/punch-in", { location: loc });
+      setActionSuccess(response.data?.message || "Punched in successfully!");
       await fetchDashboard();
+      await fetchAttendanceHistory();
     } catch (err) {
-      setActionError(err.response?.data?.message || "Unable to check in. Please try again.");
+      setActionError(err.response?.data?.message || "Unable to punch in. Please try again.");
     } finally {
       setCheckingAttendance(false);
     }
   };
 
-  // Check-Out handler
+  // Check-Out handler with browser geolocation capture
   const handleCheckOut = async () => {
     try {
       setCheckingAttendance(true);
       setActionError("");
       setActionSuccess("");
-      const response = await api.post("/employees/me/attendance/check-out");
-      setActionSuccess(response.data?.message || "Checked out successfully!");
+      setGeoError("");
+      setGeoStatus("ACQUIRING");
+
+      let loc = null;
+      try {
+        loc = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
+        setLastCapturedLocation(loc);
+        setGeoStatus("SUCCESS");
+      } catch (err) {
+        setGeoStatus("ERROR");
+        const msg = `${err.message} ${err.action || "Please enable location in browser settings to punch out."}`;
+        setGeoError(msg);
+        setActionError(msg);
+        return;
+      }
+
+      const response = await api.post("/employees/me/attendance/punch-out", { location: loc });
+      setActionSuccess(response.data?.message || "Punched out successfully!");
       await fetchDashboard();
+      await fetchAttendanceHistory();
     } catch (err) {
-      setActionError(err.response?.data?.message || "Unable to check out. Please try again.");
+      setActionError(err.response?.data?.message || "Unable to punch out. Please try again.");
     } finally {
       setCheckingAttendance(false);
     }
   };
+
+  // Live Tracking controls
+  const handleStartTracking = async () => {
+    try {
+      setTrackingError("");
+      const res = await api.post("/employees/me/tracking/start", { durationMinutes: 30 });
+      if (res.data?.success) {
+        setIsLiveTracking(true);
+        setTrackingSession(res.data.session);
+
+        if (unwatchRef.current) {
+          unwatchRef.current();
+        }
+
+        unwatchRef.current = watchLiveLocation(
+          async (newLoc) => {
+            try {
+              await api.post("/employees/me/tracking/update", { location: newLoc });
+              setTrackingSession((prev) => (prev ? { ...prev, lastLocation: newLoc } : null));
+            } catch (err) {
+              if (err.response?.status === 400 && err.response?.data?.message?.includes("expired")) {
+                handleStopTracking(true);
+              }
+            }
+          },
+          (err) => {
+            setTrackingError(err.message);
+          }
+        );
+      }
+    } catch (err) {
+      setTrackingError(err.response?.data?.message || "Failed to start live tracking session.");
+    }
+  };
+
+  const handleStopTracking = async (silent = false) => {
+    try {
+      if (unwatchRef.current) {
+        unwatchRef.current();
+        unwatchRef.current = null;
+      }
+      setIsLiveTracking(false);
+      setTrackingSession(null);
+      if (!silent) {
+        await api.post("/employees/me/tracking/stop");
+      }
+    } catch {
+      // stop session
+    }
+  };
+
+  // Fetch attendance history with date filtering
+  const fetchAttendanceHistory = async (start = historyStartDate, end = historyEndDate) => {
+    try {
+      setHistoryLoading(true);
+      const params = { limit: 50 };
+      if (start) params.startDate = start;
+      if (end) params.endDate = end;
+
+      const res = await api.get("/employees/me/attendance/history", { params });
+      if (res.data?.success) {
+        setHistoryRecords(res.data.records || []);
+      }
+    } catch {
+      // ignore history load error
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Fetch initial tracking status and history on mount
+  useEffect(() => {
+    api
+      .get("/employees/me/tracking/status")
+      .then((res) => {
+        if (res.data?.isTrackingActive && res.data?.session) {
+          setIsLiveTracking(true);
+          setTrackingSession(res.data.session);
+        }
+      })
+      .catch(() => {});
+
+    fetchAttendanceHistory();
+
+    return () => {
+      if (unwatchRef.current) {
+        unwatchRef.current();
+      }
+    };
+  }, []);
 
   // Apply Leave handler with live cutoff validation and instant state updates
   const handleApplyLeave = async (e) => {
@@ -627,16 +769,57 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 </div>
               </div>
 
+              {/* Geolocation Feedback & Error Banner */}
+              {geoStatus === "ACQUIRING" && (
+                <div style={{ marginBottom: 16, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 13, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconClock size={16} />
+                  <span>Acquiring high-accuracy browser location... Please grant permission if prompted.</span>
+                </div>
+              )}
+
+              {geoError && (
+                <div style={{ marginBottom: 16, padding: "12px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 13, color: "#991b1b" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, marginBottom: 4 }}>
+                    <IconAlertCircle size={16} />
+                    <span>Location Permission Required</span>
+                  </div>
+                  <p style={{ margin: "0 0 8px", fontSize: 12.5, lineHeight: 1.4 }}>
+                    {geoError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGeoError("");
+                      setGeoStatus("IDLE");
+                      todayStatus === "NOT_CHECKED_IN" ? handleCheckIn() : handleCheckOut();
+                    }}
+                    style={{ background: "#991b1b", color: "#ffffff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    Retry Location Capture
+                  </button>
+                </div>
+              )}
+
+              {lastCapturedLocation && (
+                <div style={{ marginBottom: 16, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconCheck size={14} />
+                  <span>
+                    Verified Location: {lastCapturedLocation.latitude.toFixed(4)}, {lastCapturedLocation.longitude.toFixed(4)}
+                    {lastCapturedLocation.accuracy ? ` (±${Math.round(lastCapturedLocation.accuracy)}m)` : ""}
+                  </span>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                 {todayStatus === "NOT_CHECKED_IN" && (
                   <button
                     type="button"
                     onClick={handleCheckIn}
                     disabled={checkingAttendance}
-                    style={{ background: "#18181b", color: "#ffffff", padding: "10px 20px" }}
+                    style={{ background: "#18181b", color: "#ffffff", padding: "10px 20px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
                   >
-                    {checkingAttendance ? "Recording..." : "Check In"}
+                    {checkingAttendance ? "Verifying & Checking In..." : "Punch In (With Location)"}
                   </button>
                 )}
 
@@ -645,19 +828,109 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                     type="button"
                     onClick={handleCheckOut}
                     disabled={checkingAttendance}
-                    style={{ background: "#09090b", color: "#ffffff", padding: "10px 20px" }}
+                    style={{ background: "#09090b", color: "#ffffff", padding: "10px 20px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}
                   >
-                    {checkingAttendance ? "Recording..." : "Check Out"}
+                    {checkingAttendance ? "Verifying & Checking Out..." : "Punch Out (With Location)"}
                   </button>
                 )}
 
                 {todayStatus === "CHECKED_OUT" && (
                   <div style={{ fontSize: 13, color: "#71717a", display: "flex", alignItems: "center", gap: 6 }}>
                     <IconCheck size={14} style={{ color: "#15803d" }} />
-                    <span>You have checked out for the day.</span>
+                    <span>You have punched out for the day.</span>
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* LIVE EMPLOYEE LOCATION TRACKING CARD */}
+          {(currentTab === "attendance" || currentTab === "overview") && (
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e4e4e7",
+                borderRadius: 14,
+                padding: "20px 24px",
+                marginBottom: 24,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>
+                      Authorized Live Location Tracking
+                    </h3>
+                    {isLiveTracking ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px", borderRadius: 12, background: "#dcfce7", color: "#15803d", fontSize: 11, fontWeight: 700 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a" }}></span>
+                        TRACKING ACTIVE
+                      </span>
+                    ) : (
+                      <span style={{ padding: "2px 8px", borderRadius: 12, background: "#f4f4f5", color: "#71717a", fontSize: 11, fontWeight: 600 }}>
+                        STOPPED
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "#71717a", maxWidth: 680 }}>
+                    Authorized live tracking shares fresh browser location updates with HR during active work hours.
+                    Sessions are time-bounded (30 min) and can be stopped at any time.
+                  </p>
+                </div>
+
+                <div>
+                  {isLiveTracking ? (
+                    <button
+                      type="button"
+                      onClick={() => handleStopTracking(false)}
+                      style={{
+                        background: "#dc2626",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 16px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Stop Tracking
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStartTracking}
+                      style={{
+                        background: "#16a34a",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 16px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Start Live Tracking
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {trackingError && (
+                <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, color: "#991b1b", fontSize: 12, marginTop: 10 }}>
+                  {trackingError}
+                </div>
+              )}
+
+              {isLiveTracking && trackingSession?.lastLocation && (
+                <div style={{ marginTop: 12, padding: "10px 14px", background: "#f9fafb", borderRadius: 8, border: "1px solid #f3f4f6", fontSize: 12, color: "#52525b" }}>
+                  <strong>Last Reported Location:</strong> {trackingSession.lastLocation.latitude.toFixed(4)}, {trackingSession.lastLocation.longitude.toFixed(4)}
+                  {trackingSession.lastLocation.accuracy && ` (±${Math.round(trackingSession.lastLocation.accuracy)}m)`}
+                  {trackingSession.lastLocation.capturedAt && ` • ${new Date(trackingSession.lastLocation.capturedAt).toLocaleTimeString()}`}
+                </div>
+              )}
             </div>
           )}
 
@@ -811,7 +1084,7 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
             </div>
           )}
 
-          {/* RECENT ATTENDANCE HISTORY TABLE */}
+          {/* ATTENDANCE HISTORY TABLE WITH DATE FILTERING */}
           {(currentTab === "overview" || currentTab === "attendance") && (
             <div
               style={{
@@ -822,20 +1095,60 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                 marginBottom: 28,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
                 <div>
                   <h4 style={{ margin: "0 0 2px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                    Recent Personal Attendance Records
+                    {currentTab === "attendance" ? "Personal Attendance History" : "Recent Personal Attendance Records"}
                   </h4>
                   <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-                    Your recorded punch-in and punch-out history.
+                    Your recorded punch-in and punch-out history with verified browser coordinates.
                   </p>
                 </div>
+
+                {currentTab === "attendance" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="date"
+                      value={historyStartDate}
+                      onChange={(e) => setHistoryStartDate(e.target.value)}
+                      placeholder="Start date"
+                      style={{ border: "1px solid #d4d4d8", borderRadius: 6, padding: "6px 10px", fontSize: 12 }}
+                    />
+                    <span style={{ fontSize: 12, color: "#71717a" }}>to</span>
+                    <input
+                      type="date"
+                      value={historyEndDate}
+                      onChange={(e) => setHistoryEndDate(e.target.value)}
+                      placeholder="End date"
+                      style={{ border: "1px solid #d4d4d8", borderRadius: 6, padding: "6px 10px", fontSize: 12 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fetchAttendanceHistory(historyStartDate, historyEndDate)}
+                      style={{ background: "#18181b", color: "#ffffff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Filter
+                    </button>
+                    {(historyStartDate || historyEndDate) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoryStartDate("");
+                          setHistoryEndDate("");
+                          fetchAttendanceHistory("", "");
+                        }}
+                        style={{ background: "#f4f4f5", color: "#3f3f46", border: "1px solid #d4d4d8", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {(!attendance?.recentRecords || attendance.recentRecords.length === 0) ? (
+              {((historyRecords.length === 0 && (!attendance?.recentRecords || attendance.recentRecords.length === 0)) || historyLoading) ? (
                 <div style={{ padding: "36px 16px", textAlign: "center", color: "#71717a", fontSize: 13 }}>
-                  No attendance history logged yet. Today's punches will appear here once recorded.
+                  {historyLoading ? "Loading attendance records..." : "No attendance history found for this date range."}
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
@@ -843,39 +1156,59 @@ export default function EmployeeDashboard({ activeSection = "overview" }) {
                     <thead>
                       <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
                         <th style={{ padding: "10px 12px" }}>Date</th>
-                        <th style={{ padding: "10px 12px" }}>Check In</th>
-                        <th style={{ padding: "10px 12px" }}>Check Out</th>
+                        <th style={{ padding: "10px 12px" }}>Punch In</th>
+                        <th style={{ padding: "10px 12px" }}>Punch Out</th>
                         <th style={{ padding: "10px 12px" }}>Duration</th>
+                        <th style={{ padding: "10px 12px" }}>Location Coordinates</th>
                         <th style={{ padding: "10px 12px" }}>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {attendance.recentRecords.map((rec, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                          <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>{rec.date}</td>
-                          <td style={{ padding: "12px", color: "#52525b" }}>
-                            {rec.checkIn ? new Date(rec.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
-                          </td>
-                          <td style={{ padding: "12px", color: "#52525b" }}>
-                            {rec.checkOut ? new Date(rec.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
-                          </td>
-                          <td style={{ padding: "12px", fontWeight: 500 }}>{rec.workingHours || "--"}</td>
-                          <td style={{ padding: "12px" }}>
-                            <span
-                              style={{
-                                padding: "4px 9px",
-                                borderRadius: 12,
-                                fontSize: 12,
-                                fontWeight: 600,
-                                background: "#f0fdf4",
-                                color: "#15803d",
-                              }}
-                            >
-                              {rec.status || "PRESENT"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {(historyRecords.length > 0 ? historyRecords : attendance.recentRecords || []).map((rec, i) => {
+                        const inLoc = rec.checkInLocation;
+                        const outLoc = rec.checkOutLocation;
+                        return (
+                          <tr key={rec._id || i} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                            <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>{rec.date}</td>
+                            <td style={{ padding: "12px", color: "#52525b" }}>
+                              {rec.checkIn ? new Date(rec.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
+                            </td>
+                            <td style={{ padding: "12px", color: "#52525b" }}>
+                              {rec.checkOut ? new Date(rec.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
+                            </td>
+                            <td style={{ padding: "12px", fontWeight: 500 }}>{rec.workingHours || "--"}</td>
+                            <td style={{ padding: "12px" }}>
+                              {inLoc ? (
+                                <div style={{ fontSize: 11.5 }}>
+                                  <span style={{ color: "#2563eb", fontWeight: 600 }}>In:</span> {inLoc.latitude.toFixed(3)}, {inLoc.longitude.toFixed(3)}
+                                  {inLoc.accuracy && <span style={{ color: "#71717a" }}> (±{Math.round(inLoc.accuracy)}m)</span>}
+                                  {outLoc && (
+                                    <div style={{ marginTop: 2 }}>
+                                      <span style={{ color: "#7c3aed", fontWeight: 600 }}>Out:</span> {outLoc.latitude.toFixed(3)}, {outLoc.longitude.toFixed(3)}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{ color: "#a1a1aa", fontSize: 11.5 }}>Standard</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "12px" }}>
+                              <span
+                                style={{
+                                  padding: "4px 9px",
+                                  borderRadius: 12,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  background: rec.status === "CHECKED_IN" ? "#e0f2fe" : "#f0fdf4",
+                                  color: rec.status === "CHECKED_IN" ? "#0369a1" : "#15803d",
+                                }}
+                              >
+                                {rec.status || "PRESENT"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

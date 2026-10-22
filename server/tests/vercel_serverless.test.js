@@ -44,6 +44,16 @@ describe("Vercel Serverless Function & Deployment Integration", () => {
     assert.equal(res.body.service, "hrms-api");
   });
 
+  it("3b. serverless handler responds to GET / (root endpoint) with 200 and json status", async () => {
+    const server = http.createServer((req, res) => handler(req, res));
+    const res = await request(server).get("/");
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, "ok");
+    assert.equal(res.body.service, "hrms-api");
+    assert.equal(res.body.message, "API is running");
+  });
+
   it("4. handles OPTIONS preflight from Vercel frontend origin with 204 without database connection", async () => {
     const server = http.createServer((req, res) => handler(req, res));
     const res = await request(server)

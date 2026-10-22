@@ -3,6 +3,8 @@ import { getCentralDbName, getTenantConnection } from "../config/db.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
 import { getOfferLetterModel } from "../models/OfferLetter.js";
+import { getAttendanceModel } from "../models/Attendance.js";
+import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
 
 /**
  * Ensures leave_requests and company_hr_policies collections, approved indexes,
@@ -133,6 +135,36 @@ export async function provisionTenantDatabase(company, connection) {
   try {
     await OfferLetter.createIndexes();
     outcome.indexesCreated.push("offer_letters: { status: 1, createdAt: -1 }, { 'candidate.email': 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 6. Ensure attendances collection exists
+  if (!existingColNames.has("attendances")) {
+    await db.createCollection("attendances");
+    outcome.collectionsCreated.push("attendances");
+    outcome.repaired = true;
+  }
+
+  const Attendance = getAttendanceModel(conn);
+  try {
+    await Attendance.createIndexes();
+    outcome.indexesCreated.push("attendances: { employeeId: 1, date: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 7. Ensure live_tracking_sessions collection exists
+  if (!existingColNames.has("live_tracking_sessions")) {
+    await db.createCollection("live_tracking_sessions");
+    outcome.collectionsCreated.push("live_tracking_sessions");
+    outcome.repaired = true;
+  }
+
+  const LiveTrackingSession = getLiveTrackingSessionModel(conn);
+  try {
+    await LiveTrackingSession.createIndexes();
+    outcome.indexesCreated.push("live_tracking_sessions: { employeeId: 1, status: 1 }");
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }

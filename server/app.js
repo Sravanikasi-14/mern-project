@@ -85,6 +85,15 @@ export function createApp() {
   app.use(express.json({ limit: "15mb" }));
   app.use(cookieParser());
 
+  // Root endpoint returning simple service status
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      status: "ok",
+      service: "hrms-api",
+      message: "API is running",
+    });
+  });
+
   // Health check endpoint for service health monitoring and serverless deployment verification
   const healthHandler = (_req, res) => {
     res.status(200).json({
