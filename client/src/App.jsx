@@ -16,8 +16,15 @@ import CandidateOfferReview from "./pages/CandidateOfferReview";
 import CandidateOnboardingPage from "./pages/CandidateOnboardingPage";
 import AdminOnboardingReview from "./pages/AdminOnboardingReview";
 import AdminSettings from "./pages/AdminSettings";
+import AdminPolicies from "./pages/AdminPolicies";
 import AccountActivation from "./pages/AccountActivation";
 import AdminAttendanceOverview from "./pages/AdminAttendanceOverview";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminAssets from "./pages/AdminAssets";
+import EmployeeAttendance from "./pages/EmployeeAttendance";
+import EmployeeLeave from "./pages/EmployeeLeave";
+import EmployeePayslips from "./pages/EmployeePayslips";
+import EmployeeAssets from "./pages/EmployeeAssets";
 import "./index.css";
 
 function IndexRedirect() {
@@ -39,7 +46,7 @@ function IndexRedirect() {
     );
   }
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === "HR_ADMIN" ? "/admin" : "/app"} replace />;
+    return <Navigate to={user.role === "HR_ADMIN" ? "/admin/dashboard" : "/app/dashboard"} replace />;
   }
   return <Navigate to="/login" replace />;
 }
@@ -54,6 +61,16 @@ function App() {
           <Route path="/offers/review/:token" element={<CandidateOfferReview />} />
           <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
           <Route path="/activate" element={<AccountActivation />} />
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminDashboard />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin"
             element={
@@ -135,6 +152,16 @@ function App() {
             }
           />
           <Route
+            path="/admin/assets"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminAssets />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/settings"
             element={
               <ProtectedRoute roles={["HR_ADMIN"]}>
@@ -145,11 +172,31 @@ function App() {
             }
           />
           <Route
+            path="/admin/policies"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminPolicies />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeDashboard activeSection="overview" />
+                  <EmployeeDashboard />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/dashboard"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeDashboard />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -159,7 +206,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeDashboard activeSection="attendance" />
+                  <EmployeeAttendance />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -169,7 +216,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeDashboard activeSection="leave" />
+                  <EmployeeLeave />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -179,7 +226,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeDashboard activeSection="payslips" />
+                  <EmployeePayslips />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -189,7 +236,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeDashboard activeSection="assets" />
+                  <EmployeeAssets />
                 </AppLayout>
               </ProtectedRoute>
             }

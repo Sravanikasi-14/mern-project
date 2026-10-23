@@ -6,7 +6,7 @@ const HR_NAV_ITEMS = [
   {
     id: "dashboard",
     label: "Dashboard",
-    path: null,
+    path: "/admin/dashboard",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -95,7 +95,7 @@ const HR_NAV_ITEMS = [
   {
     id: "assets",
     label: "Assets",
-    path: null,
+    path: "/admin/assets",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -107,7 +107,7 @@ const HR_NAV_ITEMS = [
   {
     id: "policies",
     label: "Policies",
-    path: null,
+    path: "/admin/policies",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -135,7 +135,7 @@ const EMPLOYEE_NAV_ITEMS = [
   {
     id: "dashboard",
     label: "Dashboard",
-    path: "/app",
+    path: "/app/dashboard",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -256,6 +256,9 @@ export default function Sidebar({
     const current = location.pathname;
 
     if (user?.role === "HR_ADMIN") {
+      if (item.id === "dashboard") {
+        return current === "/admin/dashboard";
+      }
       if (item.id === "people") {
         return (
           current === "/admin" ||
@@ -270,7 +273,7 @@ export default function Sidebar({
 
     // EMPLOYEE Role:
     if (item.id === "dashboard") {
-      return current === "/app";
+      return current === "/app" || current === "/app/dashboard";
     }
     if (item.id === "profile") {
       return (

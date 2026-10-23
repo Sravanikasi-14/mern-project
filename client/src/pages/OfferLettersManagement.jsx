@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   IconClose,
   IconDocument,
@@ -155,7 +155,11 @@ export default function OfferLettersManagement() {
   // Filters & Search
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [searchParams] = useSearchParams();
+  const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
+  const [statusFilter, setStatusFilter] = useState(
+    ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED"].includes(initialStatus) ? initialStatus : "ALL"
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -715,7 +719,6 @@ export default function OfferLettersManagement() {
       <div className="ol-header">
         <div className="ol-header-copy">
           <h1>Offer Letters</h1>
-          <p>Create, send, and track candidate offers. Everyone involved is updated when status changes.</p>
         </div>
         <div className="ol-header-actions">
           <button

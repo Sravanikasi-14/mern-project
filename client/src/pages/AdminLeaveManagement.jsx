@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from "../components/Icons";
@@ -21,6 +22,8 @@ const LEAVE_TYPE_OPTIONS = [
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function AdminLeaveManagement() {
+  const [searchParams] = useSearchParams();
+  const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
@@ -37,7 +40,9 @@ export default function AdminLeaveManagement() {
   // Filters & Pagination state
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState(
+    ["ALL", "PENDING", "APPROVED", "REJECTED"].includes(initialStatus) ? initialStatus : "ALL"
+  );
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [fromDateFilter, setFromDateFilter] = useState("");
   const [toDateFilter, setToDateFilter] = useState("");
@@ -61,6 +66,12 @@ export default function AdminLeaveManagement() {
 
   // Change Leave Type State (HR action on APPROVED requests)
   const [availableLeaveTypes, setAvailableLeaveTypes] = useState([]);
+  const [filterLeaveTypes, setFilterLeaveTypes] = useState([
+    { value: "ALL", label: "All Types" },
+    { value: "CASUAL", label: "Casual" },
+    { value: "SICK", label: "Sick" },
+    { value: "EARNED", label: "Earned" },
+  ]);
   const [showChangeTypeForm, setShowChangeTypeForm] = useState(false);
   const [selectedNewType, setSelectedNewType] = useState("");
   const [changeTypeReason, setChangeTypeReason] = useState("");
@@ -68,6 +79,22 @@ export default function AdminLeaveManagement() {
   const [submittingChangeType, setSubmittingChangeType] = useState(false);
   const [changeTypeError, setChangeTypeError] = useState("");
   const [changeTypeSuccess, setChangeTypeSuccess] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/policies/active")
+      .then((res) => {
+        const types = res.data?.policy?.leaveTypes || [];
+        if (types.length > 0) {
+          setFilterLeaveTypes([
+            { value: "ALL", label: "All Types" },
+            ...types.map((t) => ({ value: t.code, label: t.name || t.code })),
+          ]);
+          setAvailableLeaveTypes(types);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -300,10 +327,7 @@ export default function AdminLeaveManagement() {
 
   return (
     <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader
-        title="Leave"
-        subtitle="Review and manage employee leave requests."
-      />
+      <AppHeader title="Leave" />
 
       {/* Action alerts */}
       {actionSuccess && (
@@ -435,7 +459,7 @@ export default function AdminLeaveManagement() {
               setPage(1);
             }}
           >
-            {LEAVE_TYPE_OPTIONS.map((opt) => (
+            {filterLeaveTypes.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

@@ -12,6 +12,9 @@ import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getSettlementModel } from "../models/Settlement.js";
 import { getAttendanceModel } from "../models/Attendance.js";
 import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
+import { getPayrollCycleModel } from "../models/PayrollCycle.js";
+import { getPayslipModel } from "../models/Payslip.js";
+import { getCompanyAssetModel } from "../models/CompanyAsset.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -129,6 +132,9 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     Settlement: getSettlementModel(connection),
     Attendance: getAttendanceModel(connection),
     LiveTrackingSession: getLiveTrackingSessionModel(connection),
+    PayrollCycle: getPayrollCycleModel(connection),
+    Payslip: getPayslipModel(connection),
+    CompanyAsset: getCompanyAssetModel(connection),
   };
 }
 

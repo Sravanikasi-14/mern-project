@@ -12,6 +12,7 @@ import {
 import { generateOfferLetterPdf } from "../services/pdfService.js";
 import { emailService } from "../services/emailService.js";
 import { signOfferSigningToken } from "../utils/onboardingToken.js";
+import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -845,7 +846,10 @@ export async function sendOfferLetterEmail(req, res, next) {
     });
     const tokenHash = crypto.createHash("sha256").update(signingToken).digest("hex");
     offerLetter.signingTokenHash = tokenHash;
-    offerLetter.signingTokenExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const { CompanyHrPolicy } = req.auth.models;
+    const policy = CompanyHrPolicy ? await getActiveCompanyHrPolicy(CompanyHrPolicy) : null;
+    const validityDays = policy?.recruitmentRules?.offerValidityDays || 7;
+    offerLetter.signingTokenExpiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
 
     const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
     const reviewLink = `${clientUrl}/offers/review/${signingToken}`;

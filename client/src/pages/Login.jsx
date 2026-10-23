@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { classifyLoginError } from "../services/api";
 
 function homeForRole(role) {
-  return role === "HR_ADMIN" ? "/admin" : "/app";
+  return role === "HR_ADMIN" ? "/admin/dashboard" : "/app";
 }
 
 export default function Login() {

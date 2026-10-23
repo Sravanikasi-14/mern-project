@@ -22,6 +22,7 @@ import {
   withLeaveSubmissionLock,
 } from "../services/leaveService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
+import { generatePayslipPdfBuffer } from "../services/payslipPdfService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -523,9 +524,46 @@ export async function getEmployeeDashboard(req, res, next) {
       .filter((h) => h.date >= todayStr)
       .slice(0, 5);
 
-    // Personal payslips derived from authorized EmployeeCompensation
+    // Personal payslips derived from finalized Payslip records or active EmployeeCompensation
     const payslips = [];
-    if (EmployeeCompensation) {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    if (req.auth.models.Payslip) {
+      const persistedPayslips = await req.auth.models.Payslip.find({
+        employeeId: employee._id,
+        status: { $in: ["FINALIZED", "PAID"] },
+      })
+        .sort({ periodYear: -1, periodMonth: -1 })
+        .lean();
+
+      for (const p of persistedPayslips) {
+        const basic = p.earnings?.find((e) => e.code === "BASIC")?.amount || 0;
+        const hra = p.earnings?.find((e) => e.code === "HRA")?.amount || 0;
+        const special = p.earnings?.find((e) => e.code === "SPECIAL")?.amount || 0;
+        payslips.push({
+          id: p._id.toString(),
+          payslipNumber: p.payslipNumber,
+          month: monthNames[p.periodMonth - 1] || `Month ${p.periodMonth}`,
+          year: p.periodYear,
+          period: `${toDateString(p.periodStartDate)} to ${toDateString(p.periodEndDate)}`,
+          grossSalary: p.grossEarnings,
+          basicSalary: basic,
+          houseRentAllowance: hra,
+          specialAllowance: special,
+          deductions: p.totalDeductions,
+          netPay: p.netPayable,
+          disbursedDate: toDateString(p.finalizedAt || p.createdAt),
+          status: p.paymentStatus,
+          isPersisted: true,
+        });
+      }
+    }
+
+    // Fallback preview if no finalized payroll cycle has been processed yet
+    if (payslips.length === 0 && EmployeeCompensation) {
       const comp = await EmployeeCompensation.findOne({ employeeId: employee._id }).lean();
       if (comp) {
         const now = new Date();
@@ -551,11 +589,7 @@ export async function getEmployeeDashboard(req, res, next) {
           const deductions = epf;
           const netPay = ctc - deductions;
 
-          // Generate the 3 most recent monthly payslips
-          const monthNames = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-          ];
+          // Generate the 3 most recent monthly payslips for preview
           for (let m = 1; m <= 3; m++) {
             const payDate = new Date(now.getFullYear(), now.getMonth() - m + 1, 0); // last day of month
             const mIndex = payDate.getMonth();
@@ -573,6 +607,7 @@ export async function getEmployeeDashboard(req, res, next) {
               netPay,
               disbursedDate: payDate.toISOString().split("T")[0],
               status: "PAID",
+              isPersisted: false,
             });
           }
         }
@@ -580,7 +615,40 @@ export async function getEmployeeDashboard(req, res, next) {
     }
 
     // Assigned company assets (laptops, peripherals, ID badges)
-    const assignedAssets = customFields.assignedAssets || [];
+    let assignedAssets = [];
+    if (req.auth.models.CompanyAsset) {
+      const dbAssets = await req.auth.models.CompanyAsset.find({
+        "currentAssignment.employeeId": employee._id,
+        status: "ASSIGNED",
+      }).lean();
+      assignedAssets = dbAssets.map((a) => ({
+        id: a._id.toString(),
+        name: a.name,
+        serial: a.serialNumber || a.assetTag,
+        assetTag: a.assetTag,
+        category: a.category,
+        assignedDate: a.currentAssignment?.assignedDate
+          ? new Date(a.currentAssignment.assignedDate).toISOString().split("T")[0]
+          : null,
+        condition: a.currentAssignment?.conditionAtAssignment || a.condition,
+        acknowledgementStatus: a.currentAssignment?.acknowledgementStatus || "PENDING",
+      }));
+    }
+
+    if (Array.isArray(customFields.assignedAssets)) {
+      const existingSerials = new Set(assignedAssets.map((a) => (a.serial || a.name || "").toLowerCase()));
+      for (const item of customFields.assignedAssets) {
+        const itemSerial = typeof item === "object" ? (item.serial || item.name || "") : String(item);
+        if (!existingSerials.has(itemSerial.toLowerCase())) {
+          assignedAssets.push({
+            name: typeof item === "object" ? item.name : item,
+            serial: typeof item === "object" ? item.serial || "N/A" : "N/A",
+            assetTag: typeof item === "object" ? item.assetTag || "LEGACY" : "LEGACY",
+            assignedDate: typeof item === "object" ? item.assignedDate : null,
+          });
+        }
+      }
+    }
 
     let leaveConfig = null;
     try {
@@ -802,7 +870,14 @@ export async function applyLeave(req, res, next) {
     );
 
     if (!activeLeaveType) {
-      throw new HttpError(400, `Invalid or inactive leave type: '${leaveType}'. Must be CASUAL, SICK, or EARNED.`);
+      const activeCodes = (policy.leaveTypes || [])
+        .filter((lt) => lt.isActive)
+        .map((lt) => lt.code)
+        .join(", ");
+      throw new HttpError(
+        400,
+        `Invalid or inactive leave type: '${leaveType}'. Allowed active leave types: ${activeCodes || "None configured"}.`
+      );
     }
 
     // Authoritative date validation: past dates rejected, same-day cutoff enforced, start <= end
@@ -838,6 +913,15 @@ export async function applyLeave(req, res, next) {
       // Calculate working leave days based on company policy (weekends & holidays excluded)
       const { workingDays } = calculateLeaveDays(start, end, policy);
       daysCount = workingDays;
+
+      // Enforce max consecutive days configured in company policy
+      const maxConsecutive = policy?.leaveRules?.maxConsecutiveDays;
+      if (maxConsecutive && daysCount > maxConsecutive) {
+        throw new HttpError(
+          400,
+          `Leave request duration (${daysCount} days) exceeds the company maximum limit of ${maxConsecutive} consecutive days.`
+        );
+      }
 
       // Calculate balance from policy and approved leave history
       balances = LeaveRequest
@@ -931,7 +1015,7 @@ export async function applyLeave(req, res, next) {
 
 export async function downloadPayslip(req, res, next) {
   try {
-    const { Employee, EmployeeCompensation } = req.auth.models;
+    const { Employee, EmployeeCompensation, Payslip } = req.auth.models;
     const { payslipId } = req.params;
 
     const employee = await Employee.findOne({
@@ -942,14 +1026,45 @@ export async function downloadPayslip(req, res, next) {
       throw new HttpError(404, "Employee record not found.");
     }
 
-    let ctc = 0;
-    let basic = 0;
-    let hra = 0;
-    let special = 0;
-    let deductions = 0;
-    let netPay = 0;
+    // Check if an actual finalized Payslip exists
+    let persistedPayslip = null;
+    if (Payslip) {
+      if (/^[0-9a-fA-F]{24}$/.test(payslipId)) {
+        persistedPayslip = await Payslip.findById(payslipId).lean();
+      }
+      if (!persistedPayslip) {
+        persistedPayslip = await Payslip.findOne({ payslipNumber: payslipId }).lean();
+      }
+    }
 
-    if (EmployeeCompensation) {
+    // If persisted payslip found, ensure ownership
+    if (persistedPayslip) {
+      if (req.auth.user.role === "EMPLOYEE" && String(persistedPayslip.employeeId) !== String(employee._id)) {
+        throw new HttpError(403, "Access denied: You are not authorized to view or download this payslip.");
+      }
+
+      // If PDF format requested
+      if (req.query.format === "pdf" || req.headers.accept?.includes("application/pdf")) {
+        const pdfBuf = await generatePayslipPdfBuffer(persistedPayslip, req.auth.company);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="Payslip_${employee.employeeCode}_${persistedPayslip.periodYear}_${persistedPayslip.periodMonth}.pdf"`
+        );
+        res.setHeader("Content-Length", pdfBuf.length);
+        return res.end(pdfBuf);
+      }
+    }
+
+    // Default or fallback text generation
+    let ctc = persistedPayslip ? persistedPayslip.grossEarnings : 0;
+    let basic = persistedPayslip ? persistedPayslip.earnings?.find((e) => e.code === "BASIC")?.amount || 0 : 0;
+    let hra = persistedPayslip ? persistedPayslip.earnings?.find((e) => e.code === "HRA")?.amount || 0 : 0;
+    let special = persistedPayslip ? persistedPayslip.earnings?.find((e) => e.code === "SPECIAL")?.amount || 0 : 0;
+    let deductions = persistedPayslip ? persistedPayslip.totalDeductions : 0;
+    let netPay = persistedPayslip ? persistedPayslip.netPayable : 0;
+
+    if (!persistedPayslip && EmployeeCompensation) {
       const comp = await EmployeeCompensation.findOne({ employeeId: employee._id }).lean();
       if (comp && comp.revisions && comp.revisions.length > 0) {
         const latest = comp.revisions[comp.revisions.length - 1];
@@ -960,6 +1075,53 @@ export async function downloadPayslip(req, res, next) {
         deductions = latest.salaryComponents?.employerProvidentFund ? parseFloat(latest.salaryComponents.employerProvidentFund.toString()) : Math.round(basic * 0.12);
         netPay = ctc - deductions;
       }
+    }
+
+    // Check if client requested PDF for preview
+    if (req.query.format === "pdf") {
+      const previewPayslipObj = {
+        payslipNumber: payslipId,
+        periodMonth: new Date().getMonth() + 1,
+        periodYear: new Date().getFullYear(),
+        periodStartDate: new Date(),
+        periodEndDate: new Date(),
+        employeeSnapshot: {
+          fullName: employee.fullName,
+          employeeCode: employee.employeeCode,
+          jobTitle: employee.job?.jobTitle,
+          department: employee.job?.department,
+          bankAccountNumber: employee.bankDetails?.accountNumber,
+          panNumber: employee.panNumber,
+        },
+        daysBreakdown: {
+          totalDaysInMonth: 30,
+          workingDays: 22,
+          presentDays: 22,
+          paidLeaveDays: 0,
+          lossOfPayDays: 0,
+          payableDays: 30,
+        },
+        earnings: [
+          { name: "Basic Salary", code: "BASIC", amount: basic },
+          { name: "House Rent Allowance (HRA)", code: "HRA", amount: hra },
+          { name: "Special Allowance", code: "SPECIAL", amount: special },
+        ],
+        employeeDeductions: [
+          { name: "Provident Fund (EPF)", code: "EPF", amount: deductions },
+        ],
+        employerContributions: [],
+        grossEarnings: ctc,
+        totalDeductions: deductions,
+        netPayable: netPay,
+        currency: "INR",
+        currencySymbol: "₹",
+        paymentStatus: "PAID",
+      };
+      const pdfBuf = await generatePayslipPdfBuffer(previewPayslipObj, req.auth.company);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="Payslip_${employee.employeeCode}_${payslipId}.pdf"`);
+      res.setHeader("Content-Length", pdfBuf.length);
+      return res.end(pdfBuf);
     }
 
     const companyName = req.auth.company?.companyName || "Enterprise Organization";
@@ -1726,6 +1888,28 @@ export async function uploadEmployeeDocument(req, res, next) {
 
     if (!fileName || !fileData) {
       throw new HttpError(400, "File name and file data are required.");
+    }
+
+    const { CompanyHrPolicy } = req.auth.models;
+    const policy = CompanyHrPolicy ? await getActiveCompanyHrPolicy(CompanyHrPolicy) : null;
+    const maxMB = policy?.documentRules?.maxFileSizeMB || 10;
+    const allowedFormats = (policy?.documentRules?.allowedFileFormats || ["pdf", "png", "jpg", "jpeg"]).map(
+      (f) => f.toLowerCase().replace(/^\./, "")
+    );
+
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+    if (ext && allowedFormats.length > 0 && !allowedFormats.includes(ext)) {
+      throw new HttpError(
+        400,
+        `File format '.${ext}' is not permitted by company policy. Allowed formats: ${allowedFormats.join(", ")}`
+      );
+    }
+
+    if (fileSize && Number(fileSize) > maxMB * 1024 * 1024) {
+      throw new HttpError(
+        400,
+        `File size exceeds the company policy maximum limit of ${maxMB} MB.`
+      );
     }
 
     // Save document file securely via documentStorage

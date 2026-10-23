@@ -1,4 +1,5 @@
 import { HttpError } from "../utils/httpError.js";
+import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 
 /**
  * Validates browser geolocation coordinates and metadata.
@@ -72,11 +73,45 @@ export async function punchInEmployee({
   requireLocation = false,
   companyTimezone = "Asia/Kolkata",
 }) {
-  const { Attendance, Employee } = models;
+  const { Attendance, Employee, CompanyHrPolicy } = models;
   let validatedLocation = null;
   if (location || requireLocation) {
     validatedLocation = validateLocationCoordinates(location);
   }
+
+  // Geofence enforcement from CompanyHrPolicy
+  if (CompanyHrPolicy && validatedLocation) {
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
+    if (
+      policy?.locationRules?.geofenceEnabled &&
+      typeof policy.locationRules.officeLatitude === "number" &&
+      typeof policy.locationRules.officeLongitude === "number"
+    ) {
+      const lat1 = policy.locationRules.officeLatitude;
+      const lon1 = policy.locationRules.officeLongitude;
+      const lat2 = validatedLocation.latitude;
+      const lon2 = validatedLocation.longitude;
+      const R = 6371e3;
+      const φ1 = (lat1 * Math.PI) / 180;
+      const φ2 = (lat2 * Math.PI) / 180;
+      const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+      const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distanceMeters = Math.round(R * c);
+
+      const radius = policy.locationRules.geofenceRadiusMeters || 200;
+      if (distanceMeters > radius) {
+        throw new HttpError(
+          400,
+          `Punch-in rejected: Your current location is ${distanceMeters}m from the office, which exceeds the permitted geofence radius of ${radius}m.`
+        );
+      }
+    }
+  }
+
   const todayStr = getCompanyBusinessDate(new Date(), companyTimezone);
 
   // Check if attendance already exists for today

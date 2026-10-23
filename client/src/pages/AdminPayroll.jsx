@@ -86,13 +86,49 @@ export default function AdminPayroll() {
 
   const [showStatementModal, setShowStatementModal] = useState(false);
 
-  // Read URL query parameter for settlementId (e.g. redirected from EmployeeProfile)
+  // Monthly Payroll Cycles & Registers State
+  const [payrollCycles, setPayrollCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState("");
+  const [selectedCycle, setSelectedCycle] = useState(null);
+  const [cyclePayslips, setCyclePayslips] = useState([]);
+  const [loadingCycles, setLoadingCycles] = useState(false);
+  const [loadingCycleDetails, setLoadingCycleDetails] = useState(false);
+  const [cyclesError, setCyclesError] = useState("");
+  const [cycleActionLoading, setCycleActionLoading] = useState(false);
+  const [payrollActionSuccess, setPayrollActionSuccess] = useState("");
+  const [payrollActionError, setPayrollActionError] = useState("");
+  const [payrollSearch, setPayrollSearch] = useState("");
+
+  // Modals for Monthly Payroll
+  const [showNewCycleModal, setShowNewCycleModal] = useState(false);
+  const [newCycleForm, setNewCycleForm] = useState({
+    periodMonth: new Date().getMonth() + 1,
+    periodYear: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    notes: "",
+  });
+  const [showCyclePayModal, setShowCyclePayModal] = useState(false);
+  const [cyclePayForm, setCyclePayForm] = useState({
+    paymentDate: new Date().toISOString().split("T")[0],
+    paymentMethod: "NEFT_RTGS",
+    referenceNumber: "",
+    amount: "",
+    remarks: "",
+  });
+  const [selectedBreakdownPayslip, setSelectedBreakdownPayslip] = useState(null);
+
+  // Read URL query parameter for settlementId or tab
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const sid = params.get("settlementId");
+    const tab = params.get("tab");
     if (sid) {
       setSelectedSettlementId(sid);
       setActiveTab("ff_settlements");
+    } else if (tab === "payroll_registers" || tab === "registers" || tab === "cycles") {
+      setActiveTab("payroll_registers");
+      setSelectedSettlementId(null);
     }
   }, [location.search]);
 
@@ -310,13 +346,268 @@ export default function AdminPayroll() {
   const isEditable =
     activeSettlement?.status === "DRAFT" || activeSettlement?.status === "ON_HOLD";
 
+  // ==========================================
+  // Monthly Payroll Registers Logic & Handlers
+  // ==========================================
+
+  const monthNamesList = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const fetchPayrollCycles = async (preferCycleId = null) => {
+    setLoadingCycles(true);
+    setCyclesError("");
+    try {
+      const res = await api.get("/payroll/cycles");
+      const list = res.data?.cycles || [];
+      setPayrollCycles(list);
+
+      if (list.length > 0) {
+        const targetId = preferCycleId || (list.some((c) => c._id === selectedCycleId) ? selectedCycleId : list[0]._id);
+        setSelectedCycleId(targetId);
+      } else {
+        setSelectedCycleId("");
+        setSelectedCycle(null);
+        setCyclePayslips([]);
+      }
+    } catch (err) {
+      setCyclesError(err.response?.data?.message || "Failed to load payroll cycles.");
+    } finally {
+      setLoadingCycles(false);
+    }
+  };
+
+  const fetchCycleDetails = async (cycleId) => {
+    if (!cycleId) return;
+    setLoadingCycleDetails(true);
+    try {
+      const res = await api.get(`/payroll/cycles/${cycleId}`);
+      setSelectedCycle(res.data?.cycle || null);
+      setCyclePayslips(res.data?.payslips || []);
+    } catch (err) {
+      setPayrollActionError(err.response?.data?.message || "Failed to load cycle details.");
+    } finally {
+      setLoadingCycleDetails(false);
+    }
+  };
+
+  // Fetch cycles when switching to payroll_registers tab
+  useEffect(() => {
+    if (activeTab === "payroll_registers") {
+      fetchPayrollCycles();
+    }
+  }, [activeTab]);
+
+  // Fetch cycle details when selected cycle changes
+  useEffect(() => {
+    if (activeTab === "payroll_registers" && selectedCycleId) {
+      fetchCycleDetails(selectedCycleId);
+    }
+  }, [selectedCycleId, activeTab]);
+
+  const handleCreateNewCycle = async (e) => {
+    e.preventDefault();
+    setCycleActionLoading(true);
+    setPayrollActionError("");
+    setPayrollActionSuccess("");
+
+    // Explicitly parse and normalize month (1-12) and year (e.g. 2026)
+    let monthNum = parseInt(newCycleForm.periodMonth ?? newCycleForm.month, 10);
+    let yearNum = parseInt(newCycleForm.periodYear ?? newCycleForm.year, 10);
+
+    // If period is supplied as a date or YYYY-MM string
+    if (typeof newCycleForm.period === "string" && newCycleForm.period.includes("-")) {
+      const parts = newCycleForm.period.split("-");
+      yearNum = parseInt(parts[0], 10);
+      monthNum = parseInt(parts[1], 10);
+    } else if (newCycleForm.period instanceof Date) {
+      yearNum = newCycleForm.period.getFullYear();
+      monthNum = newCycleForm.period.getMonth() + 1;
+    }
+
+    try {
+      const payload = {
+        periodMonth: monthNum,
+        periodYear: yearNum,
+        month: monthNum,
+        year: yearNum,
+        notes: (newCycleForm.notes || "").trim(),
+      };
+
+      const res = await api.post("/payroll/cycles", payload);
+      setPayrollActionSuccess(res.data?.message || "Payroll cycle created successfully.");
+      setShowNewCycleModal(false);
+      await fetchPayrollCycles(res.data?.cycle?._id || res.data?.data?._id);
+    } catch (err) {
+      setPayrollActionError(err.response?.data?.message || "Failed to create payroll cycle.");
+    } finally {
+      setCycleActionLoading(false);
+    }
+  };
+
+  const handleRecalculateCycle = async () => {
+    if (!selectedCycleId) return;
+    setCycleActionLoading(true);
+    setPayrollActionError("");
+    setPayrollActionSuccess("");
+    try {
+      const res = await api.post(`/payroll/cycles/${selectedCycleId}/calculate`);
+      setSelectedCycle(res.data?.cycle);
+      setCyclePayslips(res.data?.payslips || []);
+      setPayrollActionSuccess("Payroll draft recalculated successfully.");
+      fetchPayrollCycles(selectedCycleId);
+    } catch (err) {
+      setPayrollActionError(err.response?.data?.message || "Failed to recalculate payroll draft.");
+    } finally {
+      setCycleActionLoading(false);
+    }
+  };
+
+  const handleFinalizeCycle = async () => {
+    if (!selectedCycleId || !selectedCycle) return;
+    const confirmMsg = `Are you sure you want to finalize payroll for ${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear}?\n\nThis will lock all employee records and make finalized payslips accessible to employees.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setCycleActionLoading(true);
+    setPayrollActionError("");
+    setPayrollActionSuccess("");
+    try {
+      const res = await api.post(`/payroll/cycles/${selectedCycleId}/finalize`);
+      setSelectedCycle(res.data?.cycle);
+      setPayrollActionSuccess(res.data?.message || "Payroll finalized successfully.");
+      fetchCycleDetails(selectedCycleId);
+      fetchPayrollCycles(selectedCycleId);
+    } catch (err) {
+      setPayrollActionError(err.response?.data?.message || "Failed to finalize payroll cycle.");
+    } finally {
+      setCycleActionLoading(false);
+    }
+  };
+
+  const handleOpenCyclePayModal = () => {
+    if (!selectedCycle) return;
+    const remaining = Math.max(0, (selectedCycle.totalNetPayable || 0) - (selectedCycle.totalPaidAmount || 0));
+    setCyclePayForm({
+      paymentDate: new Date().toISOString().split("T")[0],
+      paymentMethod: "NEFT_RTGS",
+      referenceNumber: "",
+      amount: remaining > 0 ? remaining : selectedCycle.totalNetPayable || "",
+      remarks: `Disbursement for ${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear}`,
+    });
+    setShowCyclePayModal(true);
+  };
+
+  const handleRecordCyclePaymentSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedCycleId) return;
+    setCycleActionLoading(true);
+    setPayrollActionError("");
+    setPayrollActionSuccess("");
+    try {
+      const res = await api.post(`/payroll/cycles/${selectedCycleId}/pay`, cyclePayForm);
+      setPayrollActionSuccess(res.data?.message || "Payment recorded successfully.");
+      setShowCyclePayModal(false);
+      fetchCycleDetails(selectedCycleId);
+      fetchPayrollCycles(selectedCycleId);
+    } catch (err) {
+      setPayrollActionError(err.response?.data?.message || "Failed to record payment.");
+    } finally {
+      setCycleActionLoading(false);
+    }
+  };
+
+  const handleDownloadPayslipPdf = async (payslip) => {
+    try {
+      setPayrollActionError("");
+      const res = await api.get(`/payroll/employee/payslips/${payslip._id}/download`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `Payslip_${payslip.employeeSnapshot?.employeeCode || 'EMP'}_${payslip.periodYear}_${payslip.periodMonth}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setPayrollActionSuccess(`Payslip for ${payslip.employeeSnapshot?.fullName} downloaded.`);
+    } catch (err) {
+      setPayrollActionError("Unable to download payslip PDF. Please try again.");
+    }
+  };
+
+  const handleExportRegisterCsv = () => {
+    if (!selectedCycle || cyclePayslips.length === 0) return;
+
+    const headers = [
+      "Payslip Number",
+      "Employee Code",
+      "Employee Name",
+      "Department",
+      "Designation",
+      "Working Days",
+      "Present Days",
+      "Paid Leave Days",
+      "Loss of Pay Days",
+      "Payable Days",
+      "Gross Earnings (INR)",
+      "Total Deductions (INR)",
+      "Net Payable (INR)",
+      "Status",
+      "Payment Status",
+    ];
+
+    const rows = cyclePayslips.map((p) => [
+      `"${p.payslipNumber || ""}"`,
+      `"${p.employeeSnapshot?.employeeCode || ""}"`,
+      `"${p.employeeSnapshot?.fullName || ""}"`,
+      `"${p.employeeSnapshot?.department || ""}"`,
+      `"${p.employeeSnapshot?.jobTitle || ""}"`,
+      p.daysBreakdown?.workingDays ?? 0,
+      p.daysBreakdown?.presentDays ?? 0,
+      p.daysBreakdown?.paidLeaveDays ?? 0,
+      p.daysBreakdown?.lossOfPayDays ?? 0,
+      p.daysBreakdown?.payableDays ?? 0,
+      p.grossEarnings ?? 0,
+      p.totalDeductions ?? 0,
+      p.netPayable ?? 0,
+      `"${p.status || ""}"`,
+      `"${p.paymentStatus || ""}"`,
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Payroll_Register_${selectedCycle.periodYear}_${selectedCycle.periodMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setPayrollActionSuccess("Payroll register CSV exported successfully.");
+  };
+
+  const filteredPayslips = useMemo(() => {
+    if (!payrollSearch.trim()) return cyclePayslips;
+    const q = payrollSearch.toLowerCase().trim();
+    return cyclePayslips.filter((p) => {
+      const name = (p.employeeSnapshot?.fullName || "").toLowerCase();
+      const code = (p.employeeSnapshot?.employeeCode || "").toLowerCase();
+      const dept = (p.employeeSnapshot?.department || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || dept.includes(q);
+    });
+  }, [cyclePayslips, payrollSearch]);
+
   return (
     <main className="container-wide" style={{ paddingBottom: 48 }}>
       {/* Top Breadcrumb and Header */}
       <nav className="breadcrumb-bar" aria-label="Breadcrumb" style={{ marginBottom: 12 }}>
         <Link to="/admin" className="breadcrumb-link">HR Portal</Link>
         <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">Payroll & Payslips</span>
+        <span className="breadcrumb-current">Payroll</span>
       </nav>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -324,9 +615,6 @@ export default function AdminPayroll() {
           <h1 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 700, color: "#09090b" }}>
             Payroll
           </h1>
-          <p className="subtitle" style={{ margin: 0, fontSize: 13.5, color: "#71717a" }}>
-            Manage salary disbursements and final settlements.
-          </p>
         </div>
 
         {selectedSettlementId && (
@@ -1236,35 +1524,790 @@ export default function AdminPayroll() {
       {/* TAB 2: MONTHLY PAYROLL REGISTERS */}
       {activeTab === "payroll_registers" && (
         <div style={{ display: "grid", gap: 20 }}>
+          {/* Action Alerts */}
+          {payrollActionSuccess && (
+            <div role="status" style={{ padding: "12px 16px", background: "#f0fdf4", color: "#166534", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
+              <IconCheck size={16} />
+              <span>{payrollActionSuccess}</span>
+            </div>
+          )}
+          {payrollActionError && (
+            <div role="alert" className="error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconAlertCircle size={16} />
+              <span>{payrollActionError}</span>
+            </div>
+          )}
+          {cyclesError && (
+            <div role="alert" className="error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconAlertCircle size={16} />
+              <span>{cyclesError}</span>
+            </div>
+          )}
+
+          {/* Top Summary Stat Grid */}
+          <div className="stats-grid">
+            <div className="stat-card">
+              <span className="stat-label">Active Period</span>
+              <span className="stat-value" style={{ fontSize: 20 }}>
+                {selectedCycle
+                  ? `${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear}`
+                  : "No Cycle"}
+              </span>
+              {selectedCycle && (
+                <div style={{ marginTop: 4 }}>
+                  <StatusBadge status={selectedCycle.status} />
+                </div>
+              )}
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Headcount</span>
+              <span className="stat-value">{selectedCycle ? selectedCycle.employeeCount : 0}</span>
+              <span style={{ fontSize: 11.5, color: "#71717a" }}>Processed employees</span>
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Gross Earnings</span>
+              <span className="stat-value" style={{ fontSize: 20, color: "#166534" }}>
+                {selectedCycle ? formatCurrency(selectedCycle.totalGrossEarnings) : "₹0"}
+              </span>
+              <span style={{ fontSize: 11.5, color: "#71717a" }}>Total earnings pool</span>
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Total Deductions</span>
+              <span className="stat-value" style={{ fontSize: 20, color: "#b91c1c" }}>
+                {selectedCycle ? formatCurrency(selectedCycle.totalEmployeeDeductions) : "₹0"}
+              </span>
+              <span style={{ fontSize: 11.5, color: "#71717a" }}>EPF & statutory</span>
+            </div>
+
+            <div className="stat-card highlight">
+              <span className="stat-label">Net Payable</span>
+              <span className="stat-value" style={{ fontSize: 22, color: "#09090b" }}>
+                {selectedCycle ? formatCurrency(selectedCycle.totalNetPayable) : "₹0"}
+              </span>
+              <span style={{ fontSize: 11.5, color: "#71717a" }}>Take-home disbursal</span>
+            </div>
+
+            <div className="stat-card">
+              <span className="stat-label">Disbursed</span>
+              <span className="stat-value" style={{ fontSize: 20, color: selectedCycle?.totalPaidAmount > 0 ? "#15803d" : "#71717a" }}>
+                {selectedCycle ? formatCurrency(selectedCycle.totalPaidAmount || 0) : "₹0"}
+              </span>
+              {selectedCycle && (
+                <div style={{ marginTop: 4 }}>
+                  <StatusBadge status={selectedCycle.paymentStatus || "UNPAID"} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Payroll Cycle Control Toolbar */}
           <div
             style={{
               background: "#ffffff",
-              borderRadius: 12,
               border: "1px solid #e4e4e7",
-              padding: 24,
+              borderRadius: 12,
+              padding: "16px 20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 12,
             }}
           >
-            <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-              Monthly Payroll Cycles & Registers
-            </h3>
-            <p style={{ margin: "0 0 20px", fontSize: 13.5, color: "#71717a" }}>
-              Official monthly payroll disbursals and auto-generated salary slips.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <label htmlFor="payrollCycleSelect" style={{ fontSize: 13, fontWeight: 600, color: "#18181b" }}>
+                Select Cycle:
+              </label>
+              <select
+                id="payrollCycleSelect"
+                value={selectedCycleId}
+                onChange={(e) => setSelectedCycleId(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 13.5,
+                  minWidth: 200,
+                  fontWeight: 500,
+                }}
+              >
+                {payrollCycles.length === 0 ? (
+                  <option value="">No cycles available</option>
+                ) : (
+                  payrollCycles.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {monthNamesList[c.periodMonth - 1]} {c.periodYear} ({c.status})
+                    </option>
+                  ))
+                )}
+              </select>
 
-            <div style={{ padding: 36, textAlign: "center", background: "#f9fafb", borderRadius: 10, border: "1px solid #f3f4f6" }}>
-              <div style={{ fontWeight: 600, color: "#09090b", marginBottom: 4 }}>
-                Current Active Cycle: {new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-              </div>
-              <p style={{ color: "#71717a", fontSize: 13, margin: "0 0 16px" }}>
-                Monthly salary slips for active staff are automatically generated upon monthly attendance lock.
-              </p>
               <button
                 type="button"
-                className="btn-primary"
-                onClick={() => setActiveTab("ff_settlements")}
+                className="btn-secondary btn-sm"
+                onClick={() => setShowNewCycleModal(true)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                Go to F&F Settlements
+                <span>+ New Cycle</span>
               </button>
+            </div>
+
+            {selectedCycle && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {/* Recalculate Draft button (allowed on unfinalized cycles) */}
+                {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={handleRecalculateCycle}
+                    disabled={cycleActionLoading}
+                    title="Recalculate earnings and attendance for this period"
+                  >
+                    <span>Recalculate Draft</span>
+                  </button>
+                )}
+
+                {/* Finalize Cycle button */}
+                {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={handleFinalizeCycle}
+                    disabled={cycleActionLoading}
+                    style={{ background: "#2563eb", borderColor: "#1d4ed8" }}
+                    title="Finalize payroll and unlock payslips for employees"
+                  >
+                    <span>Finalize Payroll</span>
+                  </button>
+                )}
+
+                {/* Record Payment button (allowed on finalized cycles) */}
+                {(selectedCycle.status === "FINALIZED" || selectedCycle.status === "PARTIALLY_PAID") && (
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={handleOpenCyclePayModal}
+                    disabled={cycleActionLoading}
+                    style={{ background: "#15803d", borderColor: "#166534" }}
+                  >
+                    <span>Record Payment</span>
+                  </button>
+                )}
+
+                {/* Export CSV button */}
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={handleExportRegisterCsv}
+                  disabled={cyclePayslips.length === 0}
+                  title="Download register as CSV spreadsheet"
+                >
+                  <span>Export CSV</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Validation Issues Alert Banner */}
+          {selectedCycle?.validationIssues?.length > 0 && (
+            <div
+              style={{
+                background: "#fffbeb",
+                border: "1px solid #fde68a",
+                borderRadius: 10,
+                padding: "14px 18px",
+                color: "#92400e",
+                fontSize: 13,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 6 }}>
+                <IconAlertTriangle size={16} />
+                <span>Validation Notices ({selectedCycle.validationIssues.length} employees skipped from calculation)</span>
+              </div>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                {selectedCycle.validationIssues.map((v, i) => (
+                  <li key={i}>
+                    <strong>{v.fullName} ({v.employeeCode}):</strong> {v.issue}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Payroll Register Table Section */}
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid #e4e4e7",
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h3 style={{ margin: "0 0 2px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
+                  Employee Payroll Register
+                </h3>
+                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
+                  {selectedCycle
+                    ? `Itemized breakdown for ${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear} · ${cyclePayslips.length} records`
+                    : "No active cycle selected"}
+                </p>
+              </div>
+
+              {cyclePayslips.length > 0 && (
+                <input
+                  type="text"
+                  placeholder="Filter employees..."
+                  value={payrollSearch}
+                  onChange={(e) => setPayrollSearch(e.target.value)}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d4d4d8",
+                    fontSize: 13,
+                    minWidth: 220,
+                  }}
+                />
+              )}
+            </div>
+
+            {loadingCycleDetails ? (
+              <div style={{ padding: 48, textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
+                Loading payroll register...
+              </div>
+            ) : filteredPayslips.length === 0 ? (
+              <div style={{ padding: 48, textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
+                {selectedCycle
+                  ? "No employee records found in this cycle."
+                  : "Please initiate or select a payroll cycle to view its register."}
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a", background: "#f8fafc" }}>
+                      <th style={{ padding: "12px 14px" }}>Employee</th>
+                      <th style={{ padding: "12px 14px" }}>Department</th>
+                      <th style={{ padding: "12px 14px" }}>Working</th>
+                      <th style={{ padding: "12px 14px" }}>LOP</th>
+                      <th style={{ padding: "12px 14px" }}>Payable</th>
+                      <th style={{ padding: "12px 14px" }}>Gross Pay</th>
+                      <th style={{ padding: "12px 14px" }}>Deductions</th>
+                      <th style={{ padding: "12px 14px" }}>Net Pay</th>
+                      <th style={{ padding: "12px 14px" }}>Status</th>
+                      <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPayslips.map((p) => (
+                      <tr key={p._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                        <td style={{ padding: "12px 14px" }}>
+                          <div style={{ fontWeight: 600, color: "#09090b" }}>{p.employeeSnapshot?.fullName}</div>
+                          <div style={{ fontSize: 11.5, color: "#71717a" }}>{p.employeeSnapshot?.employeeCode || "—"}</div>
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#52525b" }}>
+                          {p.employeeSnapshot?.department || "General"}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#52525b" }}>
+                          {p.daysBreakdown?.workingDays ?? "—"}d
+                        </td>
+                        <td style={{ padding: "12px 14px", color: p.daysBreakdown?.lossOfPayDays > 0 ? "#b91c1c" : "#71717a" }}>
+                          {p.daysBreakdown?.lossOfPayDays ?? 0}d
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#09090b" }}>
+                          {p.daysBreakdown?.payableDays ?? "—"}d
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#166534" }}>
+                          {formatCurrency(p.grossEarnings)}
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "#b91c1c" }}>
+                          -{formatCurrency(p.totalDeductions)}
+                        </td>
+                        <td style={{ padding: "12px 14px", fontWeight: 700, color: "#09090b" }}>
+                          {formatCurrency(p.netPayable)}
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <StatusBadge status={p.paymentStatus === "PAID" ? "PAID" : p.status} />
+                        </td>
+                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              className="btn-sm btn-secondary"
+                              onClick={() => setSelectedBreakdownPayslip(p)}
+                              title="View itemized earnings and deductions"
+                            >
+                              Breakdown
+                            </button>
+                            {selectedCycle?.status === "FINALIZED" || selectedCycle?.status === "PAID" ? (
+                              <button
+                                type="button"
+                                className="btn-sm btn-secondary"
+                                onClick={() => handleDownloadPayslipPdf(p)}
+                                title="Download authentic PDF payslip"
+                              >
+                                PDF
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CREATE NEW PAYROLL CYCLE MODAL */}
+      {showNewCycleModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => !cycleActionLoading && setShowNewCycleModal(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 14,
+              padding: 24,
+              width: "100%",
+              maxWidth: 480,
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+                Initiate New Payroll Cycle
+              </h3>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={() => setShowNewCycleModal(false)}
+                disabled={cycleActionLoading}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewCycle} style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label htmlFor="newCycleMonthSelect" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Payroll Month <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <select
+                    id="newCycleMonthSelect"
+                    value={newCycleForm.periodMonth ?? newCycleForm.month}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setNewCycleForm((prev) => ({ ...prev, periodMonth: val, month: val }));
+                    }}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                  >
+                    {monthNamesList.map((m, i) => (
+                      <option key={m} value={i + 1}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="newCycleYearSelect" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    Payroll Year <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <select
+                    id="newCycleYearSelect"
+                    value={newCycleForm.periodYear ?? newCycleForm.year}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setNewCycleForm((prev) => ({ ...prev, periodYear: val, year: val }));
+                    }}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                  >
+                    {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="newCycleNotesInput" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Cycle Notes (Optional)
+                </label>
+                <textarea
+                  id="newCycleNotesInput"
+                  rows="2"
+                  placeholder="e.g. Regular monthly disbursement..."
+                  value={newCycleForm.notes}
+                  onChange={(e) => setNewCycleForm({ ...newCycleForm, notes: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13, fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowNewCycleModal(false)}
+                  disabled={cycleActionLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={cycleActionLoading}
+                >
+                  {cycleActionLoading ? "Calculating..." : "Create & Calculate Draft"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECORD CYCLE PAYMENT MODAL */}
+      {showCyclePayModal && selectedCycle && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => !cycleActionLoading && setShowCyclePayModal(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 14,
+              padding: 24,
+              width: "100%",
+              maxWidth: 480,
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: "0 0 2px", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+                  Record Payroll Disbursement
+                </h3>
+                <span style={{ fontSize: 12.5, color: "#71717a" }}>
+                  {monthNamesList[selectedCycle.periodMonth - 1]} {selectedCycle.periodYear} · Net Payable: {formatCurrency(selectedCycle.totalNetPayable)}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={() => setShowCyclePayModal(false)}
+                disabled={cycleActionLoading}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordCyclePaymentSubmit} style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label htmlFor="cyclePayDateInput" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Payment / Disbursal Date <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <input
+                  id="cyclePayDateInput"
+                  type="date"
+                  required
+                  value={cyclePayForm.paymentDate}
+                  onChange={(e) => setCyclePayForm({ ...cyclePayForm, paymentDate: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="cyclePayMethodSelect" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Payment Method <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <select
+                  id="cyclePayMethodSelect"
+                  value={cyclePayForm.paymentMethod}
+                  onChange={(e) => setCyclePayForm({ ...cyclePayForm, paymentMethod: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                >
+                  <option value="NEFT_RTGS">Bank Transfer (NEFT/RTGS)</option>
+                  <option value="BANK_TRANSFER">Direct Transfer</option>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="UPI">UPI</option>
+                  <option value="DIRECT_DEPOSIT">Direct Deposit</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="cyclePayRefInput" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Transaction / Reference Number (UTR)
+                </label>
+                <input
+                  id="cyclePayRefInput"
+                  type="text"
+                  placeholder="e.g. UTR20261023000987"
+                  value={cyclePayForm.referenceNumber}
+                  onChange={(e) => setCyclePayForm({ ...cyclePayForm, referenceNumber: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="cyclePayAmountInput" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Total Amount Disbursed (INR) <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <input
+                  id="cyclePayAmountInput"
+                  type="number"
+                  required
+                  min="1"
+                  value={cyclePayForm.amount}
+                  onChange={(e) => setCyclePayForm({ ...cyclePayForm, amount: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="cyclePayRemarksInput" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Disbursement Remarks
+                </label>
+                <textarea
+                  id="cyclePayRemarksInput"
+                  rows="2"
+                  value={cyclePayForm.remarks}
+                  onChange={(e) => setCyclePayForm({ ...cyclePayForm, remarks: e.target.value })}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13, fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowCyclePayModal(false)}
+                  disabled={cycleActionLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={cycleActionLoading}
+                  style={{ background: "#15803d", borderColor: "#166534" }}
+                >
+                  {cycleActionLoading ? "Recording..." : "Confirm Disbursement"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EMPLOYEE SALARY BREAKDOWN MODAL */}
+      {selectedBreakdownPayslip && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1050,
+            padding: 16,
+          }}
+          onClick={() => setSelectedBreakdownPayslip(null)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: 14,
+              padding: 28,
+              width: "100%",
+              maxWidth: 680,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+                  {selectedBreakdownPayslip.employeeSnapshot?.fullName}
+                </h3>
+                <div style={{ fontSize: 13, color: "#71717a" }}>
+                  {selectedBreakdownPayslip.employeeSnapshot?.employeeCode} · {selectedBreakdownPayslip.employeeSnapshot?.jobTitle} · {selectedBreakdownPayslip.employeeSnapshot?.department}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-sm btn-secondary"
+                onClick={() => setSelectedBreakdownPayslip(null)}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            {/* Attendance & Days Breakdown Bar */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(6, 1fr)",
+                gap: 8,
+                background: "#f8fafc",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #e2e8f0",
+                fontSize: 12,
+                textAlign: "center",
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <div style={{ color: "#64748b" }}>Total Days</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selectedBreakdownPayslip.daysBreakdown?.totalDaysInMonth}</div>
+              </div>
+              <div>
+                <div style={{ color: "#64748b" }}>Working Days</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selectedBreakdownPayslip.daysBreakdown?.workingDays}</div>
+              </div>
+              <div>
+                <div style={{ color: "#64748b" }}>Present</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#166534" }}>{selectedBreakdownPayslip.daysBreakdown?.presentDays}</div>
+              </div>
+              <div>
+                <div style={{ color: "#64748b" }}>Paid Leave</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2563eb" }}>{selectedBreakdownPayslip.daysBreakdown?.paidLeaveDays}</div>
+              </div>
+              <div>
+                <div style={{ color: "#64748b" }}>Loss of Pay</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#b91c1c" }}>{selectedBreakdownPayslip.daysBreakdown?.lossOfPayDays}</div>
+              </div>
+              <div>
+                <div style={{ color: "#64748b" }}>Payable Days</div>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>{selectedBreakdownPayslip.daysBreakdown?.payableDays}</div>
+              </div>
+            </div>
+
+            {/* Financial Columns */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              {/* Earnings */}
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#166534", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
+                  Earnings & Allowances
+                </div>
+                {selectedBreakdownPayslip.earnings?.map((e, idx) => (
+                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0" }}>
+                    <span style={{ color: "#52525b" }}>{e.name}</span>
+                    <span style={{ fontWeight: 600 }}>{formatCurrency(e.amount)}</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 6 }}>
+                  <span>Gross Earnings</span>
+                  <span style={{ color: "#166534" }}>{formatCurrency(selectedBreakdownPayslip.grossEarnings)}</span>
+                </div>
+              </div>
+
+              {/* Deductions */}
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#b91c1c", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
+                  Employee Deductions
+                </div>
+                {(!selectedBreakdownPayslip.employeeDeductions || selectedBreakdownPayslip.employeeDeductions.length === 0) ? (
+                  <div style={{ fontSize: 12, color: "#a1a1aa", fontStyle: "italic", padding: "6px 0" }}>No deductions</div>
+                ) : (
+                  selectedBreakdownPayslip.employeeDeductions.map((d, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0" }}>
+                      <span style={{ color: "#52525b" }}>{d.name}</span>
+                      <span style={{ fontWeight: 600, color: "#b91c1c" }}>-{formatCurrency(d.amount)}</span>
+                    </div>
+                  ))
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 6 }}>
+                  <span>Total Deductions</span>
+                  <span style={{ color: "#b91c1c" }}>-{formatCurrency(selectedBreakdownPayslip.totalDeductions)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Net Pay Banner */}
+            <div
+              style={{
+                background: "#18181b",
+                color: "#ffffff",
+                padding: "14px 18px",
+                borderRadius: 8,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11.5, textTransform: "uppercase", color: "#a1a1aa", fontWeight: 600 }}>Net Take-Home Salary</div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>{formatCurrency(selectedBreakdownPayslip.netPayable)}</div>
+              </div>
+              <div>
+                <StatusBadge status={selectedBreakdownPayslip.paymentStatus === "PAID" ? "PAID" : selectedBreakdownPayslip.status} />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setSelectedBreakdownPayslip(null)}
+              >
+                Close
+              </button>
+              {(selectedBreakdownPayslip.status === "FINALIZED" || selectedBreakdownPayslip.status === "PAID") && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => handleDownloadPayslipPdf(selectedBreakdownPayslip)}
+                >
+                  Download PDF Payslip
+                </button>
+              )}
             </div>
           </div>
         </div>

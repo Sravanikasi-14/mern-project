@@ -23,7 +23,9 @@ export function getStatusCategory(statusRaw) {
     s === "PAID" ||
     s === "COMPLETED" ||
     s === "ON_FILE" ||
-    s === "CONFIRMED"
+    s === "CONFIRMED" ||
+    s === "AVAILABLE" ||
+    s === "ACKNOWLEDGED"
   ) {
     return "success";
   }
@@ -38,7 +40,8 @@ export function getStatusCategory(statusRaw) {
     s === "FAILED" ||
     s === "CANCELLED" ||
     s === "ABSENT" ||
-    s === "TERMINATED"
+    s === "TERMINATED" ||
+    s === "LOST"
   ) {
     return "danger";
   }
@@ -52,13 +55,17 @@ export function getStatusCategory(statusRaw) {
     s === "AWAITING_ACTION" ||
     s === "HALF_DAY" ||
     s === "LATE" ||
-    s === "ON_LEAVE"
+    s === "ON_LEAVE" ||
+    s === "UNDER_MAINTENANCE" ||
+    s === "UNPAID" ||
+    s === "PARTIAL" ||
+    s === "CHANGES_REQUESTED"
   ) {
     return "warning";
   }
 
   // Info
-  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING") {
+  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "FINALIZED" || s === "SUBMITTED") {
     return "info";
   }
 
@@ -71,13 +78,46 @@ export function formatStatusLabel(statusRaw, customLabel) {
   if (!statusRaw) return "—";
 
   const s = String(statusRaw).trim();
-  if (s.toUpperCase() === "INVITE_PENDING") return "Invite Pending";
-  if (s.toUpperCase() === "DELIVERY_FAILED") return "Delivery Failed";
-  if (s.toUpperCase() === "PENDING_APPROVAL") return "Pending Approval";
-  if (s.toUpperCase() === "NOT_CHECKED_IN") return "Not Checked In";
-  if (s.toUpperCase() === "CHECKED_IN") return "Checked In";
-  if (s.toUpperCase() === "CHECKED_OUT") return "Checked Out";
+  const upper = s.toUpperCase().replace(/[\s-]+/g, "_");
 
+  const map = {
+    ACTIVE: "Active",
+    INACTIVE: "Inactive",
+    APPROVED: "Approved",
+    REJECTED: "Rejected",
+    PENDING: "Pending",
+    PENDING_APPROVAL: "Pending Approval",
+    INVITE_PENDING: "Invite Pending",
+    DELIVERY_FAILED: "Delivery Failed",
+    NOT_CHECKED_IN: "Not Checked In",
+    CHECKED_IN: "Checked In",
+    CHECKED_OUT: "Checked Out",
+    ON_LEAVE: "On Leave",
+    HALF_DAY: "Half Day",
+    PRESENT: "Present",
+    ABSENT: "Absent",
+    LATE: "Late",
+    AVAILABLE: "Available",
+    ASSIGNED: "Assigned",
+    UNDER_MAINTENANCE: "Maintenance",
+    RETIRED: "Retired",
+    LOST: "Lost",
+    ACKNOWLEDGED: "Confirmed",
+    DRAFT: "Draft",
+    FINALIZED: "Prepared",
+    PAID: "Paid",
+    UNPAID: "Payment Pending",
+    PARTIAL: "Partially Paid",
+    SENT: "Sent",
+    ACCEPTED: "Accepted",
+    DECLINED: "Declined",
+    CHANGES_REQUESTED: "Updates Requested",
+    SUBMITTED: "Under Review",
+    VERIFIED: "Verified",
+    COMPLETED: "Completed",
+  };
+
+  if (map[upper]) return map[upper];
   return s;
 }
 

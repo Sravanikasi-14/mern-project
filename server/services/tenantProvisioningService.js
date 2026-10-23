@@ -5,6 +5,9 @@ import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrP
 import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getAttendanceModel } from "../models/Attendance.js";
 import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
+import { getPayrollCycleModel } from "../models/PayrollCycle.js";
+import { getPayslipModel } from "../models/Payslip.js";
+import { getCompanyAssetModel } from "../models/CompanyAsset.js";
 
 /**
  * Ensures leave_requests and company_hr_policies collections, approved indexes,
@@ -165,6 +168,48 @@ export async function provisionTenantDatabase(company, connection) {
   try {
     await LiveTrackingSession.createIndexes();
     outcome.indexesCreated.push("live_tracking_sessions: { employeeId: 1, status: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 8. Ensure payroll_cycles collection exists
+  if (!existingColNames.has("payroll_cycles")) {
+    await db.createCollection("payroll_cycles");
+    outcome.collectionsCreated.push("payroll_cycles");
+    outcome.repaired = true;
+  }
+  const PayrollCycle = getPayrollCycleModel(conn);
+  try {
+    await PayrollCycle.createIndexes();
+    outcome.indexesCreated.push("payroll_cycles: { periodYear: 1, periodMonth: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 9. Ensure payroll_payslips collection exists
+  if (!existingColNames.has("payroll_payslips")) {
+    await db.createCollection("payroll_payslips");
+    outcome.collectionsCreated.push("payroll_payslips");
+    outcome.repaired = true;
+  }
+  const Payslip = getPayslipModel(conn);
+  try {
+    await Payslip.createIndexes();
+    outcome.indexesCreated.push("payroll_payslips: { payrollCycleId: 1, employeeId: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 10. Ensure company_assets collection exists
+  if (!existingColNames.has("company_assets")) {
+    await db.createCollection("company_assets");
+    outcome.collectionsCreated.push("company_assets");
+    outcome.repaired = true;
+  }
+  const CompanyAsset = getCompanyAssetModel(conn);
+  try {
+    await CompanyAsset.createIndexes();
+    outcome.indexesCreated.push("company_assets: { assetTag: 1 (unique) }, { status: 1 }, { 'currentAssignment.employeeId': 1 }");
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }

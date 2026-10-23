@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceMap from "../components/AttendanceMap";
@@ -22,11 +23,13 @@ const FILTER_LABELS = {
 };
 
 export default function AdminAttendanceOverview() {
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => searchParams.get("date") || new Date().toISOString().split("T")[0]);
   const [department, setDepartment] = useState("ALL");
-  const [activeFilter, setActiveFilter] = useState(FILTER_TYPES.TOTAL_STAFF);
+  const initialFilter = searchParams.get("filter") === "PRESENT" ? FILTER_TYPES.PRESENT : FILTER_TYPES.TOTAL_STAFF;
+  const [activeFilter, setActiveFilter] = useState(initialFilter);
 
   const [overviewData, setOverviewData] = useState({
     date: "",
@@ -213,8 +216,8 @@ export default function AdminAttendanceOverview() {
         }
       `}</style>
 
-      {/* Page Title & Subtitle */}
-      <AppHeader title="Attendance Overview" />
+      {/* Page Title */}
+      <AppHeader title="Attendance" />
 
       {/* Date & Filter Toolbar */}
       <div
@@ -451,11 +454,8 @@ export default function AdminAttendanceOverview() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-              Attendance Geolocation Map
+              Attendance Map
             </h3>
-            <p style={{ margin: "2px 0 0", fontSize: 13, color: "#71717a" }}>
-              Interactive OpenStreetMap view showing verified employee punch locations and active live tracking sessions.
-            </p>
           </div>
         </div>
 

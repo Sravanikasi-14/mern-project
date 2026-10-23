@@ -272,8 +272,7 @@ export default function AdminOnboardingReview() {
   return (
     <div style={{ padding: "24px 32px", minHeight: "100vh", background: "#f8fafc" }}>
       <AppHeader
-        title="Candidate Onboarding Review"
-        subtitle="Review candidate submissions, request corrections, approve verified hires into People Management, or decline applications"
+        title="Onboarding"
       />
 
       {/* Summary KPI Cards */}
