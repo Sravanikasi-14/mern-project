@@ -35,6 +35,7 @@ export default function AdminHome() {
   });
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const initialStatus = searchParams.get("status") ? searchParams.get("status").toUpperCase() : "ALL";
   const [statusFilter, setStatusFilter] = useState(
     ["ACTIVE", "INACTIVE", "ALL"].includes(initialStatus) ? initialStatus : "ALL"
