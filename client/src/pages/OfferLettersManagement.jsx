@@ -15,6 +15,7 @@ import {
   IconEye,
   IconRefresh,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import "./OfferLetters.css";
 
@@ -249,9 +250,8 @@ export default function OfferLettersManagement() {
     }
   };
 
-  // Fetch recipients and summary on mount
+  // Fetch summary KPI counters on mount
   useEffect(() => {
-    fetchRecipients();
     fetchSummary();
   }, []);
 
@@ -826,54 +826,56 @@ export default function OfferLettersManagement() {
       </div>
 
       <div className="ol-table-card">
-        {loading ? (
-          <div className="ol-empty">
-            <p>Loading offers…</p>
-          </div>
-        ) : offers.length === 0 ? (
-          <div className="ol-empty">
-            <div className="ol-empty-icon">
-              <IconDocument size={36} />
-            </div>
-            <h3>No offers yet</h3>
-            <p>
-              {search || statusFilter !== "ALL"
-                ? "Nothing matches this search or filter."
-                : "Add an offer to start tracking candidates."}
-            </p>
-            {search || statusFilter !== "ALL" ? (
-              <button
-                type="button"
-                className="ol-btn ol-btn-ghost"
-                onClick={() => {
-                  setSearch("");
-                  setStatusFilter("ALL");
-                }}
-              >
-                Reset filters
-              </button>
-            ) : (
-              <button type="button" className="ol-btn ol-btn-primary" onClick={handleOpenCreate}>
-                + Add offer
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="ol-table-wrap">
-            <table className="ol-table">
-              <thead>
+        <div className="ol-table-wrap table-wrapper-relative">
+          {loading && offers.length > 0 && <div className="table-progress-bar" />}
+          <table className="ol-table">
+            <thead>
+              <tr>
+                <th>Candidate</th>
+                <th>Role</th>
+                <th>Start</th>
+                <th>Salary</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className={loading && offers.length > 0 ? "table-refreshing-dim" : ""}>
+              {loading && offers.length === 0 ? (
+                <TableSkeletonRows colCount={7} rowCount={6} />
+              ) : offers.length === 0 ? (
                 <tr>
-                  <th>Candidate</th>
-                  <th>Role</th>
-                  <th>Start</th>
-                  <th>Salary</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "48px 24px" }}>
+                    <div className="ol-empty" style={{ margin: 0, padding: 0 }}>
+                      <div className="ol-empty-icon">
+                        <IconDocument size={36} />
+                      </div>
+                      <h3>No offers yet</h3>
+                      <p>
+                        {search || statusFilter !== "ALL"
+                          ? "Nothing matches this search or filter."
+                          : "Add an offer to start tracking candidates."}
+                      </p>
+                      {search || statusFilter !== "ALL" ? (
+                        <button
+                          type="button"
+                          className="ol-btn ol-btn-ghost"
+                          onClick={() => {
+                            setSearch("");
+                            setStatusFilter("ALL");
+                          }}
+                        >
+                          Reset filters
+                        </button>
+                      ) : (
+                        <button type="button" className="ol-btn ol-btn-primary" onClick={handleOpenCreate}>
+                          + Add offer
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {offers.map((offer) => {
+              ) : offers.map((offer) => {
                   const statusStyle = STATUS_CONFIG[offer.status] || STATUS_CONFIG.DRAFT;
                   const isDraft = offer.status === "DRAFT";
                   const isSent = offer.status === "SENT";
@@ -1039,7 +1041,6 @@ export default function OfferLettersManagement() {
               </tbody>
             </table>
           </div>
-        )}
 
         {pagination.totalPages > 1 && (
           <div className="ol-pager">

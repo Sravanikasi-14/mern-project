@@ -110,11 +110,26 @@ export default function EmployeeAssets() {
         </div>
       )}
 
-      {/* Loading */}
+      {/* Loading Skeleton */}
       {loading && (
-        <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "#71717a", fontSize: 15 }}>Loading your assigned assets...</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 18, marginTop: 24 }}>
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              style={{
+                padding: "20px",
+                background: "#ffffff",
+                border: "1px solid #e4e4e7",
+                borderRadius: 12,
+              }}
+            >
+              <div className="skeleton-shimmer" style={{ width: "60%", height: 18, borderRadius: 4, marginBottom: 10 }} />
+              <div className="skeleton-shimmer" style={{ width: "35%", height: 12, borderRadius: 4, marginBottom: 18 }} />
+              <div className="skeleton-shimmer" style={{ width: "85%", height: 14, borderRadius: 4, marginBottom: 8 }} />
+              <div className="skeleton-shimmer" style={{ width: "50%", height: 14, borderRadius: 4, marginBottom: 16 }} />
+              <div className="skeleton-shimmer" style={{ width: "100%", height: 36, borderRadius: 8 }} />
+            </div>
+          ))}
         </div>
       )}
 
@@ -122,7 +137,7 @@ export default function EmployeeAssets() {
       {!loading && error && (
         <div className="error" style={{ padding: 24, textAlign: "center" }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => fetchAssets()}>Retry</button>
+          <button type="button" className="btn-sm btn-secondary" onClick={() => fetchAssets()}>Retry</button>
         </div>
       )}
 

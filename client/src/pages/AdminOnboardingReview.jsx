@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { IconClose } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 const STATUS_BADGES = {
@@ -377,14 +378,49 @@ export default function AdminOnboardingReview() {
       )}
 
       {/* Submissions Table */}
-      <div style={{ background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", overflow: "hidden" }}>
-        {loading ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
-            Loading onboarding submissions...
+      <div
+        className="table-wrapper-relative"
+        style={{ background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", overflow: "hidden" }}
+      >
+        {loading && <div className="table-progress-bar" />}
+        {loading && submissions.length === 0 ? (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: "700px" }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Candidate</th>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Position & Department</th>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Offer Status</th>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Onboarding Status</th>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Submitted Date</th>
+                  <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600", textAlign: "right" }}>
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <TableSkeletonRows rows={5} cols={6} />
+              </tbody>
+            </table>
           </div>
         ) : submissions.length === 0 ? (
           <div style={{ padding: "40px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
-            No candidate onboarding submissions found matching the selected criteria.
+            <p style={{ margin: "0 0 12px" }}>
+              No candidate onboarding submissions found matching the selected criteria.
+            </p>
+            {(statusFilter !== "ALL" || debouncedSearch) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("ALL");
+                  setSearchTerm("");
+                }}
+                className="btn-sm btn-secondary"
+                style={{ fontSize: "12px" }}
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -401,7 +437,7 @@ export default function AdminOnboardingReview() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={loading ? "table-refreshing-dim" : ""}>
                 {submissions.map((sub) => {
                   const badge = STATUS_BADGES[sub.status] || STATUS_BADGES.DRAFT;
                   const offer = sub.offerLetterId;

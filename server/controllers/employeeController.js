@@ -102,6 +102,7 @@ export async function getEmployees(req, res, next) {
     const [totalEmployees, employees] = await Promise.all([
       Employee.countDocuments(query),
       Employee.find(query)
+        .select("_id employeeCode fullName email phoneNumber job status invitation createdAt updatedAt userId dateOfBirth city")
         .populate("job.reportingManagerId", "fullName employeeCode")
         .sort({ [sortField]: sortDirection })
         .skip((page - 1) * limit)
@@ -111,9 +112,10 @@ export async function getEmployees(req, res, next) {
 
     // Retrieve salary info for HR_ADMIN
     const employeeIds = employees.map((emp) => emp._id);
-    const compensations = await EmployeeCompensation.find({
-      employeeId: { $in: employeeIds },
-    }).lean();
+    const compensations = await EmployeeCompensation.find(
+      { employeeId: { $in: employeeIds } },
+      "employeeId revisions"
+    ).lean();
 
     const compensationMap = new Map();
     const now = new Date();

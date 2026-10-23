@@ -186,8 +186,11 @@ export function createPayslipSchema() {
 
   // Each employee can only have one payslip record per payroll cycle
   payslipSchema.index({ payrollCycleId: 1, employeeId: 1 }, { unique: true });
+  payslipSchema.index({ payrollCycleId: 1, status: 1 });
   payslipSchema.index({ employeeId: 1, periodYear: 1, periodMonth: 1 });
   payslipSchema.index({ employeeId: 1, status: 1 });
+  payslipSchema.index({ employeeId: 1, status: 1, periodYear: -1, periodMonth: -1 });
+  payslipSchema.index({ status: 1, periodYear: -1, periodMonth: -1 });
 
   return payslipSchema;
 }

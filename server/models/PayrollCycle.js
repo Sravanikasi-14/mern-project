@@ -146,7 +146,9 @@ export function createPayrollCycleSchema() {
 
   // Prevent duplicate payroll cycles for the same month & year in this tenant DB
   payrollCycleSchema.index({ periodYear: 1, periodMonth: 1 }, { unique: true });
+  payrollCycleSchema.index({ periodYear: -1, periodMonth: -1 });
   payrollCycleSchema.index({ status: 1 });
+  payrollCycleSchema.index({ status: 1, periodYear: -1, periodMonth: -1 });
 
   return payrollCycleSchema;
 }

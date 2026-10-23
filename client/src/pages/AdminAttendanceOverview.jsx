@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceMap from "../components/AttendanceMap";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import { IconAlertCircle, IconCheck, IconClose, IconClipboardList } from "../components/Icons";
 import api from "../services/api";
 
@@ -468,14 +469,17 @@ export default function AdminAttendanceOverview() {
 
       {/* Employee Attendance Records Table */}
       <div
+        className="table-wrapper-relative"
         style={{
           background: "#ffffff",
           border: "1px solid #e4e4e7",
           borderRadius: 14,
           padding: "20px 24px",
           boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          overflow: "hidden",
         }}
       >
+        {loading && <div className="table-progress-bar" />}
         <div
           style={{
             display: "flex",
@@ -488,8 +492,8 @@ export default function AdminAttendanceOverview() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-              Employee Attendance Records ({filteredEmployees.length}
-              {filteredEmployees.length !== overviewData.employees.length
+              Employee Attendance Records ({loading && overviewData.employees.length === 0 ? "..." : filteredEmployees.length}
+              {!loading && filteredEmployees.length !== overviewData.employees.length
                 ? ` of ${overviewData.employees.length}`
                 : ""}
               )
@@ -535,7 +539,26 @@ export default function AdminAttendanceOverview() {
           </span>
         </div>
 
-        {filteredEmployees.length === 0 ? (
+        {loading && overviewData.employees.length === 0 ? (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                  <th style={{ padding: "10px 12px" }}>Employee</th>
+                  <th style={{ padding: "10px 12px" }}>Status</th>
+                  <th style={{ padding: "10px 12px" }}>Punch In</th>
+                  <th style={{ padding: "10px 12px" }}>Punch Out</th>
+                  <th style={{ padding: "10px 12px" }}>Working Hours</th>
+                  <th style={{ padding: "10px 12px" }}>Punch Location</th>
+                  <th style={{ padding: "10px 12px" }}>Live Tracking</th>
+                </tr>
+              </thead>
+              <tbody>
+                <TableSkeletonRows rows={6} cols={7} />
+              </tbody>
+            </table>
+          </div>
+        ) : filteredEmployees.length === 0 ? (
           <div style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 13 }}>
             <div
               style={{
@@ -600,7 +623,7 @@ export default function AdminAttendanceOverview() {
                   <th style={{ padding: "10px 12px" }}>Live Tracking</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={loading ? "table-refreshing-dim" : ""}>
                 {filteredEmployees.map((emp) => {
                   const hasLocation = Boolean(emp.checkInLocation || emp.checkOutLocation);
                   const loc = emp.checkInLocation || emp.checkOutLocation;

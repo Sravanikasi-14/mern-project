@@ -8,6 +8,7 @@ import {
   IconClock,
   IconRefresh,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
 
@@ -513,26 +514,29 @@ export default function EmployeeAttendance() {
               </div>
             </div>
 
-            {historyLoading ? (
-              <div style={{ padding: "30px", textAlign: "center", color: "#71717a" }}>Loading punch records...</div>
-            ) : historyRecords.length === 0 ? (
-              <div style={{ padding: "30px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                No attendance punch records found for the selected period.
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                      <th style={{ padding: "10px 12px" }}>Date</th>
-                      <th style={{ padding: "10px 12px" }}>Check-In</th>
-                      <th style={{ padding: "10px 12px" }}>Check-Out</th>
-                      <th style={{ padding: "10px 12px" }}>Hours Worked</th>
-                      <th style={{ padding: "10px 12px" }}>Status</th>
+            <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
+              {historyLoading && historyRecords.length > 0 && <div className="table-progress-bar" />}
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                    <th style={{ padding: "10px 12px" }}>Date</th>
+                    <th style={{ padding: "10px 12px" }}>Check-In</th>
+                    <th style={{ padding: "10px 12px" }}>Check-Out</th>
+                    <th style={{ padding: "10px 12px" }}>Hours Worked</th>
+                    <th style={{ padding: "10px 12px" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody className={historyLoading && historyRecords.length > 0 ? "table-refreshing-dim" : ""}>
+                  {historyLoading && historyRecords.length === 0 ? (
+                    <TableSkeletonRows colCount={5} rowCount={4} widths={["100px", "90px", "90px", "90px", "80px"]} />
+                  ) : historyRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ padding: "30px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
+                        No attendance punch records found for the selected period.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {historyRecords.map((rec) => (
+                  ) : (
+                    historyRecords.map((rec) => (
                       <tr key={rec._id || rec.date} style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>{rec.date}</td>
                         <td style={{ padding: "12px" }}>{rec.checkInTime ? new Date(rec.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
@@ -542,11 +546,11 @@ export default function EmployeeAttendance() {
                           <StatusBadge status={rec.status} />
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

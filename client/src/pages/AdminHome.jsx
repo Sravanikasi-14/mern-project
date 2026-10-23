@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import { IconClose, IconCheck, IconChevronDown } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100, 200, 300];
@@ -480,43 +481,79 @@ export default function AdminHome() {
         </div>
       </div>
 
+      {/* Error Banner with Retry */}
+      {error && (
+        <div className="table-error-banner">
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn-sm-retry"
+            onClick={() => setRefreshTrigger((prev) => prev + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Table & States */}
-      {loading ? (
-        <div className="state-box">
-          <p>Loading employees...</p>
-        </div>
-      ) : employees.length === 0 ? (
-        <div className="state-box">
-          <h3>No employees found</h3>
-          <p className="subtitle">
-            {debouncedSearch || statusFilter !== "ALL"
-              ? "No employees match your search or filter."
-              : "No employees have been added yet."}
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="data-table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {visibleColumns.employeeCode && <th>Code</th>}
-                  {visibleColumns.fullName && <th>Full Name</th>}
-                  {visibleColumns.email && <th>Email</th>}
-                  {visibleColumns.phoneNumber && <th>Phone</th>}
-                  {visibleColumns.jobTitle && <th>Job Title</th>}
-                  {visibleColumns.project && <th>Project</th>}
-                  {visibleColumns.status && <th>Status</th>}
-                  {visibleColumns.invitation && <th>Invitation</th>}
-                  {visibleColumns.salary && <th>Salary</th>}
-                  {visibleColumns.joiningDate && <th>Start Date</th>}
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((emp) => (
-                  <tr key={emp._id}>
-                    {visibleColumns.employeeCode && (
+      <div className="data-table-container table-wrapper-relative">
+        {loading && employees.length > 0 && <div className="table-progress-bar" />}
+        <table className="data-table">
+          <thead>
+            <tr>
+              {visibleColumns.employeeCode && <th>Code</th>}
+              {visibleColumns.fullName && <th>Full Name</th>}
+              {visibleColumns.email && <th>Email</th>}
+              {visibleColumns.phoneNumber && <th>Phone</th>}
+              {visibleColumns.jobTitle && <th>Job Title</th>}
+              {visibleColumns.project && <th>Project</th>}
+              {visibleColumns.status && <th>Status</th>}
+              {visibleColumns.invitation && <th>Invitation</th>}
+              {visibleColumns.salary && <th>Salary</th>}
+              {visibleColumns.joiningDate && <th>Start Date</th>}
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody className={loading && employees.length > 0 ? "table-refreshing-dim" : ""}>
+            {loading && employees.length === 0 ? (
+              <TableSkeletonRows
+                colCount={Object.values(visibleColumns).filter(Boolean).length + 1}
+                rowCount={Math.min(pageSize, 10)}
+              />
+            ) : employees.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={Object.values(visibleColumns).filter(Boolean).length + 1}
+                  style={{ textAlign: "center", padding: "48px 24px" }}
+                >
+                  <div className="table-empty-state">
+                    <h3>No employees found</h3>
+                    <p>
+                      {debouncedSearch || statusFilter !== "ALL"
+                        ? "No employees match your search or filter."
+                        : "No employees have been added yet."}
+                    </p>
+                    {(debouncedSearch || statusFilter !== "ALL") && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ marginTop: "10px", fontSize: "13px" }}
+                        onClick={() => {
+                          setSearch("");
+                          setDebouncedSearch("");
+                          setStatusFilter("ALL");
+                          setCurrentPage(1);
+                        }}
+                      >
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : employees.map((emp) => (
+                <tr key={emp._id}>
+                  {visibleColumns.employeeCode && (
                       <td>
                         <strong>{emp.employeeCode}</strong>
                       </td>
@@ -593,7 +630,8 @@ export default function AdminHome() {
           </div>
 
           {/* Pagination */}
-          <div className="pagination-bar">
+          {pagination.totalEmployees > 0 && (
+            <div className="pagination-bar">
             <span className="subtitle">
               Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
               {Math.min(pagination.page * pagination.limit, pagination.totalEmployees)} of{" "}
@@ -622,8 +660,7 @@ export default function AdminHome() {
               </button>
             </div>
           </div>
-        </>
-      )}
+        )}
 
       {/* Add Employee Modal (Simplified HR Creation & Invitation Workflow) */}
       {showAddModal && (

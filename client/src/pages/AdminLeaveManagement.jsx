@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 const STATUS_OPTIONS = [
@@ -145,6 +146,11 @@ export default function AdminLeaveManagement() {
     }
   };
 
+  const fetchLeaveDataRef = useRef(fetchLeaveData);
+  useEffect(() => {
+    fetchLeaveDataRef.current = fetchLeaveData;
+  });
+
   useEffect(() => {
     fetchLeaveData();
   }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
@@ -166,7 +172,7 @@ export default function AdminLeaveManagement() {
             payload.type === "LEAVE_TYPE_CHANGED"
           ) {
             // Live update of HR pending queue and summary counters without manual page refresh
-            fetchLeaveData(true);
+            if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
           }
         } catch {
           // ignore non-json
@@ -182,7 +188,7 @@ export default function AdminLeaveManagement() {
     // Visibility-aware background polling & window focus sync
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
-        fetchLeaveData(true);
+        if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
       }
     };
 
@@ -191,9 +197,9 @@ export default function AdminLeaveManagement() {
 
     const intervalId = setInterval(() => {
       if (document.visibilityState === "visible") {
-        fetchLeaveData(true);
+        if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
       }
-    }, 10000);
+    }, 15000);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -201,7 +207,7 @@ export default function AdminLeaveManagement() {
       window.removeEventListener("focus", handleVisibilityOrFocus);
       clearInterval(intervalId);
     };
-  }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
+  }, []);
 
   // Open details modal
   const handleOpenDetails = async (reqItem) => {
@@ -539,6 +545,7 @@ export default function AdminLeaveManagement() {
 
       {/* TABLE SECTION */}
       <div
+        className="table-wrapper-relative"
         style={{
           background: "#ffffff",
           border: "1px solid #e4e4e7",
@@ -546,51 +553,68 @@ export default function AdminLeaveManagement() {
           overflow: "hidden",
         }}
       >
-        {loading ? (
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <div className="spinner" style={{ margin: "0 auto 16px" }} />
-            <p style={{ color: "#71717a", fontSize: 14 }}>Loading leave requests...</p>
-          </div>
-        ) : requests.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 20px", color: "#71717a" }}>
-            <svg
-              width="44"
-              height="44"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#a1a1aa"
-              strokeWidth="1.5"
-              style={{ margin: "0 auto 12px", display: "block" }}
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>No leave requests found</h4>
-            <p style={{ margin: 0, fontSize: 13.5 }}>
-              {statusFilter !== "ALL" || search || fromDateFilter || toDateFilter
-                ? "No requests match your filters."
-                : "No leave requests submitted yet."}
-            </p>
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-              <thead>
-                <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Employee</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Leave Type</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Dates</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Duration</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Reason</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Submitted</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Status</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600, textAlign: "right" }}>Actions</th>
+        {loading && requests.length > 0 && <div className="table-progress-bar" />}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead>
+              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Employee</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Leave Type</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Dates</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Duration</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Reason</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Submitted</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Status</th>
+                <th style={{ padding: "12px 16px", fontWeight: 600, textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className={loading && requests.length > 0 ? "table-refreshing-dim" : ""}>
+              {loading && requests.length === 0 ? (
+                <TableSkeletonRows colCount={8} rowCount={6} />
+              ) : requests.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "60px 20px", color: "#71717a" }}>
+                    <svg
+                      width="44"
+                      height="44"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#a1a1aa"
+                      strokeWidth="1.5"
+                      style={{ margin: "0 auto 12px", display: "block" }}
+                    >
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>No leave requests found</h4>
+                    <p style={{ margin: 0, fontSize: 13.5 }}>
+                      {statusFilter !== "ALL" || search || fromDateFilter || toDateFilter
+                        ? "No requests match your filters."
+                        : "No leave requests submitted yet."}
+                    </p>
+                    {(statusFilter !== "ALL" || search || fromDateFilter || toDateFilter) && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ marginTop: 12, fontSize: 13 }}
+                        onClick={() => {
+                          setSearch("");
+                          setDebouncedSearch("");
+                          setStatusFilter("ALL");
+                          setTypeFilter("ALL");
+                          setFromDateFilter("");
+                          setToDateFilter("");
+                          setPage(1);
+                        }}
+                      >
+                        Clear Filters
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {requests.map((item) => (
+              ) : requests.map((item) => (
                   <tr
                     key={item._id}
                     style={{
@@ -706,10 +730,9 @@ export default function AdminLeaveManagement() {
               </tbody>
             </table>
           </div>
-        )}
 
         {/* PAGINATION FOOTER */}
-        {!loading && requests.length > 0 && (
+        {requests.length > 0 && (
           <div
             style={{
               display: "flex",

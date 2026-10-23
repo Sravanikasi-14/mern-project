@@ -6,7 +6,6 @@ import {
   IconAlertTriangle,
   IconAlertCircle,
   IconInfo,
-  IconDocument,
 } from "../components/Icons";
 import api from "../services/api";
 import "./AdminPolicies.css";
@@ -1422,9 +1421,21 @@ export default function AdminPolicies() {
 
   if (loading && !originalPolicy) {
     return (
-      <div className="container-wide" style={{ padding: "80px 20px", textAlign: "center" }}>
-        <div className="spinner" style={{ margin: "0 auto 16px" }} />
-        <p style={{ color: "#71717a", fontSize: 15 }}>Loading HR Policies workspace...</p>
+      <div className="container-wide" style={{ paddingBottom: 80 }}>
+        <AppHeader title="Policies" />
+        <div style={{ display: "flex", gap: 10, margin: "20px 0 24px" }}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <div key={n} className="skeleton-shimmer" style={{ width: 110, height: 38, borderRadius: 8 }} />
+          ))}
+        </div>
+        <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: 28 }}>
+          <div className="skeleton-shimmer" style={{ width: "25%", height: 22, borderRadius: 6, marginBottom: 16 }} />
+          <div className="skeleton-shimmer" style={{ width: "45%", height: 14, borderRadius: 4, marginBottom: 28 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div className="skeleton-shimmer" style={{ height: 120, borderRadius: 8 }} />
+            <div className="skeleton-shimmer" style={{ height: 120, borderRadius: 8 }} />
+          </div>
+        </div>
       </div>
     );
   }

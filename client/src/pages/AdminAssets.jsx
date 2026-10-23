@@ -9,6 +9,7 @@ import {
   IconInfo,
   IconFileText,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 const CATEGORIES = [
@@ -60,9 +61,17 @@ export default function AdminAssets() {
   });
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [conditionFilter, setConditionFilter] = useState("ALL");
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Employees for assignment dropdown
   const [employees, setEmployees] = useState([]);
@@ -119,7 +128,7 @@ export default function AdminAssets() {
       if (!silent) setLoading(true);
       setError("");
       const params = {};
-      if (search.trim()) params.search = search.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (categoryFilter !== "ALL") params.category = categoryFilter;
       if (statusFilter !== "ALL") params.status = statusFilter;
       if (conditionFilter !== "ALL") params.condition = conditionFilter;
@@ -162,8 +171,7 @@ export default function AdminAssets() {
 
   useEffect(() => {
     fetchAssets();
-    fetchEmployees();
-  }, [categoryFilter, statusFilter, conditionFilter]);
+  }, [categoryFilter, statusFilter, conditionFilter, debouncedSearch]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -520,41 +528,63 @@ export default function AdminAssets() {
 
         {/* Error State */}
         {!loading && error && (
-          <div className="error" style={{ padding: 20, textAlign: "center" }}>
-            <p style={{ margin: "0 0 12px" }}>{error}</p>
-            <button type="button" onClick={() => fetchAssets()}>
+          <div className="table-error-banner">
+            <span>{error}</span>
+            <button type="button" className="btn-sm-retry" onClick={() => fetchAssets()}>
               Retry
             </button>
           </div>
         )}
 
         {/* Asset Table */}
-        {!loading && !error && assets.length === 0 ? (
-          <div style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 14 }}>
-            <IconFileText size={36} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
-            <div style={{ fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
-              No assets found
-            </div>
-            {search || categoryFilter !== "ALL" || statusFilter !== "ALL"
-              ? "Try adjusting your search query or filter criteria."
-              : "Get started by adding your organization's physical hardware and devices."}
-          </div>
-        ) : !loading && !error && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                  <th style={{ padding: "12px 14px" }}>Asset ID & Name</th>
-                  <th style={{ padding: "12px 14px" }}>Category</th>
-                  <th style={{ padding: "12px 14px" }}>Model & Serial</th>
-                  <th style={{ padding: "12px 14px" }}>Condition</th>
-                  <th style={{ padding: "12px 14px" }}>Status</th>
-                  <th style={{ padding: "12px 14px" }}>Currently Assigned To</th>
-                  <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+        <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
+          {loading && assets.length > 0 && <div className="table-progress-bar" />}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                <th style={{ padding: "12px 14px" }}>Asset ID & Name</th>
+                <th style={{ padding: "12px 14px" }}>Category</th>
+                <th style={{ padding: "12px 14px" }}>Model & Serial</th>
+                <th style={{ padding: "12px 14px" }}>Condition</th>
+                <th style={{ padding: "12px 14px" }}>Status</th>
+                <th style={{ padding: "12px 14px" }}>Currently Assigned To</th>
+                <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className={loading && assets.length > 0 ? "table-refreshing-dim" : ""}>
+              {loading && assets.length === 0 ? (
+                <TableSkeletonRows colCount={7} rowCount={6} />
+              ) : assets.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 14 }}>
+                    <IconFileText size={36} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
+                    <div style={{ fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
+                      No assets found
+                    </div>
+                    <p style={{ margin: "0 0 12px" }}>
+                      {search || categoryFilter !== "ALL" || statusFilter !== "ALL"
+                        ? "Try adjusting your search query or filter criteria."
+                        : "Get started by adding your organization's physical hardware and devices."}
+                    </p>
+                    {(search || categoryFilter !== "ALL" || statusFilter !== "ALL") && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        style={{ fontSize: 13 }}
+                        onClick={() => {
+                          setSearch("");
+                          setDebouncedSearch("");
+                          setCategoryFilter("ALL");
+                          setStatusFilter("ALL");
+                          setConditionFilter("ALL");
+                        }}
+                      >
+                        Reset filters
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {assets.map((asset) => {
+              ) : assets.map((asset) => {
                   const isAssigned = asset.status === "ASSIGNED" && Boolean(asset.currentAssignment?.employeeId);
                   const isAvailable = asset.status === "AVAILABLE";
 
@@ -680,7 +710,6 @@ export default function AdminAssets() {
               </tbody>
             </table>
           </div>
-        )}
       </div>
 
       {/* ADD / EDIT ASSET MODAL */}

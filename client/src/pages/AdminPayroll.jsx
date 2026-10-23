@@ -10,6 +10,7 @@ import {
   IconDocument,
   IconRefresh,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 
@@ -46,8 +47,16 @@ export default function AdminPayroll() {
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   // Selected Settlement Details State
   const [selectedSettlementId, setSelectedSettlementId] = useState(null);
@@ -132,15 +141,17 @@ export default function AdminPayroll() {
     }
   }, [location.search]);
 
-  // Fetch list of settlements
+  // Fetch list of settlements only when settlements tab is active
   useEffect(() => {
+    if (activeTab !== "ff_settlements") return;
+
     let cancelled = false;
     const fetchList = async () => {
       setLoadingList(true);
       setListError("");
       try {
         const queryParams = new URLSearchParams();
-        if (searchTerm.trim()) queryParams.set("search", searchTerm.trim());
+        if (debouncedSearchTerm.trim()) queryParams.set("search", debouncedSearchTerm.trim());
         if (statusFilter !== "ALL") queryParams.set("status", statusFilter);
 
         const res = await api.get(`/settlements?${queryParams.toString()}`);
@@ -160,7 +171,7 @@ export default function AdminPayroll() {
     return () => {
       cancelled = true;
     };
-  }, [searchTerm, statusFilter, refreshKey]);
+  }, [activeTab, debouncedSearchTerm, statusFilter, refreshKey]);
 
   // Fetch selected settlement details
   useEffect(() => {
@@ -1436,6 +1447,7 @@ export default function AdminPayroll() {
 
               {/* Settlements Table */}
               <div
+                className="table-wrapper-relative"
                 style={{
                   background: "#ffffff",
                   borderRadius: 12,
@@ -1443,10 +1455,25 @@ export default function AdminPayroll() {
                   overflow: "hidden",
                 }}
               >
-                {loadingList ? (
-                  <div style={{ padding: 48, textAlign: "center" }}>
-                    <div className="spinner" style={{ margin: "0 auto 12px" }} />
-                    <p style={{ color: "#71717a", fontSize: 13.5 }}>Loading settlements...</p>
+                {loadingList && <div className="table-progress-bar" />}
+                {loadingList && settlements.length === 0 ? (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                      <thead>
+                        <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                          <th style={{ padding: "12px 16px" }}>Employee</th>
+                          <th style={{ padding: "12px 16px" }}>Last Day</th>
+                          <th style={{ padding: "12px 16px" }}>Reason</th>
+                          <th style={{ padding: "12px 16px" }}>Initiated</th>
+                          <th style={{ padding: "12px 16px" }}>Net Amount</th>
+                          <th style={{ padding: "12px 16px" }}>Status</th>
+                          <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <TableSkeletonRows rows={5} cols={7} />
+                      </tbody>
+                    </table>
                   </div>
                 ) : settlements.length === 0 ? (
                   <div style={{ padding: 48, textAlign: "center" }}>
@@ -1471,7 +1498,7 @@ export default function AdminPayroll() {
                           <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className={loadingList ? "table-refreshing-dim" : ""}>
                         {settlements.map((s) => (
                           <tr key={s._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                             <td style={{ padding: "14px 16px" }}>
@@ -1739,14 +1766,17 @@ export default function AdminPayroll() {
 
           {/* Payroll Register Table Section */}
           <div
+            className="table-wrapper-relative"
             style={{
               background: "#ffffff",
               border: "1px solid #e4e4e7",
               borderRadius: 12,
               padding: 24,
               boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+              overflow: "hidden",
             }}
           >
+            {loadingCycleDetails && <div className="table-progress-bar" />}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
               <div>
                 <h3 style={{ margin: "0 0 2px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
@@ -1776,9 +1806,27 @@ export default function AdminPayroll() {
               )}
             </div>
 
-            {loadingCycleDetails ? (
-              <div style={{ padding: 48, textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                Loading payroll register...
+            {loadingCycleDetails && cyclePayslips.length === 0 ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a", background: "#f8fafc" }}>
+                      <th style={{ padding: "12px 14px" }}>Employee</th>
+                      <th style={{ padding: "12px 14px" }}>Department</th>
+                      <th style={{ padding: "12px 14px" }}>Working</th>
+                      <th style={{ padding: "12px 14px" }}>LOP</th>
+                      <th style={{ padding: "12px 14px" }}>Payable</th>
+                      <th style={{ padding: "12px 14px" }}>Gross Pay</th>
+                      <th style={{ padding: "12px 14px" }}>Deductions</th>
+                      <th style={{ padding: "12px 14px" }}>Net Pay</th>
+                      <th style={{ padding: "12px 14px" }}>Status</th>
+                      <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <TableSkeletonRows rows={6} cols={10} />
+                  </tbody>
+                </table>
               </div>
             ) : filteredPayslips.length === 0 ? (
               <div style={{ padding: 48, textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
@@ -1803,7 +1851,7 @@ export default function AdminPayroll() {
                       <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className={loadingCycleDetails ? "table-refreshing-dim" : ""}>
                     {filteredPayslips.map((p) => (
                       <tr key={p._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <td style={{ padding: "12px 14px" }}>

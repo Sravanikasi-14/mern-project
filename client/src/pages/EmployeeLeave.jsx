@@ -8,6 +8,7 @@ import {
   IconInfo,
   IconClock,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 export default function EmployeeLeave() {
@@ -418,26 +419,31 @@ export default function EmployeeLeave() {
               </div>
             </div>
 
-            {recentRequests.length === 0 ? (
-              <div style={{ padding: "36px 16px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                <div style={{ marginBottom: 6, fontWeight: 600, color: "#18181b" }}>No leave requests submitted</div>
-                You have not submitted any time-off applications yet.
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                      <th style={{ padding: "10px 12px" }}>Leave Period</th>
-                      <th style={{ padding: "10px 12px" }}>Days</th>
-                      <th style={{ padding: "10px 12px" }}>Leave Type</th>
-                      <th style={{ padding: "10px 12px" }}>Status</th>
-                      <th style={{ padding: "10px 12px" }}>Reason</th>
-                      <th style={{ padding: "10px 12px" }}>Applied On</th>
+            <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
+              {loading && recentRequests && recentRequests.length > 0 && <div className="table-progress-bar" />}
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                    <th style={{ padding: "10px 12px" }}>Leave Period</th>
+                    <th style={{ padding: "10px 12px" }}>Days</th>
+                    <th style={{ padding: "10px 12px" }}>Leave Type</th>
+                    <th style={{ padding: "10px 12px" }}>Status</th>
+                    <th style={{ padding: "10px 12px" }}>Reason</th>
+                    <th style={{ padding: "10px 12px" }}>Applied On</th>
+                  </tr>
+                </thead>
+                <tbody className={loading && recentRequests && recentRequests.length > 0 ? "table-refreshing-dim" : ""}>
+                  {loading && (!recentRequests || recentRequests.length === 0) ? (
+                    <TableSkeletonRows colCount={6} rowCount={4} widths={["140px", "60px", "80px", "70px", "140px", "80px"]} />
+                  ) : !recentRequests || recentRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: "36px 16px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
+                        <div style={{ marginBottom: 6, fontWeight: 600, color: "#18181b" }}>No leave requests submitted</div>
+                        You have not submitted any time-off applications yet.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {recentRequests.map((req) => (
+                  ) : (
+                    recentRequests.map((req) => (
                       <tr key={req._id || req.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>
                           {req.startDate} to {req.endDate}
@@ -454,11 +460,11 @@ export default function EmployeeLeave() {
                           {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "—"}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

@@ -74,8 +74,11 @@ export function createLeaveRequestSchema() {
 
   leaveRequestSchema.index({ employeeId: 1, status: 1, fromDate: 1 });
   leaveRequestSchema.index({ status: 1, fromDate: 1 });
+  leaveRequestSchema.index({ status: 1, fromDate: 1, toDate: 1 });
   leaveRequestSchema.index({ employeeId: 1, fromDate: 1 });
+  leaveRequestSchema.index({ employeeId: 1, createdAt: -1 });
   leaveRequestSchema.index({ status: 1, createdAt: -1 });
+  leaveRequestSchema.index({ leaveTypeCode: 1, status: 1, createdAt: -1 });
   leaveRequestSchema.index({ fromDate: 1, toDate: 1 });
 
   return leaveRequestSchema;

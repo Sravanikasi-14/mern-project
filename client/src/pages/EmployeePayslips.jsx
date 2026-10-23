@@ -9,6 +9,7 @@ import {
   IconDownload,
   IconFileText,
 } from "../components/Icons";
+import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 
 export default function EmployeePayslips() {
@@ -29,9 +30,8 @@ export default function EmployeePayslips() {
       if (!silent) setLoading(true);
       setError("");
 
-      const [payrollRes, dashboardRes, settlementRes] = await Promise.allSettled([
+      const [payrollRes, settlementRes] = await Promise.allSettled([
         api.get("/payroll/employee/payslips"),
-        api.get("/employees/me/dashboard"),
         api.get("/settlements/my-settlement"),
       ]);
 
@@ -78,14 +78,21 @@ export default function EmployeePayslips() {
       }
 
       // If no persisted payslips yet, inspect dashboard payslips (which may contain legacy fallback statements)
-      if (items.length === 0 && dashboardRes.status === "fulfilled" && dashboardRes.value.data?.payslips) {
-        const rawDashboardPayslips = dashboardRes.value.data.payslips;
-        items = rawDashboardPayslips.map((ps) => ({
-          ...ps,
-          periodMonth: typeof ps.month === "string" ? getMonthNumber(ps.month) : ps.periodMonth || 1,
-          isPersisted: ps.isPersisted !== false,
-          isFinalizedPayroll: ps.isPersisted === true,
-        }));
+      if (items.length === 0) {
+        try {
+          const dashboardRes = await api.get("/employees/me/dashboard");
+          if (dashboardRes.data?.payslips) {
+            const rawDashboardPayslips = dashboardRes.data.payslips;
+            items = rawDashboardPayslips.map((ps) => ({
+              ...ps,
+              periodMonth: typeof ps.month === "string" ? getMonthNumber(ps.month) : ps.periodMonth || 1,
+              isPersisted: ps.isPersisted !== false,
+              isFinalizedPayroll: ps.isPersisted === true,
+            }));
+          }
+        } catch {
+          // ignore fallback error
+        }
       }
 
       setPayslips(items);
@@ -399,30 +406,34 @@ export default function EmployeePayslips() {
               )}
             </div>
 
-            {filteredPayslips.length === 0 ? (
-              <div style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 14 }}>
-                <IconFileText size={36} style={{ color: "#d4d4d8", marginBottom: 12, margin: "0 auto" }} />
-                <div style={{ fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
-                  No payslips found
-                </div>
-                Your official payslips will be available for review and download following HR payroll finalization.
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                      <th style={{ padding: "12px 14px" }}>Statement Period</th>
-                      <th style={{ padding: "12px 14px" }}>Gross Earnings</th>
-                      <th style={{ padding: "12px 14px" }}>Deductions</th>
-                      <th style={{ padding: "12px 14px" }}>Net Take-Home</th>
-                      <th style={{ padding: "12px 14px" }}>Status</th>
-                      <th style={{ padding: "12px 14px" }}>Record Type</th>
-                      <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+            <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
+              {loading && payslips.length > 0 && <div className="table-progress-bar" />}
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                    <th style={{ padding: "12px 14px" }}>Statement Period</th>
+                    <th style={{ padding: "12px 14px" }}>Gross Earnings</th>
+                    <th style={{ padding: "12px 14px" }}>Deductions</th>
+                    <th style={{ padding: "12px 14px" }}>Net Take-Home</th>
+                    <th style={{ padding: "12px 14px" }}>Status</th>
+                    <th style={{ padding: "12px 14px" }}>Record Type</th>
+                    <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className={loading && payslips.length > 0 ? "table-refreshing-dim" : ""}>
+                  {loading && payslips.length === 0 ? (
+                    <TableSkeletonRows colCount={7} rowCount={4} />
+                  ) : filteredPayslips.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 14 }}>
+                        <IconFileText size={36} style={{ color: "#d4d4d8", marginBottom: 12, margin: "0 auto" }} />
+                        <div style={{ fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
+                          No payslips found
+                        </div>
+                        Your official payslips will be available for review and download following HR payroll finalization.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPayslips.map((ps) => {
+                  ) : filteredPayslips.map((ps) => {
                       const isPaid = ps.status === "PAID" || ps.paymentStatus === "PAID";
                       const isUnpaid = ps.paymentStatus === "UNPAID";
 
@@ -534,7 +545,6 @@ export default function EmployeePayslips() {
                   </tbody>
                 </table>
               </div>
-            )}
           </div>
         </>
       )}
