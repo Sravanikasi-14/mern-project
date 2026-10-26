@@ -63,10 +63,6 @@ export async function updateEmailSettings(req, res, next) {
       throw new HttpError(404, "Company not found");
     }
 
-    if (!company.emailSettings) {
-      company.emailSettings = {};
-    }
-
     const normalizedEmail = normalizeEmail(fromEmail || "");
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       throw new HttpError(400, "A valid sender email address is required.", {
@@ -74,102 +70,122 @@ export async function updateEmailSettings(req, res, next) {
       });
     }
 
-    const existingPassword = company.emailSettings.appPasswordEncrypted || "";
+    const cleanHost =
+      typeof smtpHost === "string" && smtpHost.trim()
+        ? smtpHost.trim().toLowerCase()
+        : (company.emailSettings?.smtpHost || "smtp.gmail.com").toLowerCase();
+
+    if (!cleanHost || cleanHost.length > 255 || /[\s<>]/.test(cleanHost) || !/^[a-z0-9.-]+$/i.test(cleanHost)) {
+      throw new HttpError(400, "A valid SMTP host (e.g. smtp.gmail.com) is required.", {
+        field: "smtpHost",
+      });
+    }
+
+    let cleanPort = company.emailSettings?.smtpPort || 587;
+    if (smtpPort != null && smtpPort !== "") {
+      const portNum = Number(smtpPort);
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+        throw new HttpError(400, "SMTP port must be an integer between 1 and 65535.", {
+          field: "smtpPort",
+        });
+      }
+      cleanPort = portNum;
+    }
+
+    const cleanSecure =
+      typeof smtpSecure === "boolean"
+        ? smtpSecure
+        : Boolean(company.emailSettings?.smtpSecure);
+
+    const existingPassword = company.emailSettings?.appPasswordEncrypted || "";
     const passwordInput =
       typeof appPassword === "string" ? appPassword.trim() : "";
 
     if (!passwordInput && !existingPassword) {
       throw new HttpError(
         400,
-        "Gmail app password is required. Generate one at https://myaccount.google.com/apppasswords",
+        "SMTP / Gmail app password is required. Generate one at https://myaccount.google.com/apppasswords",
         { field: "appPassword" }
       );
     }
 
-    company.emailSettings.fromEmail = normalizedEmail;
-    company.emailSettings.fromName =
-      typeof fromName === "string" ? fromName.trim() : company.emailSettings.fromName || "";
-
-    if (typeof smtpHost === "string" && smtpHost.trim()) {
-      company.emailSettings.smtpHost = smtpHost.trim();
-    } else if (!company.emailSettings.smtpHost) {
-      company.emailSettings.smtpHost = "smtp.gmail.com";
-    }
-
-    if (smtpPort != null && smtpPort !== "") {
-      const port = Number(smtpPort);
-      if (!Number.isFinite(port) || port < 1 || port > 65535) {
-        throw new HttpError(400, "SMTP port must be between 1 and 65535.", {
-          field: "smtpPort",
-        });
-      }
-      company.emailSettings.smtpPort = port;
-    } else if (!company.emailSettings.smtpPort) {
-      company.emailSettings.smtpPort = 587;
-    }
-
-    if (typeof smtpSecure === "boolean") {
-      company.emailSettings.smtpSecure = smtpSecure;
-    }
+    let plainPasswordToVerify = "";
+    let newPasswordEncrypted = null;
 
     if (passwordInput) {
-      // Google app passwords are 16 chars (often shown with spaces)
       const compact = passwordInput.replace(/\s+/g, "");
-      if (compact.length < 8) {
-        throw new HttpError(400, "App password looks too short.", {
+      if (compact.length < 6) {
+        throw new HttpError(400, "SMTP password must be at least 6 characters.", {
           field: "appPassword",
         });
       }
-      company.emailSettings.appPasswordEncrypted = encryptSecret(passwordInput);
+      plainPasswordToVerify = passwordInput;
+      newPasswordEncrypted = encryptSecret(passwordInput);
+    } else {
+      try {
+        plainPasswordToVerify = decryptSecret(existingPassword);
+      } catch (err) {
+        throw new HttpError(
+          400,
+          "Existing SMTP password cannot be decrypted. Please enter a new password.",
+          { field: "appPassword" }
+        );
+      }
+    }
+
+    // Verify SMTP connection before persisting changes to protect against invalid credentials
+    const candidateConfig = {
+      user: normalizedEmail,
+      pass: plainPasswordToVerify,
+      host: cleanHost,
+      port: cleanPort,
+      secure: cleanSecure,
+    };
+
+    const verifyResult = await emailService.verifyConnection(null, candidateConfig);
+    if (!verifyResult.success) {
+      throw new HttpError(
+        400,
+        verifyResult.error ||
+          "Could not verify SMTP credentials. Check your email and password.",
+        { code: "SMTP_VERIFY_FAILED" }
+      );
+    }
+
+    // Only mutate and persist after successful verification
+    if (!company.emailSettings) {
+      company.emailSettings = {};
+    }
+
+    company.emailSettings.fromEmail = normalizedEmail;
+    company.emailSettings.fromName =
+      typeof fromName === "string"
+        ? fromName.trim()
+        : company.emailSettings.fromName || "";
+    company.emailSettings.smtpHost = cleanHost;
+    company.emailSettings.smtpPort = cleanPort;
+    company.emailSettings.smtpSecure = cleanSecure;
+
+    if (newPasswordEncrypted) {
+      company.emailSettings.appPasswordEncrypted = newPasswordEncrypted;
     }
 
     company.emailSettings.isConfigured = Boolean(
       company.emailSettings.fromEmail && company.emailSettings.appPasswordEncrypted
     );
+    company.emailSettings.lastVerifiedAt = new Date();
     company.emailSettings.updatedAt = new Date();
 
-    // Verify SMTP before saving so bad credentials are rejected early
-    const verifyPass = passwordInput
-      ? passwordInput
-      : undefined;
-
-    let verifyResult;
-    if (verifyPass) {
-      verifyResult = await emailService.verifyConnection(null, {
-        user: normalizedEmail,
-        pass: verifyPass,
-        host: company.emailSettings.smtpHost,
-        port: company.emailSettings.smtpPort,
-        secure: company.emailSettings.smtpSecure,
-      });
-    } else {
-      // Re-verify with stored (encrypted) password via company snapshot
-      const snapshot = {
-        emailSettings: {
-          ...company.emailSettings.toObject?.() || company.emailSettings,
-        },
-      };
-      verifyResult = await emailService.verifyConnection(snapshot);
-    }
-
-    if (!verifyResult.success) {
-      throw new HttpError(
-        400,
-        verifyResult.error ||
-          "Could not verify SMTP credentials. Check your email and app password.",
-        { code: "SMTP_VERIFY_FAILED" }
-      );
-    }
-
-    company.emailSettings.lastVerifiedAt = new Date();
     company.markModified("emailSettings");
     await company.save();
 
     // Refresh auth company reference for this request lifecycle
-    req.auth.company.emailSettings = company.emailSettings;
+    if (req.auth?.company) {
+      req.auth.company.emailSettings = company.emailSettings;
+    }
 
-    // Invalidate cached transporter so next send uses new credentials
-    emailService.setTransporter(null);
+    // Invalidate cached transporter for this company so next send uses new credentials
+    emailService.invalidateTransporter(company._id);
 
     res.json({
       success: true,

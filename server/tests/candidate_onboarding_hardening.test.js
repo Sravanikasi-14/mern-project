@@ -1,3 +1,4 @@
+process.env.NODE_ENV = "test";
 process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -13,6 +14,7 @@ import { emailService } from "../services/emailService.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { signCandidateOnboardingToken, signEmployeeActivationToken } from "../utils/onboardingToken.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
 
 let mongod;
 let app;
@@ -43,6 +45,21 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       slug: "acme-sec",
       databaseName: "tenant_acme_sec",
       status: COMPANY_STATUSES.ACTIVE,
+      emailSettings: {
+        fromName: "Acme HR",
+        fromEmail: "hr@acme-sec.test",
+        smtpHost: "smtp.acme.test",
+        smtpPort: 587,
+        smtpSecure: false,
+        appPasswordEncrypted: encryptSecret("hardening-mock-pass-1234"),
+        isConfigured: true,
+        lastVerifiedAt: new Date(),
+      },
+    });
+
+    emailService.setTransporter({
+      sendMail: async (options) => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
     });
 
     companyGlobex = await Company.create({
@@ -82,6 +99,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
   });
 
   after(async () => {
+    emailService.setTransporter(null);
     await disconnectAll();
     if (mongod) {
       await mongod.stop();

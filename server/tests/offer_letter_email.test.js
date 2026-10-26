@@ -1,3 +1,4 @@
+process.env.NODE_ENV = "test";
 process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -11,6 +12,7 @@ import { USER_ROLES } from "../models/User.js";
 import { hashPassword } from "../utils/password.js";
 import { emailService } from "../services/emailService.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
 
 let mongod;
 let app;
@@ -36,15 +38,31 @@ describe("Stage 1: Offer Letter Email Delivery & Safety Module", () => {
     await mongoose.connect(process.env.MONGO_URI, { dbName: getCentralDbName() });
     app = createApp();
 
-    // 1. Create Acme Company
+    // 1. Create Acme Company with configured SMTP credentials
     companyAcme = await Company.create({
       companyName: "Acme Innovations Ltd",
       slug: "acme",
       databaseName: "tenant_acme_email_offers",
       status: COMPANY_STATUSES.ACTIVE,
+      emailSettings: {
+        fromName: "Acme HR",
+        fromEmail: "hr@acme-inno.test",
+        smtpHost: "smtp.acme.test",
+        smtpPort: 587,
+        smtpSecure: false,
+        appPasswordEncrypted: encryptSecret("mock-offer-pass-1234"),
+        isConfigured: true,
+        lastVerifiedAt: new Date(),
+      },
     });
 
-    // 2. Create Globex Company (for tenant isolation)
+    // Mock SMTP delivery for automated test safety
+    emailService.setTransporter({
+      sendMail: async (options) => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
+    });
+
+    // 2. Create Globex Company (unconfigured email for tenant isolation and config testing)
     companyGlobex = await Company.create({
       companyName: "Globex Global Corp",
       slug: "globex",
@@ -308,5 +326,40 @@ describe("Stage 1: Offer Letter Email Delivery & Safety Module", () => {
     assert.equal(pdfRes.status, 200);
     assert.equal(pdfRes.headers["content-type"], "application/pdf");
     assert.ok(pdfRes.body.length > 0);
+  });
+
+  it("8. Sending offer letter fails with 502 configuration error if company email is unconfigured", async () => {
+    // Globex has no emailSettings configured
+    const draftRes = await request(app)
+      .post("/api/offer-letters")
+      .set("Cookie", hrCookieGlobex)
+      .send({
+        candidate: { fullName: "Globex Candidate", email: "globex.cand@example.test" },
+        position: "Security Analyst",
+        department: "Security",
+        monthlySalary: 80000,
+        joiningDate: new Date().toISOString(),
+      });
+
+    assert.equal(draftRes.status, 201);
+    const offerId = draftRes.body.offerLetter._id;
+
+    // Attempt to send without custom mock
+    emailService.setTransporter(null);
+
+    const sendRes = await request(app)
+      .post(`/api/offer-letters/${offerId}/send`)
+      .set("Cookie", hrCookieGlobex)
+      .send({});
+
+    assert.equal(sendRes.status, 502);
+    assert.equal(sendRes.body.success, false);
+    assert.ok(sendRes.body.message.toLowerCase().includes("not configured"));
+
+    // Reset mock for following tests
+    emailService.setTransporter({
+      sendMail: async () => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
+    });
   });
 });

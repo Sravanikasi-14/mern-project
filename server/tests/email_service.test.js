@@ -1,6 +1,9 @@
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test_jwt_secret_for_email_service_32chars!!";
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { emailService } from "../services/emailService.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
 
 describe("EmailService Nodemailer SMTP Integration & Safety Suite", () => {
   const originalEnv = { ...process.env };
@@ -271,5 +274,216 @@ describe("EmailService Nodemailer SMTP Integration & Safety Suite", () => {
     assert.equal(result.messageId, "legacy_msg_id_777");
     assert.ok(captured);
     assert.equal(captured.to, "legacy@example.test");
+  });
+
+  it("15. Company with missing credentials returns a clear error and NEVER falls back to env", async () => {
+    process.env.SMTP_USER = "global@platform.test";
+    process.env.SMTP_APP_PASSWORD = "global-secret-password-123";
+    process.env.EMAIL_FROM = "Platform <global@platform.test>";
+
+    const unconfiguredCompany = {
+      _id: "60c72b2f9b1d8b2badbee101",
+      companyName: "Unconfigured Corp",
+      slug: "unconfigured",
+      emailSettings: {
+        fromEmail: "",
+        appPasswordEncrypted: "",
+        isConfigured: false,
+      },
+    };
+
+    assert.equal(emailService.isConfigured(unconfiguredCompany), false);
+
+    const result = await emailService.sendMail({
+      to: "recipient@example.test",
+      subject: "Test Isolation",
+      text: "Hello",
+      company: unconfiguredCompany,
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.code, "COMPANY_EMAIL_NOT_CONFIGURED");
+    assert.ok(result.error.toLowerCase().includes("not configured"));
+  });
+
+  it("16. Company with undecryptable credentials returns safe error and NEVER falls back to env", async () => {
+    process.env.SMTP_USER = "global@platform.test";
+    process.env.SMTP_APP_PASSWORD = "global-secret-password-123";
+
+    const corruptCompany = {
+      _id: "60c72b2f9b1d8b2badbee102",
+      companyName: "Corrupt Corp",
+      slug: "corrupt",
+      emailSettings: {
+        fromEmail: "hr@corrupt.test",
+        appPasswordEncrypted: "invalid.corrupt.payload",
+        isConfigured: true,
+      },
+    };
+
+    assert.equal(emailService.isConfigured(corruptCompany), false);
+
+    const result = await emailService.sendMail({
+      to: "recipient@example.test",
+      subject: "Test Corrupt",
+      text: "Hello",
+      company: corruptCompany,
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.code, "COMPANY_EMAIL_DECRYPTION_FAILED");
+    assert.ok(result.error.toLowerCase().includes("could not be decrypted"));
+  });
+
+  it("17. _cacheKeyForConfig() changes deterministically when host, port, TLS, user, or pass changes", () => {
+    const base = {
+      tenantId: "compA",
+      host: "smtp.example.com",
+      port: 587,
+      secure: false,
+      user: "hr@example.com",
+      pass: "SecretPass123!",
+    };
+
+    const keyBase = emailService._cacheKeyForConfig(base);
+    assert.ok(keyBase);
+
+    // Host change
+    const keyHost = emailService._cacheKeyForConfig({ ...base, host: "smtp.other.com" });
+    assert.notEqual(keyBase, keyHost);
+
+    // Port change
+    const keyPort = emailService._cacheKeyForConfig({ ...base, port: 465 });
+    assert.notEqual(keyBase, keyPort);
+
+    // Secure change
+    const keySecure = emailService._cacheKeyForConfig({ ...base, secure: true });
+    assert.notEqual(keyBase, keySecure);
+
+    // User change
+    const keyUser = emailService._cacheKeyForConfig({ ...base, user: "other@example.com" });
+    assert.notEqual(keyBase, keyUser);
+
+    // Password change (even with exact same character length)
+    const keyPass = emailService._cacheKeyForConfig({ ...base, pass: "OtherPass123!" });
+    assert.notEqual(keyBase, keyPass);
+
+    // Tenant change (different company with identical config)
+    const keyTenant = emailService._cacheKeyForConfig({ ...base, tenantId: "compB" });
+    assert.notEqual(keyBase, keyTenant);
+  });
+
+  it("18. Transporter cache key never exposes plaintext password", () => {
+    const config = {
+      tenantId: "compA",
+      host: "smtp.example.com",
+      port: 587,
+      secure: false,
+      user: "hr@example.com",
+      pass: "SuperSecretUltraSensitivePassword999",
+    };
+
+    const key = emailService._cacheKeyForConfig(config);
+    assert.ok(!key.includes("SuperSecretUltraSensitivePassword999"));
+    assert.ok(!key.includes("Sensitive"));
+  });
+
+  it("19. Transporter isolation: Company A and Company B do not share cached transporters", () => {
+    emailService.invalidateTransporter();
+
+    const configA = {
+      tenantId: "compA",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      user: "hr@compA.test",
+      pass: "SecretPassA",
+    };
+
+    const configB = {
+      tenantId: "compB",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      user: "hr@compB.test",
+      pass: "SecretPassB",
+    };
+
+    const transA = emailService.getTransporterForConfig(configA);
+    const transB = emailService.getTransporterForConfig(configB);
+
+    assert.ok(transA);
+    assert.ok(transB);
+    assert.notEqual(transA, transB);
+
+    assert.equal(emailService.transporters.size, 2);
+  });
+
+  it("20. invalidateTransporter(companyId) clears only that company's cached transporter", () => {
+    emailService.invalidateTransporter();
+
+    const configA = {
+      tenantId: "compA",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      user: "hr@compA.test",
+      pass: "PassA",
+    };
+
+    const configB = {
+      tenantId: "compB",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      user: "hr@compB.test",
+      pass: "PassB",
+    };
+
+    emailService.getTransporterForConfig(configA);
+    emailService.getTransporterForConfig(configB);
+    assert.equal(emailService.transporters.size, 2);
+
+    emailService.invalidateTransporter("compA");
+    assert.equal(emailService.transporters.size, 1);
+
+    const remainingKey = emailService.transporters.keys().next().value;
+    assert.ok(remainingKey.startsWith("compB:"));
+  });
+
+  it("21. Company with valid credentials uses injected custom transporter in tests", async () => {
+    let captured = null;
+    emailService.setTransporter({
+      sendMail: async (options) => {
+        captured = options;
+        return { messageId: "mock_company_sent_789" };
+      },
+    });
+
+    const validCompany = {
+      _id: "60c72b2f9b1d8b2badbee103",
+      companyName: "Valid Corp",
+      slug: "valid",
+      emailSettings: {
+        fromEmail: "hr@valid.test",
+        fromName: "Valid HR",
+        appPasswordEncrypted: encryptSecret("valid-test-pass-1234"),
+        isConfigured: true,
+      },
+    };
+
+    const result = await emailService.sendEmployeeInvitation({
+      companyName: validCompany.companyName,
+      employeeName: "Alice Walker",
+      email: "alice@valid.test",
+      inviteLink: "http://localhost:5173/onboard?token=alice123",
+      company: validCompany,
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.messageId, "mock_company_sent_789");
+    assert.ok(captured);
+    assert.equal(captured.to, "alice@valid.test");
+    assert.equal(captured.from, "Valid HR <hr@valid.test>");
   });
 });

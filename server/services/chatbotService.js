@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 import { getGeminiClient, DEFAULT_GEMINI_MODEL } from "../config/gemini.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import { getEmployeePointsSummaryService } from "./workManagementService.js";
+import {
+  HR_ANALYST_FUNCTION_DECLARATIONS,
+  executeHrAnalystTool,
+  formatDeterministicAnalysis,
+} from "./hrAnalystTools.js";
 import { HttpError } from "../utils/httpError.js";
 
 /**
@@ -12,10 +17,12 @@ import { HttpError } from "../utils/httpError.js";
 export async function getAuthorizedContext({ models, user, company }) {
   const { Employee, CompanyHrPolicy, Task, ImpactPointTransaction } = models;
 
+  const isHrAdmin = user?.role === "HR_ADMIN";
   const contextData = {
     companyName: company?.companyName || "HRMS",
     userRole: user?.role || "EMPLOYEE",
     userEmail: user?.email || "",
+    isHrAdmin,
   };
 
   try {
@@ -81,7 +88,7 @@ export async function getAuthorizedContext({ models, user, company }) {
           contextData.hrPolicy = {
             officeStartTime: policy.attendanceRules?.officeStartTime || "09:30",
             officeEndTime: policy.attendanceRules?.officeEndTime || "18:30",
-            gracePeriodMinutes: policy.attendanceRules?.gracePeriodMinutes || 15,
+            gracePeriodMinutes: policy.attendanceRules?.gracePeriodMinutes ?? 15,
             standardDailyHours: policy.workHoursRules?.standardDailyHours || 8,
             weekendOff:
               policy.weekendRules?.saturdayOff && policy.weekendRules?.sundayOff
@@ -109,6 +116,9 @@ export async function getAuthorizedContext({ models, user, company }) {
 
 /**
  * Builds system instruction prompt with authorized context.
+ * Adjusts persona based on user role:
+ * - HR_ADMIN: Proactive AI HR Analyst with real-time tool calling access
+ * - EMPLOYEE: Standard helpful employee portal assistant
  */
 export function buildSystemInstruction(context) {
   const emp = context.employee;
@@ -136,6 +146,46 @@ export function buildSystemInstruction(context) {
       : `- Verified Impact Points Balance: ${context.impactPointsBalance ?? 0} pts`
     : "";
 
+  // HR Administrator System Prompt
+  if (context.isHrAdmin || context.userRole === "HR_ADMIN") {
+    return `You are "HRMS Assistant", an advanced, proactive AI HR Analyst and Strategic Operational Advisor for ${context.companyName}.
+You are speaking directly with an authorized HR Administrator (${context.userEmail}).
+
+### Your Role as Real-Time AI HR Analyst:
+1. You have SECURE, REAL-TIME access to live database analytical tools:
+   - analyzeAttendance: Today's live check-ins, late arrivals (past official office start + grace period), absences, employees on approved leave, department-level absence rates, recurring irregularities (multi-day patterns), and previous week comparisons.
+   - analyzeEmployeesAndOnboarding: Incomplete employee profiles (missing bank details, emergency contacts, PAN tax details), active headcount by department, and candidate onboarding submissions awaiting review.
+   - analyzeLeaves: Pending leave applications, urgent requests (next 72 hours), department-level overlapping leave date conflicts (understaffing risks), and leave trends.
+   - analyzePayrollReadiness: Payroll cycle status, register calculation issues, active employees lacking salary compensation setup, payment disbursement readiness, and historical pay changes.
+   - analyzeRecruitmentAndOffers: Recruitment pipeline funnel, offer letter acceptance rates, and candidate onboarding bottlenecks.
+   - getCrossModuleOverview: Unified operational health check across attendance, leaves, payroll, candidate onboarding, and work management.
+
+2. MANDATORY TOOL CALLING INSTRUCTIONS:
+   - When asked ANY business question about attendance (e.g. "Who is late today?", "How many employees are present?", "Attendance breakdown"), employees, leaves, payroll readiness, or hiring, you MUST INVOKE the appropriate live analytical tool.
+   - NEVER say "I do not have access to real-time attendance data" or "I cannot access live company records". You have real-time backend analytical tools explicitly designed for this.
+   - If a request cannot be fulfilled by available data, explain the specific limitation based on recorded evidence. Never fabricate numbers.
+
+3. STRUCTURE OF YOUR ANALYSIS:
+   Provide concise, structured, and actionable intelligence for the HR Admin:
+   - **Key Findings**: Clear summary supported by exact figures and percentages.
+   - **Supporting Numbers & Patterns**: Break down affected departments or specific employees (e.g. late arrivals with minutes late, conflicting leave dates).
+   - **Operational Implications / Risks**: Explain WHY this matters (e.g. "team understaffing risk", "statutory payroll delay due to missing PAN/bank data").
+   - **Recommended Next Steps**: Practical, prioritized HR actions including markdown links to the relevant HRMS sections:
+     - [Attendance Overview](/admin/attendance)
+     - [Leave Management](/admin/leave)
+     - [Payroll Action Centre](/admin/payroll)
+     - [Candidate Onboarding Review](/admin/onboarding)
+     - [Offer Letters Management](/admin/offers)
+     - [Employee Directory](/admin)
+     - [Work Management](/admin/work-management)
+
+4. Prohibited Autonomous Actions:
+   - You CANNOT directly execute destructive database mutations or approvals (e.g. you cannot mark attendance, disburse money, or approve leaves yourself). You analyze records and direct the HR Admin to the corresponding section with markdown links.
+
+${policy ? `### Company HR Policy:\n- Office Timings: ${policy.officeStartTime} to ${policy.officeEndTime} (Grace period: ${policy.gracePeriodMinutes} mins)\n- Standard Work Hours: ${policy.standardDailyHours} hours/day\n- Weekend Policy: ${policy.weekendOff} off` : ""}`;
+  }
+
+  // Employee System Prompt
   return `You are "HRMS Assistant", a helpful, professional AI chatbot built into the HRMS portal for ${context.companyName}.
 
 ### Authenticated User Context:
@@ -208,6 +258,151 @@ export function validateChatInput(message, history = []) {
 }
 
 /**
+ * Detects user intent for HR analysis questions to enable graceful fallback
+ * when Gemini API quota is temporarily exhausted or unavailable.
+ */
+export function detectHrQueryIntent(message = "") {
+  const text = String(message || "").toLowerCase();
+
+  // 1. Cross-module Health Check & Risk Overview (evaluate broad queries first)
+  if (
+    text.includes("health check") ||
+    text.includes("cross module") ||
+    text.includes("operational risk") ||
+    text.includes("risk overview") ||
+    text.includes("company status") ||
+    text.includes("overall status") ||
+    (text.includes("overview") && text.includes("risk"))
+  ) {
+    return {
+      name: "getCrossModuleOverview",
+      args: {},
+    };
+  }
+
+  // 2. Attendance queries
+  if (
+    text.includes("attend") ||
+    text.includes("present") ||
+    text.includes("absent") ||
+    text.includes("late") ||
+    text.includes("checked in") ||
+    text.includes("check in") ||
+    text.includes("clock in") ||
+    text.includes("who is working") ||
+    text.includes("irregular") ||
+    text.includes("previous week")
+  ) {
+    return {
+      name: "analyzeAttendance",
+      args: {
+        comparePreviousWeek:
+          text.includes("previous week") ||
+          text.includes("last week") ||
+          text.includes("compare"),
+        checkIrregularities:
+          text.includes("irregular") ||
+          text.includes("recurring") ||
+          text.includes("pattern") ||
+          text.includes("repeat"),
+      },
+    };
+  }
+
+  // 3. Leave queries
+  if (
+    text.includes("leave") ||
+    text.includes("vacation") ||
+    text.includes("time off") ||
+    text.includes("holiday request") ||
+    text.includes("overlap")
+  ) {
+    return {
+      name: "analyzeLeaves",
+      args: {
+        includeOverlaps:
+          text.includes("overlap") ||
+          text.includes("conflict") ||
+          text.includes("same team") ||
+          text.includes("same time"),
+        urgentOnly:
+          text.includes("urgent") ||
+          text.includes("soon") ||
+          text.includes("immediate"),
+      },
+    };
+  }
+
+  // 4. Payroll queries
+  if (
+    text.includes("payroll") ||
+    text.includes("salary") ||
+    text.includes("disbursement") ||
+    text.includes("wage") ||
+    text.includes("compensation") ||
+    text.includes("ready to process")
+  ) {
+    return {
+      name: "analyzePayrollReadiness",
+      args: {
+        compareHistoricalCycles:
+          text.includes("history") ||
+          text.includes("trend") ||
+          text.includes("over time") ||
+          text.includes("past month"),
+      },
+    };
+  }
+
+  // 5. Recruitment and Offer queries
+  if (
+    text.includes("offer") ||
+    text.includes("recruitment") ||
+    text.includes("funnel") ||
+    text.includes("hiring") ||
+    text.includes("candidate") ||
+    text.includes("stuck") ||
+    text.includes("bottleneck")
+  ) {
+    return {
+      name: "analyzeRecruitmentAndOffers",
+      args: {
+        checkBottlenecks:
+          text.includes("stuck") ||
+          text.includes("bottleneck") ||
+          text.includes("delay") ||
+          text.includes("waiting"),
+      },
+    };
+  }
+
+  // 6. Employee Directory & Onboarding Completeness
+  if (
+    text.includes("onboard") ||
+    text.includes("profile") ||
+    text.includes("incomplete") ||
+    text.includes("missing") ||
+    /\bpan\b/i.test(text) ||
+    /\bbank\b/i.test(text) ||
+    text.includes("emergency contact") ||
+    text.includes("headcount")
+  ) {
+    return {
+      name: "analyzeEmployeesAndOnboarding",
+      args: {
+        focusArea: text.includes("onboard")
+          ? "ONBOARDING"
+          : text.includes("headcount")
+          ? "HEADCOUNT"
+          : "PROFILES",
+      },
+    };
+  }
+
+  return null;
+}
+
+/**
  * Executes a Gemini API call with bounded retries for transient 503/high-demand spikes.
  * Strictly avoids retrying if the abortSignal has already been triggered.
  */
@@ -227,7 +422,6 @@ async function executeWithRetry(apiCall, { maxRetries = 2, delayMs = 1200, abort
         errorMsg.includes("503") ||
         errorMsg.includes("unavailable") ||
         errorMsg.includes("high demand") ||
-        errorMsg.includes("resource_exhausted") ||
         errorMsg.includes("spikes in demand");
 
       if (attempt <= maxRetries && isTransient && !abortSignal?.aborted) {
@@ -253,6 +447,7 @@ async function executeWithRetry(apiCall, { maxRetries = 2, delayMs = 1200, abort
 
 /**
  * Executes a Gemini chat interaction using the official @google/genai SDK.
+ * Supports tool calling for HR Administrators with fallback on quota exhaustion.
  */
 export async function sendChatMessage({
   models,
@@ -266,9 +461,33 @@ export async function sendChatMessage({
 
   const context = await getAuthorizedContext({ models, user, company });
   const systemInstruction = buildSystemInstruction(context);
+  const isHrAdmin = context.isHrAdmin;
 
-  const ai = getGeminiClient();
+  let ai;
+  try {
+    ai = getGeminiClient();
+  } catch (err) {
+    // In test environments or when GEMINI_API_KEY is not configured:
+    // If user is HR Admin asking an analytical question, execute live database tool deterministically
+    if (isHrAdmin) {
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (intentTool) {
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
+          models,
+          company,
+          user,
+        });
+        return {
+          reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
+          model: "deterministic-live-analyst",
+        };
+      }
+    }
+    throw err;
+  }
+
   const model = DEFAULT_GEMINI_MODEL;
+  const tools = isHrAdmin ? [{ functionDeclarations: HR_ANALYST_FUNCTION_DECLARATIONS }] : undefined;
 
   const contents = [
     ...sanitizedHistory,
@@ -279,14 +498,15 @@ export async function sendChatMessage({
   ];
 
   try {
-    const response = await executeWithRetry(
+    const initialResponse = await executeWithRetry(
       () =>
         ai.models.generateContent({
           model,
           contents,
           config: {
             systemInstruction,
-            temperature: 0.3,
+            tools,
+            temperature: 0.2,
             maxOutputTokens: 1024,
             abortSignal,
           },
@@ -294,9 +514,84 @@ export async function sendChatMessage({
       { abortSignal }
     );
 
+    // If Gemini requested function calls to retrieve live database records
+    if (initialResponse.functionCalls && initialResponse.functionCalls.length > 0) {
+      const functionResponseParts = [];
+      let lastToolName = "";
+      let lastToolResult = null;
+
+      for (const call of initialResponse.functionCalls) {
+        lastToolName = call.name;
+        const result = await executeHrAnalystTool(call.name, call.args || {}, {
+          models,
+          company,
+          user,
+        });
+        lastToolResult = result;
+        functionResponseParts.push({
+          functionResponse: {
+            name: call.name,
+            id: call.id,
+            response: { output: result },
+          },
+        });
+      }
+
+      const modelCallPart = initialResponse.candidates?.[0]?.content || {
+        role: "model",
+        parts: initialResponse.functionCalls.map((fc) => ({ functionCall: fc })),
+      };
+
+      const followUpContents = [
+        ...contents,
+        modelCallPart,
+        {
+          role: "user",
+          parts: functionResponseParts,
+        },
+      ];
+
+      try {
+        const synthesisResponse = await executeWithRetry(
+          () =>
+            ai.models.generateContent({
+              model,
+              contents: followUpContents,
+              config: {
+                systemInstruction,
+                temperature: 0.3,
+                maxOutputTokens: 1500,
+                abortSignal,
+              },
+            }),
+          { abortSignal }
+        );
+
+        const replyText =
+          synthesisResponse.text ||
+          synthesisResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+          formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage);
+
+        return {
+          reply: replyText,
+          model,
+        };
+      } catch (synthesisErr) {
+        // Quota exhaustion during synthesis: fallback to formatted real-time tool data
+        const errMsg = String(synthesisErr?.message || "").toLowerCase();
+        if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+          return {
+            reply: formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage),
+            model: `${model}-fallback`,
+          };
+        }
+        throw synthesisErr;
+      }
+    }
+
     const replyText =
-      response.text ||
-      response.candidates?.[0]?.content?.parts?.[0]?.text ||
+      initialResponse.text ||
+      initialResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
       "I'm sorry, I couldn't generate a response. Please try rephrasing your question.";
 
     return {
@@ -304,7 +599,28 @@ export async function sendChatMessage({
       model,
     };
   } catch (error) {
-    // Graceful error mapping
+    if (isHrAdmin) {
+      const errMsg = String(error?.message || "").toLowerCase();
+      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+        const intentTool = detectHrQueryIntent(userMessage);
+        if (intentTool) {
+          try {
+            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
+              models,
+              company,
+              user,
+            });
+            return {
+              reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
+              model: "deterministic-live-analyst",
+            };
+          } catch {
+            // Fall through
+          }
+        }
+      }
+    }
+
     if (error instanceof HttpError) throw error;
 
     const errorMsg = String(error?.message || "");
@@ -364,7 +680,7 @@ export async function sendChatMessage({
 
 /**
  * Streams chat response chunks using the official @google/genai SDK generateContentStream.
- * Yields text tokens in real time.
+ * Handles tool calling for HR Analysts before streaming the final synthesized intelligence.
  */
 export async function* streamChatMessage({
   models,
@@ -378,9 +694,29 @@ export async function* streamChatMessage({
 
   const context = await getAuthorizedContext({ models, user, company });
   const systemInstruction = buildSystemInstruction(context);
+  const isHrAdmin = context.isHrAdmin;
 
-  const ai = getGeminiClient();
+  let ai;
+  try {
+    ai = getGeminiClient();
+  } catch (err) {
+    if (isHrAdmin) {
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (intentTool) {
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
+          models,
+          company,
+          user,
+        });
+        yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
+        return;
+      }
+    }
+    throw err;
+  }
+
   const model = DEFAULT_GEMINI_MODEL;
+  const tools = isHrAdmin ? [{ functionDeclarations: HR_ANALYST_FUNCTION_DECLARATIONS }] : undefined;
 
   const contents = [
     ...sanitizedHistory,
@@ -391,6 +727,105 @@ export async function* streamChatMessage({
   ];
 
   try {
+    if (isHrAdmin) {
+      const initialResponse = await executeWithRetry(
+        () =>
+          ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction,
+              tools,
+              temperature: 0.2,
+              maxOutputTokens: 1024,
+              abortSignal,
+            },
+          }),
+        { abortSignal }
+      );
+
+      if (initialResponse.functionCalls && initialResponse.functionCalls.length > 0) {
+        const functionResponseParts = [];
+        let lastToolName = "";
+        let lastToolResult = null;
+
+        for (const call of initialResponse.functionCalls) {
+          lastToolName = call.name;
+          const result = await executeHrAnalystTool(call.name, call.args || {}, {
+            models,
+            company,
+            user,
+          });
+          lastToolResult = result;
+          functionResponseParts.push({
+            functionResponse: {
+              name: call.name,
+              id: call.id,
+              response: { output: result },
+            },
+          });
+        }
+
+        const modelCallPart = initialResponse.candidates?.[0]?.content || {
+          role: "model",
+          parts: initialResponse.functionCalls.map((fc) => ({ functionCall: fc })),
+        };
+
+        const followUpContents = [
+          ...contents,
+          modelCallPart,
+          {
+            role: "user",
+            parts: functionResponseParts,
+          },
+        ];
+
+        try {
+          const responseStream = await executeWithRetry(
+            () =>
+              ai.models.generateContentStream({
+                model,
+                contents: followUpContents,
+                config: {
+                  systemInstruction,
+                  temperature: 0.3,
+                  maxOutputTokens: 1500,
+                  abortSignal,
+                },
+              }),
+            { abortSignal }
+          );
+
+          for await (const chunk of responseStream) {
+            if (abortSignal?.aborted) break;
+            const text = chunk.text;
+            if (text) {
+              yield text;
+            }
+          }
+          return;
+        } catch (synthesisErr) {
+          const errMsg = String(synthesisErr?.message || "").toLowerCase();
+          if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+            yield formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage);
+            return;
+          }
+          throw synthesisErr;
+        }
+      }
+
+      // If no function call was made, yield the initial text response
+      const text =
+        initialResponse.text ||
+        initialResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "";
+      if (text) {
+        yield text;
+        return;
+      }
+    }
+
+    // Default stream for regular employee
     const responseStream = await executeWithRetry(
       () =>
         ai.models.generateContentStream({
@@ -414,6 +849,26 @@ export async function* streamChatMessage({
       }
     }
   } catch (error) {
+    if (isHrAdmin) {
+      const errMsg = String(error?.message || "").toLowerCase();
+      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+        const intentTool = detectHrQueryIntent(userMessage);
+        if (intentTool) {
+          try {
+            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
+              models,
+              company,
+              user,
+            });
+            yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
+            return;
+          } catch {
+            // Fall through
+          }
+        }
+      }
+    }
+
     if (error instanceof HttpError) throw error;
 
     const errorMsg = String(error?.message || "");

@@ -1,12 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import api, { getApiBaseUrl } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import "./ChatbotWidget.css";
 
-const QUICK_PROMPTS = [
+const EMPLOYEE_QUICK_PROMPTS = [
   "What are our standard office work hours and attendance policy?",
   "What leave types and yearly days are available?",
   "How many Impact Points do I currently have?",
   "What upcoming company holidays are scheduled?",
+];
+
+const HR_ADMIN_QUICK_PROMPTS = [
+  "Analyse today's attendance & late arrivals",
+  "Are any leave requests pending or overlapping in teams?",
+  "Is payroll ready to process?",
+  "Which employee profiles or onboarding tasks are incomplete?",
 ];
 
 function formatTime(date) {
@@ -14,7 +22,7 @@ function formatTime(date) {
 }
 
 /**
- * Basic markdown parser for AI responses: bold, bullets, line breaks.
+ * Basic markdown parser for AI responses: bold, bullets, links, line breaks.
  */
 function MarkdownText({ content }) {
   if (!content) return null;
@@ -39,6 +47,10 @@ function MarkdownText({ content }) {
 
   const parseInline = (text) => {
     return text
+      .replace(
+        /\[(.*?)\]\((.*?)\)/g,
+        '<a href="$2" class="chat-markdown-link" style="color: #2563eb; text-decoration: underline; font-weight: 500;">$1</a>'
+      )
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>")
       .replace(/`(.*?)`/g, "<code>$1</code>");
@@ -68,6 +80,10 @@ function MarkdownText({ content }) {
 }
 
 export default function ChatbotWidget() {
+  const { user } = useAuth();
+  const isHrAdmin = user?.role === "HR_ADMIN";
+  const quickPrompts = isHrAdmin ? HR_ADMIN_QUICK_PROMPTS : EMPLOYEE_QUICK_PROMPTS;
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -356,13 +372,17 @@ export default function ChatbotWidget() {
                     <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                   </svg>
                 </div>
-                <h4 className="hrms-chatbot-welcome-title">How can I assist you?</h4>
+                <h4 className="hrms-chatbot-welcome-title">
+                  {isHrAdmin ? "AI HR Analyst & Operational Advisor" : "How can I assist you?"}
+                </h4>
                 <p className="hrms-chatbot-welcome-desc">
-                  Ask about office hours, leave policies, your assigned tasks, or Impact Points.
+                  {isHrAdmin
+                    ? "Ask about real-time attendance, leave conflicts, payroll readiness, or onboarding blockers."
+                    : "Ask about office hours, leave policies, your assigned tasks, or Impact Points."}
                 </p>
 
                 <div className="hrms-chatbot-suggestions">
-                  {QUICK_PROMPTS.map((prompt, idx) => (
+                  {quickPrompts.map((prompt, idx) => (
                     <button
                       key={idx}
                       type="button"

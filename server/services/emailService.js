@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { decryptSecret } from "../utils/secretCrypto.js";
@@ -49,10 +50,20 @@ class EmailService {
   constructor() {
     this.failureSimulation = false;
     this._customTransporter = null;
-    this.transporter = null;
-    this._transporterCacheKey = null;
+    this.transporters = new Map();
     this.history = [];
     this.rateLimiter = new SendRateLimiter();
+  }
+
+  get transporter() {
+    if (this._customTransporter) return this._customTransporter;
+    return this.transporters.values().next().value || null;
+  }
+
+  set transporter(val) {
+    if (!val) {
+      this.invalidateTransporter();
+    }
   }
 
   getHistory() {
@@ -98,8 +109,6 @@ class EmailService {
    */
   setTransporter(transporter) {
     this._customTransporter = transporter || null;
-    this.transporter = transporter || null;
-    this._transporterCacheKey = transporter ? "custom" : null;
   }
 
   /**
@@ -137,96 +146,204 @@ class EmailService {
   }
 
   /**
-   * Resolves SMTP credentials from company settings (preferred) or environment.
-   * @param {object} [company]
-   * @returns {{ user: string, pass: string, from: string, host: string, port: number, secure: boolean } | null}
+   * Resolves SMTP configuration strictly from a company document's emailSettings.
+   * NEVER falls back to environment variables or another company's credentials.
+   * @param {object} company
+   * @returns {{ config: object | null, error?: string, code?: string }}
    */
-  resolveSmtpConfig(company) {
-    const settings = company?.emailSettings;
-
-    if (settings?.fromEmail && settings?.appPasswordEncrypted) {
-      try {
-        const pass = decryptSecret(settings.appPasswordEncrypted);
-        const user = normalizeEmail(settings.fromEmail);
-        const fromName = (settings.fromName || "").trim();
-        return {
-          user,
-          pass,
-          from: fromName ? `${fromName} <${user}>` : user,
-          host: (settings.smtpHost || "smtp.gmail.com").trim(),
-          port: Number(settings.smtpPort) || 587,
-          secure: Boolean(settings.smtpSecure),
-        };
-      } catch (err) {
-        console.error("[EmailService] Failed to decrypt company SMTP password:", this.sanitizeError(err));
-      }
-    }
-
-    const envUser = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
-    const envPass = (process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASS || "").trim();
-    if (envUser && envPass) {
-      const user = normalizeEmail(envUser);
-      const fromEnv = (process.env.EMAIL_FROM || "").trim();
+  resolveCompanySmtpConfig(company) {
+    if (!company) {
       return {
-        user,
-        pass: envPass,
-        from: fromEnv || user,
-        host: (process.env.SMTP_HOST || "smtp.gmail.com").trim(),
-        port: parseInt(process.env.SMTP_PORT, 10) || 587,
-        secure: process.env.SMTP_SECURE === "true",
+        config: null,
+        error: "Company context is required for company email delivery.",
+        code: "COMPANY_REQUIRED",
       };
     }
 
-    return null;
+    const settings = company.emailSettings;
+    const fromEmail = (settings?.fromEmail || "").trim();
+    const appPasswordEncrypted = (settings?.appPasswordEncrypted || "").trim();
+
+    if (!fromEmail || !appPasswordEncrypted) {
+      return {
+        config: null,
+        error: "Email settings are not configured for this company. Please configure your sender email and password under Settings → Email.",
+        code: "COMPANY_EMAIL_NOT_CONFIGURED",
+      };
+    }
+
+    const normalizedEmail = normalizeEmail(fromEmail);
+    if (!isValidEmail(normalizedEmail)) {
+      return {
+        config: null,
+        error: "The company's configured sender email address is invalid.",
+        code: "COMPANY_EMAIL_INVALID",
+      };
+    }
+
+    let pass;
+    try {
+      pass = decryptSecret(appPasswordEncrypted);
+    } catch (err) {
+      const safeError = this.sanitizeError(err);
+      console.error("[EmailService] Failed to decrypt company SMTP password:", safeError);
+      return {
+        config: null,
+        error: "Company SMTP credentials could not be decrypted. Please update settings under Settings → Email.",
+        code: "COMPANY_EMAIL_DECRYPTION_FAILED",
+      };
+    }
+
+    if (!pass || typeof pass !== "string" || !pass.trim()) {
+      return {
+        config: null,
+        error: "Decrypted company SMTP password is empty. Please update credentials under Settings → Email.",
+        code: "COMPANY_EMAIL_PASSWORD_EMPTY",
+      };
+    }
+
+    const fromName = (settings.fromName || "").trim();
+    const host = (settings.smtpHost || "smtp.gmail.com").trim();
+    const port = Number(settings.smtpPort) || 587;
+    const secure = Boolean(settings.smtpSecure);
+    const tenantId = String(company._id || company.slug || "company");
+
+    return {
+      config: {
+        user: normalizedEmail,
+        pass: pass.trim(),
+        from: fromName ? `${fromName} <${normalizedEmail}>` : normalizedEmail,
+        host,
+        port,
+        secure,
+        tenantId,
+      },
+    };
+  }
+
+  /**
+   * Resolves SMTP configuration strictly from platform environment variables.
+   * Used ONLY when sending platform-level emails where no company context exists.
+   * @returns {{ config: object | null, error?: string, code?: string }}
+   */
+  resolvePlatformSmtpConfig() {
+    const envUser = (process.env.SMTP_USER || process.env.EMAIL_USER || "").trim();
+    const envPass = (process.env.SMTP_APP_PASSWORD || process.env.SMTP_PASS || "").trim();
+
+    if (!envUser || !envPass) {
+      return {
+        config: null,
+        error: "Platform SMTP credentials are not configured in environment variables.",
+        code: "PLATFORM_EMAIL_NOT_CONFIGURED",
+      };
+    }
+
+    const user = normalizeEmail(envUser);
+    const fromEnv = (process.env.EMAIL_FROM || "").trim();
+    const host = (process.env.SMTP_HOST || "smtp.gmail.com").trim();
+    const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+    const secure = process.env.SMTP_SECURE === "true";
+
+    return {
+      config: {
+        user,
+        pass: envPass,
+        from: fromEnv || user,
+        host,
+        port,
+        secure,
+        tenantId: "platform",
+      },
+    };
+  }
+
+  /**
+   * Resolves SMTP configuration.
+   * If company is provided, resolves STRICTLY from company settings.
+   * If company is not provided, resolves from platform environment variables.
+   */
+  resolveSmtpConfig(company) {
+    if (company) {
+      return this.resolveCompanySmtpConfig(company).config;
+    }
+    return this.resolvePlatformSmtpConfig().config;
   }
 
   /**
    * Returns whether SMTP delivery credentials are configured.
+   * If company is passed, checks whether that company has emailSettings configured.
+   * If no company is passed, checks platform configuration or test mock.
    * @param {object} [company]
    */
   isConfigured(company) {
+    if (company) {
+      return Boolean(this.resolveCompanySmtpConfig(company).config);
+    }
     if (this._customTransporter) return true;
-    return Boolean(this.resolveSmtpConfig(company));
+    return Boolean(this.resolvePlatformSmtpConfig().config);
   }
 
   getFromAddress(company) {
-    const config = this.resolveSmtpConfig(company);
-    if (config?.from) return config.from;
+    if (company) {
+      const resolution = this.resolveCompanySmtpConfig(company);
+      if (resolution.config?.from) return resolution.config.from;
+      if (company.emailSettings?.fromEmail) {
+        const fromName = (company.emailSettings.fromName || "").trim();
+        const user = normalizeEmail(company.emailSettings.fromEmail);
+        return fromName ? `${fromName} <${user}>` : user;
+      }
+      return `${company.companyName || company.slug || "Company"} <noreply@localhost>`;
+    }
+
+    const platform = this.resolvePlatformSmtpConfig().config;
+    if (platform?.from) return platform.from;
     const from = (process.env.EMAIL_FROM || "").trim();
     if (from) return from;
     return "HRMS Platform <noreply@localhost>";
   }
 
   /**
-   * Sender is always the configured SMTP mailbox (no Resend test-domain rewrite).
+   * Sender resolution.
    */
   resolveSender(from, company) {
     const rawSender = (from || this.getFromAddress(company)).trim();
     return { from: rawSender, replyTo: undefined };
   }
 
+  /**
+   * Generates a deterministic, secure cache key for transporter caching.
+   * Combines tenantId, host, port, TLS setting, and a cryptographic SHA-256 hash
+   * of the credentials so passwords are never logged or exposed, yet any credential
+   * change immediately invalidates the cache key.
+   */
   _cacheKeyForConfig(config) {
     if (!config) return null;
-    return `${config.host}|${config.port}|${config.secure}|${config.user}|${config.pass.length}`;
+    const { tenantId = "default", host = "", port = 587, secure = false, user = "", pass = "" } = config;
+    const credHash = crypto
+      .createHash("sha256")
+      .update(`${host.toLowerCase()}:${port}:${Boolean(secure)}:${user.toLowerCase()}:${pass}`)
+      .digest("hex");
+
+    return `${tenantId}:${host.toLowerCase()}:${port}:${Boolean(secure)}:${credHash.substring(0, 32)}`;
   }
 
   /**
-   * Returns a Nodemailer transporter for the given company/env config.
+   * Returns or creates a cached Nodemailer transporter for the given configuration.
    */
-  getTransporter(company) {
+  getTransporterForConfig(config) {
     if (this._customTransporter) {
       return this._customTransporter;
     }
-
-    const config = this.resolveSmtpConfig(company);
     if (!config) return null;
 
     const cacheKey = this._cacheKeyForConfig(config);
-    if (this.transporter && this._transporterCacheKey === cacheKey) {
-      return this.transporter;
+    if (!cacheKey) return null;
+
+    if (this.transporters.has(cacheKey)) {
+      return this.transporters.get(cacheKey);
     }
 
-    this.transporter = nodemailer.createTransport({
+    const transporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
@@ -238,8 +355,61 @@ class EmailService {
       greetingTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000,
       socketTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 20000,
     });
-    this._transporterCacheKey = cacheKey;
-    return this.transporter;
+
+    // Guard against unbounded memory growth in long-running processes (LRU-like eviction)
+    if (this.transporters.size >= 50) {
+      const oldestKey = this.transporters.keys().next().value;
+      const oldTransporter = this.transporters.get(oldestKey);
+      try {
+        oldTransporter?.close?.();
+      } catch {}
+      this.transporters.delete(oldestKey);
+    }
+
+    this.transporters.set(cacheKey, transporter);
+    return transporter;
+  }
+
+  /**
+   * Returns a Nodemailer transporter for the given company or platform config.
+   */
+  getTransporter(company) {
+    if (this._customTransporter) {
+      return this._customTransporter;
+    }
+
+    const config = this.resolveSmtpConfig(company);
+    if (!config) return null;
+
+    return this.getTransporterForConfig(config);
+  }
+
+  /**
+   * Invalidate cached transporters for a specific company or all companies.
+   * @param {string|object} [companyOrId] - company document, company id, or null for all
+   */
+  invalidateTransporter(companyOrId) {
+    if (!companyOrId) {
+      for (const [, tr] of this.transporters) {
+        try {
+          tr.close?.();
+        } catch {}
+      }
+      this.transporters.clear();
+      return;
+    }
+
+    const tenantId = String(companyOrId._id || companyOrId.slug || companyOrId);
+    const prefix = `${tenantId}:`;
+
+    for (const [key, tr] of this.transporters.entries()) {
+      if (key.startsWith(prefix)) {
+        try {
+          tr.close?.();
+        } catch {}
+        this.transporters.delete(key);
+      }
+    }
   }
 
   /**
@@ -250,28 +420,39 @@ class EmailService {
   async verifyConnection(company, overrideConfig) {
     try {
       let transporter;
-      if (overrideConfig?.user && overrideConfig?.pass) {
+      if (this._customTransporter) {
+        // In test suites where a custom transporter mock is injected, verify via mock
+        transporter = this._customTransporter;
+      } else if (overrideConfig?.user && overrideConfig?.pass) {
         transporter = nodemailer.createTransport({
-          host: overrideConfig.host || "smtp.gmail.com",
+          host: (overrideConfig.host || "smtp.gmail.com").trim(),
           port: Number(overrideConfig.port) || 587,
           secure: Boolean(overrideConfig.secure),
           auth: {
             user: normalizeEmail(overrideConfig.user),
             pass: overrideConfig.pass,
           },
-          connectionTimeout: 15000,
-          greetingTimeout: 15000,
+          connectionTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000,
+          greetingTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 15000,
+          socketTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 20000,
         });
-      } else if (this._customTransporter) {
-        transporter = this._customTransporter;
-      } else if (!this.isConfigured(company)) {
+      } else if (company) {
+        const resolution = this.resolveCompanySmtpConfig(company);
+        if (!resolution.config) {
+          return {
+            success: false,
+            error: resolution.error || "Company SMTP is not configured.",
+          };
+        }
+        transporter = this.getTransporterForConfig(resolution.config);
+      } else if (!this.isConfigured()) {
         return {
           success: false,
           error:
             "SMTP is not configured. Set your Gmail address and app password under Settings → Email.",
         };
       } else {
-        transporter = this.getTransporter(company);
+        transporter = this.getTransporter();
       }
 
       if (!transporter) {
@@ -340,48 +521,67 @@ class EmailService {
       }
     }
 
-    const { from: resolvedFrom, replyTo: fallbackReplyTo } = this.resolveSender(from, company);
-    const finalReplyTo = replyTo || fallbackReplyTo;
-
-    if (!this.isConfigured(company)) {
-      // Only simulate success in automated tests — never mark real sends as delivered.
-      if (process.env.NODE_ENV === "test") {
-        const messageId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        const record = {
-          success: true,
-          messageId,
-          recipient: normalizedRecipient,
-          to: normalizedRecipient,
-          subject,
-          text,
-          html,
-          attachments,
-          sentAt: new Date(),
-          simulated: true,
-          provider: "simulated",
-          ...extra,
-        };
-        this.history.push(record);
+    // Resolve credentials based on context
+    let config = null;
+    if (company) {
+      const resolution = this.resolveCompanySmtpConfig(company);
+      if (!resolution.config) {
         return {
-          success: true,
-          messageId,
-          recipient: normalizedRecipient,
-          sentAt: record.sentAt,
-          simulated: true,
-          provider: "simulated",
+          success: false,
+          error: resolution.error || "Email settings are not configured for this company. Please configure your sender email and password under Settings → Email.",
+          code: resolution.code || "COMPANY_EMAIL_NOT_CONFIGURED",
+          provider: "nodemailer",
         };
       }
+      config = resolution.config;
+    } else {
+      // Platform-level email delivery
+      const resolution = this.resolvePlatformSmtpConfig();
+      if (!resolution.config && !this._customTransporter) {
+        // In automated tests where no company and no platform credentials are provided,
+        // allow simulation fallback for legacy platform tests without mocks
+        if (process.env.NODE_ENV === "test") {
+          const messageId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const record = {
+            success: true,
+            messageId,
+            recipient: normalizedRecipient,
+            to: normalizedRecipient,
+            subject,
+            text,
+            html,
+            attachments,
+            sentAt: new Date(),
+            simulated: true,
+            provider: "simulated",
+            ...extra,
+          };
+          this.history.push(record);
+          return {
+            success: true,
+            messageId,
+            recipient: normalizedRecipient,
+            sentAt: record.sentAt,
+            simulated: true,
+            provider: "simulated",
+          };
+        }
 
-      return {
-        success: false,
-        error:
-          "Email is not configured. Open Settings → Email and save your Gmail address + app password, then try again.",
-        provider: "nodemailer",
-      };
+        return {
+          success: false,
+          error: resolution.error || "Platform SMTP credentials are not configured in environment variables.",
+          code: resolution.code || "PLATFORM_EMAIL_NOT_CONFIGURED",
+          provider: "nodemailer",
+        };
+      }
+      config = resolution.config;
     }
 
+    const resolvedFrom = from || config?.from || this.getFromAddress(company);
+    const finalReplyTo = replyTo || undefined;
+
     try {
-      const transporter = this.getTransporter(company);
+      const transporter = this._customTransporter || this.getTransporterForConfig(config);
       if (!transporter || typeof transporter.sendMail !== "function") {
         return {
           success: false,

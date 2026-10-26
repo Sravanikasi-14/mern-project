@@ -1,3 +1,4 @@
+process.env.NODE_ENV = "test";
 process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +13,7 @@ import { hashPassword } from "../utils/password.js";
 import { emailService } from "../services/emailService.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { decodeAuthToken } from "../utils/token.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
 
 let mongod;
 let app;
@@ -43,6 +45,21 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       slug: "acme",
       databaseName: "tenant_acme_hiring_pipeline",
       status: COMPANY_STATUSES.ACTIVE,
+      emailSettings: {
+        fromName: "Acme HR",
+        fromEmail: "hr@acme.test",
+        smtpHost: "smtp.acme.test",
+        smtpPort: 587,
+        smtpSecure: false,
+        appPasswordEncrypted: encryptSecret("mock-pipeline-pass-1234"),
+        isConfigured: true,
+        lastVerifiedAt: new Date(),
+      },
+    });
+
+    emailService.setTransporter({
+      sendMail: async (options) => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
     });
 
     // 2. Create Globex Company
@@ -89,6 +106,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
   });
 
   after(async () => {
+    emailService.setTransporter(null);
     await disconnectAll();
     await mongoose.disconnect();
     if (mongod) {
