@@ -6,14 +6,27 @@ function resolveApiBaseUrl() {
     const trimmed = envUrl.trim().replace(/\/+$/, "");
     return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
   }
-  return import.meta?.env?.PROD
-    ? "https://mern-project-rvdl.onrender.com/api"
-    : "http://localhost:5000/api";
+  if (import.meta?.env?.PROD) {
+    const errorMsg =
+      "CRITICAL CONFIGURATION ERROR: VITE_API_URL is missing or empty in production. " +
+      "Production deployment requires an explicitly configured backend URL (e.g. your Vercel backend API service). " +
+      "Please set VITE_API_URL in your Vercel project environment variables.";
+    if (typeof console !== "undefined" && console.error) {
+      console.error(errorMsg);
+    }
+    throw new Error(errorMsg);
+  }
+  return "http://localhost:5000/api";
+}
+
+export function getApiBaseUrl() {
+  return resolveApiBaseUrl();
 }
 
 const api = axios.create({
   baseURL: resolveApiBaseUrl(),
   withCredentials: true,
+  timeout: 30000,
 });
 
 // Request interceptor: attach Bearer token from localStorage when present.

@@ -65,7 +65,7 @@ export function getStatusCategory(statusRaw) {
   }
 
   // Info
-  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "FINALIZED" || s === "SUBMITTED") {
+  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "IN_PROGRESS" || s === "FINALIZED" || s === "SUBMITTED") {
     return "info";
   }
 
@@ -99,6 +99,7 @@ export function formatStatusLabel(statusRaw, customLabel) {
     LATE: "Late",
     AVAILABLE: "Available",
     ASSIGNED: "Assigned",
+    IN_PROGRESS: "In Progress",
     UNDER_MAINTENANCE: "Maintenance",
     RETIRED: "Retired",
     LOST: "Lost",

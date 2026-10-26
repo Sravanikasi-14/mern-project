@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import { IconClose, IconInfo } from "./Icons";
+import ChatbotWidget from "./ChatbotWidget";
 import "./Sidebar.css";
 
 export default function AppLayout({ children }) {
@@ -59,6 +60,9 @@ export default function AppLayout({ children }) {
       <div className="app-main-content">
         {children || <Outlet />}
       </div>
+
+      {/* Floating Gemini AI Assistant Chatbot */}
+      <ChatbotWidget />
 
       {/* Toast Notification for un-implemented modules */}
       {toastMessage && (

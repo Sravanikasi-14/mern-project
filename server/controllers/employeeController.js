@@ -112,24 +112,27 @@ export async function getEmployees(req, res, next) {
 
     // Retrieve salary info for HR_ADMIN
     const employeeIds = employees.map((emp) => emp._id);
-    const compensations = await EmployeeCompensation.find(
-      { employeeId: { $in: employeeIds } },
-      "employeeId revisions"
-    ).lean();
-
     const compensationMap = new Map();
-    const now = new Date();
 
-    for (const comp of compensations) {
-      const validRevisions = (comp.revisions || [])
-        .filter((rev) => new Date(rev.effectiveFromDate) <= now)
-        .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
+    if (EmployeeCompensation && employeeIds.length > 0) {
+      const compensations = await EmployeeCompensation.find(
+        { employeeId: { $in: employeeIds } },
+        "employeeId revisions.effectiveFromDate revisions.monthlyCostToCompany"
+      ).lean();
 
-      if (validRevisions.length > 0 && validRevisions[0].monthlyCostToCompany != null) {
-        compensationMap.set(
-          String(comp.employeeId),
-          parseFloat(validRevisions[0].monthlyCostToCompany.toString())
-        );
+      const now = new Date();
+
+      for (const comp of compensations) {
+        const validRevisions = (comp.revisions || [])
+          .filter((rev) => new Date(rev.effectiveFromDate) <= now)
+          .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
+
+        if (validRevisions.length > 0 && validRevisions[0].monthlyCostToCompany != null) {
+          compensationMap.set(
+            String(comp.employeeId),
+            parseFloat(validRevisions[0].monthlyCostToCompany.toString())
+          );
+        }
       }
     }
 

@@ -266,6 +266,16 @@ const CATEGORIES = [
     ),
   },
   {
+    id: "impact_points",
+    name: "Impact Points Rules",
+    subtitle: "Gamification & award points",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    ),
+  },
+  {
     id: "revisions",
     name: "Revision History",
     subtitle: "Timeline & change records",
@@ -431,6 +441,17 @@ export default function AdminPolicies() {
     description: "Standard operating guidelines governing attendance, leaves, lifecycle, and workplace conduct.",
     emergencyContactMandatory: true,
     workFromHomeAllowed: false,
+  });
+
+  // Section 15: Impact Points Rules
+  const [impactPointRules, setImpactPointRules] = useState({
+    enabled: true,
+    taskCompletionBasePoints: 10,
+    taskEarlyCompletionBonus: 5,
+    taskHighPriorityBonus: 20,
+    managerRecognitionDefaultPoints: 10,
+    managerMonthlyCapPoints: 100,
+    missedDeadlineDeduction: 0,
   });
 
   // Modals
@@ -709,6 +730,19 @@ export default function AdminPolicies() {
         workFromHomeAllowed: Boolean(policy.generalRules.workFromHomeAllowed),
       });
     }
+
+    // Impact Points
+    if (policy.impactPointRules) {
+      setImpactPointRules({
+        enabled: policy.impactPointRules.enabled !== false,
+        taskCompletionBasePoints: policy.impactPointRules.taskCompletionBasePoints ?? 10,
+        taskEarlyCompletionBonus: policy.impactPointRules.taskEarlyCompletionBonus ?? 5,
+        taskHighPriorityBonus: policy.impactPointRules.taskHighPriorityBonus ?? 20,
+        managerRecognitionDefaultPoints: policy.impactPointRules.managerRecognitionDefaultPoints ?? 10,
+        managerMonthlyCapPoints: policy.impactPointRules.managerMonthlyCapPoints ?? 100,
+        missedDeadlineDeduction: policy.impactPointRules.missedDeadlineDeduction ?? 0,
+      });
+    }
   };
 
   useEffect(() => {
@@ -791,6 +825,7 @@ export default function AdminPolicies() {
       recruitmentRules,
       documentRules,
       generalRules,
+      impactPointRules,
     };
   };
 
@@ -3721,6 +3756,189 @@ export default function AdminPolicies() {
                   disabled={Boolean(savingSection)}
                 >
                   {savingSection === "general_policies" ? "Saving..." : "Save General Policy"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* 15. IMPACT POINTS RULES                                        */}
+          {/* ============================================================== */}
+          {activeCategory === "impact_points" && (
+            <div className="policies-section-card">
+              <div className="policies-card-header">
+                <div className="policies-card-title-group">
+                  <div className="policies-card-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="policies-card-title">Impact Points & Recognition Rules</h2>
+                    <p className="policies-card-subtitle">
+                      Configure base point rewards, performance bonuses, manager recognition quotas, and deduction policies.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="policies-form-grid">
+                <div className="policies-field-full">
+                  <label className="policies-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={impactPointRules.enabled}
+                      onChange={(e) =>
+                        setImpactPointRules({ ...impactPointRules, enabled: e.target.checked })
+                      }
+                    />
+                    <span>
+                      <strong>Enable Impact Points System</strong> &mdash; Automatically calculate and award points on task approval and peer recognition.
+                    </span>
+                  </label>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    Verified Task Completion (Base Points)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    className="policies-input"
+                    value={impactPointRules.taskCompletionBasePoints}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        taskCompletionBasePoints: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Points awarded when an authorized reviewer approves a task submission (default: 10).
+                  </span>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    Early Completion Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    className="policies-input"
+                    value={impactPointRules.taskEarlyCompletionBonus}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        taskEarlyCompletionBonus: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Bonus awarded when approved task evidence was submitted before the deadline (default: 5).
+                  </span>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    High / Urgent Priority Bonus Points
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    className="policies-input"
+                    value={impactPointRules.taskHighPriorityBonus}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        taskHighPriorityBonus: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Bonus awarded when an approved task has HIGH or URGENT priority (default: 20).
+                  </span>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    Manager Recognition Default Points
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    className="policies-input"
+                    value={impactPointRules.managerRecognitionDefaultPoints}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        managerRecognitionDefaultPoints: Number(e.target.value) || 10,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Default points suggested when a reporting manager recognizes a team member (default: 10).
+                  </span>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    Manager Monthly Recognition Budget / Cap
+                  </label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    className="policies-input"
+                    value={impactPointRules.managerMonthlyCapPoints}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        managerMonthlyCapPoints: Number(e.target.value) || 100,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Maximum cumulative points a manager may distribute in a single calendar month (default: 100).
+                  </span>
+                </div>
+
+                <div className="policies-field">
+                  <label className="policies-field-label">
+                    Missed Deadline Deduction (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    className="policies-input"
+                    value={impactPointRules.missedDeadlineDeduction}
+                    onChange={(e) =>
+                      setImpactPointRules({
+                        ...impactPointRules,
+                        missedDeadlineDeduction: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                  <span className="policies-field-hint">
+                    Configured deduction for verified unexcused missed deadlines (default: 0 disabled).
+                  </span>
+                </div>
+              </div>
+
+              <div className="policies-save-bar">
+                <button
+                  type="button"
+                  className="policies-section-save-btn"
+                  onClick={() => handleSaveSection("impact_points")}
+                  disabled={Boolean(savingSection)}
+                >
+                  {savingSection === "impact_points" ? "Saving..." : "Save Impact Points Policy"}
                 </button>
               </div>
             </div>

@@ -194,6 +194,30 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
       .send({ location: { latitude: 12.97, longitude: 77.59, accuracy: -5 } });
     assert.equal(resBadAcc.status, 400);
     assert.match(resBadAcc.body.message, /Invalid location accuracy/);
+
+    // Partial coordinates (latitude without longitude)
+    const resPartialCoords = await request(app)
+      .post("/api/employees/me/attendance/punch-in")
+      .set("Cookie", employeeCookieA)
+      .send({ latitude: 12.97 });
+    assert.equal(resPartialCoords.status, 400);
+    assert.match(resPartialCoords.body.message, /Both latitude and longitude are required/);
+
+    // Non-object location
+    const resNonObjLoc = await request(app)
+      .post("/api/employees/me/attendance/punch-in")
+      .set("Cookie", employeeCookieA)
+      .send({ location: "12.97,77.59" });
+    assert.equal(resNonObjLoc.status, 400);
+    assert.match(resNonObjLoc.body.message, /Location payload must be an object/);
+
+    // Legacy check-in route also rejects partial coordinates
+    const resCheckInPartial = await request(app)
+      .post("/api/employees/me/attendance/check-in")
+      .set("Cookie", employeeCookieA)
+      .send({ latitude: 12.97 });
+    assert.equal(resCheckInPartial.status, 400);
+    assert.match(resCheckInPartial.body.message, /Both latitude and longitude are required/);
   });
 
   it("2. Rejects punch-out before punching in", async () => {

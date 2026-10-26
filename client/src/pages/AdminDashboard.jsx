@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import StatusBadge from "../components/StatusBadge";
+import HrIntelligenceSection from "../components/HrIntelligenceSection";
 import api from "../services/api";
 import "./AdminDashboard.css";
 
@@ -692,6 +693,9 @@ export default function AdminDashboard() {
           </div>
         </Link>
       </section>
+
+      {/* HR Intelligence Section: Proactive Action Items & Bottlenecks */}
+      <HrIntelligenceSection />
 
       {/* ====================================================================
           3. Modernized Graphs Section — EXACTLY TWO PRIMARY GRAPHS

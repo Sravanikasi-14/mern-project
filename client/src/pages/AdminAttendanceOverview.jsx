@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
@@ -46,40 +47,104 @@ export default function AdminAttendanceOverview() {
     employees: [],
   });
 
-  const fetchOverview = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const params = { date };
-      if (department !== "ALL") {
-        params.department = department;
-      }
-      const res = await api.get("/admin/attendance/overview", { params });
-      if (res.data?.success) {
-        setOverviewData(res.data);
-      }
-    } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.message || "Failed to load attendance overview.");
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
+  const isFetchingRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef(null);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => {
-    fetchOverview();
-  }, [date, department]);
+  const fetchOverview = useCallback(
+    async (silent = false) => {
+      // Prevent overlapping concurrent polling requests
+      if (silent && isFetchingRef.current) {
+        return;
+      }
 
-  // Periodic polling every 15s to update live tracking positions for HR
+      const currentReqId = ++requestIdRef.current;
+
+      // Abort previous in-flight request if starting a fresh user-initiated fetch
+      if (!silent && abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      isFetchingRef.current = true;
+
+      try {
+        if (!silent) setLoading(true);
+        setError("");
+        const params = { date };
+        if (department !== "ALL") {
+          params.department = department;
+        }
+
+        const res = await api.get("/admin/attendance/overview", {
+          params,
+          signal: controller.signal,
+        });
+
+        // Discard stale or superseded responses
+        if (isMountedRef.current && currentReqId === requestIdRef.current && res.data?.success) {
+          setOverviewData(res.data);
+        }
+      } catch (err) {
+        if (axios.isCancel(err) || err.name === "CanceledError" || err.name === "AbortError") {
+          return;
+        }
+        if (!silent && isMountedRef.current && currentReqId === requestIdRef.current) {
+          setError(err.response?.data?.message || "Failed to load attendance overview.");
+        }
+      } finally {
+        isFetchingRef.current = false;
+        if (!silent && isMountedRef.current && currentReqId === requestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [date, department]
+  );
+
+  // Reliable polling lifecycle: single effect managing initial fetch, interval, visibility, and cleanup
   useEffect(() => {
-    const interval = setInterval(() => {
+    isMountedRef.current = true;
+    let pollInterval = null;
+
+    const startPolling = () => {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === "visible") {
+          fetchOverview(true);
+        }
+      }, 15000);
+    };
+
+    const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         fetchOverview(true);
+        startPolling();
+      } else {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
       }
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [date, department]);
+    };
+
+    // Initial non-silent load on parameter change
+    fetchOverview(false);
+    startPolling();
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isMountedRef.current = false;
+      if (pollInterval) clearInterval(pollInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchOverview]);
 
   const departments = [
     "ALL",

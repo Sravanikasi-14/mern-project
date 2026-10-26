@@ -126,6 +126,53 @@ export const DEFAULT_HR_POLICY = Object.freeze({
     emergencyContactMandatory: true,
     workFromHomeAllowed: false,
   },
+  impactPointRules: {
+    enabled: true,
+    rules: [
+      {
+        ruleCode: "ON_TIME_COMPLETION",
+        name: "On-Time Completion",
+        description: "Awarded when a task is approved and completed on or before its deadline",
+        points: 10,
+        eventType: "TASK_COMPLETION",
+        isEnabled: true,
+      },
+      {
+        ruleCode: "EARLY_COMPLETION_BONUS",
+        name: "Early Completion Bonus",
+        description: "Additional bonus awarded when a task is submitted and approved before deadline",
+        points: 5,
+        eventType: "TASK_COMPLETION",
+        isEnabled: true,
+      },
+      {
+        ruleCode: "HIGH_PRIORITY_COMPLETION",
+        name: "High Priority Task Completion",
+        description: "Awarded when a HIGH or CRITICAL priority task is approved and completed",
+        points: 20,
+        eventType: "TASK_COMPLETION",
+        isEnabled: true,
+      },
+      {
+        ruleCode: "MANAGER_RECOGNITION",
+        name: "Manager Recognition",
+        description: "Points awarded by a manager or HR Admin for outstanding contribution",
+        points: 10,
+        eventType: "MANAGER_RECOGNITION",
+        isEnabled: true,
+      },
+      {
+        ruleCode: "MISSED_DEADLINE_DEDUCTION",
+        name: "Verified Missed Deadline",
+        description: "Deduction applied for a verified missed deadline without an approved extension or exception",
+        points: -5,
+        eventType: "DEADLINE_BREACH",
+        isEnabled: false,
+      },
+    ],
+    managerMonthlyCap: 100,
+    allowRuleStacking: true,
+  },
 });
 
 export function createCompanyHrPolicySchema() {
@@ -289,6 +336,65 @@ export function createCompanyHrPolicySchema() {
         emergencyContactMandatory: { type: Boolean, default: true },
         workFromHomeAllowed: { type: Boolean, default: false },
       },
+      impactPointRules: {
+        enabled: { type: Boolean, default: true },
+        rules: {
+          type: [
+            {
+              ruleCode: { type: String, required: true },
+              name: { type: String, required: true },
+              description: { type: String, default: "" },
+              points: { type: Number, required: true },
+              eventType: { type: String, required: true },
+              isEnabled: { type: Boolean, default: true },
+            },
+          ],
+          default: () => [
+            {
+              ruleCode: "ON_TIME_COMPLETION",
+              name: "On-Time Completion",
+              description: "Awarded when a task is approved and completed on or before its deadline",
+              points: 10,
+              eventType: "TASK_COMPLETION",
+              isEnabled: true,
+            },
+            {
+              ruleCode: "EARLY_COMPLETION_BONUS",
+              name: "Early Completion Bonus",
+              description: "Additional bonus awarded when a task is submitted and approved before deadline",
+              points: 5,
+              eventType: "TASK_COMPLETION",
+              isEnabled: true,
+            },
+            {
+              ruleCode: "HIGH_PRIORITY_COMPLETION",
+              name: "High Priority Task Completion",
+              description: "Awarded when a HIGH or CRITICAL priority task is approved and completed",
+              points: 20,
+              eventType: "TASK_COMPLETION",
+              isEnabled: true,
+            },
+            {
+              ruleCode: "MANAGER_RECOGNITION",
+              name: "Manager Recognition",
+              description: "Points awarded by a manager or HR Admin for outstanding contribution",
+              points: 10,
+              eventType: "MANAGER_RECOGNITION",
+              isEnabled: true,
+            },
+            {
+              ruleCode: "MISSED_DEADLINE_DEDUCTION",
+              name: "Verified Missed Deadline",
+              description: "Deduction applied for a verified missed deadline without an approved extension or exception",
+              points: -5,
+              eventType: "DEADLINE_BREACH",
+              isEnabled: false,
+            },
+          ],
+        },
+        managerMonthlyCap: { type: Number, default: 100 },
+        allowRuleStacking: { type: Boolean, default: true },
+      },
       updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -345,6 +451,10 @@ export async function getActiveCompanyHrPolicy(CompanyHrPolicy, asOfDate = new D
     } catch {
       policy = DEFAULT_HR_POLICY;
     }
+  }
+
+  if (!policy.impactPointRules) {
+    policy.impactPointRules = DEFAULT_HR_POLICY.impactPointRules;
   }
 
   return policy;

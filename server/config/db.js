@@ -15,6 +15,8 @@ import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
 import { getPayrollCycleModel } from "../models/PayrollCycle.js";
 import { getPayslipModel } from "../models/Payslip.js";
 import { getCompanyAssetModel } from "../models/CompanyAsset.js";
+import { getTaskModel } from "../models/Task.js";
+import { getImpactPointTransactionModel } from "../models/ImpactPointTransaction.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -135,6 +137,8 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     PayrollCycle: getPayrollCycleModel(connection),
     Payslip: getPayslipModel(connection),
     CompanyAsset: getCompanyAssetModel(connection),
+    Task: getTaskModel(connection),
+    ImpactPointTransaction: getImpactPointTransactionModel(connection),
   };
 }
 

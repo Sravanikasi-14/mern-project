@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function AppHeader({ title }) {
+export default function AppHeader({ title, subtitle, children, actions, hideLogout = false }) {
   const { user, company, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -25,16 +25,21 @@ export default function AppHeader({ title }) {
   };
 
   return (
-    <header className="app-header">
+    <header className="app-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
       <div>
         <h1>{title}</h1>
         <p className="subtitle">
-          {company?.companyName} · {user?.email} · {user?.role}
+          {subtitle || `${company?.companyName || ""} · ${user?.email || ""} · ${user?.role || ""}`}
         </p>
       </div>
-      <button type="button" className="btn-secondary btn-sm" onClick={handleLogout}>
-        Log out
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {actions || children}
+        {!hideLogout && (
+          <button type="button" className="btn-secondary btn-sm" onClick={handleLogout}>
+            Log out
+          </button>
+        )}
+      </div>
     </header>
   );
 }

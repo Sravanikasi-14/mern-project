@@ -80,13 +80,19 @@ export async function punchInEmployee({
   }
 
   // Geofence enforcement from CompanyHrPolicy
-  if (CompanyHrPolicy && validatedLocation) {
+  if (CompanyHrPolicy) {
     const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
     if (
       policy?.locationRules?.geofenceEnabled &&
       typeof policy.locationRules.officeLatitude === "number" &&
       typeof policy.locationRules.officeLongitude === "number"
     ) {
+      if (!validatedLocation) {
+        throw new HttpError(
+          400,
+          "Location coordinates are required to punch in because geofencing is enabled by company policy."
+        );
+      }
       const lat1 = policy.locationRules.officeLatitude;
       const lon1 = policy.locationRules.officeLongitude;
       const lat2 = validatedLocation.latitude;

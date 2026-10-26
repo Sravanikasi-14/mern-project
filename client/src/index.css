@@ -1,3 +1,5 @@
+@import "./pages/WorkManagement.css";
+
 * {
   box-sizing: border-box;
 }
@@ -676,4 +678,79 @@ input.has-error {
 .btn-sm-retry:hover {
   background: #fee2e2;
   border-color: #f87171;
+}
+
+/* ==========================================================================
+   Full-Page Height Side-by-Side Layout System
+   ========================================================================== */
+
+.split-page-container {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: calc(100vh - 64px) !important;
+  box-sizing: border-box !important;
+  margin-bottom: 0 !important;
+}
+
+.split-page-header {
+  flex: 0 0 auto !important;
+}
+
+.split-page-alerts {
+  flex: 0 0 auto !important;
+}
+
+.split-page-metrics {
+  flex: 0 0 auto !important;
+}
+
+.split-page-grid {
+  display: grid !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  gap: 20px !important;
+  align-items: stretch !important;
+  transition: grid-template-columns 0.2s ease !important;
+}
+
+.split-page-left-col {
+  min-width: 0 !important;
+  align-self: start !important;
+}
+
+.split-page-panel {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 40px) !important;
+  position: sticky !important;
+  top: 20px !important;
+  overflow: hidden !important;
+}
+
+.split-page-panel-body {
+  padding: 16px 20px !important;
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+@media (max-width: 900px) {
+  .split-page-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .split-page-panel {
+    position: static !important;
+    max-height: none !important;
+    min-height: 480px !important;
+  }
 }

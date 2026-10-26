@@ -8,6 +8,8 @@ import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
 import { getPayrollCycleModel } from "../models/PayrollCycle.js";
 import { getPayslipModel } from "../models/Payslip.js";
 import { getCompanyAssetModel } from "../models/CompanyAsset.js";
+import { getTaskModel } from "../models/Task.js";
+import { getImpactPointTransactionModel } from "../models/ImpactPointTransaction.js";
 
 /**
  * Ensures leave_requests and company_hr_policies collections, approved indexes,
@@ -210,6 +212,34 @@ export async function provisionTenantDatabase(company, connection) {
   try {
     await CompanyAsset.createIndexes();
     outcome.indexesCreated.push("company_assets: { assetTag: 1 (unique) }, { status: 1 }, { 'currentAssignment.employeeId': 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 11. Ensure tasks collection exists for Work Management
+  if (!existingColNames.has("tasks")) {
+    await db.createCollection("tasks");
+    outcome.collectionsCreated.push("tasks");
+    outcome.repaired = true;
+  }
+  const Task = getTaskModel(conn);
+  try {
+    await Task.createIndexes();
+    outcome.indexesCreated.push("tasks: { assigneeId: 1, status: 1 }, { assignedByEmployeeId: 1, status: 1 }, { department: 1, status: 1 }, { deadline: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 12. Ensure impact_point_transactions collection exists
+  if (!existingColNames.has("impact_point_transactions")) {
+    await db.createCollection("impact_point_transactions");
+    outcome.collectionsCreated.push("impact_point_transactions");
+    outcome.repaired = true;
+  }
+  const ImpactPointTransaction = getImpactPointTransactionModel(conn);
+  try {
+    await ImpactPointTransaction.createIndexes();
+    outcome.indexesCreated.push("impact_point_transactions: { idempotencyKey: 1 (unique) }, { employeeId: 1, createdAt: -1 }, { 'employeeSnapshot.department': 1, points: 1 }");
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }

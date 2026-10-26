@@ -3,8 +3,6 @@ import {
   createEmployee,
   downloadDocument,
   downloadPayslip,
-  employeeCheckIn,
-  employeeCheckOut,
   applyLeave,
   getEmployeeById,
   getEmployeeDashboard,

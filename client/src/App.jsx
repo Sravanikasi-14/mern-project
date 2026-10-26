@@ -1,31 +1,52 @@
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import AdminHome from "./pages/AdminHome";
-import AdminLeaveManagement from "./pages/AdminLeaveManagement";
-import EditEmployee from "./pages/EditEmployee";
-import EmployeeDashboard from "./pages/EmployeeDashboard";
-import EmployeeHome from "./pages/EmployeeHome";
-import EmployeeProfile from "./pages/EmployeeProfile";
-import Login from "./pages/Login";
-import OfferLettersManagement from "./pages/OfferLettersManagement";
-import Onboarding from "./pages/Onboarding";
-import AdminPayroll from "./pages/AdminPayroll";
-import CandidateOfferReview from "./pages/CandidateOfferReview";
-import CandidateOnboardingPage from "./pages/CandidateOnboardingPage";
-import AdminOnboardingReview from "./pages/AdminOnboardingReview";
-import AdminSettings from "./pages/AdminSettings";
-import AdminPolicies from "./pages/AdminPolicies";
-import AccountActivation from "./pages/AccountActivation";
-import AdminAttendanceOverview from "./pages/AdminAttendanceOverview";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminAssets from "./pages/AdminAssets";
-import EmployeeAttendance from "./pages/EmployeeAttendance";
-import EmployeeLeave from "./pages/EmployeeLeave";
-import EmployeePayslips from "./pages/EmployeePayslips";
-import EmployeeAssets from "./pages/EmployeeAssets";
 import "./index.css";
+
+const AdminHome = lazy(() => import("./pages/AdminHome"));
+const AdminLeaveManagement = lazy(() => import("./pages/AdminLeaveManagement"));
+const EditEmployee = lazy(() => import("./pages/EditEmployee"));
+const EmployeeDashboard = lazy(() => import("./pages/EmployeeDashboard"));
+const EmployeeHome = lazy(() => import("./pages/EmployeeHome"));
+const EmployeeProfile = lazy(() => import("./pages/EmployeeProfile"));
+const Login = lazy(() => import("./pages/Login"));
+const OfferLettersManagement = lazy(() => import("./pages/OfferLettersManagement"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const AdminPayroll = lazy(() => import("./pages/AdminPayroll"));
+const CandidateOfferReview = lazy(() => import("./pages/CandidateOfferReview"));
+const CandidateOnboardingPage = lazy(() => import("./pages/CandidateOnboardingPage"));
+const AdminOnboardingReview = lazy(() => import("./pages/AdminOnboardingReview"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+const AdminPolicies = lazy(() => import("./pages/AdminPolicies"));
+const AccountActivation = lazy(() => import("./pages/AccountActivation"));
+const AdminAttendanceOverview = lazy(() => import("./pages/AdminAttendanceOverview"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AdminAssets = lazy(() => import("./pages/AdminAssets"));
+const EmployeeAttendance = lazy(() => import("./pages/EmployeeAttendance"));
+const EmployeeLeave = lazy(() => import("./pages/EmployeeLeave"));
+const EmployeePayslips = lazy(() => import("./pages/EmployeePayslips"));
+const EmployeeAssets = lazy(() => import("./pages/EmployeeAssets"));
+const AdminWorkManagement = lazy(() => import("./pages/AdminWorkManagement"));
+const AdminImpactPoints = lazy(() => import("./pages/AdminImpactPoints"));
+const EmployeeTasks = lazy(() => import("./pages/EmployeeTasks"));
+const EmployeeImpactPoints = lazy(() => import("./pages/EmployeeImpactPoints"));
+
+function RouteFallback() {
+  return (
+    <div
+      style={{
+        minHeight: "60vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div className="spinner" />
+    </div>
+  );
+}
 
 function IndexRedirect() {
   const { isAuthenticated, user, loading } = useAuth();
@@ -55,7 +76,8 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/onboard" element={<Onboarding />} />
           <Route path="/offers/review/:token" element={<CandidateOfferReview />} />
@@ -182,6 +204,26 @@ function App() {
             }
           />
           <Route
+            path="/admin/work-management"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminWorkManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/impact-points"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminImpactPoints />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
@@ -242,6 +284,26 @@ function App() {
             }
           />
           <Route
+            path="/app/tasks"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeTasks />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/impact-points"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeImpactPoints />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app/profile"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
@@ -274,6 +336,7 @@ function App() {
           <Route path="/" element={<IndexRedirect />} />
           <Route path="*" element={<IndexRedirect />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   );

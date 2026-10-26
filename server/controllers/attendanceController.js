@@ -25,10 +25,16 @@ async function getTargetEmployee(req) {
 }
 
 function extractLocationPayload(req) {
-  if (req.body?.location && typeof req.body.location === "object") {
+  if (req.body?.location !== undefined) {
+    if (!req.body.location || typeof req.body.location !== "object" || Array.isArray(req.body.location)) {
+      throw new HttpError(400, "Location payload must be an object containing latitude and longitude.");
+    }
     return req.body.location;
   }
-  if (req.body?.latitude !== undefined && req.body?.longitude !== undefined) {
+  if (req.body?.latitude !== undefined || req.body?.longitude !== undefined) {
+    if (req.body.latitude === undefined || req.body.longitude === undefined) {
+      throw new HttpError(400, "Both latitude and longitude are required when providing coordinates.");
+    }
     return {
       latitude: req.body.latitude,
       longitude: req.body.longitude,
