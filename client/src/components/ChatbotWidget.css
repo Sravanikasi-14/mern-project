@@ -9,34 +9,57 @@
   right: 24px;
   z-index: 1050;
   font-family: inherit;
+  transition: opacity 0.15s ease;
 }
 
-/* Floating Launcher Button */
+.hrms-chatbot-container.is-dragging {
+  user-select: none;
+}
+
+/* Floating Draggable Launcher Button */
 .hrms-chatbot-launcher {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  gap: 7px;
+  background: linear-gradient(135deg, #1d7347, #0d3a23);
   color: #ffffff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 9999px;
-  padding: 12px 18px;
-  font-size: 14px;
+  padding: 10px 16px 10px 12px;
+  font-size: 13.5px;
   font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35), 0 2px 6px rgba(0, 0, 0, 0.08);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: grab;
+  box-shadow: 0 4px 14px rgba(13, 58, 35, 0.3), 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s ease;
   outline: none;
+  user-select: none;
 }
 
-.hrms-chatbot-launcher:hover {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+.hrms-chatbot-launcher:hover:not(.dragging) {
+  background: linear-gradient(135deg, #27865a, #155a37);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+  box-shadow: 0 6px 18px rgba(13, 58, 35, 0.4);
 }
 
-.hrms-chatbot-launcher:active {
-  transform: translateY(0);
+.hrms-chatbot-launcher.dragging {
+  cursor: grabbing;
+  transform: scale(1.04);
+  box-shadow: 0 8px 24px rgba(13, 58, 35, 0.45);
+  opacity: 0.95;
+}
+
+.hrms-chatbot-drag-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: grab;
+  padding-right: 2px;
+}
+
+.hrms-chatbot-launcher.dragging .hrms-chatbot-drag-grip {
+  cursor: grabbing;
+  color: #ffffff;
 }
 
 .hrms-chatbot-launcher-icon {
@@ -48,10 +71,8 @@
 /* Chat Window Modal / Drawer */
 .hrms-chatbot-window {
   position: absolute;
-  bottom: 60px;
-  right: 0;
   width: 380px;
-  height: 530px;
+  height: 520px;
   max-height: calc(100vh - 100px);
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -60,7 +81,31 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: chatbotSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: chatbotSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1051;
+}
+
+/* Placement variants */
+.hrms-chatbot-window.default-placement,
+.hrms-chatbot-window.open-above {
+  bottom: 56px;
+  top: auto;
+}
+
+.hrms-chatbot-window.open-below {
+  top: 56px;
+  bottom: auto;
+}
+
+.hrms-chatbot-window.default-placement,
+.hrms-chatbot-window.align-right {
+  right: 0;
+  left: auto;
+}
+
+.hrms-chatbot-window.align-left {
+  left: 0;
+  right: auto;
 }
 
 @keyframes chatbotSlideUp {

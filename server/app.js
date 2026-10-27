@@ -19,6 +19,7 @@ import assetRoutes from "./routes/assetRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import impactPointRoutes from "./routes/impactPointRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -132,6 +133,7 @@ export function createApp() {
   app.use("/api/tasks", taskRoutes);
   app.use("/api/impact-points", impactPointRoutes);
   app.use("/api/chat", chatbotRoutes);
+  app.use("/api/notifications", notificationRoutes);
 
   // Serve static assets from production client build (Single-Service Architecture)
   const distPath = path.resolve(__dirname, "../client/dist");

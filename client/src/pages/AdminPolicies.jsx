@@ -1456,7 +1456,7 @@ export default function AdminPolicies() {
 
   if (loading && !originalPolicy) {
     return (
-      <div className="container-wide" style={{ paddingBottom: 80 }}>
+      <div className="container-wide">
         <AppHeader title="Policies" />
         <div style={{ display: "flex", gap: 10, margin: "20px 0 24px" }}>
           {[1, 2, 3, 4, 5].map((n) => (
@@ -1476,7 +1476,7 @@ export default function AdminPolicies() {
   }
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 80 }}>
+    <div className="container-wide">
       {/* 3.A Page Header */}
       <AppHeader title="Policies" />
 
@@ -1535,21 +1535,21 @@ export default function AdminPolicies() {
       <div
         style={{
           background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 14,
-          padding: "18px 24px",
-          marginBottom: 24,
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 10,
+          padding: "12px 18px",
+          marginBottom: 14,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: 16,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+          gap: 12,
+          boxShadow: "var(--shadow-sm)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#71717a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted, #646d67)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
               Active Policy Revision
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
@@ -1560,13 +1560,13 @@ export default function AdminPolicies() {
                   if (target) loadPolicyIntoForm(target);
                 }}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #d4d4d8",
-                  fontSize: 14,
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  border: "1px solid var(--hair, #e6ede8)",
+                  fontSize: 13,
                   fontWeight: 600,
                   background: "#fcfcfd",
-                  minWidth: 260,
+                  minWidth: 240,
                 }}
               >
                 {revisions.map((rev) => {
@@ -1587,12 +1587,12 @@ export default function AdminPolicies() {
               {currentRevisionStatus === "ACTIVE_NOW" && (
                 <span
                   style={{
-                    background: "#ecfdf5",
-                    color: "#047857",
-                    border: "1px solid #a7f3d0",
-                    padding: "4px 10px",
+                    background: "var(--g-100, #e3f2e9)",
+                    color: "var(--g-800, #155a37)",
+                    border: "1px solid rgba(39, 134, 90, 0.28)",
+                    padding: "3px 8px",
                     borderRadius: 20,
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: 700,
                   }}
                 >
@@ -1606,9 +1606,9 @@ export default function AdminPolicies() {
                     background: "#eff6ff",
                     color: "#1d4ed8",
                     border: "1px solid #bfdbfe",
-                    padding: "4px 10px",
+                    padding: "3px 8px",
                     borderRadius: 20,
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: 700,
                   }}
                 >
@@ -1622,9 +1622,9 @@ export default function AdminPolicies() {
                     background: "#f4f4f5",
                     color: "#71717a",
                     border: "1px solid #e4e4e7",
-                    padding: "4px 10px",
+                    padding: "3px 8px",
                     borderRadius: 20,
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: 600,
                   }}
                 >
@@ -1635,7 +1635,7 @@ export default function AdminPolicies() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             className="btn-secondary"
@@ -1645,6 +1645,7 @@ export default function AdminPolicies() {
               setNewRevisionError("");
               setShowNewRevisionModal(true);
             }}
+            style={{ fontSize: 12.5, padding: "7px 12px" }}
           >
             + Schedule New Revision
           </button>
@@ -1654,8 +1655,9 @@ export default function AdminPolicies() {
             className="btn-secondary"
             onClick={handleReset}
             disabled={Boolean(savingSection)}
+            style={{ fontSize: 12.5, padding: "7px 12px" }}
           >
-            Reset Changes
+            Reset
           </button>
 
           <button
@@ -1663,11 +1665,13 @@ export default function AdminPolicies() {
             onClick={() => handleSaveSection("GLOBAL")}
             disabled={Boolean(savingSection)}
             style={{
-              background: "#18181b",
-              borderColor: "#18181b",
+              background: "var(--g-800, #155a37)",
+              borderColor: "var(--g-800, #155a37)",
+              fontSize: 12.5,
+              padding: "7px 14px",
             }}
           >
-            {savingSection === "GLOBAL" ? "Saving All..." : "Save Policy Changes"}
+            {savingSection === "GLOBAL" ? "Saving..." : "Save Policy Changes"}
           </button>
         </div>
       </div>
@@ -1691,10 +1695,7 @@ export default function AdminPolicies() {
                     aria-current={isActive ? "page" : undefined}
                   >
                     <div className="policies-category-icon-wrap">{cat.icon}</div>
-                    <div className="policies-category-text-block">
-                      <span className="policies-category-name">{cat.name}</span>
-                      <span className="policies-category-subtitle">{cat.subtitle}</span>
-                    </div>
+                    <span className="policies-category-name">{cat.name}</span>
                   </button>
                 </li>
               );
@@ -1719,9 +1720,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Attendance & Shift Timings</h3>
-                    <p className="policies-card-subtitle">
-                      Configure daily office start/end times, grace period thresholds, and attendance cutoff rules.
-                    </p>
                   </div>
                 </div>
 
@@ -1891,9 +1889,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Work Hours & Shift Policies</h3>
-                    <p className="policies-card-subtitle">
-                      Configure standard shift definitions, weekly hour quotas, and overtime threshold limits.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2044,9 +2039,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Company Leave Types ({leaveTypes.length})</h3>
-                    <p className="policies-card-subtitle">
-                      Manage leave categories, yearly quotas, paid/unpaid classification, and active status.
-                    </p>
                   </div>
                 </div>
 
@@ -2170,9 +2162,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Leave Accrual & Absence Rules</h3>
-                    <p className="policies-card-subtitle">
-                      Configure company-wide policies governing probation, carry-forward, notice, and encashment.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2328,9 +2317,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Company Holiday Calendar ({filteredHolidays.length})</h3>
-                    <p className="policies-card-subtitle">
-                      Configure official paid holidays for this company policy.
-                    </p>
                   </div>
                 </div>
 
@@ -2449,9 +2435,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Weekend Policy & Weekly Offs</h3>
-                    <p className="policies-card-subtitle">
-                      Specify standard non-working weekend days excluded from working leave calculations.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2557,9 +2540,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Location Locks & Geofence Policy</h3>
-                    <p className="policies-card-subtitle">
-                      Configure geolocation rules for attendance punch-ins and live field tracking.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2741,9 +2721,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">General Payroll & Pay Cycle</h3>
-                    <p className="policies-card-subtitle">
-                      Salary calculation basis, cycle start dates, and absence deduction policies.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -2917,32 +2894,20 @@ export default function AdminPolicies() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="policies-card-title">Salary Components & Deductions Structure</h3>
-                    <p className="policies-card-subtitle">
-                      Configured salary components compatible with Employee Compensation revisions and payslips.
-                    </p>
+                    <h3 className="policies-card-title">Salary Components & Deductions</h3>
                   </div>
                 </div>
               </div>
 
               {/* Visual CTC Allocation Balance Meter */}
-              <div className="policies-ctc-meter">
+              <div className="policies-ctc-meter" style={{ marginBottom: 18 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                  <div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#09090b" }}>
-                      CTC Allocation Balance: {totalCtcPercent}%
-                    </span>
-                    <span style={{ fontSize: 12, color: "#64748b", marginLeft: 8 }}>
-                      {totalCtcPercent === 100
-                        ? "(100% Balanced - Standard Full CTC Distribution)"
-                        : totalCtcPercent < 100
-                        ? `(${100 - totalCtcPercent}% Unallocated Remaining)`
-                        : `(${totalCtcPercent - 100}% Exceeded Over 100%)`}
-                    </span>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#09090b" }}>
+                    CTC Allocation: {totalCtcPercent}%
                   </div>
                   <span
                     style={{
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: 700,
                       padding: "2px 8px",
                       borderRadius: 12,
@@ -2950,10 +2915,10 @@ export default function AdminPolicies() {
                       color: totalCtcPercent === 100 ? "#059669" : totalCtcPercent < 100 ? "#2563eb" : "#dc2626",
                     }}
                   >
-                    {totalCtcPercent === 100 ? "● Balanced" : totalCtcPercent < 100 ? "Partial Allocation" : "Over-allocated"}
+                    {totalCtcPercent === 100 ? "Balanced (100%)" : totalCtcPercent < 100 ? `${100 - totalCtcPercent}% Unallocated` : `${totalCtcPercent - 100}% Exceeded`}
                   </span>
                 </div>
-                <div className="policies-ctc-meter-track">
+                <div className="policies-ctc-meter-track" style={{ margin: "8px 0 0" }}>
                   <div
                     className="policies-ctc-meter-bar"
                     style={{
@@ -2964,22 +2929,24 @@ export default function AdminPolicies() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20 }}>
-                {/* Earnings List */}
-                <div style={{ border: "1px solid #e4e4e7", borderRadius: 10, padding: 18, background: "#ffffff" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b" }}>
-                      Configured Allowances ({salaryComponentRules.allowances.length})
+              {/* Shared Allowances & Deductions Configuration (2 Clean Columns, No Nested Cards) */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24, padding: "4px 0" }}>
+                {/* Allowances Column */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid #f1f5f9" }}>
+                    <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#09090b" }}>
+                      Allowances ({salaryComponentRules.allowances.length})
                     </h4>
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
                       onClick={handleOpenAddAllowance}
+                      style={{ fontSize: 12, padding: "4px 10px" }}
                     >
                       + Add Allowance
                     </button>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {salaryComponentRules.allowances.map((a, i) => (
                       <div
                         key={a.code || i}
@@ -2987,10 +2954,10 @@ export default function AdminPolicies() {
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          padding: "10px 12px",
-                          background: "#f8fafc",
+                          padding: "8px 12px",
+                          background: "#f8faf8",
                           borderRadius: 8,
-                          border: "1px solid #f1f5f9",
+                          border: "1px solid var(--hair, #e6ede8)",
                         }}
                       >
                         <div>
@@ -2999,8 +2966,8 @@ export default function AdminPolicies() {
                             <code>{a.code}</code> • {a.taxable ? "Taxable" : "Non-taxable"}
                           </div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#2563eb" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--g-800, #155a37)" }}>
                             {a.percentageOfCtc}%
                           </span>
                           <button
@@ -3025,21 +2992,22 @@ export default function AdminPolicies() {
                   </div>
                 </div>
 
-                {/* Deductions List */}
-                <div style={{ border: "1px solid #e4e4e7", borderRadius: 10, padding: 18, background: "#ffffff" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#09090b" }}>
+                {/* Deductions Column */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid #f1f5f9" }}>
+                    <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#09090b" }}>
                       Standard Deductions ({salaryComponentRules.deductions.length})
                     </h4>
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
                       onClick={handleOpenAddDeduction}
+                      style={{ fontSize: 12, padding: "4px 10px" }}
                     >
                       + Add Deduction
                     </button>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {salaryComponentRules.deductions.map((d, i) => (
                       <div
                         key={d.code || i}
@@ -3047,10 +3015,10 @@ export default function AdminPolicies() {
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          padding: "10px 12px",
-                          background: "#f8fafc",
+                          padding: "8px 12px",
+                          background: "#f8faf8",
                           borderRadius: 8,
-                          border: "1px solid #f1f5f9",
+                          border: "1px solid var(--hair, #e6ede8)",
                         }}
                       >
                         <div>
@@ -3059,7 +3027,7 @@ export default function AdminPolicies() {
                             <code>{d.code}</code>
                           </div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 12.5, fontWeight: 700, color: "#dc2626" }}>
                             {d.ratePercent}%
                           </span>
@@ -3084,10 +3052,6 @@ export default function AdminPolicies() {
                     ))}
                   </div>
                 </div>
-              </div>
-
-              <div style={{ marginTop: 18, padding: "12px 16px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12.5, color: "#475569" }}>
-                ✓ <strong>Single Source of Truth:</strong> Maintains 100% compatibility with the Employee Compensation module, preventing divergent salary tables or miscalculated net disbursements.
               </div>
 
               <div className="policies-save-bar">
@@ -3117,9 +3081,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Tax & Statutory Compliance Baselines</h3>
-                    <p className="policies-card-subtitle">
-                      Configured company deduction baselines for Provident Fund, ESI, and Professional Tax.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -3215,9 +3176,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Employee Lifecycle & Notice Policies</h3>
-                    <p className="policies-card-subtitle">
-                      Company standards for probation periods, formal confirmation, and exit notice requirements.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -3354,9 +3312,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Recruitment & Offer Letter Policies</h3>
-                    <p className="policies-card-subtitle">
-                      Settings governing candidate offer validity, digital signing, and expiration rules.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -3463,9 +3418,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Documents & Compliance Standards</h3>
-                    <p className="policies-card-subtitle">
-                      Specify mandatory employee records and upload constraints connected to the employee document vault.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -3659,9 +3611,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">General Company Operations Policy</h3>
-                    <p className="policies-card-subtitle">
-                      Company handbook metadata, document codes, and foundational operational guidelines.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -3774,10 +3723,7 @@ export default function AdminPolicies() {
                     </svg>
                   </div>
                   <div>
-                    <h2 className="policies-card-title">Impact Points & Recognition Rules</h2>
-                    <p className="policies-card-subtitle">
-                      Configure base point rewards, performance bonuses, manager recognition quotas, and deduction policies.
-                    </p>
+                    <h3 className="policies-card-title">Impact Points & Recognition Rules</h3>
                   </div>
                 </div>
               </div>
@@ -3959,9 +3905,6 @@ export default function AdminPolicies() {
                   </div>
                   <div>
                     <h3 className="policies-card-title">Policy Revision History ({revisions.length})</h3>
-                    <p className="policies-card-subtitle">
-                      Timeline and audit history of effective-dated policy versions for this tenant workspace.
-                    </p>
                   </div>
                 </div>
 

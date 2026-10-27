@@ -293,12 +293,12 @@ export default function AttendanceMap({
             <IconMapPin size={24} />
           </div>
           <div style={{ fontWeight: 700, fontSize: 14, color: "#09090b", marginBottom: 4 }}>
-            No Geolocation Data Available
+            No Location Data Available
           </div>
           <div style={{ fontSize: 12, color: "#71717a", lineHeight: 1.5 }}>
             {filterLabel
-              ? `No punch locations or active live tracking sessions recorded for employees in "${filterLabel}".`
-              : "No employee punch coordinates or live tracking positions recorded."}
+              ? `No punch locations recorded for employees in "${filterLabel}".`
+              : "No location data available."}
           </div>
         </div>
       )}

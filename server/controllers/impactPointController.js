@@ -181,6 +181,24 @@ export async function getTransactionLedger(req, res, next) {
         .lean(),
     ]);
 
+    const mappedTransactions = transactions.map((tx) => ({
+      ...tx,
+      employee: {
+        _id: tx.employeeId,
+        name: tx.employeeSnapshot?.fullName || "Employee",
+        fullName: tx.employeeSnapshot?.fullName || "Employee",
+        employeeCode: tx.employeeSnapshot?.employeeCode || "",
+        department: tx.employeeSnapshot?.department || "General",
+      },
+      actor: {
+        _id: tx.actorUserId,
+        name: tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System",
+        fullName: tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System",
+        email: tx.actorSnapshot?.email || "",
+        role: tx.actorSnapshot?.role || "",
+      },
+    }));
+
     const pagination = {
       total,
       page,
@@ -190,10 +208,10 @@ export async function getTransactionLedger(req, res, next) {
 
     res.status(200).json({
       success: true,
-      transactions,
+      transactions: mappedTransactions,
       pagination,
       data: {
-        transactions,
+        transactions: mappedTransactions,
         pagination,
       },
     });

@@ -559,4 +559,71 @@ describe("Work Management and Impact Points System Suite", () => {
     assert.equal(resMgr.status, 200);
     assert.ok(resMgr.body.tasks.length >= 1);
   });
+
+  it("17. HR Admin awards points: authoritative ledger balance, activity history, and leaderboard rankings update dynamically", async () => {
+    // 17a. HR Admin awards 50 points to Carol Product (employeeRecordA2)
+    const awardRes = await request(app)
+      .post("/api/impact-points/recognize")
+      .set("Cookie", hrCookieA)
+      .send({
+        recipientEmployeeId: employeeRecordA2._id,
+        points: 50,
+        reason: "Outstanding contribution to cross-functional product launch",
+      });
+
+    assert.equal(awardRes.status, 201);
+    assert.equal(awardRes.body.success, true);
+    assert.equal(awardRes.body.transaction.points, 50);
+    assert.equal(String(awardRes.body.transaction.employeeId), String(employeeRecordA2._id));
+
+    // 17b. Carol's points summary reflects the new 50 points
+    const carolSummaryRes = await request(app)
+      .get(`/api/impact-points/employee/${employeeRecordA2._id}`)
+      .set("Cookie", hrCookieA);
+
+    assert.equal(carolSummaryRes.status, 200);
+    assert.equal(carolSummaryRes.body.summary.balance, 50);
+    assert.equal(carolSummaryRes.body.summary.totalEarned, 50);
+    assert.equal(carolSummaryRes.body.summary.recentTransactions.length, 1);
+    assert.equal(carolSummaryRes.body.summary.recentTransactions[0].points, 50);
+    assert.equal(carolSummaryRes.body.summary.recentTransactions[0].actor.name, "hr@acme.test");
+
+    // 17c. Leaderboard reflects Carol as Rank #1 with 50 points
+    const lbRes = await request(app)
+      .get("/api/impact-points/leaderboard")
+      .set("Cookie", hrCookieA);
+
+    assert.equal(lbRes.status, 200);
+    assert.ok(Array.isArray(lbRes.body.leaderboard));
+    const carolEntry = lbRes.body.leaderboard.find((e) => String(e.employeeId) === String(employeeRecordA2._id));
+    assert.ok(carolEntry, "Carol Product must appear in the leaderboard");
+    assert.equal(carolEntry.balance, 50);
+    assert.equal(carolEntry.rank, 1);
+    assert.equal(carolEntry.fullName, "Carol Product");
+    assert.equal(carolEntry.department, "Product");
+
+    // 17d. Verify employee portal /me for Carol returns rank 1
+    const carolMeRes = await request(app)
+      .get("/api/impact-points/me")
+      .set("Cookie", employeeCookieA2);
+
+    assert.equal(carolMeRes.status, 200);
+    assert.equal(carolMeRes.body.summary.balance, 50);
+    assert.equal(carolMeRes.body.summary.rankInCompany, 1);
+    assert.equal(carolMeRes.body.summary.rankInDepartment, 1);
+
+    // 17e. Transaction ledger endpoint returns mapped employee and actor details
+    const ledgerRes = await request(app)
+      .get("/api/impact-points/transactions")
+      .set("Cookie", hrCookieA);
+
+    assert.equal(ledgerRes.status, 200);
+    assert.ok(ledgerRes.body.transactions.length >= 1);
+    const firstTx = ledgerRes.body.transactions[0];
+    assert.ok(firstTx.employee);
+    assert.ok(firstTx.employee.name);
+    assert.ok(firstTx.actor);
+    assert.ok(firstTx.actor.name);
+  });
 });
+

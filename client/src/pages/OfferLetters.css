@@ -1,25 +1,25 @@
 /* Offer Letters — Master Tracker–inspired density & typography */
 
 .ol-page {
-  --ol-ink: #111827;
-  --ol-muted: #6b7280;
-  --ol-faint: #9ca3af;
-  --ol-line: #e5e7eb;
-  --ol-soft: #f3f4f6;
+  --ol-ink: var(--ink, #131a15);
+  --ol-muted: var(--muted, #646d67);
+  --ol-faint: var(--faint, #6c756f);
+  --ol-line: var(--hair, #e3e7e4);
+  --ol-soft: var(--panel, #f5f6f5);
   --ol-bg: transparent;
-  --ol-card: #ffffff;
-  --ol-radius: 12px;
-  --ol-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.06);
+  --ol-card: var(--card, #fdfdfc);
+  --ol-radius: 16px;
+  --ol-shadow: var(--shadow);
 
-  max-width: 100% !important;
+  max-width: 1440px !important;
   width: 100%;
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0 auto !important;
+  padding: 0 0 40px !important;
   background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font);
   color: var(--ol-ink);
 }
 
@@ -33,7 +33,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   flex-wrap: wrap;
 }
 
@@ -67,38 +67,42 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 38px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 16px;
   border-radius: 10px;
   font-size: 13.5px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .ol-btn-ghost {
-  background: #fff;
+  background: var(--card, #fdfdfc);
   color: var(--ol-ink);
   border: 1px solid var(--ol-line);
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.04);
 }
 
 .ol-btn-ghost:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  color: var(--ol-ink);
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.3);
+  color: var(--g-950, #0d3a23);
+  transform: translateY(-1px);
 }
 
 .ol-btn-primary {
-  background: #111827;
+  background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
   color: #fff;
-  border: 1px solid #111827;
+  border: 1px solid var(--g-950, #0d3a23);
+  box-shadow: 0 2px 6px rgba(13, 58, 35, 0.2);
 }
 
 .ol-btn-primary:hover:not(:disabled) {
-  background: #030712;
-  border-color: #030712;
+  background: linear-gradient(180deg, var(--g-600, #27865a), var(--g-800, #155a37));
+  border-color: var(--g-950, #0d3a23);
   color: #fff;
+  transform: translateY(-1px);
 }
 
 .ol-btn-sm {

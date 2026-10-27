@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceMap from "../components/AttendanceMap";
+import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
+import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
-import { IconAlertCircle, IconCheck, IconClose, IconClipboardList } from "../components/Icons";
+import {
+  IconClose,
+  IconClipboardList,
+  IconAlertCircle,
+  IconCheck,
+  IconClock,
+} from "../components/Icons";
 import api from "../services/api";
+import "./Attendance.css";
 
 const FILTER_TYPES = {
   TOTAL_STAFF: "TOTAL_STAFF",
@@ -17,21 +26,30 @@ const FILTER_TYPES = {
 };
 
 const FILTER_LABELS = {
-  [FILTER_TYPES.TOTAL_STAFF]: "Total Staff",
+  [FILTER_TYPES.TOTAL_STAFF]: "All Staff",
   [FILTER_TYPES.PRESENT]: "Present Today",
-  [FILTER_TYPES.CHECKED_IN]: "Currently Checked In",
-  [FILTER_TYPES.CHECKED_OUT]: "Checked Out",
-  [FILTER_TYPES.LIVE_TRACKING]: "Live Tracking Active",
+  [FILTER_TYPES.CHECKED_IN]: "On Duty (Checked In)",
+  [FILTER_TYPES.CHECKED_OUT]: "Completed Shift",
+  [FILTER_TYPES.LIVE_TRACKING]: "Live Field GPS",
 };
 
 export default function AdminAttendanceOverview() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [date, setDate] = useState(() => searchParams.get("date") || new Date().toISOString().split("T")[0]);
   const [department, setDepartment] = useState("ALL");
+  const [tableSearch, setTableSearch] = useState("");
   const initialFilter = searchParams.get("filter") === "PRESENT" ? FILTER_TYPES.PRESENT : FILTER_TYPES.TOTAL_STAFF;
   const [activeFilter, setActiveFilter] = useState(initialFilter);
+  const [attendancePage, setAttendancePage] = useState(1);
+  const [attendancePageSize, setAttendancePageSize] = useState(25);
+
+  // Drawer State (Part 4)
+  const [drawerEmployeeId, setDrawerEmployeeId] = useState(null);
+  const [drawerIndex, setDrawerIndex] = useState(-1);
 
   const [overviewData, setOverviewData] = useState({
     date: "",
@@ -54,14 +72,12 @@ export default function AdminAttendanceOverview() {
 
   const fetchOverview = useCallback(
     async (silent = false) => {
-      // Prevent overlapping concurrent polling requests
       if (silent && isFetchingRef.current) {
         return;
       }
 
       const currentReqId = ++requestIdRef.current;
 
-      // Abort previous in-flight request if starting a fresh user-initiated fetch
       if (!silent && abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -83,7 +99,6 @@ export default function AdminAttendanceOverview() {
           signal: controller.signal,
         });
 
-        // Discard stale or superseded responses
         if (isMountedRef.current && currentReqId === requestIdRef.current && res.data?.success) {
           setOverviewData(res.data);
         }
@@ -104,7 +119,6 @@ export default function AdminAttendanceOverview() {
     [date, department]
   );
 
-  // Reliable polling lifecycle: single effect managing initial fetch, interval, visibility, and cleanup
   useEffect(() => {
     isMountedRef.current = true;
     let pollInterval = null;
@@ -130,7 +144,6 @@ export default function AdminAttendanceOverview() {
       }
     };
 
-    // Initial non-silent load on parameter change
     fetchOverview(false);
     startPolling();
 
@@ -157,28 +170,58 @@ export default function AdminAttendanceOverview() {
 
   // Derived filter logic for employees
   const filteredEmployees = useMemo(() => {
-    const list = overviewData.employees || [];
+    let list = overviewData.employees || [];
+
+    // Filter by category
     switch (activeFilter) {
       case FILTER_TYPES.PRESENT:
-        return list.filter(
+        list = list.filter(
           (e) =>
             e.attendanceStatus === "PRESENT" ||
             e.attendanceStatus === "CHECKED_IN" ||
             e.attendanceStatus === "CHECKED_OUT"
         );
+        break;
       case FILTER_TYPES.CHECKED_IN:
-        return list.filter((e) => e.attendanceStatus === "CHECKED_IN");
+        list = list.filter((e) => e.attendanceStatus === "CHECKED_IN");
+        break;
       case FILTER_TYPES.CHECKED_OUT:
-        return list.filter((e) => e.attendanceStatus === "CHECKED_OUT");
+        list = list.filter((e) => e.attendanceStatus === "CHECKED_OUT");
+        break;
       case FILTER_TYPES.LIVE_TRACKING:
-        return list.filter((e) => Boolean(e.isTrackingActive));
+        list = list.filter((e) => Boolean(e.isTrackingActive));
+        break;
       case FILTER_TYPES.TOTAL_STAFF:
       default:
-        return list;
+        break;
     }
-  }, [overviewData.employees, activeFilter]);
 
-  // Derived summary counts reflecting date and department queries
+    // Filter by table search query
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase();
+      list = list.filter(
+        (e) =>
+          e.fullName.toLowerCase().includes(q) ||
+          (e.employeeCode || "").toLowerCase().includes(q) ||
+          (e.department || "").toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [overviewData.employees, activeFilter, tableSearch]);
+
+  useEffect(() => {
+    setAttendancePage(1);
+  }, [tableSearch, activeFilter, date, department]);
+
+  const totalAttendanceEmployees = filteredEmployees.length;
+  const totalAttendancePages = Math.ceil((totalAttendanceEmployees || 1) / attendancePageSize);
+  const paginatedEmployees = useMemo(() => {
+    const start = (attendancePage - 1) * attendancePageSize;
+    return filteredEmployees.slice(start, start + attendancePageSize);
+  }, [filteredEmployees, attendancePage, attendancePageSize]);
+
+  // Derived summary metrics
   const summary = useMemo(() => {
     const raw = overviewData.summary || {};
     const list = overviewData.employees || [];
@@ -198,16 +241,70 @@ export default function AdminAttendanceOverview() {
       checkedOutCount:
         raw.checkedOutCount ??
         list.filter((e) => e.attendanceStatus === "CHECKED_OUT").length,
+      notCheckedInCount:
+        raw.notCheckedInCount ??
+        list.filter((e) => e.attendanceStatus === "NOT_CHECKED_IN" || !e.checkInTime).length,
       liveTrackingCount:
         raw.liveTrackingCount ??
         list.filter((e) => Boolean(e.isTrackingActive)).length,
     };
   }, [overviewData.summary, overviewData.employees]);
 
-  const handleCardClick = (filterKey) => {
-    setActiveFilter((prev) => (prev === filterKey ? FILTER_TYPES.TOTAL_STAFF : filterKey));
-    if (filterKey === FILTER_TYPES.LIVE_TRACKING) {
-      fetchOverview(true);
+  // Derive real attendance exceptions and active field tasks
+  const exceptionsList = useMemo(() => {
+    const list = overviewData.employees || [];
+    const alerts = [];
+
+    for (const emp of list) {
+      if (emp.isTrackingActive) {
+        alerts.push({
+          id: `track-${emp.employeeId}`,
+          employee: emp,
+          type: "TRACKING",
+          title: "Live GPS Active",
+          desc: `${emp.fullName} has an active GPS field tracking session.`,
+          time: "Live Now",
+        });
+      }
+      if (emp.checkInTime) {
+        const inDate = new Date(emp.checkInTime);
+        const inHours = inDate.getHours() + inDate.getMinutes() / 60;
+        if (inHours > 9.5) {
+          alerts.push({
+            id: `late-${emp.employeeId}`,
+            employee: emp,
+            type: "LATE",
+            title: "Late Arrival",
+            desc: `${emp.fullName} clocked in at ${inDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
+            time: "Today",
+          });
+        }
+      }
+      if (emp.attendanceStatus === "ON_LEAVE") {
+        alerts.push({
+          id: `leave-${emp.employeeId}`,
+          employee: emp,
+          type: "LEAVE",
+          title: "On Approved Leave",
+          desc: `${emp.fullName} is scheduled on leave today.`,
+          time: "Full Day",
+        });
+      }
+    }
+
+    return alerts.slice(0, 5);
+  }, [overviewData.employees]);
+
+  // Handle opening the details drawer
+  const handleOpenDrawer = (emp, idx) => {
+    setDrawerEmployeeId(emp.employeeId);
+    setDrawerIndex(idx);
+  };
+
+  const handleSelectDrawerIndex = (newIdx) => {
+    if (newIdx >= 0 && newIdx < filteredEmployees.length) {
+      setDrawerIndex(newIdx);
+      setDrawerEmployeeId(filteredEmployees[newIdx].employeeId);
     }
   };
 
@@ -216,143 +313,104 @@ export default function AdminAttendanceOverview() {
       key: FILTER_TYPES.TOTAL_STAFF,
       label: "Total Staff",
       count: summary.totalEmployees,
-      countColor: "#09090b",
-      description: "All employees for selected department/date",
+      badge: "Organization",
+      accent: false,
+      description: "Employees in selected department/date",
     },
     {
       key: FILTER_TYPES.PRESENT,
       label: "Present Today",
       count: summary.presentCount,
-      countColor: "#16a34a",
-      description: "Checked in or checked out today",
+      badge: `${summary.totalEmployees > 0 ? Math.round((summary.presentCount / summary.totalEmployees) * 100) : 0}%`,
+      accent: true,
+      description: "Checked in or completed shift",
     },
     {
       key: FILTER_TYPES.CHECKED_IN,
-      label: "Currently Checked In",
+      label: "On Duty Now",
       count: summary.checkedInCount,
-      countColor: "#2563eb",
-      description: "Punched in with open attendance record",
+      badge: "Active",
+      accent: false,
+      description: "Currently checked in on shift",
     },
     {
       key: FILTER_TYPES.CHECKED_OUT,
-      label: "Checked Out",
+      label: "Completed Shift",
       count: summary.checkedOutCount,
-      countColor: "#4b5563",
-      description: "Completed punch-out for the date",
+      badge: "Punched Out",
+      accent: false,
+      description: "Completed punch-out for the day",
     },
     {
       key: FILTER_TYPES.LIVE_TRACKING,
-      label: "Live Tracking Active",
+      label: "Live GPS Active",
       count: summary.liveTrackingCount,
-      countColor: "#16a34a",
+      badge: "Tracking",
       isLive: true,
-      description: "Active, non-expired live tracking session",
+      accent: false,
+      description: "Transmitting live GPS updates",
     },
   ];
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
-      <style>{`
-        .overview-filter-card {
-          background: #ffffff;
-          border: 1px solid #e4e4e7;
-          border-radius: 12px;
-          padding: 16px 18px;
-          cursor: pointer;
-          transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-          outline: none;
-          text-align: left;
-          position: relative;
-          user-select: none;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-        }
-        .overview-filter-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-          border-color: #cbd5e1;
-        }
-        .overview-filter-card:focus-visible {
-          outline: 2px solid #2563eb;
-          outline-offset: 2px;
-        }
-        .overview-filter-card.selected {
-          background: #eff6ff !important;
-          border: 2px solid #2563eb !important;
-          box-shadow: 0 0 0 1px #2563eb, 0 6px 18px rgba(37, 99, 235, 0.15) !important;
-        }
-      `}</style>
+    <div className="attendance-page-container">
+      {/* Page Header */}
+      <AppHeader
+        title="Attendance"
+      />
 
-      {/* Page Title */}
-      <AppHeader title="Attendance" />
-
-      {/* Date & Filter Toolbar */}
+      {/* Date & Department Filter Toolbar */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: 16,
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 14,
-          padding: "16px 20px",
-          marginBottom: 20,
+          gap: 10,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 14px",
+          marginBottom: 10,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#71717a", display: "block", marginBottom: 4 }}>
-              Business Date
-            </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Date:</span>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               style={{
-                border: "1px solid #d4d4d8",
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 13,
+                border: "1px solid var(--hair, #e6ede8)",
+                borderRadius: 6,
+                padding: "5px 10px",
+                fontSize: 12.5,
                 outline: "none",
-                fontWeight: 500,
+                fontWeight: 600,
+                background: "#f8faf8",
+                color: "var(--ink)",
+                height: 32,
               }}
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => setDate(new Date().toISOString().split("T")[0])}
-            style={{
-              marginTop: 20,
-              background: date === new Date().toISOString().split("T")[0] ? "#18181b" : "#f4f4f5",
-              color: date === new Date().toISOString().split("T")[0] ? "#ffffff" : "#27272a",
-              border: "1px solid #d4d4d8",
-              borderRadius: 8,
-              padding: "8px 14px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Today
-          </button>
-
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#71717a", display: "block", marginBottom: 4 }}>
-              Department
-            </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Dept:</span>
             <select
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
               style={{
-                border: "1px solid #d4d4d8",
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 13,
+                border: "1px solid var(--hair, #e6ede8)",
+                borderRadius: 6,
+                padding: "0 10px",
+                fontSize: 12.5,
                 outline: "none",
-                fontWeight: 500,
-                background: "#ffffff",
+                fontWeight: 600,
+                background: "#f8faf8",
+                color: "var(--ink)",
+                cursor: "pointer",
+                height: 32,
               }}
             >
               {departments.map((dept) => (
@@ -364,313 +422,328 @@ export default function AdminAttendanceOverview() {
           </div>
         </div>
 
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"
-            onClick={() => fetchOverview()}
-            disabled={loading}
-            style={{
-              background: "#2563eb",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: 8,
-              padding: "9px 18px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            className="btn-secondary btn-sm"
+            onClick={() => fetchOverview(false)}
+            title="Refresh attendance records"
+            style={{ height: 32, padding: "0 10px", fontSize: 12.5 }}
           >
-            {loading ? "Refreshing..." : "Refresh Data"}
+            Refresh
           </button>
         </div>
       </div>
 
-      {error && (
-        <div
-          style={{
-            background: "#fef2f2",
-            color: "#991b1b",
-            border: "1px solid #fecaca",
-            padding: "12px 16px",
-            borderRadius: 8,
-            marginBottom: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-          }}
-        >
-          <IconAlertCircle size={16} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Summary Metrics Interactive Filter Cards */}
+      {/* Interactive Compact Attendance Metrics Strip */}
       <div
-        role="region"
-        aria-label="Attendance summary filters"
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 14,
-          marginBottom: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "6px 14px",
+          marginBottom: 14,
+          fontSize: 12.5,
+          flexWrap: "wrap",
         }}
       >
-        {cards.map((card) => {
-          const isSelected = activeFilter === card.key;
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", marginRight: 4 }}>
+          Status:
+        </span>
+        {cards.map((c) => {
+          const isSelected = activeFilter === c.key;
           return (
-            <div
-              key={card.key}
-              role="button"
-              tabIndex={0}
-              aria-pressed={isSelected}
-              aria-label={`Filter by ${card.label}: ${card.count} employees`}
-              onClick={() => handleCardClick(card.key)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleCardClick(card.key);
-                }
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setActiveFilter(c.key)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: isSelected ? "1px solid var(--g-800, #155a37)" : "1px solid transparent",
+                background: isSelected ? "var(--g-100, #e3f2e9)" : "#f8faf8",
+                color: isSelected ? "var(--g-950, #0d3a23)" : "var(--muted, #646d67)",
+                fontWeight: isSelected ? 700 : 500,
+                fontSize: 12,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
-              className={`overview-filter-card ${isSelected ? "selected" : ""}`}
-              style={card.isLive && !isSelected ? { borderColor: "#bbf7d0" } : {}}
+              title={`Filter by ${c.label}`}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <span>{c.label}:</span>
+              <strong style={{ color: isSelected ? "var(--g-950, #0d3a23)" : "var(--ink, #131a15)" }}>
+                {c.count}
+              </strong>
+              {c.isLive && (
                 <span
                   style={{
-                    fontSize: 12,
-                    color: isSelected ? "#1d4ed8" : card.isLive ? "#15803d" : "#71717a",
-                    fontWeight: isSelected ? 700 : card.isLive ? 700 : 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.02em",
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "#16a34a",
+                    display: "inline-block",
                   }}
-                >
-                  {card.label}
-                </span>
-                {isSelected ? (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      background: "#2563eb",
-                      color: "#ffffff",
-                      padding: "2px 7px",
-                      borderRadius: 10,
-                      letterSpacing: "0.02em",
-                      textTransform: "uppercase",
-                      whiteSpace: "nowrap",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 3,
-                    }}
-                  >
-                    <IconCheck size={11} style={{ strokeWidth: 3 }} /> Active
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: "#a1a1aa",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Filter
-                  </span>
-                )}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 26,
-                  fontWeight: 700,
-                  color: isSelected ? "#1e40af" : card.countColor,
-                  marginTop: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>{card.count ?? 0}</span>
-                {card.isLive && card.count > 0 && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      background: "#dcfce7",
-                      color: "#15803d",
-                      padding: "2px 8px",
-                      borderRadius: 12,
-                      fontWeight: 700,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a" }} />
-                    Live
-                  </span>
-                )}
-              </div>
-            </div>
+                />
+              )}
+            </button>
           );
         })}
       </div>
 
-      {/* Attendance Overview Map */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-              Attendance Map
+      {/* Main Workspace: Interactive Map (Left) + Activity Exceptions Stream (Right) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr",
+          gap: 16,
+          marginBottom: 20,
+          alignItems: "stretch",
+        }}
+      >
+        {/* Left: Projects & Office Attendance Map */}
+        <div
+          style={{
+            background: "var(--card, #ffffff)",
+            border: "1px solid var(--hair, #e6ede8)",
+            borderRadius: 10,
+            padding: "16px 18px",
+            boxShadow: "var(--shadow-sm)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+              Employee Locations
             </h3>
+            <span
+              style={{
+                fontSize: 11.5,
+                fontWeight: 600,
+                color: "var(--g-800, #155a37)",
+                background: "var(--g-100, #e3f2e9)",
+                padding: "2px 8px",
+                borderRadius: 10,
+              }}
+            >
+              {overviewData.summary?.withLocationCount || 0} Located
+            </span>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 380, borderRadius: 8, overflow: "hidden", border: "1px solid var(--hair)" }}>
+            <AttendanceMap
+              employees={filteredEmployees}
+              filterLabel={activeFilter === FILTER_TYPES.TOTAL_STAFF ? "" : FILTER_LABELS[activeFilter]}
+              height={380}
+            />
           </div>
         </div>
 
-        <AttendanceMap
-          employees={filteredEmployees}
-          filterLabel={activeFilter === FILTER_TYPES.TOTAL_STAFF ? "" : FILTER_LABELS[activeFilter]}
-          height={440}
-        />
+        {/* Right: Exceptions & Live Activity Log */}
+        <div
+          style={{
+            background: "var(--card, #ffffff)",
+            border: "1px solid var(--hair, #e6ede8)",
+            borderRadius: 10,
+            padding: "16px 18px",
+            boxShadow: "var(--shadow-sm)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
+              Exceptions & Activity
+            </h3>
+            <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>
+              {exceptionsList.length} items
+            </span>
+          </div>
+
+          {exceptionsList.length === 0 ? (
+            <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#eefaf2", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+                <IconCheck size={20} />
+              </div>
+              <p style={{ margin: 0, fontWeight: 600, color: "var(--ink)" }}>No attendance exceptions today</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12 }}>All clocked-in staff are on schedule.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", maxHeight: 380 }}>
+              {exceptionsList.map((alert, idx) => (
+                <div
+                  key={alert.id}
+                  onClick={() => handleOpenDrawer(alert.employee, idx)}
+                  style={{
+                    padding: "12px 14px",
+                    background: "#fbfdfc",
+                    border: "1px solid var(--hair, #e6ede8)",
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(29, 115, 71, 0.3)";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--hair, #e6ede8)";
+                    e.currentTarget.style.transform = "none";
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: alert.type === "TRACKING" ? "#16a34a" : alert.type === "LATE" ? "#b45309" : "#0d9488",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {alert.title}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--faint)" }}>{alert.time}</span>
+                  </div>
+                  <p style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+                    {alert.desc}
+                  </p>
+                  <span style={{ fontSize: 11.5, color: "var(--g-700, #1d7347)", fontWeight: 600 }}>
+                    Inspect Details →
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Employee Attendance Records Table */}
+      {/* Section 3: Searchable Employee Attendance Records Table */}
       <div
-        className="table-wrapper-relative"
         style={{
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 14,
-          padding: "20px 24px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 10,
+          padding: "16px 18px",
+          boxShadow: "0 1px 3px rgba(19, 26, 21, 0.04)",
           overflow: "hidden",
         }}
       >
-        {loading && <div className="table-progress-bar" />}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 16,
+            marginBottom: 18,
             flexWrap: "wrap",
-            gap: 12,
+            gap: 14,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-              Employee Attendance Records ({loading && overviewData.employees.length === 0 ? "..." : filteredEmployees.length}
-              {!loading && filteredEmployees.length !== overviewData.employees.length
-                ? ` of ${overviewData.employees.length}`
-                : ""}
-              )
+          {/* Table Heading and Filter Status Indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
+              Employee Attendance Records ({filteredEmployees.length})
             </h3>
-            {activeFilter !== FILTER_TYPES.TOTAL_STAFF && (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "#eff6ff",
-                  color: "#1d4ed8",
-                  border: "1px solid #bfdbfe",
-                  padding: "3px 10px",
-                  borderRadius: 14,
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                Filtered by: {FILTER_LABELS[activeFilter]}
+
+            {/* Clean Text-based filter links */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginLeft: 8 }}>
+              {Object.keys(FILTER_TYPES).map((k) => (
                 <button
+                  key={k}
                   type="button"
-                  onClick={() => setActiveFilter(FILTER_TYPES.TOTAL_STAFF)}
-                  aria-label="Clear filter"
+                  onClick={() => setActiveFilter(k)}
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#1d4ed8",
+                    padding: "4px 0",
+                    borderBottom: activeFilter === k ? "2.5px solid var(--g-700, #1d7347)" : "2.5px solid transparent",
+                    color: activeFilter === k ? "var(--g-800, #155a37)" : "var(--muted)",
+                    fontWeight: activeFilter === k ? 700 : 500,
+                    fontSize: 13,
                     cursor: "pointer",
-                    padding: "0 2px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    boxShadow: "none",
+                    borderRadius: 0,
+                    transition: "all 0.15s ease",
                   }}
                 >
-                  <IconClose size={12} />
+                  {FILTER_LABELS[k]}
                 </button>
-              </span>
-            )}
+              ))}
+            </div>
           </div>
-          <span style={{ fontSize: 12, color: "#71717a" }}>
-            Date: {overviewData.date || date}
-          </span>
+
+          {/* Table Search Input */}
+          <div className="att-search-box" style={{ background: "#ffffff" }}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16.5 16.5 4 4" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name or code..."
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+              aria-label="Search employees table"
+            />
+          </div>
         </div>
 
+        {/* Table Content */}
         {loading && overviewData.employees.length === 0 ? (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                  <th style={{ padding: "10px 12px" }}>Employee</th>
-                  <th style={{ padding: "10px 12px" }}>Status</th>
-                  <th style={{ padding: "10px 12px" }}>Punch In</th>
-                  <th style={{ padding: "10px 12px" }}>Punch Out</th>
-                  <th style={{ padding: "10px 12px" }}>Working Hours</th>
-                  <th style={{ padding: "10px 12px" }}>Punch Location</th>
-                  <th style={{ padding: "10px 12px" }}>Live Tracking</th>
+                <tr style={{ borderBottom: "1px solid var(--hair)", textAlign: "left", color: "var(--muted)" }}>
+                  <th style={{ padding: "10px 14px" }}>Employee</th>
+                  <th style={{ padding: "10px 14px" }}>Status</th>
+                  <th style={{ padding: "10px 14px" }}>Punch In</th>
+                  <th style={{ padding: "10px 14px" }}>Punch Out</th>
+                  <th style={{ padding: "10px 14px" }}>Working Hours</th>
+                  <th style={{ padding: "10px 14px" }}>GPS Location</th>
+                  <th style={{ padding: "10px 14px" }}>Live Tracking</th>
+                  <th style={{ padding: "10px 14px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <TableSkeletonRows rows={6} cols={7} />
+                <TableSkeletonRows rows={6} cols={8} />
               </tbody>
             </table>
           </div>
         ) : filteredEmployees.length === 0 ? (
-          <div style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 13 }}>
+          <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13.5 }}>
             <div
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: "50%",
-                background: "#eff6ff",
-                color: "#2563eb",
+                background: "var(--g-100, #e3f2e9)",
+                color: "var(--g-800, #155a37)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 12px",
-                border: "1px solid #dbeafe",
               }}
             >
-              <IconClipboardList size={24} />
+              <IconClipboardList size={22} />
             </div>
-            <div style={{ fontWeight: 600, color: "#09090b", fontSize: 14, marginBottom: 4 }}>
-              No records matching "{FILTER_LABELS[activeFilter]}"
+            <div style={{ fontWeight: 700, color: "var(--ink)", fontSize: 15, marginBottom: 4 }}>
+              No employee records match the selected filter
             </div>
-            <p style={{ margin: "0 0 16px", color: "#71717a", fontSize: 13, maxWidth: 460, marginInline: "auto" }}>
-              {activeFilter === FILTER_TYPES.LIVE_TRACKING
-                ? "No staff members currently have an active live tracking session."
-                : activeFilter === FILTER_TYPES.CHECKED_IN
-                ? "No employees are currently checked in with an open punch-in record for this date."
-                : activeFilter === FILTER_TYPES.CHECKED_OUT
-                ? "No employees have completed punch-out for this date."
-                : activeFilter === FILTER_TYPES.PRESENT
-                ? "No employees are marked present for this date."
-                : "No employee records found for this department/date."}
+            <p style={{ margin: "0 0 16px", color: "var(--muted)", fontSize: 13 }}>
+              Try adjusting your department, date, or search criteria.
             </p>
             {activeFilter !== FILTER_TYPES.TOTAL_STAFF && (
               <button
                 type="button"
+                className="btn-secondary btn-sm"
                 onClick={() => setActiveFilter(FILTER_TYPES.TOTAL_STAFF)}
-                style={{
-                  background: "#2563eb",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 16px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
               >
-                Reset Filter to Total Staff
+                Reset Filter
               </button>
             )}
           </div>
@@ -678,52 +751,87 @@ export default function AdminAttendanceOverview() {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                  <th style={{ padding: "10px 12px" }}>Employee</th>
-                  <th style={{ padding: "10px 12px" }}>Status</th>
-                  <th style={{ padding: "10px 12px" }}>Punch In</th>
-                  <th style={{ padding: "10px 12px" }}>Punch Out</th>
-                  <th style={{ padding: "10px 12px" }}>Working Hours</th>
-                  <th style={{ padding: "10px 12px" }}>Punch Location</th>
-                  <th style={{ padding: "10px 12px" }}>Live Tracking</th>
+                <tr style={{ borderBottom: "1px solid var(--hair, #e6ede8)", textAlign: "left", color: "var(--muted, #646d67)" }}>
+                  <th style={{ padding: "12px 14px" }}>Employee</th>
+                  <th style={{ padding: "12px 14px" }}>Status</th>
+                  <th style={{ padding: "12px 14px" }}>Punch In</th>
+                  <th style={{ padding: "12px 14px" }}>Punch Out</th>
+                  <th style={{ padding: "12px 14px" }}>Working Hours</th>
+                  <th style={{ padding: "12px 14px" }}>GPS Location</th>
+                  <th style={{ padding: "12px 14px" }}>Live Tracking</th>
+                  <th style={{ padding: "12px 14px", textAlign: "right" }}>Details</th>
                 </tr>
               </thead>
-              <tbody className={loading ? "table-refreshing-dim" : ""}>
-                {filteredEmployees.map((emp) => {
+              <tbody>
+                {paginatedEmployees.map((emp, idx) => {
                   const hasLocation = Boolean(emp.checkInLocation || emp.checkOutLocation);
                   const loc = emp.checkInLocation || emp.checkOutLocation;
+                  const empInitial = (emp.fullName || "E")[0].toUpperCase();
+                  const absoluteIdx = (attendancePage - 1) * attendancePageSize + idx;
+
                   return (
-                    <tr key={emp.employeeId} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                      <td style={{ padding: "12px" }}>
-                        <div style={{ fontWeight: 600, color: "#09090b" }}>{emp.fullName}</div>
-                        <div style={{ fontSize: 12, color: "#71717a" }}>
-                          {emp.employeeCode} • {emp.department}
+                    <tr
+                      key={emp.employeeId}
+                      style={{
+                        borderBottom: "1px solid #f4f6f4",
+                        cursor: "pointer",
+                        transition: "background 0.12s ease",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#fbfdfc")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      onClick={() => handleOpenDrawer(emp, absoluteIdx)}
+                    >
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 10,
+                              background: "linear-gradient(135deg, #1d7347, #0d3a23)",
+                              color: "#ffffff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {empInitial}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, color: "var(--ink)" }}>{emp.fullName}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                              {emp.employeeCode} · {emp.department}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td style={{ padding: "12px" }}>
+                      <td style={{ padding: "12px 14px" }}>
                         <StatusBadge status={emp.attendanceStatus} />
                       </td>
-                      <td style={{ padding: "12px", color: "#52525b" }}>
+                      <td style={{ padding: "12px 14px", color: "var(--ink)", fontWeight: 500 }}>
                         {emp.checkInTime
                           ? new Date(emp.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                          : "--:--"}
+                          : "—"}
                       </td>
-                      <td style={{ padding: "12px", color: "#52525b" }}>
+                      <td style={{ padding: "12px 14px", color: "var(--ink)", fontWeight: 500 }}>
                         {emp.checkOutTime
                           ? new Date(emp.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                          : "--:--"}
+                          : "—"}
                       </td>
-                      <td style={{ padding: "12px", fontWeight: 500 }}>
-                        {emp.workingHours || "--"}
+                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "var(--g-800, #155a37)" }}>
+                        {emp.workingHours || "—"}
                       </td>
-                      <td style={{ padding: "12px" }}>
+                      <td style={{ padding: "12px 14px" }}>
                         {hasLocation ? (
                           <div style={{ fontSize: 12 }}>
-                            <div style={{ color: "#2563eb", fontWeight: 600 }}>
-                              {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
+                            <div style={{ color: "var(--g-700, #1d7347)", fontWeight: 600 }}>
+                              {loc.latitude?.toFixed(4)}, {loc.longitude?.toFixed(4)}
                             </div>
                             {loc.accuracy && (
-                              <div style={{ color: "#71717a", fontSize: 11 }}>
+                              <div style={{ color: "var(--faint)", fontSize: 10.5 }}>
                                 ±{Math.round(loc.accuracy)}m accuracy
                               </div>
                             )}
@@ -732,12 +840,12 @@ export default function AdminAttendanceOverview() {
                           <span style={{ color: "#a1a1aa", fontSize: 12 }}>None</span>
                         )}
                       </td>
-                      <td style={{ padding: "12px" }}>
+                      <td style={{ padding: "12px 14px" }}>
                         {emp.isTrackingActive ? (
                           <span
                             style={{
-                              padding: "4px 10px",
-                              borderRadius: 12,
+                              padding: "3px 8px",
+                              borderRadius: 10,
                               fontSize: 11,
                               fontWeight: 700,
                               background: "#dcfce7",
@@ -747,12 +855,25 @@ export default function AdminAttendanceOverview() {
                               gap: 5,
                             }}
                           >
-                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a" }}></span>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a" }} />
                             ACTIVE
                           </span>
                         ) : (
                           <span style={{ color: "#a1a1aa", fontSize: 12 }}>Inactive</span>
                         )}
+                      </td>
+                      <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDrawer(emp, absoluteIdx);
+                          }}
+                          style={{ padding: "4px 10px", fontSize: 12 }}
+                        >
+                          View Drawer →
+                        </button>
                       </td>
                     </tr>
                   );
@@ -761,7 +882,35 @@ export default function AdminAttendanceOverview() {
             </table>
           </div>
         )}
+
+        <Pagination
+          currentPage={attendancePage}
+          totalPages={totalAttendancePages}
+          totalItems={totalAttendanceEmployees}
+          pageSize={attendancePageSize}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={(p) => setAttendancePage(p)}
+          onPageSizeChange={(s) => {
+            setAttendancePageSize(s);
+            setAttendancePage(1);
+          }}
+          itemLabel="employees"
+        />
       </div>
+
+      {/* Part 4: HR Employee Attendance Details Drawer (Overlay) */}
+      {drawerEmployeeId && (
+        <EmployeeAttendanceDrawer
+          employeeId={drawerEmployeeId}
+          employeeList={filteredEmployees}
+          currentIndex={drawerIndex}
+          onSelectEmployee={handleSelectDrawerIndex}
+          onClose={() => {
+            setDrawerEmployeeId(null);
+            setDrawerIndex(-1);
+          }}
+        />
+      )}
     </div>
   );
 }

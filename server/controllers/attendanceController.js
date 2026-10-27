@@ -315,3 +315,50 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * GET /api/admin/attendance/employee/:id
+ * Allows HR_ADMIN to fetch an individual employee's attendance history for drawer inspection.
+ */
+export async function getAdminEmployeeAttendanceHistoryHandler(req, res, next) {
+  try {
+    if (req.auth.user.role !== "HR_ADMIN") {
+      throw new HttpError(403, "Access denied. Only HR Admins may view employee attendance history.");
+    }
+
+    const { Employee } = req.auth.models;
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) {
+      throw new HttpError(404, "Employee not found.");
+    }
+
+    const { startDate, endDate, page, limit } = req.query;
+
+    const history = await getEmployeeAttendanceHistory({
+      models: req.auth.models,
+      employee,
+      startDate,
+      endDate,
+      page,
+      limit: limit || 100,
+    });
+
+    res.status(200).json({
+      success: true,
+      employee: {
+        _id: employee._id,
+        employeeCode: employee.employeeCode,
+        fullName: employee.fullName,
+        email: employee.email,
+        phone: employee.personalPhone || employee.phone || "",
+        avatar: employee.avatar || "",
+        department: employee.job?.department || "General",
+        jobTitle: employee.job?.jobTitle || "Team Member",
+      },
+      ...history,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

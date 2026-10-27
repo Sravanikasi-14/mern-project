@@ -88,8 +88,8 @@ export default function EmployeeAssets() {
   };
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="My Assets" />
+    <div className="container-wide">
+      <AppHeader title="Assets" />
 
       {/* Action Alerts */}
       {actionSuccess && (
@@ -143,74 +143,64 @@ export default function EmployeeAssets() {
 
       {!loading && !error && (
         <>
-          {/* Summary Status Banner */}
+          {/* Top Status & Support Strip */}
           <div
             style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "20px 24px",
-              marginBottom: 24,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               flexWrap: "wrap",
-              gap: 16,
+              gap: 12,
+              marginBottom: 18,
             }}
           >
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Current Custody
-              </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 4 }}>
-                {assets.length} {assets.length === 1 ? "Asset" : "Assets"}
-              </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--ink, #131a15)", margin: 0 }}>
+                Assigned Assets
+              </h2>
+              <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
+                {assets.length} {assets.length === 1 ? "device" : "devices"} in custody
+              </span>
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <div
-                style={{
-                  background: "#f4f4f5",
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 12.5,
-                  color: "#52525b",
-                  fontWeight: 600,
-                }}
-              >
-                IT Support: it-ops@company.internal
-              </div>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "var(--muted)",
+                background: "var(--panel, #f8faf8)",
+                border: "1px solid var(--hair, #e6ede8)",
+                padding: "6px 12px",
+                borderRadius: 8,
+                fontWeight: 500,
+              }}
+            >
+              IT Support: <strong style={{ color: "var(--ink)" }}>it-ops@company.internal</strong>
             </div>
           </div>
 
-          {/* Active Assets Grid */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "22px 24px",
-              marginBottom: 28,
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                  Assigned Assets
-                </h3>
-              </div>
-            </div>
-
+          {/* Active Assets Direct Grid */}
+          <div style={{ marginBottom: 24 }}>
             {assets.length === 0 ? (
-              <div style={{ padding: "48px 16px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                <IconFileText size={36} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
-                <div style={{ fontWeight: 600, color: "#18181b", marginBottom: 6 }}>
+              <div
+                style={{
+                  background: "var(--card, #ffffff)",
+                  border: "1px solid var(--hair, #e6ede8)",
+                  borderRadius: 12,
+                  padding: "48px 16px",
+                  textAlign: "center",
+                  color: "var(--muted)",
+                }}
+              >
+                <IconFileText size={36} style={{ color: "var(--muted)", margin: "0 auto 10px", opacity: 0.5 }} />
+                <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>
                   No assets assigned
+                </div>
+                <div style={{ fontSize: 12.5 }}>
+                  You currently have no company hardware or peripherals checked out.
                 </div>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
                 {assets.map((asset, idx) => {
                   const ackStatus =
                     asset.currentAssignment?.acknowledgementStatus ||
@@ -359,11 +349,12 @@ export default function EmployeeAssets() {
           {history.length > 0 && (
             <div
               style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
+                background: "var(--card)",
+                border: "1px solid var(--hair)",
+                borderRadius: "var(--r-md)",
                 padding: "22px 24px",
                 marginBottom: 28,
+                boxShadow: "var(--shadow-sm)",
               }}
             >
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#09090b" }}>

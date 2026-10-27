@@ -1,8 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import StatusBadge from "../components/StatusBadge";
-import HrIntelligenceSection from "../components/HrIntelligenceSection";
 import api from "../services/api";
 import "./AdminDashboard.css";
 
@@ -49,31 +47,21 @@ function formatDisplayDate(dateStr) {
   }
 }
 
-function formatFullWeekdayDate(dateStr) {
-  if (!dateStr) return "—";
-  try {
-    const parts = dateStr.split("-");
-    if (parts.length === 3) {
-      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      return d.toLocaleDateString("en-IN", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    }
-    return dateStr;
-  } catch {
-    return dateStr;
-  }
-}
-
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
 }
+
+const PASTEL_AVATAR_COLORS = [
+  { bg: "#f6c6c2", text: "#7a2721" },
+  { bg: "#cdeccf", text: "#1b5e20" },
+  { bg: "#cfd6f7", text: "#1e3a8a" },
+  { bg: "#f5dfb5", text: "#78350f" },
+  { bg: "#fbcfe8", text: "#831843" },
+  { bg: "#fed7aa", text: "#7c2d12" },
+];
 
 export default function AdminDashboard() {
   const { user, company } = useAuth();
@@ -84,26 +72,13 @@ export default function AdminDashboard() {
   const [data, setData] = useState(null);
 
   // Month & Year Filter states
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1); // 1-12
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedDept, setSelectedDept] = useState("ALL");
 
-  // Graph 1: Attendance Distribution Range ("TODAY" | "7D" | "30D")
-  const [attendanceRange, setAttendanceRange] = useState("TODAY");
-
-  // Graph 1: Interactive series visibility toggles for Donut Chart
-  const [seriesVisibility, setSeriesVisibility] = useState({
-    present: true,
-    late: true,
-    absent: true,
-    leave: true,
-  });
-
-  // Graph 1: Active hover slice for donut center readout
-  const [hoveredSlice, setHoveredSlice] = useState(null);
-
-  // Calendar: Selected Date string (e.g. "2026-10-23")
-  const [selectedCalendarDateStr, setSelectedCalendarDateStr] = useState(null);
+  // Attendance Analytics Range ("TODAY" | "7D" | "30D")
+  const [attendanceRange, setAttendanceRange] = useState("7D");
+  const [hoveredDay, setHoveredDay] = useState(null);
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -115,7 +90,7 @@ export default function AdminDashboard() {
       setLoading(true);
       setError(null);
 
-      // Primary: call dedicated aggregated dashboard endpoint
+      // Dedicated aggregated dashboard endpoint
       try {
         const res = await api.get("/admin/dashboard", {
           params: {
@@ -126,30 +101,24 @@ export default function AdminDashboard() {
         });
         if (res.data && res.data.success) {
           setData(res.data);
-          if (!selectedCalendarDateStr) {
-            setSelectedCalendarDateStr(res.data.meta?.todayDate || res.data.meta?.selectedDate);
-          }
           setLoading(false);
           return;
         }
       } catch (dashErr) {
-        const is404 = dashErr.response?.status === 404;
-        if (!is404) {
+        if (dashErr.response?.status !== 404) {
           throw dashErr;
         }
-        console.warn("[Dashboard] /admin/dashboard returned 404, falling back to individual endpoints...");
       }
 
-      // Fallback: aggregate individual endpoints
+      // Fallback: aggregate individual endpoints if single route isn't available
       const todayStr = new Date().toISOString().split("T")[0];
-      const [empSummaryRes, attendanceRes, leavesRes, offersRes, policyRes, cyclesRes] = await Promise.allSettled([
+      const [empSummaryRes, attendanceRes, leavesRes, offersRes, cyclesRes] = await Promise.allSettled([
         api.get("/employees/summary"),
         api.get("/admin/attendance/overview", {
           params: { date: todayStr, department: selectedDept },
         }),
         api.get("/leave-requests"),
         api.get("/offer-letters/summary"),
-        api.get("/policies/active"),
         api.get("/payroll/cycles"),
       ]);
 
@@ -159,7 +128,6 @@ export default function AdminDashboard() {
       const attSummary = attData.summary || {};
       const leavesList = leavesRes.status === "fulfilled" ? leavesRes.value.data?.leaves || [] : [];
       const offersData = offersRes.status === "fulfilled" ? offersRes.value.data || {} : {};
-      const activePolicy = policyRes.status === "fulfilled" ? policyRes.value.data?.policy || {} : {};
       const cyclesList = cyclesRes.status === "fulfilled" ? cyclesRes.value.data?.cycles || [] : [];
 
       const currentCycle = cyclesList.find(
@@ -180,11 +148,13 @@ export default function AdminDashboard() {
         d.setDate(d.getDate() - i);
         fallbackDays.push({
           date: d.toISOString().split("T")[0],
-          label: d.toLocaleDateString("en-US", { weekday: "short" }),
-          present: i === 0 ? present : Math.max(0, Math.round(totalEmp * 0.85)),
-          absent: i === 0 ? absent : Math.max(0, Math.round(totalEmp * 0.1)),
-          late: i === 0 ? late : Math.max(0, Math.round(totalEmp * 0.05)),
-          onLeave: i === 0 ? onLeave : 0,
+          dayOfWeek: d.getDay(),
+          isWeekend: d.getDay() === 0 || d.getDay() === 6,
+          isToday: i === 0,
+          presentCount: i === 0 ? present : Math.max(0, Math.round(totalEmp * 0.85)),
+          absentCount: i === 0 ? absent : Math.max(0, Math.round(totalEmp * 0.1)),
+          lateCount: i === 0 ? late : Math.max(0, Math.round(totalEmp * 0.05)),
+          leaveCount: i === 0 ? onLeave : 0,
         });
       }
 
@@ -197,6 +167,7 @@ export default function AdminDashboard() {
           selectedYear,
           currencySymbol: "₹",
           departments: [],
+          officeStartTime: "09:30 AM",
         },
         summary: {
           activeEmployees: totalEmp,
@@ -213,93 +184,73 @@ export default function AdminDashboard() {
               statusLabel: currentCycle.status.charAt(0) + currentCycle.status.slice(1).toLowerCase(),
               periodMonth: currentCycle.periodMonth,
               periodYear: currentCycle.periodYear,
-              isFinalized: Boolean(currentCycle.isFinalized),
               totalNetSalary: currentCycle.totalNetSalary || 0,
-              totalPaidAmount: currentCycle.totalPaidAmount || 0,
-              exists: true,
               employeeCount: currentCycle.employeeCount || 0,
               pendingAction: currentCycle.status === "FINALIZED" ? "Record salary disbursements" : "Review payroll calculations",
             }
           : {
-              status: "NOT_STARTED",
-              statusLabel: "Not Started",
+              status: "DRAFT",
+              statusLabel: "Draft",
               periodMonth: selectedMonth,
               periodYear: selectedYear,
-              isFinalized: false,
               totalNetSalary: 0,
-              totalPaidAmount: 0,
-              exists: false,
               employeeCount: 0,
-              pendingAction: "Initialize payroll register for this cycle",
+              pendingAction: "Initialize monthly payroll register",
             },
-        payrollActionCentre: {
-          currentCycle: currentCycle || { status: "NOT_STARTED", periodMonth: selectedMonth, periodYear: selectedYear },
-          lastCompletedCycle: null,
-          hasPendingAction: true,
-          pendingAction: "Review and process monthly payroll",
-          isPaymentPending: false,
-          pendingPaymentAmount: 0,
-          employeesAwaitingProcessing: totalEmp,
-        },
         recruitmentFunnel: {
           offersGenerated: offersData.totalOffers || 0,
-          accepted: offersData.acceptedOffers || 0,
-          acceptedPct: offersData.totalOffers > 0 ? Math.round((offersData.acceptedOffers / offersData.totalOffers) * 100) : 0,
-          pending: offersData.sentOffers || 0,
-          pendingPct: offersData.totalOffers > 0 ? Math.round((offersData.sentOffers / offersData.totalOffers) * 100) : 0,
-          declined: offersData.rejectedOffers || 0,
-          declinedPct: offersData.totalOffers > 0 ? Math.round((offersData.rejectedOffers / offersData.totalOffers) * 100) : 0,
-          acceptanceRate: offersData.totalOffers > 0 ? ((offersData.acceptedOffers / offersData.totalOffers) * 100).toFixed(1) : "0.0",
-        },
-        attendanceOverview: {
-          period: "This Week",
-          days: fallbackDays,
+          accepted: offersData.acceptedCount || 0,
+          acceptedPct: offersData.totalOffers > 0 ? Math.round(((offersData.acceptedCount || 0) / offersData.totalOffers) * 100) : 0,
+          pending: offersData.pendingCount || 0,
+          pendingPct: offersData.totalOffers > 0 ? Math.round(((offersData.pendingCount || 0) / offersData.totalOffers) * 100) : 0,
+          declined: offersData.rejectedCount || 0,
+          declinedPct: offersData.totalOffers > 0 ? Math.round(((offersData.rejectedCount || 0) / offersData.totalOffers) * 100) : 0,
+          acceptanceRate: offersData.totalOffers > 0 ? ((offersData.acceptedCount || 0) / offersData.totalOffers * 100).toFixed(1) : "0.0",
         },
         attendanceCalendar: {
           month: selectedMonth,
           year: selectedYear,
-          firstDayWeekday: new Date(selectedYear, selectedMonth - 1, 1).getDay(),
-          daysInMonth: new Date(selectedYear, selectedMonth, 0).getDate(),
-          days: fallbackDays.map((d, idx) => ({
-            day: idx + 1,
-            date: d.date,
-            dayOfWeek: new Date(d.date).getDay(),
-            isToday: d.date === todayStr,
-            isFuture: false,
-            isWeekend: new Date(d.date).getDay() === 0 || new Date(d.date).getDay() === 6,
-            isHoliday: false,
-            holidayName: null,
-            presentCount: d.present,
-            absentCount: d.absent,
-            lateCount: d.late,
-            leaveCount: d.onLeave,
-          })),
+          days: fallbackDays,
         },
         recentLeaves: leavesList.slice(0, 5).map((l) => ({
           id: l._id,
-          employeeName: l.employeeName || l.employeeId?.fullName || "Employee",
+          employeeName: l.employeeId?.fullName || "Team Member",
           department: l.employeeId?.job?.department || "General",
-          avatar: l.employeeId?.avatar || "",
-          leaveType: l.leaveType || l.leaveTypeCode || "Leave",
-          fromDate: l.fromDate?.split("T")[0] || "",
-          toDate: l.toDate?.split("T")[0] || "",
+          leaveType: l.leaveTypeCode || "Leave",
           daysCount: l.daysCount || 1,
           status: l.status || "PENDING",
         })),
         recentOffers: [],
-        upcomingHolidays: (activePolicy?.holidays || []).slice(0, 5).map((h) => ({
-          name: h.name,
-          date: h.date?.split("T")[0] || "",
-          isPaid: Boolean(h.isPaid),
-        })),
+        upcomingHolidays: [],
+        salaryExpenses: [
+          { month: "Jan", amount: 0 },
+          { month: "Feb", amount: 0 },
+          { month: "Mar", amount: 0 },
+          { month: "Apr", amount: 0 },
+          { month: "May", amount: 0 },
+          { month: "Jun", amount: 0 },
+          { month: "Jul", amount: 0 },
+          { month: "Aug", amount: 0 },
+          { month: "Sep", amount: 0 },
+          { month: "Oct", amount: 0 },
+          { month: "Nov", amount: 0 },
+          { month: "Dec", amount: 0 },
+        ],
+        companyAssets: {
+          totalEmployees: totalEmp,
+          employeesWithAssets: Math.round(totalEmp * 0.75),
+          employeesWithAssetsPct: 75,
+        },
+        projectTeams: {
+          MANDATE: Math.round(totalEmp * 0.5),
+          RETAIL: Math.round(totalEmp * 0.2),
+          INTERNAL: Math.round(totalEmp * 0.2),
+          BENCH: Math.max(0, totalEmp - Math.round(totalEmp * 0.9)),
+        },
       });
-      if (!selectedCalendarDateStr) {
-        setSelectedCalendarDateStr(todayStr);
-      }
+      setLoading(false);
     } catch (err) {
-      console.error("[Dashboard] Fetch error:", err);
-      setError(err.response?.data?.message || err.message || "Failed to load dashboard data.");
-    } finally {
+      setError(err.response?.data?.message || err.message || "Failed to load dashboard metrics");
       setLoading(false);
     }
   };
@@ -326,190 +277,134 @@ export default function AdminDashboard() {
     }
   };
 
-  // Keyboard navigation handler for KPI cards
-  const handleCardKeyDown = (e, destination) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      navigate(destination);
-    }
-  };
-
-  // Derived payload objects
+  // Safe unpacked data
   const meta = data?.meta || {};
   const summary = data?.summary || {};
-  const payrollCycle = data?.payrollCycleSummary || summary.payrollCycle || {};
-  const payrollAction = data?.payrollActionCentre || {};
-  const lastCompleted = data?.lastCompletedCycle || payrollAction.lastCompletedCycle || null;
   const funnel = data?.recruitmentFunnel || {};
-  const weeklyAttendance = data?.attendanceOverview || {};
-  const calendarData = data?.attendanceCalendar || {};
-  const recentOffers = data?.recentOffers || [];
+  const payrollCycle = data?.payrollCycleSummary || {};
+  const recentLeaves = data?.recentLeaves || [];
   const upcomingHolidays = data?.upcomingHolidays || [];
-
+  const companyAssets = data?.companyAssets || { employeesWithAssetsPct: 0, employeesWithAssets: 0, totalEmployees: 0 };
+  const projectTeams = data?.projectTeams || {};
+  const salaryExpenses = useMemo(() => {
+    if (Array.isArray(data?.salaryExpenses)) {
+      return data.salaryExpenses;
+    }
+    if (Array.isArray(data?.salaryExpenses?.months)) {
+      return data.salaryExpenses.months;
+    }
+    return [];
+  }, [data?.salaryExpenses]);
   const currencySym = meta.currencySymbol || "₹";
-  const displayName = user?.name || user?.email?.split("@")[0] || "Admin";
 
-  // Filter pending leaves for HR attention
+  const totalEmployees = summary.activeEmployees ?? 0;
+  const attendanceRate = totalEmployees > 0
+    ? Math.min(100, Math.round(((summary.todayPresent ?? 0) / totalEmployees) * 100))
+    : 0;
+
+  // Genuine Pending HR Actions
   const pendingLeaves = useMemo(() => {
-    return (data?.recentLeaves || []).filter((l) => l.status === "PENDING").slice(0, 5);
-  }, [data?.recentLeaves]);
+    return recentLeaves.filter((l) => l.status === "PENDING");
+  }, [recentLeaves]);
 
-  // Overall attendance rate (% of active employees present today)
-  const attendanceRate = useMemo(() => {
-    const active = summary.activeEmployees || 0;
-    const present = summary.todayPresent || 0;
-    if (active === 0) return 0;
-    return Math.min(Math.round((present / active) * 100), 100);
-  }, [summary.activeEmployees, summary.todayPresent]);
+  const pendingOffersCount = funnel.pending || 0;
+  const hasPayrollAction = payrollCycle.status !== "PAID" && payrollCycle.status !== "CANCELLED";
+  const totalPendingActions = pendingLeaves.length + pendingOffersCount + (hasPayrollAction ? 1 : 0);
 
-  // Graph 1: Dynamic attendance distribution data based on range ("TODAY" | "7D" | "30D")
-  const attendanceDistribution = useMemo(() => {
-    if (attendanceRange === "TODAY") {
-      const p = summary.todayPresent || 0;
-      const l = summary.todayLate || 0;
-      const a = summary.todayAbsent || 0;
-      const lv = summary.onLeave || 0;
-      return { present: p, late: l, absent: a, leave: lv };
+  // 7-day capsule bar data for Weekly Attendance Chart
+  const weeklyBars = useMemo(() => {
+    const calendarDays = data?.attendanceCalendar?.days || [];
+    const daysOfWeekLetters = ["S", "M", "T", "W", "T", "F", "S"];
+
+    if (calendarDays.length === 0) {
+      return daysOfWeekLetters.map((letter, idx) => ({
+        dayLetter: letter,
+        pct: 0,
+        heightVal: 0.15,
+        present: 0,
+        isWeekend: idx === 0 || idx === 6,
+        isToday: false,
+      }));
     }
 
-    if (attendanceRange === "7D") {
-      const days = weeklyAttendance.days || [];
-      let p = 0, l = 0, a = 0, lv = 0;
-      days.forEach((d) => {
-        p += d.present || 0;
-        l += d.late || 0;
-        a += d.absent || 0;
-        lv += d.onLeave || 0;
-      });
-      return { present: p, late: l, absent: a, leave: lv };
-    }
+    // Take the last 7 days from calendarData
+    const sliceDays = calendarDays.slice(-7);
+    const maxVal = Math.max(1, totalEmployees);
 
-    // 30D: sum up all calendar days of the month
-    const days = calendarData.days || [];
-    let p = 0, l = 0, a = 0, lv = 0;
-    days.forEach((d) => {
-      p += d.presentCount || 0;
-      l += d.lateCount || 0;
-      a += d.absentCount || 0;
-      lv += d.leaveCount || 0;
-    });
-    return { present: p, late: l, absent: a, leave: lv };
-  }, [attendanceRange, summary, weeklyAttendance.days, calendarData.days]);
-
-  // Graph 1: Donut Chart Slices computation
-  const donutSlices = useMemo(() => {
-    const categories = [
-      { key: "present", label: "Present", count: attendanceDistribution.present, color: "#10b981", filterParam: "PRESENT" },
-      { key: "late", label: "Late", count: attendanceDistribution.late, color: "#f59e0b", filterParam: "PRESENT" },
-      { key: "absent", label: "Absent", count: attendanceDistribution.absent, color: "#ef4444", filterParam: "TOTAL_STAFF" },
-      { key: "leave", label: "On Leave", count: attendanceDistribution.leave, color: "#6366f1", filterParam: "APPROVED", route: "/admin/leave" },
-    ];
-
-    const visibleCategories = categories.filter((c) => seriesVisibility[c.key]);
-    const totalCount = visibleCategories.reduce((acc, c) => acc + c.count, 0);
-
-    const circumference = 2 * Math.PI * 70; // r = 70
-    let accumulatedOffset = 0;
-
-    const slices = visibleCategories.map((c) => {
-      const pct = totalCount > 0 ? (c.count / totalCount) * 100 : 0;
-      const strokeLength = totalCount > 0 ? (c.count / totalCount) * circumference : 0;
-      const dashArray = `${strokeLength.toFixed(2)} ${(circumference - strokeLength).toFixed(2)}`;
-      const dashOffset = -accumulatedOffset;
-      accumulatedOffset += strokeLength;
+    return sliceDays.map((d) => {
+      const dayIdx = d.dayOfWeek != null ? d.dayOfWeek : new Date(d.date).getDay();
+      const pct = maxVal > 0 ? Math.min(100, Math.round(((d.presentCount || 0) / maxVal) * 100)) : 0;
+      const heightVal = Math.max(0.18, pct / 100);
 
       return {
-        ...c,
-        percentage: pct,
-        dashArray,
-        dashOffset,
-        totalCount,
+        date: d.date,
+        dayLetter: daysOfWeekLetters[dayIdx] || "•",
+        pct,
+        heightVal,
+        present: d.presentCount || 0,
+        absent: d.absentCount || 0,
+        late: d.lateCount || 0,
+        onLeave: d.leaveCount || 0,
+        isWeekend: Boolean(d.isWeekend),
+        isToday: Boolean(d.isToday),
       };
     });
+  }, [data?.attendanceCalendar?.days, totalEmployees]);
 
-    return { slices, totalCount, circumference };
-  }, [attendanceDistribution, seriesVisibility]);
-
-  // Calendar: Active selected day record
-  const selectedCalendarDay = useMemo(() => {
-    const days = calendarData.days || [];
-    if (!days || days.length === 0) return null;
-    const found = days.find((d) => d.date === selectedCalendarDateStr);
-    return found || days.find((d) => d.isToday) || days[0];
-  }, [calendarData.days, selectedCalendarDateStr]);
-
-  // Calendar weekday alignment (Monday-first: Mon=0, Tue=1, ..., Sun=6)
-  const calendarBlankSlots = useMemo(() => {
-    const firstWeekday = calendarData.firstDayWeekday ?? 1; // 0=Sun, 1=Mon
-    return (firstWeekday + 6) % 7;
-  }, [calendarData.firstDayWeekday]);
-
-  // Toggle single series visibility in legend
-  const toggleSeries = (seriesKey) => {
-    setSeriesVisibility((prev) => ({
-      ...prev,
-      [seriesKey]: !prev[seriesKey],
-    }));
-  };
-
-  const payrollStatusLabel = payrollCycle.statusLabel || summary.payrollStatus || "Draft";
+  // Max expense amount for normalization in salary trend bars
+  const maxExpense = useMemo(() => {
+    return Math.max(1, ...salaryExpenses.map((s) => Number(s.amount || 0)));
+  }, [salaryExpenses]);
 
   return (
-    <div className="admin-dashboard-page">
+    <div className="board-container">
       {/* ====================================================================
-          1. Welcome Header Section (Clean, Minimal, Modern)
+          1. Board Head: Greeting, Controls, Sync Button
           ==================================================================== */}
-      <header className="dash-header">
-        <div className="dash-header-welcome">
-          <div className="dash-greeting-row">
-            <h1 className="dash-greeting-title">
-              {getGreeting()}, {displayName}
-            </h1>
-            <span className="dash-identity-pill">HR Workspace</span>
-          </div>
-          <p className="dash-greeting-subtitle">
-            {meta.companyName || company?.companyName || "Organization"} · {meta.todayDate ? formatDisplayDate(meta.todayDate) : "Today"}
+      <div className="board__head">
+        <div>
+          <h1 className="board__title">{getGreeting()}, {user?.name || "Eleanor"}</h1>
+          <p className="board__sub">
+            {meta.companyName || company?.companyName || "Organization"}
           </p>
         </div>
 
-        <div className="dash-header-controls">
+        <div className="board__actions">
           {/* Department Filter */}
-          {(meta.departments && meta.departments.length > 0) && (
-            <div className="dash-ctrl-item" title="Filter by department">
-              <label htmlFor="deptFilterSelect" className="dash-ctrl-label">Dept:</label>
+          {meta.departments && meta.departments.length > 0 && (
+            <div className="dash-filter-pill">
+              <span>Dept:</span>
               <select
-                id="deptFilterSelect"
-                className="dash-ctrl-select"
+                className="dash-filter-select"
                 value={selectedDept}
                 onChange={(e) => setSelectedDept(e.target.value)}
+                aria-label="Filter by department"
               >
                 <option value="ALL">All Departments</option>
                 {meta.departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
+                  <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
             </div>
           )}
 
-          {/* Month / Year Navigator */}
-          <div className="dash-month-selector" role="group" aria-label="Select month and year">
+          {/* Month Navigator Pill */}
+          <div className="month-picker-pill" role="group" aria-label="Select month">
             <button
               type="button"
-              className="dash-month-nav-btn"
+              className="month-nav-arrow"
               onClick={handlePrevMonth}
               title="Previous Month"
               aria-label="Previous Month"
             >
               ‹
             </button>
-            <span className="dash-month-nav-text">
-              {monthNames[selectedMonth - 1]} {selectedYear}
+            <span className="month-nav-label">
+              {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear}
             </span>
             <button
               type="button"
-              className="dash-month-nav-btn"
+              className="month-nav-arrow"
               onClick={handleNextMonth}
               title="Next Month"
               aria-label="Next Month"
@@ -518,36 +413,34 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          {/* Quick Action: Add Employee */}
-          <Link
-            to="/admin"
-            className="dash-action-btn-primary"
-            title="Manage or add employees"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+          {/* Primary Action Button */}
+          <Link to="/admin" className="btn--primary-fern">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             <span>Add Employee</span>
           </Link>
 
-          {/* Refresh Action */}
+          {/* Sync / Refresh Button */}
           <button
             type="button"
-            className="dash-action-btn-secondary"
+            className="btn--ghost-sync"
             onClick={fetchDashboardData}
             title="Sync live dashboard metrics"
             disabled={loading}
-            aria-label="Sync live metrics"
+            aria-label="Refresh dashboard"
           >
             <svg
               viewBox="0 0 24 24"
-              width="14"
-              height="14"
+              width="16"
+              height="16"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
-              className={loading ? "dash-icon-spin" : ""}
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={loading ? "spin-icon" : ""}
             >
               <polyline points="23 4 23 10 17 10" />
               <polyline points="1 20 1 14 7 14" />
@@ -555,892 +448,516 @@ export default function AdminDashboard() {
             </svg>
           </button>
         </div>
-      </header>
-
-      {/* Error Banner */}
-      {error && (
-        <div className="dash-alert dash-alert-error" role="alert">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <span>{error}</span>
-          <button type="button" className="dash-alert-retry" onClick={fetchDashboardData}>
-            Retry
-          </button>
-        </div>
-      )}
+      </div>
 
       {/* ====================================================================
-          2. Top KPI Cards — STRICT MAXIMUM FOUR
-          Every card is a fully clickable, keyboard-accessible link to its feature.
+          2. Asymmetric Bento Grid
           ==================================================================== */}
-      <section className="dash-kpi-grid" aria-label="Key Performance Indicators">
-        {/* KPI 1: Active Employees */}
-        <Link
-          to="/admin?status=ACTIVE"
-          className="dash-kpi-card"
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => handleCardKeyDown(e, "/admin?status=ACTIVE")}
-          aria-label={`Active Employees: ${summary.activeEmployees ?? 0}. Click to view active employee directory.`}
-        >
-          <div className="dash-kpi-header">
-            <span className="dash-kpi-label">Active Employees</span>
-            <div className="dash-kpi-icon-wrap dash-kpi-icon-blue" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            </div>
-          </div>
-          <div className="dash-kpi-body">
-            <span className="dash-kpi-value">{summary.activeEmployees ?? 0}</span>
-            <div className="dash-kpi-meta">
-              <span className="dash-kpi-tagline">On active company payroll</span>
-              <span className="dash-kpi-arrow" aria-hidden="true">→</span>
-            </div>
-          </div>
-        </Link>
-
-        {/* KPI 2: Present Today */}
-        <Link
-          to="/admin/attendance?filter=PRESENT"
-          className="dash-kpi-card"
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => handleCardKeyDown(e, "/admin/attendance?filter=PRESENT")}
-          aria-label={`Present Today: ${summary.todayPresent ?? 0}. Click to view today's attendance records.`}
-        >
-          <div className="dash-kpi-header">
-            <span className="dash-kpi-label">Present Today</span>
-            <div className="dash-kpi-icon-wrap dash-kpi-icon-green" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-            </div>
-          </div>
-          <div className="dash-kpi-body">
-            <span className="dash-kpi-value">{summary.todayPresent ?? 0}</span>
-            <div className="dash-kpi-meta">
-              <span className="dash-kpi-tagline">
-                {summary.todayLate > 0 ? `${summary.todayLate} late arrivals` : "Checked in on shift"}
-              </span>
-              <span className="dash-kpi-arrow" aria-hidden="true">→</span>
-            </div>
-          </div>
-        </Link>
-
-        {/* KPI 3: On Leave Today */}
-        <Link
-          to="/admin/leave?status=APPROVED"
-          className="dash-kpi-card"
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => handleCardKeyDown(e, "/admin/leave?status=APPROVED")}
-          aria-label={`On Leave Today: ${summary.onLeave ?? 0}. Click to view approved leave records.`}
-        >
-          <div className="dash-kpi-header">
-            <span className="dash-kpi-label">On Leave Today</span>
-            <div className="dash-kpi-icon-wrap dash-kpi-icon-purple" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-              </svg>
-            </div>
-          </div>
-          <div className="dash-kpi-body">
-            <span className="dash-kpi-value">{summary.onLeave ?? 0}</span>
-            <div className="dash-kpi-meta">
-              <span className="dash-kpi-tagline">Approved scheduled leaves</span>
-              <span className="dash-kpi-arrow" aria-hidden="true">→</span>
-            </div>
-          </div>
-        </Link>
-
-        {/* KPI 4: Payroll Status */}
-        <Link
-          to="/admin/payroll?tab=payroll_registers"
-          className="dash-kpi-card"
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => handleCardKeyDown(e, "/admin/payroll?tab=payroll_registers")}
-          aria-label={`Payroll Status: ${payrollStatusLabel}. Click to view monthly payroll registers.`}
-        >
-          <div className="dash-kpi-header">
-            <span className="dash-kpi-label">Payroll Status</span>
-            <div className="dash-kpi-icon-wrap dash-kpi-icon-amber" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                <line x1="1" y1="10" x2="23" y2="10" />
-              </svg>
-            </div>
-          </div>
-          <div className="dash-kpi-body">
-            <span className="dash-kpi-value dash-kpi-value-text">{payrollStatusLabel}</span>
-            <div className="dash-kpi-meta">
-              <span className="dash-kpi-tagline">
-                {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear} · {formatShortCurrency(summary.monthlyPayroll || payrollCycle.totalNetSalary, currencySym)}
-              </span>
-              <span className="dash-kpi-arrow" aria-hidden="true">→</span>
-            </div>
-          </div>
-        </Link>
-      </section>
-
-      {/* HR Intelligence Section: Proactive Action Items & Bottlenecks */}
-      <HrIntelligenceSection />
-
-      {/* ====================================================================
-          3. Modernized Graphs Section — EXACTLY TWO PRIMARY GRAPHS
-          Graph 1: Interactive Donut Attendance Overview with Attendance Rate
-          Graph 2: Polished Compact Recruitment Funnel
-          (Vertical monthly payroll graph has been completely removed)
-          ==================================================================== */}
-      <section className="dash-graphs-row" aria-label="Attendance and Recruitment Analytics">
-        {/* Graph 1: Modern Interactive Donut Attendance Overview */}
-        <article className="dash-chart-card dash-chart-card-attendance">
-          <div className="dash-card-header">
-            <div className="dash-card-title-group">
-              <div className="dash-card-title-badge-row">
-                <h2 className="dash-card-title">Attendance Overview</h2>
-                {/* Selectable Range Toggle */}
-                <div className="dash-range-toggle" role="tablist" aria-label="Select attendance range">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={attendanceRange === "TODAY"}
-                    className={`dash-range-btn ${attendanceRange === "TODAY" ? "is-active" : ""}`}
-                    onClick={() => setAttendanceRange("TODAY")}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={attendanceRange === "7D"}
-                    className={`dash-range-btn ${attendanceRange === "7D" ? "is-active" : ""}`}
-                    onClick={() => setAttendanceRange("7D")}
-                  >
-                    7 Days
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={attendanceRange === "30D"}
-                    className={`dash-range-btn ${attendanceRange === "30D" ? "is-active" : ""}`}
-                    onClick={() => setAttendanceRange("30D")}
-                  >
-                    30 Days
-                  </button>
-                </div>
-              </div>
-              <span className="dash-card-subtitle">
-                {attendanceRange === "TODAY"
-                  ? "Live distribution for current shift"
-                  : attendanceRange === "7D"
-                  ? "Aggregated distribution for past 7 days"
-                  : `Monthly distribution for ${monthNames[selectedMonth - 1]} ${selectedYear}`}
-              </span>
-            </div>
-
-            <div className="dash-rate-badge-pill" title="Present rate across active workforce">
-              <span className="dash-rate-number">{attendanceRate}%</span>
-              <span className="dash-rate-tag">Present Rate</span>
-            </div>
-          </div>
-
-          {/* Interactive Donut Visualization + Metrics Breakdown */}
-          <div className="dash-donut-content-layout">
-            {/* SVG Donut Chart with Interactive Center Readout */}
-            <div className="dash-donut-svg-wrap">
-              <svg className="dash-donut-svg" viewBox="0 0 200 200">
-                {/* Background Track */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="70"
-                  stroke="#f1f5f9"
-                  strokeWidth="22"
-                  fill="none"
-                />
-
-                {/* Render Donut Slices */}
-                {donutSlices.totalCount === 0 ? (
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="70"
-                    stroke="#e2e8f0"
-                    strokeWidth="22"
-                    fill="none"
-                  />
-                ) : (
-                  donutSlices.slices.map((slice) => (
-                    <circle
-                      key={slice.key}
-                      cx="100"
-                      cy="100"
-                      r="70"
-                      stroke={slice.color}
-                      strokeWidth={hoveredSlice === slice.key ? "25" : "22"}
-                      strokeDasharray={slice.dashArray}
-                      strokeDashoffset={slice.dashOffset}
-                      fill="none"
-                      transform="rotate(-90 100 100)"
-                      cursor="pointer"
-                      className="dash-donut-slice"
-                      onMouseEnter={() => setHoveredSlice(slice.key)}
-                      onMouseLeave={() => setHoveredSlice(null)}
-                      onClick={() => {
-                        if (slice.route) {
-                          navigate(`${slice.route}?status=${slice.filterParam}`);
-                        } else {
-                          navigate(`/admin/attendance?filter=${slice.filterParam}`);
-                        }
-                      }}
-                    />
-                  ))
-                )}
-              </svg>
-
-              {/* Dynamic Center Readout on Hover or Default to Attendance Rate */}
-              <div className="dash-donut-center" aria-live="polite">
-                {hoveredSlice ? (
-                  (() => {
-                    const activeSlice = donutSlices.slices.find((s) => s.key === hoveredSlice);
-                    if (!activeSlice) return null;
-                    return (
-                      <>
-                        <span className="dash-center-number" style={{ color: activeSlice.color }}>
-                          {activeSlice.count}
-                        </span>
-                        <span className="dash-center-label">{activeSlice.label}</span>
-                        <span className="dash-center-pct">({activeSlice.percentage.toFixed(1)}%)</span>
-                      </>
-                    );
-                  })()
-                ) : (
-                  <>
-                    <span className="dash-center-number">{summary.todayPresent ?? 0}</span>
-                    <span className="dash-center-label">Present</span>
-                    <span className="dash-center-pct">{attendanceRate}% active</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Interactive Legend with Toggle Controls & Exact Counts */}
-            <div className="dash-donut-legend-list" role="list" aria-label="Attendance categories">
-              {donutSlices.slices.map((slice) => {
-                const isHovered = hoveredSlice === slice.key;
-
-                return (
-                  <div
-                    key={slice.key}
-                    role="listitem"
-                    className={`dash-donut-legend-item ${isHovered ? "is-hovered" : ""}`}
-                    onMouseEnter={() => setHoveredSlice(slice.key)}
-                    onMouseLeave={() => setHoveredSlice(null)}
-                  >
-                    <button
-                      type="button"
-                      className="dash-legend-toggle-btn"
-                      onClick={() => toggleSeries(slice.key)}
-                      title={`Toggle ${slice.label} slice`}
-                      aria-label={`Toggle ${slice.label}`}
-                    >
-                      <span className="dash-legend-dot" style={{ background: slice.color }} />
-                      <span className="dash-legend-label">{slice.label}</span>
-                    </button>
-                    <div className="dash-legend-values">
-                      <span className="dash-legend-count">{slice.count}</span>
-                      <span className="dash-legend-pct">({slice.percentage.toFixed(0)}%)</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="dash-card-footer">
-            <span className="dash-card-footer-info">
-              Click any category or slice to view filtered attendance records
-            </span>
-            <Link to="/admin/attendance" className="dash-card-link">
-              View Attendance Hub →
-            </Link>
-          </div>
-        </article>
-
-        {/* Graph 2: Polished Compact Recruitment Funnel */}
-        <article className="dash-chart-card dash-chart-card-funnel">
-          <div className="dash-card-header">
-            <div className="dash-card-title-group">
-              <h2 className="dash-card-title">Recruitment Funnel</h2>
-              <span className="dash-card-subtitle">Active hiring pipeline conversion</span>
-            </div>
-            <span className="dash-funnel-rate-pill" title="Conversion rate of accepted candidates">
-              {funnel.acceptanceRate || "0.0"}% Conversion
+      <div className="fernly-bento-grid">
+        {/* ====================================================================
+            ROW 1: WORKFORCE OVERVIEW (4 COMPACT KPI CARDS, SPAN 3 EACH)
+            ==================================================================== */}
+        {/* Card 1: Total Workforce (Hero Deep Green Gradient) */}
+        <Link to="/admin" className="card stat stat--hero" style={{ gridColumn: "span 3" }}>
+          <div className="stat__head">
+            <h2 className="stat__title">Total Workforce</h2>
+            <span className="stat__arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
+          <p className="stat__num">{totalEmployees}</p>
+          <p className="stat__note">
+            <span className="trend-badge is-green">Active</span>
+            <span>On company payroll</span>
+          </p>
+        </Link>
 
-          <div className="dash-funnel-stages-wrap">
-            {/* Stage 1: Offers Generated */}
-            <Link
-              to="/admin/offers"
-              className="dash-funnel-stage-card is-interactive"
-              title="Click to view all offers"
-            >
-              <div className="dash-funnel-stage-header">
-                <div className="dash-funnel-stage-left">
-                  <div className="dash-stage-icon-dot dash-dot-dark" />
-                  <span className="dash-stage-name">Offers Generated</span>
-                </div>
-                <div className="dash-stage-right">
-                  <span className="dash-stage-number">{funnel.offersGenerated || 0}</span>
-                  <span className="dash-stage-sub">total</span>
-                </div>
-              </div>
-              <div className="dash-funnel-meter-track">
-                <div
-                  className="dash-funnel-meter-fill dash-fill-neutral"
-                  style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }}
-                />
-              </div>
-            </Link>
-
-            {/* Stage 2: Accepted */}
-            <Link
-              to="/admin/offers?status=ACCEPTED"
-              className="dash-funnel-stage-card is-interactive"
-              title="Click to view Accepted offers"
-            >
-              <div className="dash-funnel-stage-header">
-                <div className="dash-funnel-stage-left">
-                  <div className="dash-stage-icon-dot dash-dot-green" />
-                  <span className="dash-stage-name">Accepted</span>
-                </div>
-                <div className="dash-stage-right">
-                  <span className="dash-stage-number">{funnel.accepted || 0}</span>
-                  <span className="dash-stage-sub">({funnel.acceptedPct || 0}%)</span>
-                </div>
-              </div>
-              <div className="dash-funnel-meter-track">
-                <div
-                  className="dash-funnel-meter-fill dash-fill-green"
-                  style={{ width: `${Math.min(funnel.acceptedPct || 0, 100)}%` }}
-                />
-              </div>
-            </Link>
-
-            {/* Stage 3: Pending Candidate Review */}
-            <Link
-              to="/admin/offers?status=SENT"
-              className="dash-funnel-stage-card is-interactive"
-              title="Click to view Sent & Pending offers"
-            >
-              <div className="dash-funnel-stage-header">
-                <div className="dash-funnel-stage-left">
-                  <div className="dash-stage-icon-dot dash-dot-amber" />
-                  <span className="dash-stage-name">Pending Candidate Review</span>
-                </div>
-                <div className="dash-stage-right">
-                  <span className="dash-stage-number">{funnel.pending || 0}</span>
-                  <span className="dash-stage-sub">({funnel.pendingPct || 0}%)</span>
-                </div>
-              </div>
-              <div className="dash-funnel-meter-track">
-                <div
-                  className="dash-funnel-meter-fill dash-fill-amber"
-                  style={{ width: `${Math.min(funnel.pendingPct || 0, 100)}%` }}
-                />
-              </div>
-            </Link>
-
-            {/* Stage 4: Declined */}
-            <Link
-              to="/admin/offers?status=REJECTED"
-              className="dash-funnel-stage-card is-interactive"
-              title="Click to view Declined offers"
-            >
-              <div className="dash-funnel-stage-header">
-                <div className="dash-funnel-stage-left">
-                  <div className="dash-stage-icon-dot dash-dot-red" />
-                  <span className="dash-stage-name">Declined / Rejected</span>
-                </div>
-                <div className="dash-stage-right">
-                  <span className="dash-stage-number">{funnel.declined || 0}</span>
-                  <span className="dash-stage-sub">({funnel.declinedPct || 0}%)</span>
-                </div>
-              </div>
-              <div className="dash-funnel-meter-track">
-                <div
-                  className="dash-funnel-meter-fill dash-fill-red"
-                  style={{ width: `${Math.min(funnel.declinedPct || 0, 100)}%` }}
-                />
-              </div>
-            </Link>
-          </div>
-
-          <div className="dash-card-footer">
-            <span className="dash-card-footer-info">
-              Stages link directly to filtered offer letters
+        {/* Card 2: Present Today */}
+        <Link to="/admin/attendance?filter=PRESENT" className="card stat" style={{ gridColumn: "span 3" }}>
+          <div className="stat__head">
+            <h2 className="stat__title">Present Today</h2>
+            <span className="stat__arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
-            <Link to="/admin/offers" className="dash-card-link">
-              Manage Offers →
-            </Link>
           </div>
-        </article>
-      </section>
+          <p className="stat__num">{summary.todayPresent ?? 0}</p>
+          <p className="stat__note">
+            <span className="trend-badge is-green">{attendanceRate}%</span>
+            <span>Active presence rate</span>
+          </p>
+        </Link>
 
-      {/* ====================================================================
-          4. Useful Payroll Action Centre & Compact Attendance Calendar
-          - Left: Payroll Action Centre (What do I need to do about payroll?)
-          - Right: Compact Attendance Calendar (Conventional 7-column monthly widget)
-          ==================================================================== */}
-      <section className="dash-payroll-calendar-row" aria-label="Payroll Action Centre and Attendance Calendar">
-        {/* Payroll Action Centre */}
-        <article className="dash-payroll-action-card">
-          <div className="dash-card-header">
-            <div className="dash-card-title-group">
-              <div className="dash-card-title-badge-row">
-                <h3 className="dash-card-title">Payroll Action Centre</h3>
-                <span className={`dash-action-status-pill pill-${payrollCycle.status ? payrollCycle.status.toLowerCase() : "draft"}`}>
-                  {payrollStatusLabel}
-                </span>
-              </div>
-              <span className="dash-card-subtitle">
-                Operational status for {monthNames[selectedMonth - 1]} {selectedYear}
-              </span>
-            </div>
-            <Link to="/admin/payroll?tab=payroll_registers" className="dash-payroll-hub-link">
-              Payroll Register →
-            </Link>
-          </div>
-
-          {/* Primary Action Banner */}
-          <div className="dash-payroll-primary-action-box">
-            <div className="dash-primary-action-text-group">
-              <span className="dash-action-eyebrow">Required HR Action:</span>
-              <p className="dash-action-headline">
-                {payrollCycle.pendingAction || "Review monthly compensation calculations"}
-              </p>
-            </div>
-            <Link
-              to="/admin/payroll?tab=payroll_registers"
-              className="dash-action-cta-btn"
-              title="Open payroll register to act"
-            >
-              <span>Take Action</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          </div>
-
-          {/* Key Payroll Metrics & Breakdown Panel */}
-          <div className="dash-payroll-metrics-list">
-            {/* Row 1: Cycle Amount */}
-            <div className="dash-payroll-metric-row">
-              <div className="dash-pm-label-wrap">
-                <span className="dash-pm-dot" />
-                <span className="dash-pm-label">Net Payable Salary:</span>
-              </div>
-              <span className="dash-pm-value">
-                {formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll || 0, currencySym)}
-              </span>
-            </div>
-
-            {/* Row 2: Employees Awaiting Processing */}
-            <div className="dash-payroll-metric-row">
-              <div className="dash-pm-label-wrap">
-                <span className="dash-pm-dot" />
-                <span className="dash-pm-label">Staff in Active Register:</span>
-              </div>
-              <span className="dash-pm-value">
-                <strong>{payrollCycle.employeeCount || 0}</strong> of {summary.activeEmployees || 0} active employees
-                {payrollCycle.employeesAwaitingProcessing > 0 && (
-                  <span className="dash-pm-tag-amber"> ({payrollCycle.employeesAwaitingProcessing} pending)</span>
-                )}
-              </span>
-            </div>
-
-            {/* Row 3: Payment Status */}
-            <div className="dash-payroll-metric-row">
-              <div className="dash-pm-label-wrap">
-                <span className="dash-pm-dot" />
-                <span className="dash-pm-label">Disbursement Status:</span>
-              </div>
-              <span className="dash-pm-value">
-                {payrollCycle.isPaymentPending ? (
-                  <span className="dash-pm-tag-rose">
-                    Payment Pending ({formatShortCurrency(payrollCycle.pendingPaymentAmount || payrollCycle.totalNetSalary, currencySym)})
-                  </span>
-                ) : payrollCycle.status === "PAID" ? (
-                  <span className="dash-pm-tag-green">All payouts recorded</span>
-                ) : (
-                  <span className="dash-pm-tag-neutral">Awaiting cycle finalization</span>
-                )}
-              </span>
-            </div>
-
-            {/* Row 4: Last Completed Cycle */}
-            {lastCompleted && (
-              <div className="dash-payroll-metric-row">
-                <div className="dash-pm-label-wrap">
-                  <span className="dash-pm-dot" />
-                  <span className="dash-pm-label">Last Completed Cycle:</span>
-                </div>
-                <span className="dash-pm-value">
-                  {monthNames[lastCompleted.periodMonth - 1]?.slice(0, 3)} {lastCompleted.periodYear} · {formatShortCurrency(lastCompleted.totalNetSalary, currencySym)}
-                  {lastCompleted.paymentDate && ` (Paid ${formatDisplayDate(lastCompleted.paymentDate)})`}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="dash-card-footer">
-            <span className="dash-card-footer-info">
-              Real-time synchronization with tenant payroll cycle workflows
+        {/* Card 3: Absent / Late / On Leave */}
+        <Link to="/admin/leave" className="card stat" style={{ gridColumn: "span 3" }}>
+          <div className="stat__head">
+            <h2 className="stat__title">On Leave & Exceptions</h2>
+            <span className="stat__arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
-            <Link to="/admin/payroll" className="dash-card-link">
-              Open Payroll Hub →
-            </Link>
           </div>
-        </article>
+          <p className="stat__num">{(summary.onLeave ?? 0) + (summary.todayLate ?? 0)}</p>
+          <p className="stat__note">
+            <span>{summary.onLeave ?? 0} on leave · {summary.todayLate ?? 0} late</span>
+          </p>
+        </Link>
 
-        {/* Compact Attendance Calendar (Conventional 7-column Monthly Widget) */}
-        <article className="dash-calendar-card" aria-label="Monthly Attendance Calendar">
-          <div className="dash-calendar-header">
-            <div className="dash-calendar-title-wrap">
-              <div className="dash-calendar-icon-pill" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="dash-calendar-title">Attendance Calendar</h3>
-                <span className="dash-calendar-subtitle">
-                  {monthNames[selectedMonth - 1]} {selectedYear}
-                </span>
-              </div>
+        {/* Card 4: Pending HR Actions */}
+        <Link to="/admin/leave?status=PENDING" className="card stat" style={{ gridColumn: "span 3" }}>
+          <div className="stat__head">
+            <h2 className="stat__title">Pending HR Actions</h2>
+            <span className="stat__arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
+            </span>
+          </div>
+          <p className="stat__num">{totalPendingActions}</p>
+          <p className="stat__note">
+            <span className="trend-badge is-amber">Review</span>
+            <span>Awaiting authorization</span>
+          </p>
+        </Link>
+
+        {/* ====================================================================
+            ROW 2: ASYMMETRIC 8 / 4 SPLIT
+            - Left (Span 8): Attendance & Work Hours Analytics (Capsule Bar Chart)
+            - Right (Span 4): Pending HR Actions List
+            ==================================================================== */}
+        <section className="card analytics-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Attendance Trends</h2>
             </div>
 
-            {/* Month Navigation Controls */}
-            <div className="dash-cal-nav-buttons">
-              <button
-                type="button"
-                className="dash-cal-nav-btn"
-                onClick={handlePrevMonth}
-                title="Previous Month"
-                aria-label="Previous Month"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                className="dash-cal-nav-btn"
-                onClick={handleNextMonth}
-                title="Next Month"
-                aria-label="Next Month"
-              >
-                ›
-              </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="seg-control" role="tablist" aria-label="Select date range">
+                <button
+                  type="button"
+                  className={`seg-btn ${attendanceRange === "TODAY" ? "is-active" : ""}`}
+                  onClick={() => setAttendanceRange("TODAY")}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={`seg-btn ${attendanceRange === "7D" ? "is-active" : ""}`}
+                  onClick={() => setAttendanceRange("7D")}
+                >
+                  7 Days
+                </button>
+                <button
+                  type="button"
+                  className={`seg-btn ${attendanceRange === "30D" ? "is-active" : ""}`}
+                  onClick={() => setAttendanceRange("30D")}
+                >
+                  30 Days
+                </button>
+              </div>
+
+              <Link to="/admin/attendance?tab=tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
+                <span className="pulse-dot" />
+                <span>Live Tracking</span>
+              </Link>
+              <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance Hub">
+                <span>Attendance Hub</span>
+                <span aria-hidden="true">→</span>
+              </Link>
             </div>
           </div>
 
-          {/* Weekday Row (Mon - Sun) */}
-          <div className="dash-cal-weekdays-row" aria-hidden="true">
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
-            <span>Sat</span>
-            <span>Sun</span>
-          </div>
-
-          {/* Compact Calendar Grid with Rectangular Date Cells */}
-          <div className="dash-cal-grid" role="grid" aria-label={`Calendar grid for ${monthNames[selectedMonth - 1]} ${selectedYear}`}>
-            {/* Blank offset cells before the 1st of month */}
-            {Array.from({ length: calendarBlankSlots }).map((_, idx) => (
-              <div key={`blank-${idx}`} className="dash-cal-cell dash-cal-blank" aria-hidden="true" />
-            ))}
-
-            {/* Days of the Month */}
-            {(calendarData.days || []).map((dayItem) => {
-              const isSelected = selectedCalendarDateStr === dayItem.date;
-              const hasActivity = dayItem.presentCount > 0 || dayItem.lateCount > 0 || dayItem.leaveCount > 0 || dayItem.absentCount > 0;
+          {/* Fernly Signature Capsule Bar Chart */}
+          <div className="capsule-bars-container" role="img" aria-label="Weekly attendance capsule bars">
+            {weeklyBars.map((bar, idx) => {
+              const isPeak = bar.pct >= 90 && !bar.isWeekend;
+              const isLight = bar.pct < 70 && !bar.isWeekend;
+              const barClass = bar.isWeekend
+                ? "bar--weekend"
+                : isPeak
+                ? "bar--peak"
+                : isLight
+                ? "bar--light"
+                : "bar--mid";
 
               return (
-                <button
-                  key={dayItem.date}
-                  type="button"
-                  role="gridcell"
-                  aria-selected={isSelected}
-                  tabIndex={0}
-                  className={`dash-cal-cell dash-cal-day ${isSelected ? "is-selected" : ""} ${dayItem.isToday ? "is-today" : ""} ${dayItem.isWeekend ? "is-weekend" : ""} ${dayItem.isHoliday ? "is-holiday" : ""}`}
-                  onClick={() => setSelectedCalendarDateStr(dayItem.date)}
-                  title={`${dayItem.date}: ${dayItem.isHoliday ? dayItem.holidayName : (dayItem.isWeekend ? "Weekend" : `${dayItem.presentCount} present, ${dayItem.leaveCount} on leave`)}`}
+                <div
+                  key={`${bar.dayLetter}-${idx}`}
+                  className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
+                  onMouseEnter={() => setHoveredDay(bar)}
+                  onMouseLeave={() => setHoveredDay(null)}
                 >
-                  <span className="dash-cal-day-num">{dayItem.day}</span>
-
-                  {/* Accessible Status Indicator Dots */}
-                  <div className="dash-cal-dots-wrap" aria-hidden="true">
-                    {dayItem.isHoliday ? (
-                      <span className="dash-cal-holiday-star" title="Holiday">★</span>
-                    ) : hasActivity ? (
-                      <>
-                        {dayItem.presentCount > 0 && <span className="dash-cal-dot dot-present" />}
-                        {dayItem.lateCount > 0 && <span className="dash-cal-dot dot-late" />}
-                        {dayItem.leaveCount > 0 && <span className="dash-cal-dot dot-leave" />}
-                        {dayItem.absentCount > 0 && !dayItem.isWeekend && <span className="dash-cal-dot dot-absent" />}
-                      </>
-                    ) : (
-                      <span className="dash-cal-dot dot-empty" />
-                    )}
+                  <div className="capsule-bar-track">
+                    <button
+                      type="button"
+                      className={`capsule-bar ${barClass}`}
+                      style={{ "--h": bar.heightVal }}
+                      aria-label={`${bar.date || "Day"}: ${bar.present} present (${bar.pct}%)`}
+                    >
+                      <span className="bar-fill" />
+                    </button>
                   </div>
-                </button>
+                  <span className="bar-day-label">{bar.dayLetter}</span>
+                </div>
               );
             })}
           </div>
 
-          {/* Compact Calendar Legend */}
-          <div className="dash-cal-legend-bar">
-            <span className="dash-cal-legend-item">
-              <span className="dash-cal-dot dot-present" /> Present
-            </span>
-            <span className="dash-cal-legend-item">
-              <span className="dash-cal-dot dot-late" /> Late
-            </span>
-            <span className="dash-cal-legend-item">
-              <span className="dash-cal-dot dot-leave" /> Leave
-            </span>
-            <span className="dash-cal-legend-item">
-              <span className="dash-cal-dot dot-absent" /> Absent
-            </span>
-            <span className="dash-cal-legend-item">
-              <span className="dash-cal-holiday-star">★</span> Holiday
-            </span>
-          </div>
-
-          {/* Selected Date Summary Box */}
-          {selectedCalendarDay && (
-            <div className="dash-cal-selected-summary">
-              <div className="dash-selected-header">
-                <div>
-                  <h4 className="dash-selected-date-text">
-                    {formatFullWeekdayDate(selectedCalendarDay.date)}
-                  </h4>
-                  <span className="dash-selected-tag">
-                    {selectedCalendarDay.isToday
-                      ? "Today"
-                      : selectedCalendarDay.isHoliday
-                      ? `Holiday: ${selectedCalendarDay.holidayName}`
-                      : selectedCalendarDay.isWeekend
-                      ? "Weekend"
-                      : "Workday"}
-                  </span>
-                </div>
-                <Link
-                  to={`/admin/attendance?date=${selectedCalendarDay.date}`}
-                  className="dash-selected-action-btn"
-                  title={`View detailed attendance records for ${selectedCalendarDay.date}`}
-                >
-                  <span>View Attendance</span>
-                  <span aria-hidden="true">→</span>
-                </Link>
-              </div>
-
-              <div className="dash-selected-badges-grid">
-                <div className="dash-selected-badge dash-badge-present">
-                  <span className="dash-badge-num">{selectedCalendarDay.presentCount ?? 0}</span>
-                  <span className="dash-badge-lbl">Present</span>
-                </div>
-                <div className="dash-selected-badge dash-badge-late">
-                  <span className="dash-badge-num">{selectedCalendarDay.lateCount ?? 0}</span>
-                  <span className="dash-badge-lbl">Late</span>
-                </div>
-                <div className="dash-selected-badge dash-badge-leave">
-                  <span className="dash-badge-num">{selectedCalendarDay.leaveCount ?? 0}</span>
-                  <span className="dash-badge-lbl">On Leave</span>
-                </div>
-                <div className="dash-selected-badge dash-badge-absent">
-                  <span className="dash-badge-num">{selectedCalendarDay.absentCount ?? 0}</span>
-                  <span className="dash-badge-lbl">Absent</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </article>
-      </section>
-
-      {/* ====================================================================
-          5. Compact Supporting Operational Information
-          - Panel 1: Pending Leave Requests
-          - Panel 2: Recent Offer Letters
-          - Panel 3: Upcoming Holidays
-          ==================================================================== */}
-      <section className="dash-operational-grid" aria-label="Operational updates and tasks">
-        {/* Panel 1: Pending Leave Requests */}
-        <article className="dash-panel-card">
-          <div className="dash-panel-header">
-            <div className="dash-panel-title-wrap">
-              <h3 className="dash-panel-title">Pending Leave Requests</h3>
-              <span className="dash-panel-badge dash-badge-amber">
-                {pendingLeaves.length} pending
+          {/* Breakdown Indicators and Shift Status */}
+          <div className="attendance-breakdown-row">
+            <div className="attendance-legend-group">
+              <span className="legend-item">
+                <span className="legend-dot dot-present" />
+                <span>Present: <b>{hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0)}</b></span>
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot dot-late" />
+                <span>Late: <b>{hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0)}</b></span>
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot dot-absent" />
+                <span>Absent: <b>{hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0)}</b></span>
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot dot-leave" />
+                <span>On Leave: <b>{hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0)}</b></span>
               </span>
             </div>
-            <Link to="/admin/leave?status=PENDING" className="dash-panel-link">
-              View All
+
+            <div className="shift-status-pill">
+              <span className="pulse-dot" />
+              <span>{hoveredDay ? `Viewing ${hoveredDay.date || "Day"}` : `Shift active · Office starts ${meta.officeStartTime || "09:30 AM"}`}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Action Center (Span 4) */}
+        <section className="card pending-actions-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Action Center</h2>
+            </div>
+            <span className="pending-count-chip">{totalPendingActions} pending</span>
+          </div>
+
+          <div className="pending-task-list">
+            {/* 1. Leave Approval */}
+            <Link to="/admin/leave?status=PENDING" className="pending-task-item" title="Approve pending leaves">
+              <div className="task-icon-circle icon-leave">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+              </div>
+              <div className="task-details">
+                <p className="task-title">Leave Approvals ({pendingLeaves.length})</p>
+                <p className="task-desc">
+                  {pendingLeaves.length > 0 ? `${pendingLeaves.length} employee request(s) awaiting review` : "All leave requests up to date"}
+                </p>
+              </div>
+              <span className={`task-action-pill ${pendingLeaves.length > 0 ? "is-urgent" : ""}`}>Review</span>
+            </Link>
+
+            {/* 2. Offer Letters */}
+            <Link to="/admin/offers?status=SENT" className="pending-task-item" title="Review candidate offers">
+              <div className="task-icon-circle icon-offer">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+              </div>
+              <div className="task-details">
+                <p className="task-title">Candidate Offers ({pendingOffersCount})</p>
+                <p className="task-desc">{pendingOffersCount > 0 ? `${pendingOffersCount} candidate offer(s) awaiting response` : "All issued offers tracked"}</p>
+              </div>
+              <span className="task-action-pill">Track</span>
+            </Link>
+
+            {/* 3. Candidate Onboarding */}
+            <Link to="/admin/onboarding" className="pending-task-item" title="Onboarding checks">
+              <div className="task-icon-circle icon-onboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              </div>
+              <div className="task-details">
+                <p className="task-title">Onboarding Pipeline</p>
+                <p className="task-desc">Employee profile & credentials verification</p>
+              </div>
+              <span className="task-action-pill">Verify</span>
+            </Link>
+
+            {/* 4. Payroll Cycle Action */}
+            <Link to="/admin/payroll" className="pending-task-item" title="Monthly payroll register">
+              <div className="task-icon-circle icon-payroll">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="7" cy="15" r="1.5"/></svg>
+              </div>
+              <div className="task-details">
+                <p className="task-title">Payroll Status ({payrollCycle.statusLabel || "Draft"})</p>
+                <p className="task-desc">{payrollCycle.pendingAction || "Review monthly compensation register"}</p>
+              </div>
+              <span className="task-action-pill">Process</span>
+            </Link>
+          </div>
+        </section>
+
+        {/* ====================================================================
+            ROW 3: ASYMMETRIC 7 / 5 SPLIT
+            - Left (Span 7): Recruitment & Offer Letters Process Funnel
+            - Right (Span 5): Payroll & Compensation Health
+            ==================================================================== */}
+        <section className="card recruitment-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Offer Letters</h2>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% Conversion</span>
+              <Link to="/admin/offers" className="card-shortcut-link">
+                <span>Offer Letters</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
+
+          <div className="funnel-process-row">
+            {/* Stage 1: Generated */}
+            <Link to="/admin/offers" className="funnel-stage-tile" title="View all generated offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-dark" />
+                <span className="stage-name">Offers Generated</span>
+              </div>
+              <span className="stage-number">{funnel.offersGenerated || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
+              </div>
+            </Link>
+
+            {/* Stage 2: Pending */}
+            <Link to="/admin/offers?status=SENT" className="funnel-stage-tile" title="View pending candidate offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-amber" />
+                <span className="stage-name">Pending Review</span>
+              </div>
+              <span className="stage-number">{funnel.pending || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
+              </div>
+            </Link>
+
+            {/* Stage 3: Accepted */}
+            <Link to="/admin/offers?status=ACCEPTED" className="funnel-stage-tile" title="View accepted offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-green" />
+                <span className="stage-name">Accepted</span>
+              </div>
+              <span className="stage-number">{funnel.accepted || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
+              </div>
+            </Link>
+
+            {/* Stage 4: Declined */}
+            <Link to="/admin/offers?status=REJECTED" className="funnel-stage-tile" title="View declined offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-rose" />
+                <span className="stage-name">Declined</span>
+              </div>
+              <span className="stage-number">{funnel.declined || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
+              </div>
+            </Link>
+          </div>
+        </section>
+
+        {/* Payroll & Compensation Health (Span 5) */}
+        <section className="card payroll-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Payroll</h2>
+              <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear} Cycle</p>
+            </div>
+            <Link to="/admin/payroll" className="card-shortcut-link">
+              <span>Payroll</span>
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
 
-          <div className="dash-panel-content">
-            {pendingLeaves.length === 0 ? (
-              <div className="dash-panel-empty">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#a1a1aa" strokeWidth="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-                <p className="dash-panel-empty-title">All leaves reviewed</p>
-                <span className="dash-panel-empty-text">No pending leave requests requiring HR attention.</span>
-              </div>
+          <div className="payroll-cycle-box">
+            <div>
+              <span className="payroll-net-amount">
+                {formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll, currencySym)}
+              </span>
+              <p className="payroll-sub-info">
+                {payrollCycle.employeeCount || 0} of {totalEmployees} active employees in register
+              </p>
+            </div>
+            <span className={`payroll-status-pill status-${(payrollCycle.status || "draft").toLowerCase()}`}>
+              {payrollCycle.statusLabel || "Draft"}
+            </span>
+          </div>
+
+          {/* 12-Month Expense Trend Mini Bars */}
+          <div className="expense-mini-bars" aria-label="12-month salary expense history">
+            {salaryExpenses.map((exp, idx) => {
+              const val = Number(exp.amount || 0);
+              const heightPct = Math.max(10, Math.min(100, Math.round((val / maxExpense) * 100)));
+              return (
+                <div key={`${exp.month}-${idx}`} className="expense-bar-col" title={`${exp.month}: ${formatShortCurrency(val, currencySym)}`}>
+                  <div className="expense-bar-fill" style={{ height: `${heightPct}%` }} />
+                  <span className="expense-bar-month">{exp.month?.[0]}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ====================================================================
+            ROW 4: ASYMMETRIC 7 / 5 SPLIT
+            - Left (Span 7): Recent Workforce Activity
+            - Right (Span 5): Resources & Staffing Allocation (Combined Assets & Teams)
+            ==================================================================== */}
+        <section className="card team-activity-card" style={{ gridColumn: "span 7" }}>
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Recent Activity</h2>
+            </div>
+            <Link to="/admin" className="card-shortcut-link">
+              <span>Directory</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+
+          <div className="activity-list">
+            {recentLeaves.length === 0 ? (
+              <p style={{ color: "var(--muted)", fontSize: "13px", margin: "14px 0" }}>
+                No recent activity recorded for this period.
+              </p>
             ) : (
-              <ul className="dash-operational-list">
-                {pendingLeaves.map((l) => (
-                  <li key={l.id} className="dash-operational-item">
-                    <div className="dash-avatar-circle">
-                      {l.avatar ? (
-                        <img src={l.avatar} alt={l.employeeName} className="dash-avatar-img" />
-                      ) : (
-                        <span>{l.employeeName.charAt(0).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <div className="dash-item-info">
-                      <span className="dash-item-primary">{l.employeeName}</span>
-                      <span className="dash-item-secondary">
-                        {l.leaveType} · {l.daysCount} {l.daysCount === 1 ? "day" : "days"} ({formatDisplayDate(l.fromDate)})
-                      </span>
-                    </div>
-                    <Link
-                      to="/admin/leave?status=PENDING"
-                      className="dash-item-action-btn"
-                      title="Review leave request"
+              recentLeaves.slice(0, 4).map((l, idx) => {
+                const colorPair = PASTEL_AVATAR_COLORS[idx % PASTEL_AVATAR_COLORS.length];
+                const initials = (l.employeeName || "TM")
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase();
+
+                const isDone = l.status === "APPROVED";
+                const isProg = l.status === "PENDING";
+                const pillClass = isDone ? "pill--done" : isProg ? "pill--prog" : "pill--pend";
+                const pillLabel = isDone ? "Approved" : isProg ? "Pending" : "Declined";
+
+                return (
+                  <div key={l.id || idx} className="activity-item">
+                    <span
+                      className="activity-avatar"
+                      style={{ background: colorPair.bg, color: colorPair.text }}
+                      aria-hidden="true"
                     >
-                      Review
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </article>
-
-        {/* Panel 2: Recent Offer Letters */}
-        <article className="dash-panel-card">
-          <div className="dash-panel-header">
-            <div className="dash-panel-title-wrap">
-              <h3 className="dash-panel-title">Recent Offer Letters</h3>
-              <span className="dash-panel-badge dash-badge-neutral">
-                {recentOffers.length} recent
-              </span>
-            </div>
-            <Link to="/admin/offers" className="dash-panel-link">
-              View All
-            </Link>
-          </div>
-
-          <div className="dash-panel-content">
-            {recentOffers.length === 0 ? (
-              <div className="dash-panel-empty">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#a1a1aa" strokeWidth="2">
-                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-                </svg>
-                <p className="dash-panel-empty-title">No recent activity</p>
-                <span className="dash-panel-empty-text">No recent offer letters generated.</span>
-              </div>
-            ) : (
-              <ul className="dash-operational-list">
-                {recentOffers.map((o) => (
-                  <li key={o.id} className="dash-operational-item">
-                    <div className="dash-item-info">
-                      <span className="dash-item-primary">{o.candidateName}</span>
-                      <span className="dash-item-secondary">
-                        {o.position} {o.department ? `· ${o.department}` : ""}
+                      {initials}
+                    </span>
+                    <div className="activity-body">
+                      <span className="activity-name">{l.employeeName}</span>
+                      <span className="activity-task">
+                        {l.department} · {l.leaveType} ({l.daysCount} {l.daysCount === 1 ? "day" : "days"})
                       </span>
                     </div>
-                    <StatusBadge status={o.status} />
-                  </li>
-                ))}
-              </ul>
+                    <span className={`pill ${pillClass}`}>{pillLabel}</span>
+                  </div>
+                );
+              })
             )}
           </div>
-        </article>
+        </section>
 
-        {/* Panel 3: Upcoming Holidays */}
-        <article className="dash-panel-card">
-          <div className="dash-panel-header">
-            <div className="dash-panel-title-wrap">
-              <h3 className="dash-panel-title">Upcoming Holidays</h3>
-              <span className="dash-panel-badge dash-badge-neutral">
-                {upcomingHolidays.length} upcoming
-              </span>
+        {/* Combined Resources & Staffing (Span 5) */}
+        <section className="card resources-allocation-card" style={{ gridColumn: "span 5" }}>
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Resources & Staffing</h2>
             </div>
-            <Link to="/admin/policies" className="dash-panel-link">
-              Calendar
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Link to="/admin/assets" className="card-shortcut-link" title="Company Assets">
+                <span>Assets</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+              <Link to="/admin/work-management" className="card-shortcut-link" title="Project Allocation">
+                <span>Teams</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
+
+          <div className="resources-allocation-body">
+            {/* Equipment Summary Sub-panel */}
+            <div className="resource-sub-block">
+              <div className="resource-sub-head">
+                <span className="resource-sub-title">Assigned Hardware</span>
+                <span className="resource-sub-badge">{companyAssets.employeesWithAssetsPct || 0}% Equipped</span>
+              </div>
+              <div className="asset-meter-track">
+                <div
+                  className="asset-meter-fill"
+                  style={{ width: `${companyAssets.employeesWithAssetsPct || 0}%` }}
+                />
+              </div>
+              <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
+                {companyAssets.employeesWithAssets || 0} of {companyAssets.totalEmployees || totalEmployees} staff active with company equipment
+              </p>
+            </div>
+
+            {/* Project Distribution Sub-panel */}
+            <div className="resource-sub-block" style={{ marginTop: 14 }}>
+              <span className="resource-sub-title" style={{ marginBottom: 8, display: "block" }}>
+                Project Allocation
+              </span>
+              <div className="teams-alloc-grid">
+                <div className="team-alloc-chip">
+                  <span className="team-alloc-dot" style={{ background: "var(--g-800)" }} />
+                  <span className="team-alloc-name">Mandate</span>
+                  <span className="team-alloc-num">{projectTeams.mandate?.count ?? projectTeams.MANDATE ?? 0}</span>
+                </div>
+                <div className="team-alloc-chip">
+                  <span className="team-alloc-dot" style={{ background: "var(--g-600)" }} />
+                  <span className="team-alloc-name">Retail</span>
+                  <span className="team-alloc-num">{projectTeams.retail?.count ?? projectTeams.RETAIL ?? 0}</span>
+                </div>
+                <div className="team-alloc-chip">
+                  <span className="team-alloc-dot" style={{ background: "#2563eb" }} />
+                  <span className="team-alloc-name">Internal Ops</span>
+                  <span className="team-alloc-num">{projectTeams.internal?.count ?? projectTeams.INTERNAL ?? (projectTeams.topStaffed?.[0]?.members ?? 0)}</span>
+                </div>
+                <div className="team-alloc-chip">
+                  <span className="team-alloc-dot" style={{ background: "var(--amber)" }} />
+                  <span className="team-alloc-name">Bench</span>
+                  <span className="team-alloc-num">{projectTeams.bench?.count ?? projectTeams.BENCH ?? 0}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ====================================================================
+            ROW 5: UPCOMING HOLIDAYS FOOTER STRIP (SPAN 12 FULL WIDTH)
+            ==================================================================== */}
+        <section className="card holidays-strip-card">
+          <div className="card__head" style={{ marginBottom: 8 }}>
+            <h3 className="card__title" style={{ fontSize: "15px" }}>Upcoming Company Holidays & Observances</h3>
+            <Link to="/admin/policies" className="card-shortcut-link">
+              <span>Policy Calendar</span>
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
 
-          <div className="dash-panel-content">
+          <div className="holidays-strip-row" role="list" aria-label="Upcoming holidays list">
             {upcomingHolidays.length === 0 ? (
-              <div className="dash-panel-empty">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#a1a1aa" strokeWidth="2">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                <p className="dash-panel-empty-title">No upcoming holidays</p>
-                <span className="dash-panel-empty-text">No company holidays scheduled in the policy calendar.</span>
-              </div>
+              <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                No scheduled holidays remaining this month.
+              </span>
             ) : (
-              <ul className="dash-operational-list">
-                {upcomingHolidays.map((h, idx) => {
-                  const parts = h.date?.split("-") || [];
-                  const monthShort = parts[1] ? monthNames[parseInt(parts[1], 10) - 1]?.slice(0, 3) : "—";
-                  const dayNum = parts[2] || "—";
-
-                  return (
-                    <li key={`${h.name}-${idx}`} className="dash-operational-item">
-                      <div className="dash-holiday-date-badge">
-                        <span className="dash-holiday-month">{monthShort}</span>
-                        <span className="dash-holiday-day">{dayNum}</span>
-                      </div>
-                      <div className="dash-item-info">
-                        <span className="dash-item-primary">{h.name}</span>
-                        <span className="dash-item-secondary">
-                          {h.isPaid ? "Paid Holiday" : "Company Holiday"}
-                        </span>
-                      </div>
-                      <span className="dash-holiday-tag">Scheduled</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              upcomingHolidays.map((h, idx) => (
+                <div key={`${h.name}-${idx}`} className="holiday-chip" role="listitem">
+                  <span className="holiday-chip-date">{formatDisplayDate(h.date)}</span>
+                  <div>
+                    <span className="holiday-chip-name">{h.name}</span>
+                    <span className="holiday-chip-type"> · {h.isPaid ? "Paid Holiday" : "Observance"}</span>
+                  </div>
+                </div>
+              ))
             )}
           </div>
-        </article>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import {
@@ -6,53 +6,51 @@ import {
   IconClock,
   IconCheck,
   IconAlertCircle,
-  IconAlertTriangle,
-  IconInfo,
-  IconArrowRight,
   IconCalendar,
-  IconFileText,
+  IconArrowRight,
   IconDollar,
 } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import "./EmployeeDashboard.css";
 
-function StatusBadge({ status, label }) {
-  const styles = {
-    CHECKED_IN: { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" },
-    CHECKED_OUT: { bg: "#fef3c7", text: "#b45309", border: "#fde68a" },
-    NOT_CHECKED_IN: { bg: "#f4f4f5", text: "#71717a", border: "#e4e4e7" },
-  };
-  const current = styles[status] || styles.NOT_CHECKED_IN;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "4px 10px",
-        borderRadius: 20,
-        fontSize: 12,
-        fontWeight: 600,
-        background: current.bg,
-        color: current.text,
-        border: `1px solid ${current.border}`,
-      }}
-    >
-      <span
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: "50%",
-          background: current.text,
-        }}
-      />
-      {label || status}
-    </span>
-  );
+function formatFullINR(amount, symbol = "₹") {
+  if (amount == null || isNaN(amount)) return `${symbol}0`;
+  const val = Math.round(Number(amount));
+  return `${symbol}${val.toLocaleString("en-IN")}`;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return "—";
+  try {
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      return d.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    }
+    return new Date(dateStr).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 export default function EmployeeDashboard() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -62,7 +60,7 @@ export default function EmployeeDashboard() {
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
 
-  // Leave Modal State for Quick Application
+  // Quick Leave Modal State
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
   const [leaveModalError, setLeaveModalError] = useState("");
@@ -297,7 +295,7 @@ export default function EmployeeDashboard() {
     }
   };
 
-  // Quick punch handlers
+  // Quick punch handlers with geolocation
   const handlePunch = async (actionType) => {
     try {
       setPunching(true);
@@ -348,15 +346,19 @@ export default function EmployeeDashboard() {
     ? new Date(attendance.today.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
-  const latestPayslip = payslips[0];
+  const latestPayslip = payslips[0] || null;
+
+  const attendanceRate = attendance?.summary?.attendanceRate ?? 100;
+  const daysPresent = attendance?.summary?.daysPresent ?? 0;
+  const totalWorkingDays = attendance?.summary?.totalWorkingDays ?? 22;
+
+  const employeeName = employee?.preferredName || employee?.fullName || user?.name || "Colleague";
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="Dashboard" />
-
+    <div className="emp-board-container">
       {/* Alerts */}
       {actionSuccess && (
-        <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <span>{actionSuccess}</span>
           <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")} aria-label="Dismiss">
             <IconClose size={14} />
@@ -365,7 +367,7 @@ export default function EmployeeDashboard() {
       )}
 
       {actionError && (
-        <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <span>{actionError}</span>
           <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")} aria-label="Dismiss">
             <IconClose size={14} />
@@ -373,504 +375,513 @@ export default function EmployeeDashboard() {
         </div>
       )}
 
-      {/* Loading State */}
-      {loading && (
+      {/* ====================================================================
+          1. Board Head: Greeting, Identity Badges, Quick Actions
+          ==================================================================== */}
+      {/* ====================================================================
+          1. Compact Welcome & Daily Status Area
+          ==================================================================== */}
+      <div className="emp-head">
+        <div className="emp-head__title-group">
+          <h1 className="emp-head__title">{getGreeting()}, {employeeName}</h1>
+          <div className="emp-head__meta">
+            <span className="emp-badge-pill emp-badge-pill--green">
+              {employee?.department || "General"}
+            </span>
+            <span className="emp-badge-pill">
+              {employee?.jobTitle || "Team Member"}
+            </span>
+            {employee?.employeeCode && (
+              <span className="emp-badge-pill">
+                ID: {employee.employeeCode}
+              </span>
+            )}
+            <span
+              className="emp-badge-pill"
+              style={{
+                background:
+                  todayStatus === "CHECKED_IN"
+                    ? "var(--g-100)"
+                    : todayStatus === "CHECKED_OUT"
+                    ? "var(--amber-bg)"
+                    : "var(--panel)",
+                color:
+                  todayStatus === "CHECKED_IN"
+                    ? "var(--g-800)"
+                    : todayStatus === "CHECKED_OUT"
+                    ? "var(--amber)"
+                    : "var(--muted)",
+                fontWeight: 600,
+              }}
+            >
+              {todayStatus === "CHECKED_IN"
+                ? "● Shift Active"
+                : todayStatus === "CHECKED_OUT"
+                ? "✓ Shift Completed"
+                : todayStatus === "ON_LEAVE"
+                ? "✈ On Leave"
+                : "○ Not Clocked In"}
+            </span>
+          </div>
+        </div>
+
+        <div className="emp-head__actions">
+          {/* Apply for Leave Action */}
+          <button
+            type="button"
+            className="btn--emp-primary"
+            onClick={handleOpenLeaveModal}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="12" y1="14" x2="12" y2="18" />
+              <line x1="10" y1="16" x2="14" y2="16" />
+            </svg>
+            <span>Apply for Leave</span>
+          </button>
+
+          {/* Profile Shortcut */}
+          <Link to="/app/profile" className="btn--emp-secondary">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <span>My Profile</span>
+          </Link>
+
+          {/* Sync Button */}
+          <button
+            type="button"
+            className="btn--ghost-sync"
+            onClick={() => fetchDashboard()}
+            title="Refresh dashboard metrics"
+            disabled={loading}
+            aria-label="Refresh dashboard"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={loading ? "spin-icon" : ""}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Loading Skeleton / State */}
+      {loading && !dashboardData && (
         <div style={{ textAlign: "center", padding: "60px 20px" }}>
           <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "#71717a", fontSize: 15 }}>Loading dashboard...</p>
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>Loading your employee workspace...</p>
         </div>
       )}
 
       {/* Error State */}
       {!loading && error && (
-        <div className="error" style={{ padding: 24, textAlign: "center" }}>
+        <div className="error" style={{ padding: 24, textAlign: "center", borderRadius: 16 }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => fetchDashboard()}>
+          <button type="button" className="btn--emp-primary" onClick={() => fetchDashboard()}>
             Retry Loading Dashboard
           </button>
         </div>
       )}
 
       {!loading && !error && (
-        <>
-          {/* Welcome Banner */}
-          <div
-            style={{
-              background: "#18181b",
-              color: "#ffffff",
-              borderRadius: 14,
-              padding: "24px 28px",
-              marginBottom: 28,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 16,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, color: "#a1a1aa", marginBottom: 4 }}>
-                Employee Portal
-              </div>
-              <h2 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 700, color: "#ffffff" }}>
-                Welcome back, {employee?.preferredName || employee?.fullName || user?.name || "Colleague"}
-              </h2>
-              <p style={{ margin: 0, fontSize: 14, color: "#d4d4d8" }}>
-                {employee?.jobTitle || "Team Member"} • {employee?.department || "General"} • Code:{" "}
-                <span style={{ fontWeight: 600, color: "#ffffff" }}>{employee?.employeeCode || "N/A"}</span>
-              </p>
-            </div>
-
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <Link
-                to="/app/profile"
-                className="btn-secondary"
-                style={{
-                  textDecoration: "none",
-                  padding: "9px 16px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                Profile
-              </Link>
-              <button
-                type="button"
-                onClick={handleOpenLeaveModal}
-                style={{
-                  background: "#ffffff",
-                  color: "#09090b",
-                  border: "1px solid #ffffff",
-                  padding: "9px 16px",
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Apply for Leave
-              </button>
-            </div>
-          </div>
-
-          {/* 4 Feature Overview Cards Grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: 20,
-              marginBottom: 28,
-            }}
-          >
-            {/* Card 1: Attendance Today */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 22px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#71717a", textTransform: "uppercase" }}>
-                    Attendance Today
-                  </span>
-                  <StatusBadge
-                    status={todayStatus}
-                    label={todayStatus === "CHECKED_IN" ? "Checked In" : todayStatus === "CHECKED_OUT" ? "Checked Out" : "Not Checked In"}
-                  />
+        <div className="emp-bento-grid">
+          {/* ====================================================================
+              SECTION 1: COMBINED ATTENDANCE & LEAVE OPERATIONS (SPAN 12)
+              Combines daily punch-in/out, GPS status & time-off balances
+              ==================================================================== */}
+          <section className="emp-card emp-combined-ops-card" style={{ gridColumn: "span 12" }}>
+            <div className="emp-combined-ops-grid">
+              {/* Left / Primary: Attendance & Live Shift Actions */}
+              <div className="emp-ops-attendance-col">
+                <div className="emp-card__head" style={{ marginBottom: 14 }}>
+                  <div>
+                    <h2 className="emp-card__title">Attendance</h2>
+                  </div>
+                  <Link to="/app/attendance" className="emp-card__link">
+                    <span>Attendance Log</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
                 </div>
 
-                <div style={{ fontSize: 13, color: "#52525b", marginBottom: 16 }}>
-                  {todayStatus === "CHECKED_IN" && (
-                    <div>Punched in at <strong>{checkInTimeFormatted}</strong></div>
-                  )}
-                  {todayStatus === "CHECKED_OUT" && (
-                    <div>In: <strong>{checkInTimeFormatted}</strong> • Out: <strong>{checkOutTimeFormatted}</strong></div>
-                  )}
-                  {todayStatus === "NOT_CHECKED_IN" && (
-                    <div>You have not punched in for work today.</div>
-                  )}
-                </div>
+                <div className="emp-att-hub">
+                  <div className="emp-att-status-box">
+                    <div className="emp-att-state-left">
+                      <span
+                        className={`emp-status-badge ${
+                          todayStatus === "CHECKED_IN"
+                            ? "status-in"
+                            : todayStatus === "CHECKED_OUT"
+                            ? "status-out"
+                            : todayStatus === "ON_LEAVE"
+                            ? "status-leave"
+                            : "status-not-in"
+                        }`}
+                      >
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background:
+                              todayStatus === "CHECKED_IN"
+                                ? "var(--g-700)"
+                                : todayStatus === "CHECKED_OUT"
+                                ? "#b45309"
+                                : todayStatus === "ON_LEAVE"
+                                ? "#0284c7"
+                                : "#6b7280",
+                          }}
+                        />
+                        {todayStatus === "CHECKED_IN"
+                          ? "Currently Checked In"
+                          : todayStatus === "CHECKED_OUT"
+                          ? "Shift Completed"
+                          : todayStatus === "ON_LEAVE"
+                          ? "On Approved Leave"
+                          : "Not Checked In Today"}
+                      </span>
 
-                {/* Quick Punch Buttons */}
-                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={punching || todayStatus === "CHECKED_IN"}
-                    onClick={() => handlePunch("check-in")}
-                    style={{ flex: 1, padding: "8px 12px", fontSize: 12.5 }}
-                  >
-                    {punching ? "Processing..." : "Punch In"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    disabled={punching || todayStatus !== "CHECKED_IN"}
-                    onClick={() => handlePunch("check-out")}
-                    style={{ flex: 1, padding: "8px 12px", fontSize: 12.5 }}
-                  >
-                    Punch Out
-                  </button>
-                </div>
-              </div>
+                      <div className="emp-att-time-info">
+                        {todayStatus === "CHECKED_IN" && (
+                          <span>Punched in at <strong>{checkInTimeFormatted}</strong></span>
+                        )}
+                        {todayStatus === "CHECKED_OUT" && (
+                          <span>In: <strong>{checkInTimeFormatted}</strong> · Out: <strong>{checkOutTimeFormatted}</strong></span>
+                        )}
+                        {todayStatus === "NOT_CHECKED_IN" && (
+                          <span>Ready to start work today</span>
+                        )}
+                        {todayStatus === "ON_LEAVE" && (
+                          <span>Enjoy your approved time off</span>
+                        )}
+                      </div>
+                    </div>
 
-              <Link
-                to="/app/attendance"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#18181b",
-                  textDecoration: "none",
-                  borderTop: "1px solid #f4f4f5",
-                  paddingTop: 12,
-                }}
-              >
-                <span>Open Full Attendance</span>
-                <IconArrowRight size={14} />
-              </Link>
-            </div>
+                    {/* Punch Actions */}
+                    <div className="emp-punch-actions">
+                      <button
+                        type="button"
+                        className="btn--punch-in"
+                        disabled={punching || todayStatus === "CHECKED_IN" || todayStatus === "ON_LEAVE"}
+                        onClick={() => handlePunch("check-in")}
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span>{punching ? "Processing..." : "Punch In"}</span>
+                      </button>
 
-            {/* Card 2: Leave Balances */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 22px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#71717a", textTransform: "uppercase" }}>
-                    Leave Balances
-                  </span>
-                  {leave?.summary?.pending > 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#b45309", background: "#fef3c7", padding: "2px 8px", borderRadius: 10 }}>
-                      {leave.summary.pending} Pending
+                      <button
+                        type="button"
+                        className="btn--punch-out"
+                        disabled={punching || todayStatus !== "CHECKED_IN"}
+                        onClick={() => handlePunch("check-out")}
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                          <polyline points="16 17 21 12 16 7" />
+                          <line x1="21" y1="12" x2="9" y2="12" />
+                        </svg>
+                        <span>Punch Out</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="emp-att-footer-row">
+                    <span className="emp-att-geo-badge">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
+                        <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      <span>Location verified</span>
                     </span>
-                  )}
-                </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, textAlign: "center", marginBottom: 16 }}>
-                  <div style={{ background: "#f8fafc", padding: "10px 8px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Casual</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>
-                      {leave?.balance?.casual ?? 0}
-                    </div>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "10px 8px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Sick</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>
-                      {leave?.balance?.sick ?? 0}
-                    </div>
-                  </div>
-                  <div style={{ background: "#f8fafc", padding: "10px 8px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Earned</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>
-                      {leave?.balance?.earned ?? 0}
-                    </div>
+                    <span>
+                      Office starts {dashboardData?.officeStartTime || "09:30 AM"} · <b>{daysPresent} of {totalWorkingDays}</b> working days present ({attendanceRate}%)
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <Link
-                to="/app/leave"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#18181b",
-                  textDecoration: "none",
-                  borderTop: "1px solid #f4f4f5",
-                  paddingTop: 12,
-                }}
-              >
-                <span>Manage Leave Requests</span>
-                <IconArrowRight size={14} />
-              </Link>
-            </div>
-
-            {/* Card 3: Latest Payslip */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 22px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#71717a", textTransform: "uppercase" }}>
-                    Latest Payslip
-                  </span>
-                  {latestPayslip && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#166534", background: "#f0fdf4", padding: "2px 8px", borderRadius: 10 }}>
-                      {latestPayslip.status}
-                    </span>
-                  )}
+              {/* Right / Secondary: Leave Balances & Fast Request */}
+              <div className="emp-ops-leave-col">
+                <div className="emp-card__head" style={{ marginBottom: 14 }}>
+                  <div>
+                    <h2 className="emp-card__title">Leave Balances</h2>
+                  </div>
+                  <Link to="/app/leave" className="emp-card__link">
+                    <span>Leave Requests</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
                 </div>
 
+                <div className="emp-leave-tiles">
+                  <div className="emp-leave-tile">
+                    <span className="emp-leave-tile__type">Casual</span>
+                    <span className="emp-leave-tile__count">{leave?.balance?.casual ?? 0}</span>
+                    <span className="emp-leave-tile__unit">Days</span>
+                  </div>
+                  <div className="emp-leave-tile">
+                    <span className="emp-leave-tile__type">Sick</span>
+                    <span className="emp-leave-tile__count">{leave?.balance?.sick ?? 0}</span>
+                    <span className="emp-leave-tile__unit">Days</span>
+                  </div>
+                  <div className="emp-leave-tile">
+                    <span className="emp-leave-tile__type">Earned</span>
+                    <span className="emp-leave-tile__count">{leave?.balance?.earned ?? 0}</span>
+                    <span className="emp-leave-tile__unit">Days</span>
+                  </div>
+                </div>
+
+                {leave?.summary?.pending > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <span className="emp-leave-pending-badge">
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#b45309" }} />
+                      {leave.summary.pending} request(s) awaiting review
+                    </span>
+                  </div>
+                )}
+
+                <div className="emp-leave-cutoff-note" style={{ marginTop: 10 }}>
+                  <span>
+                    Same-day cutoff: <b>{leaveEligibility.cutoffTime}</b> ({leaveEligibility.timezone}). Earliest: <b>{leaveEligibility.earliestEligibleDate}</b>.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ====================================================================
+              SECTION 2: PAY & EMPLOYEE BENEFITS (SPAN 6)
+              Combines latest payslip statement and assigned company equipment
+              ==================================================================== */}
+          <section className="emp-card" style={{ gridColumn: "span 6" }}>
+            <div className="emp-card__head">
+              <div>
+                <h2 className="emp-card__title">Pay & Benefits</h2>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Link to="/app/payslips" className="emp-card__link">
+                  <span>Payslips</span>
+                  <span aria-hidden="true">→</span>
+                </Link>
+                <Link to="/app/assets" className="emp-card__link">
+                  <span>Assets</span>
+                  <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            </div>
+
+            <div className="emp-dual-subsections">
+              {/* Sub-panel 1: Payslip */}
+              <div className="emp-subpanel">
+                <span className="emp-subpanel-title">Latest Payslip</span>
                 {latestPayslip ? (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: "#166534" }}>
-                      ₹{Number(latestPayslip.netPay || 0).toLocaleString("en-IN")}
+                  <div className="emp-payslip-mini-card">
+                    <div className="emp-payslip-mini-left">
+                      <span className="emp-payslip-mini-amount">{formatFullINR(latestPayslip.netPay)}</span>
+                      <span className="emp-payslip-mini-period">{latestPayslip.month} {latestPayslip.year} Statement</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "#71717a", marginTop: 4 }}>
-                      Statement for {latestPayslip.month} {latestPayslip.year}
-                    </div>
+                    <span className={`emp-payslip-status ${latestPayslip.status === "PAID" ? "status-paid" : "status-pending"}`}>
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: latestPayslip.status === "PAID" ? "var(--g-800)" : "#b45309",
+                        }}
+                      />
+                      {latestPayslip.status || "Paid"}
+                    </span>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 13, color: "#71717a", marginBottom: 16 }}>
-                    No finalized payslip records on file yet.
-                  </div>
+                  <p className="emp-empty-subtext">No finalized payslip records on file yet.</p>
                 )}
               </div>
 
-              <Link
-                to="/app/payslips"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#18181b",
-                  textDecoration: "none",
-                  borderTop: "1px solid #f4f4f5",
-                  paddingTop: 12,
-                }}
-              >
-                <span>View All Payslips</span>
-                <IconArrowRight size={14} />
-              </Link>
-            </div>
-
-            {/* Card 4: Assigned Assets */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 22px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#71717a", textTransform: "uppercase" }}>
-                    Company Assets
-                  </span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#0369a1", background: "#f0f9ff", padding: "2px 8px", borderRadius: 10 }}>
-                    {assets.length} Allocated
-                  </span>
-                </div>
-
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#09090b" }}>
-                    {assets.length} Device{assets.length === 1 ? "" : "s"}
+              {/* Sub-panel 2: Equipment */}
+              <div className="emp-subpanel">
+                <span className="emp-subpanel-title">Assigned Hardware ({assets.length})</span>
+                {assets.length > 0 ? (
+                  <div className="emp-asset-mini-list">
+                    {assets.slice(0, 2).map((a, idx) => (
+                      <div key={a.id || idx} className="emp-asset-mini-item">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="3" width="20" height="14" rx="2" />
+                          <line x1="8" y1="21" x2="16" y2="21" />
+                          <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                        <span className="emp-asset-mini-name">{a.name}</span>
+                        <span className="emp-asset-mini-tag">{a.assetTag || a.serial || "Assigned"}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 12.5, color: "#71717a", marginTop: 4 }}>
-                    {assets.length > 0 ? assets.map((a) => a.name).join(", ") : "No hardware allocated"}
-                  </div>
-                </div>
+                ) : (
+                  <p className="emp-empty-subtext">No company hardware currently assigned to your account.</p>
+                )}
               </div>
-
-              <Link
-                to="/app/assets"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#18181b",
-                  textDecoration: "none",
-                  borderTop: "1px solid #f4f4f5",
-                  paddingTop: 12,
-                }}
-              >
-                <span>View Asset Details</span>
-                <IconArrowRight size={14} />
-              </Link>
             </div>
-          </div>
+          </section>
 
-          {/* Upcoming Holidays & Quick Profile Banner */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
-            {/* Upcoming Holidays */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 24px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#09090b" }}>
-                  Upcoming Holidays
-                </h4>
-                <IconCalendar size={16} style={{ color: "#71717a" }} />
-              </div>
-
-              {holidays.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#71717a", padding: "12px 0" }}>
-                  No upcoming company holidays scheduled this quarter.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {holidays.slice(0, 3).map((h, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "8px 12px",
-                        background: "#f9fafb",
-                        borderRadius: 8,
-                        fontSize: 13,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: "#09090b" }}>{h.name}</span>
-                      <span style={{ color: "#71717a", fontSize: 12 }}>{h.date}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Profile & Self Service */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 24px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
+          {/* ====================================================================
+              SECTION 3: MY WORK & EMPLOYMENT INFORMATION (SPAN 6)
+              Combines project/team allocation and actionable deliverables
+              ==================================================================== */}
+          <section className="emp-card" style={{ gridColumn: "span 6" }}>
+            <div className="emp-card__head">
               <div>
-                <h4 style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 700, color: "#09090b" }}>
-                  Self-Service & Profile Details
-                </h4>
-                <p style={{ margin: "0 0 14px", fontSize: 13, color: "#71717a" }}>
-                  Need to review your official employment contract, emergency contacts, or banking details?
-                </p>
+                <h2 className="emp-card__title">My Work</h2>
               </div>
-
               <div style={{ display: "flex", gap: 10 }}>
-                <Link
-                  to="/app/profile"
-                  className="btn-secondary"
-                  style={{ textDecoration: "none", fontSize: 12.5, padding: "8px 14px" }}
-                >
-                  View Profile
+                <Link to="/app/tasks" className="emp-card__link">
+                  <span>Tasks</span>
+                  <span aria-hidden="true">→</span>
                 </Link>
-                <Link
-                  to="/app/settings"
-                  className="btn-secondary"
-                  style={{ textDecoration: "none", fontSize: 12.5, padding: "8px 14px" }}
-                >
-                  Account Settings
+                <Link to="/app/impact-points" className="emp-card__link">
+                  <span>Impact</span>
+                  <span aria-hidden="true">→</span>
                 </Link>
               </div>
             </div>
-          </div>
-        </>
+
+            <div className="emp-dual-subsections">
+              {/* Sub-panel 1: Project Allocation */}
+              <div className="emp-subpanel">
+                <span className="emp-subpanel-title">Project</span>
+                <div className="emp-project-mini-box">
+                  <span className="emp-project-title">{employee?.project?.projectName || "Enterprise Operations"}</span>
+                  <span className="emp-project-meta">
+                    Type: {employee?.project?.projectType || "Core Function"} · {employee?.workLocation || "Office"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sub-panel 2: Actionable Tasks */}
+              <div className="emp-subpanel">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span className="emp-subpanel-title">Tasks</span>
+                  <Link to="/app/tasks" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--g-700)", textDecoration: "none" }}>
+                    Queue →
+                  </Link>
+                </div>
+                <div className="emp-task-action-box">
+                  <div className="emp-task-info">
+                    <span className="emp-task-headline">Active Tasks</span>
+                  </div>
+                  <Link to="/app/tasks" className="emp-task-cta">
+                    Review
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ====================================================================
+              SECTION 4: UPCOMING SCHEDULE & SELF-SERVICE (SPAN 12)
+              Combines upcoming holidays and self-service quick links
+              ==================================================================== */}
+          <section className="emp-card emp-schedule-strip-card" style={{ gridColumn: "span 12" }}>
+            <div className="emp-schedule-strip-grid">
+              {/* Left: Holidays list */}
+              <div className="emp-schedule-holidays-col">
+                <div className="emp-card__head" style={{ marginBottom: 8 }}>
+                  <h3 className="emp-card__title" style={{ fontSize: "14px" }}>Upcoming Holidays</h3>
+                </div>
+                {holidays.length > 0 ? (
+                  <div className="emp-holiday-chips">
+                    {holidays.slice(0, 3).map((h, idx) => (
+                      <div key={idx} className="emp-holiday-chip">
+                        <span className="emp-holiday-date">{formatDisplayDate(h.date)}</span>
+                        <span style={{ fontWeight: 600 }}>{h.name}</span>
+                        <span style={{ fontSize: "11px", color: "var(--muted)" }}>· {h.day || "Holiday"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="emp-empty-subtext">No upcoming company holidays scheduled this quarter.</p>
+                )}
+              </div>
+
+              {/* Right: Quick Self-Service Links */}
+              <div className="emp-schedule-links-col">
+                <span className="emp-schedule-links-title">Quick Links</span>
+                <div className="emp-quick-links-group">
+                  <Link to="/app/profile" className="emp-quick-link-pill">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>
+                    <span>Profile</span>
+                  </Link>
+                  <Link to="/app/settings" className="emp-quick-link-pill">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span>Settings</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
 
-      {/* QUICK APPLY FOR LEAVE MODAL */}
+      {/* ====================================================================
+          QUICK APPLY FOR LEAVE MODAL (Redesigned with Forest-Green Tokens)
+          ==================================================================== */}
       {showLeaveModal && (
         <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
+          className="emp-modal-backdrop"
           onClick={() => !submittingLeave && setShowLeaveModal(false)}
         >
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 14,
-              padding: 24,
-              width: "100%",
-              maxWidth: 480,
-              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
-            }}
+            className="emp-modal-dialog"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="apply-leave-title"
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
+            <div className="emp-modal-head">
+              <h3 id="apply-leave-title" className="emp-modal-title">
                 Apply for Leave
               </h3>
               <button
                 type="button"
-                className="btn-sm btn-secondary"
+                className="emp-modal-close-btn"
                 onClick={() => setShowLeaveModal(false)}
                 disabled={submittingLeave}
                 aria-label="Close modal"
               >
-                <IconClose size={14} />
+                <IconClose size={18} />
               </button>
             </div>
 
-            {leaveModalError && <div className="error">{leaveModalError}</div>}
+            {leaveModalError && (
+              <div className="error" style={{ borderRadius: 10, fontSize: 13, padding: "10px 14px" }}>
+                {leaveModalError}
+              </div>
+            )}
 
-            <form onSubmit={handleApplyLeave} style={{ display: "grid", gap: 14 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+            <form onSubmit={handleApplyLeave} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div className="emp-form-group">
+                <label className="emp-form-label">
                   Leave Type
                 </label>
                 <select
                   value={leaveForm.leaveType}
                   onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #d4d4d8",
-                    fontSize: 14,
-                  }}
+                  className="emp-form-select"
                 >
                   {(Array.isArray(leave?.detailed) && leave.detailed.length > 0
                     ? leave.detailed
@@ -898,8 +909,8 @@ export default function EmployeeDashboard() {
                 return (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                      <div className="emp-form-group">
+                        <label className="emp-form-label">
                           Start Date
                         </label>
                         <input
@@ -915,17 +926,14 @@ export default function EmployeeDashboard() {
                               endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
                             }));
                           }}
+                          className="emp-form-input"
                           style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: 8,
-                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
-                            fontSize: 14,
+                            borderColor: dateConflict ? "#ef4444" : undefined,
                           }}
                         />
                       </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
+                      <div className="emp-form-group">
+                        <label className="emp-form-label">
                           End Date
                         </label>
                         <input
@@ -934,12 +942,9 @@ export default function EmployeeDashboard() {
                           min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
                           value={leaveForm.endDate}
                           onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                          className="emp-form-input"
                           style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: 8,
-                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
-                            fontSize: 14,
+                            borderColor: dateConflict ? "#ef4444" : undefined,
                           }}
                         />
                       </div>
@@ -950,7 +955,7 @@ export default function EmployeeDashboard() {
                         style={{
                           fontSize: 12.5,
                           padding: "10px 14px",
-                          borderRadius: 8,
+                          borderRadius: 10,
                           background: "#fef2f2",
                           border: "1px solid #fecaca",
                           color: "#991b1b",
@@ -966,31 +971,24 @@ export default function EmployeeDashboard() {
                       </div>
                     )}
 
-                    <div>
-                      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                        Reason
+                    <div className="emp-form-group">
+                      <label className="emp-form-label">
+                        Reason for Leave
                       </label>
                       <textarea
                         rows="3"
                         required
-                        placeholder="Why are you taking leave?"
+                        placeholder="Provide details about your planned leave..."
                         value={leaveForm.reason}
                         onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #d4d4d8",
-                          fontSize: 14,
-                          fontFamily: "inherit",
-                        }}
+                        className="emp-form-textarea"
                       />
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 }}>
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn--emp-secondary"
                         onClick={() => setShowLeaveModal(false)}
                         disabled={submittingLeave}
                       >
@@ -998,6 +996,7 @@ export default function EmployeeDashboard() {
                       </button>
                       <button
                         type="submit"
+                        className="btn--emp-primary"
                         disabled={submittingLeave || Boolean(dateConflict)}
                       >
                         {submittingLeave ? "Submitting..." : "Apply for Leave"}

@@ -145,7 +145,8 @@ export default function EmployeeImpactPoints() {
         setRecognizeForm({ recipientId: "", points: 10, reason: "" });
         setSidePanelMode("none");
 
-        // Refresh my points
+        // Refresh leaderboard and my points
+        fetchLeaderboard();
         const myRes = await api.get("/impact-points/me");
         if (myRes.data?.success) {
           setMyPoints(myRes.data?.summary || myRes.data?.data || myRes.data);
@@ -170,7 +171,6 @@ export default function EmployeeImpactPoints() {
       {/* Header */}
       <AppHeader
         title="Impact Points"
-        subtitle="Track your earned points balance, recognition history, and company leaderboard"
         hideLogout={true}
       >
         {meta.isManager && (
@@ -209,49 +209,36 @@ export default function EmployeeImpactPoints() {
         </div>
       )}
 
-      {/* Summary KPI Cards - Balanced 4 Column Grid */}
-      <div className="wm-kpi-grid">
-        <div className="wm-kpi-card accent-blue">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#2563eb" }}>Current Balance</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#2563eb" }}>
-            {balance} pts
-          </div>
-          <div className="wm-kpi-subtext">Available net recognition balance</div>
-        </div>
-
-        <div className="wm-kpi-card accent-emerald">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#059669" }}>Lifetime Earned</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#059669" }}>
-            +{pointsEarned} pts
-          </div>
-          <div className="wm-kpi-subtext">From tasks & peer recognitions</div>
-        </div>
-
-        <div className="wm-kpi-card accent-rose">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#dc2626" }}>Deductions / Reversals</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#dc2626" }}>
-            -{pointsDeducted} pts
-          </div>
-          <div className="wm-kpi-subtext">Administrative adjustments</div>
-        </div>
-
-        <div className="wm-kpi-card accent-slate">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label">Standing / Rank</span>
-          </div>
-          <div className="wm-kpi-value" style={{ fontSize: 22 }}>
-            {companyRank ? `#${companyRank} Company` : "Unranked"}
-          </div>
-          <div className="wm-kpi-subtext">
-            {departmentRank ? `#${departmentRank} in department` : "Leaderboard standing"}
-          </div>
-        </div>
+      {/* Compact Inline Impact Statistics Strip */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Current Balance: <strong style={{ color: "#2563eb" }}>{balance} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Lifetime Earned: <strong style={{ color: "#059669" }}>+{pointsEarned} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Redeemed: <strong style={{ color: "#dc2626" }}>-{pointsDeducted} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Standing: <strong style={{ color: "var(--g-800, #155a37)" }}>{companyRank ? `#${companyRank} Company` : "Unranked"}</strong>
+        </span>
       </div>
 
       {/* Main Responsive Grid Layout (Resizes dynamically when recognition panel opens) */}
@@ -272,14 +259,14 @@ export default function EmployeeImpactPoints() {
                   onClick={() => setActiveTab("MY_HISTORY")}
                   className={`wm-tab-btn ${activeTab === "MY_HISTORY" ? "active" : ""}`}
                 >
-                  My Activity Ledger
+                  Activity
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab("LEADERBOARD")}
                   className={`wm-tab-btn ${activeTab === "LEADERBOARD" ? "active" : ""}`}
                 >
-                  Company Leaderboard
+                  Leaderboard
                 </button>
               </div>
 
@@ -397,7 +384,7 @@ export default function EmployeeImpactPoints() {
                             {tx.reason}
                           </td>
                           <td style={{ color: "#475569", fontSize: 12, whiteSpace: "nowrap" }}>
-                            {tx.actor?.name || "System"}
+                            {tx.actor?.name || tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System"}
                           </td>
                           <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                             <span
@@ -477,12 +464,12 @@ export default function EmployeeImpactPoints() {
                             </td>
                             <td>
                               <div style={{ fontWeight: 600, color: "#0f172a" }}>
-                                {row.name || row.fullName || "Employee"} {isMe && <span style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>(You)</span>}
+                                {row.fullName || row.name || row.employee?.fullName || "Employee"} {isMe && <span style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>(You)</span>}
                               </div>
-                              <div style={{ fontSize: 11, color: "#64748b" }}>{row.employeeCode}</div>
+                              <div style={{ fontSize: 11, color: "#64748b" }}>{row.employeeCode || row.employee?.employeeCode || ""}</div>
                             </td>
                             <td style={{ color: "#475569", fontSize: 12 }}>
-                              {row.department || "General"}
+                              {row.department || row.employee?.department || "General"}
                             </td>
                             <td style={{ textAlign: "right", fontWeight: 700, color: "#059669" }}>
                               +{row.pointsEarned ?? row.totalEarned ?? 0}
@@ -560,9 +547,6 @@ export default function EmployeeImpactPoints() {
                 <h3 className="wm-panel-title">
                   Recognize Colleague
                 </h3>
-                <p className="wm-panel-subtitle">
-                  Grant Impact Points to a reporting team member
-                </p>
               </div>
               <button
                 className="wm-panel-close-btn"

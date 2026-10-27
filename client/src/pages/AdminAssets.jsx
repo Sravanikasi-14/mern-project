@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import AppHeader from "../components/AppHeader";
 import {
   IconClose,
@@ -10,6 +10,7 @@ import {
   IconFileText,
 } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
 
 const CATEGORIES = [
@@ -65,6 +66,8 @@ export default function AdminAssets() {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [conditionFilter, setConditionFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -72,6 +75,17 @@ export default function AdminAssets() {
     }, 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, categoryFilter, statusFilter, conditionFilter]);
+
+  const totalAssets = assets.length;
+  const totalPages = Math.ceil((totalAssets || 1) / pageSize);
+  const paginatedAssets = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return assets.slice(start, start + pageSize);
+  }, [assets, page, pageSize]);
 
   // Employees for assignment dropdown
   const [employees, setEmployees] = useState([]);
@@ -355,8 +369,8 @@ export default function AdminAssets() {
   };
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="Company Assets" />
+    <div className="container-wide">
+      <AppHeader title="Assets" />
 
       {/* Action Alerts */}
       {actionSuccess && (
@@ -377,75 +391,63 @@ export default function AdminAssets() {
         </div>
       )}
 
-      {/* Summary Metrics Cards */}
+      {/* Compact Inline Asset Statistics Strip */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: 16,
-          marginBottom: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card)",
+          border: "1px solid var(--hair)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
         }}
       >
-        <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            All Assets
-          </span>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 6 }}>
-            {summary.total}
-          </div>
-        </div>
-
-        <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Available
-          </span>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#166534", marginTop: 6 }}>
-            {summary.available}
-          </div>
-        </div>
-
-        <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Assigned
-          </span>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#1d4ed8", marginTop: 6 }}>
-            {summary.assigned}
-          </div>
-        </div>
-
-        <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Needs Attention
-          </span>
-          <div style={{ fontSize: 26, fontWeight: 800, color: "#b91c1c", marginTop: 6 }}>
-            {summary.requiringAttention}
-          </div>
-        </div>
+        <span style={{ color: "var(--text-muted)" }}>
+          Total Inventory: <strong style={{ color: "var(--text)" }}>{summary.total}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted)" }}>
+          Available: <strong style={{ color: "var(--g-700)" }}>{summary.available}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted)" }}>
+          Assigned: <strong style={{ color: "var(--g-800)" }}>{summary.assigned}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted)" }}>
+          Needs Attention: <strong style={{ color: summary.requiringAttention > 0 ? "#b91c1c" : "var(--text)" }}>{summary.requiringAttention}</strong>
+        </span>
       </div>
 
-      {/* Main Asset Workspace Card */}
+      {/* Main Asset Workspace */}
       <div
         style={{
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 14,
-          padding: "22px 24px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          background: "var(--card)",
+          border: "1px solid var(--hair)",
+          borderRadius: "12px",
+          padding: "16px 18px",
+          boxShadow: "var(--shadow-sm)",
         }}
       >
-        {/* Controls: Search, Filters, Add Button */}
+        {/* Consolidated Compact Toolbar: Search, Filters, Add Button */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: 14,
-            marginBottom: 20,
+            gap: 10,
+            marginBottom: 16,
+            paddingBottom: 14,
+            borderBottom: "1px solid var(--hair, #e6ede8)",
           }}
         >
           {/* Search form */}
-          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: "1 1 280px", maxWidth: 420 }}>
+          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: "1 1 240px", maxWidth: 360 }}>
             <div style={{ position: "relative", width: "100%" }}>
               <input
                 type="text"
@@ -454,27 +456,27 @@ export default function AdminAssets() {
                 onChange={(e) => setSearch(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "8px 12px 8px 34px",
-                  borderRadius: 8,
+                  padding: "7px 12px 7px 32px",
+                  borderRadius: 6,
                   border: "1px solid #d4d4d8",
-                  fontSize: 13,
+                  fontSize: 12.5,
                 }}
               />
               <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#a1a1aa" }}>
-                <IconSearch size={15} />
+                <IconSearch size={14} />
               </span>
             </div>
-            <button type="submit" className="btn-secondary" style={{ padding: "8px 14px", fontSize: 13 }}>
+            <button type="submit" className="btn-secondary" style={{ padding: "7px 12px", fontSize: 12.5 }}>
               Search
             </button>
           </form>
 
           {/* Filters & Action Button */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13 }}
+              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -486,7 +488,7 @@ export default function AdminAssets() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13 }}
+              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
             >
               {STATUSES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -498,7 +500,7 @@ export default function AdminAssets() {
             <select
               value={conditionFilter}
               onChange={(e) => setConditionFilter(e.target.value)}
-              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13 }}
+              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
             >
               {CONDITIONS.map((cd) => (
                 <option key={cd.value} value={cd.value}>
@@ -511,7 +513,7 @@ export default function AdminAssets() {
               type="button"
               className="btn-primary"
               onClick={handleOpenAddModal}
-              style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600 }}
+              style={{ padding: "7px 14px", fontSize: 12.5, fontWeight: 600 }}
             >
               + Add Asset
             </button>
@@ -584,7 +586,7 @@ export default function AdminAssets() {
                     )}
                   </td>
                 </tr>
-              ) : assets.map((asset) => {
+              ) : paginatedAssets.map((asset) => {
                   const isAssigned = asset.status === "ASSIGNED" && Boolean(asset.currentAssignment?.employeeId);
                   const isAvailable = asset.status === "AVAILABLE";
 
@@ -710,6 +712,20 @@ export default function AdminAssets() {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalAssets}
+            pageSize={pageSize}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={(p) => setPage(p)}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(1);
+            }}
+            itemLabel="company assets"
+          />
       </div>
 
       {/* ADD / EDIT ASSET MODAL */}

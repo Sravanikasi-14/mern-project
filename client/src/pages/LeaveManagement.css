@@ -1,0 +1,906 @@
+/* ==========================================================================
+   Leave Management Stylesheet — HR Portal & Employee Portal
+   Design Inspiration: Reference 1 (HR Leaves & Calendar) & Reference 2 (Employee Leaves & Balances)
+   Palette: Approved Forest-Green, Off-White & Content-Driven White Surfaces
+   ========================================================================== */
+
+/* Page Container */
+.lm-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+/* --------------------------------------------------------------------------
+   Top Summary Cards Row (Reference 1 & 2)
+   -------------------------------------------------------------------------- */
+.lm-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+  .lm-summary-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .lm-summary-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lm-sum-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 14px);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 110px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lm-sum-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow, 0 4px 14px rgba(0, 0, 0, 0.06));
+}
+
+/* Accent Card: Deep Forest Green (Reference 2 style Annual/Available Leave) */
+.lm-sum-card.card-accent {
+  background: linear-gradient(135deg, var(--g-950, #0d3a23), var(--g-800, #155a37));
+  border-color: var(--g-800, #155a37);
+  color: #ffffff;
+}
+
+.lm-sum-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.lm-sum-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  text-transform: capitalize;
+}
+
+.lm-sum-card.card-accent .lm-sum-card-title {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.lm-sum-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--panel, #f5f6f5);
+  color: var(--g-800, #155a37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lm-sum-card.card-accent .lm-sum-card-icon {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.lm-sum-card-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.lm-sum-card-num {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.lm-sum-card.card-accent .lm-sum-card-num {
+  color: #ffffff;
+}
+
+.lm-sum-card-sub {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin-top: 6px;
+}
+
+.lm-sum-card.card-accent .lm-sum-card-sub {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* --------------------------------------------------------------------------
+   Text-Based Sub-Navigation Links (Requirement 4)
+   Replaces boxed pills/cards with clean text links + restrained indicator
+   -------------------------------------------------------------------------- */
+.text-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  padding: 0 4px 0 0;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.text-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.text-nav-link {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--muted, #646d67);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  padding: 10px 2px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-nav-link:hover {
+  color: var(--ink, #131a15);
+}
+
+.text-nav-link.active {
+  color: var(--g-800, #155a37);
+  font-weight: 700;
+}
+
+.text-nav-link.active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background: var(--g-800, #155a37);
+  border-radius: 2px 2px 0 0;
+}
+
+.text-nav-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: var(--panel, #f5f6f5);
+  color: var(--muted, #646d67);
+}
+
+.text-nav-link.active .text-nav-badge {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+/* Secondary filter links (All, Pending, Approved, Rejected) */
+.text-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.text-filter-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted, #646d67);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: color 0.15s ease;
+  position: relative;
+}
+
+.text-filter-link:hover {
+  color: var(--ink, #131a15);
+}
+
+.text-filter-link.active {
+  color: var(--g-800, #155a37);
+  font-weight: 700;
+}
+
+.text-filter-link.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--g-700, #1d7347);
+  border-radius: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   Filter & Search Toolbar
+   -------------------------------------------------------------------------- */
+.lm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.lm-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.lm-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   HR Leave Requests Grid (Reference 1 Layout)
+   -------------------------------------------------------------------------- */
+.lm-requests-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1200px) {
+  .lm-requests-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .lm-requests-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Individual Leave Request Card (Reference 1) */
+.lm-req-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lm-req-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow, 0 4px 16px rgba(0, 0, 0, 0.06));
+}
+
+.lm-req-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.lm-req-employee-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lm-req-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(21, 90, 55, 0.18);
+}
+
+.lm-req-emp-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lm-req-emp-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-req-emp-role {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Card Body */
+.lm-req-body {
+  border-top: 1px solid var(--hair, #e3e7e4);
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  padding: 14px 0;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lm-req-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.lm-req-type-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lm-req-type-pill.casual {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.lm-req-type-pill.sick {
+  background: #fdf3e2;
+  color: #b06d0a;
+}
+
+.lm-req-type-pill.earned {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+.lm-req-duration {
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.lm-req-dates-line {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lm-req-reason-box {
+  background: var(--panel, #f5f6f5);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--ink, #131a15);
+  line-height: 1.45;
+  font-style: italic;
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-req-reviewer-row {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Card Actions (Reference 1 style inline approve/reject buttons) */
+.lm-req-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lm-action-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lm-btn-approve {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--g-700, #1d7347);
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lm-btn-approve:hover {
+  background: var(--g-700, #1d7347);
+  color: #ffffff;
+}
+
+.lm-btn-reject {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(194, 59, 59, 0.3);
+  background: var(--rose-bg, #fdeceb);
+  color: var(--rose, #c23b3b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lm-btn-reject:hover {
+  background: var(--rose, #c23b3b);
+  color: #ffffff;
+}
+
+.lm-btn-details {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid var(--hair, #e3e7e4);
+  color: var(--ink, #131a15);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lm-btn-details:hover {
+  background: var(--panel, #f5f6f5);
+}
+
+/* --------------------------------------------------------------------------
+   Leave Calendar & Schedule Section (Reference 1 Bottom Section)
+   -------------------------------------------------------------------------- */
+.lm-calendar-section {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+@media (max-width: 1080px) {
+  .lm-calendar-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lm-calendar-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+}
+
+.lm-cal-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+}
+
+.lm-cal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.lm-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lm-cal-nav-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: #ffffff;
+  color: var(--ink, #131a15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.lm-cal-nav-btn:hover {
+  background: var(--panel, #f5f6f5);
+}
+
+/* Calendar Days Grid */
+.lm-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+
+.lm-cal-weekday {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted, #646d67);
+  padding: 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.lm-cal-day {
+  min-height: 58px;
+  border-radius: 8px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: #ffffff;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  transition: border-color 0.15s ease;
+}
+
+.lm-cal-day.other-month {
+  opacity: 0.35;
+  background: var(--panel, #f5f6f5);
+}
+
+.lm-cal-day.today {
+  border-color: var(--g-700, #1d7347);
+  font-weight: 700;
+}
+
+.lm-cal-day-num {
+  font-size: 12.5px;
+  color: var(--ink, #131a15);
+}
+
+.lm-cal-leave-pill {
+  width: 100%;
+  margin-top: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.lm-cal-leave-pill.casual {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.lm-cal-leave-pill.sick {
+  background: #fdf3e2;
+  color: #b06d0a;
+}
+
+.lm-cal-leave-pill.earned {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+/* Side Card: Team On Leave & Quotas (Reference 1 Bottom Right) */
+.lm-side-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+}
+
+.lm-side-title-row {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lm-side-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.lm-team-leave-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lm-team-leave-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--panel, #f5f6f5);
+}
+
+.lm-team-leave-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lm-team-leave-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lm-team-leave-dates {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+}
+
+/* --------------------------------------------------------------------------
+   Employee Portal Leave Page (Reference 2 Layout)
+   -------------------------------------------------------------------------- */
+.el-main-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1.1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .el-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Leave Balance Overview Table Card */
+.el-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  margin-bottom: 16px;
+}
+
+.el-card:last-child {
+  margin-bottom: 0;
+}
+
+.el-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.el-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.el-card-sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+/* Balance Table (Reference 2) */
+.el-balance-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.el-balance-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  letter-spacing: 0.04em;
+}
+
+.el-balance-table td {
+  padding: 14px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  color: var(--ink, #131a15);
+}
+
+.el-balance-table tr:last-child td {
+  border-bottom: none;
+}
+
+.el-type-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.el-type-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Upcoming Leaves Cards (Reference 2 Right Column) */
+.el-upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.el-upcoming-card {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--panel, #f5f6f5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.el-upcoming-card:hover {
+  background: #ffffff;
+  border-color: rgba(29, 115, 71, 0.3);
+}
+
+.el-upcoming-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.el-upcoming-type {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.el-upcoming-dates {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+.el-upcoming-duration {
+  font-size: 11.5px;
+  color: var(--g-800, #155a37);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Integrated Profile Editing Forms (Requirement 3)
+   -------------------------------------------------------------------------- */
+.epv-edit-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.epv-edit-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.epv-readonly-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--hair, #e3e7e4);
+  text-transform: uppercase;
+}
+
+.epv-edit-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink, #131a15);
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.epv-edit-input:focus {
+  outline: none;
+  border-color: var(--g-700, #1d7347);
+  box-shadow: 0 0 0 3px rgba(29, 115, 71, 0.12);
+}
+
+.epv-edit-input:disabled {
+  background: var(--panel, #f5f6f5);
+  color: var(--muted, #646d67);
+  cursor: not-allowed;
+}
+
+.epv-action-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

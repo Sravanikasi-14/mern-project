@@ -543,13 +543,22 @@ export async function awardManagerRecognitionService({ models, user, recipientEm
     throw new HttpError(400, "Reason for recognition is required");
   }
 
-  const recipient = await Employee.findById(recipientEmployeeId);
+  let recipient = null;
+  if (mongoose.Types.ObjectId.isValid(recipientEmployeeId)) {
+    recipient = await Employee.findById(recipientEmployeeId);
+    if (!recipient) {
+      recipient = await Employee.findOne({ userId: recipientEmployeeId });
+    }
+  }
   if (!recipient) {
     throw new HttpError(404, "Recipient employee not found in tenant database");
   }
 
   // Anti-self-award guard
   if (actorEmployee && String(actorEmployee._id) === String(recipient._id)) {
+    throw new HttpError(400, "Self-recognition is prohibited: you cannot award Impact Points to yourself.");
+  }
+  if (recipient.userId && String(user._id) === String(recipient.userId)) {
     throw new HttpError(400, "Self-recognition is prohibited: you cannot award Impact Points to yourself.");
   }
 
@@ -571,8 +580,8 @@ export async function awardManagerRecognitionService({ models, user, recipientEm
     throw new HttpError(400, "Impact Points system is currently disabled by company HR policy.");
   }
 
-  let finalPoints = points;
-  if (!finalPoints || typeof finalPoints !== "number") {
+  let finalPoints = Number(points);
+  if (!finalPoints || isNaN(finalPoints)) {
     const defaultRule = (ipRules?.rules || []).find((r) => r.ruleCode === "MANAGER_RECOGNITION");
     finalPoints = defaultRule ? defaultRule.points : 10;
   }
@@ -620,7 +629,7 @@ export async function awardManagerRecognitionService({ models, user, recipientEm
       employeeSnapshot: {
         fullName: recipient.fullName,
         employeeCode: recipient.employeeCode,
-        department: recipient.job?.department || "",
+        department: recipient.job?.department || "General",
       },
       points: finalPoints,
       transactionType: TRANSACTION_TYPES.EARNED,
@@ -797,14 +806,6 @@ export async function getLeaderboardService({
     },
     {
       $addFields: {
-        // Canonical employee/user identity:
-        // Use employee.userId if linked to a user account, otherwise fallback to employeeId
-        canonicalId: {
-          $ifNull: ["$employee.userId", "$employeeId"],
-        },
-        canonicalEmployeeId: {
-          $ifNull: ["$employee._id", "$employeeId"],
-        },
         resolvedFullName: {
           $ifNull: ["$employee.fullName", "$employeeSnapshot.fullName"],
         },
@@ -812,7 +813,27 @@ export async function getLeaderboardService({
           $ifNull: ["$employee.employeeCode", "$employeeSnapshot.employeeCode"],
         },
         resolvedDepartment: {
-          $ifNull: ["$employee.job.department", "$employeeSnapshot.department"],
+          $cond: [
+            {
+              $and: [
+                { $ne: ["$employee.job.department", ""] },
+                { $ne: ["$employee.job.department", null] },
+              ],
+            },
+            "$employee.job.department",
+            {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ["$employeeSnapshot.department", ""] },
+                    { $ne: ["$employeeSnapshot.department", null] },
+                  ],
+                },
+                "$employeeSnapshot.department",
+                "General",
+              ],
+            },
+          ],
         },
       },
     },
@@ -824,6 +845,7 @@ export async function getLeaderboardService({
         $or: [
           { resolvedDepartment: department },
           { "employeeSnapshot.department": department },
+          { "employee.job.department": department },
         ],
       },
     });
@@ -832,8 +854,8 @@ export async function getLeaderboardService({
   pipeline.push(
     {
       $group: {
-        _id: "$canonicalId",
-        employeeId: { $first: "$canonicalEmployeeId" },
+        _id: "$employeeId",
+        employeeId: { $first: "$employeeId" },
         fullName: { $first: "$resolvedFullName" },
         employeeCode: { $first: "$resolvedEmployeeCode" },
         department: { $first: "$resolvedDepartment" },
@@ -871,10 +893,11 @@ export async function getLeaderboardService({
       currentRank = index + 1;
     }
     const name = entry.fullName || "Employee";
-    const dept = entry.department || "Unassigned";
+    const dept = entry.department || "General";
     return {
       rank: currentRank,
       employeeId: entry.employeeId,
+      _id: entry.employeeId,
       name,
       fullName: name,
       employeeCode: entry.employeeCode || "",
@@ -889,6 +912,13 @@ export async function getLeaderboardService({
       earnedCount: entry.earnedCount,
       deductedCount: entry.deductedCount,
       lastTransactionAt: entry.lastTransactionAt,
+      employee: {
+        _id: entry.employeeId,
+        name,
+        fullName: name,
+        employeeCode: entry.employeeCode || "",
+        department: dept,
+      },
     };
   });
 
@@ -901,7 +931,13 @@ export async function getLeaderboardService({
 export async function getEmployeePointsSummaryService({ models, employeeId }) {
   const { ImpactPointTransaction, Employee } = models;
 
-  const employee = await Employee.findById(employeeId).lean();
+  let employee = null;
+  if (mongoose.Types.ObjectId.isValid(employeeId)) {
+    employee = await Employee.findById(employeeId).lean();
+    if (!employee) {
+      employee = await Employee.findOne({ userId: employeeId }).lean();
+    }
+  }
   if (!employee) {
     throw new HttpError(404, "Employee not found");
   }
@@ -963,16 +999,34 @@ export async function getEmployeePointsSummaryService({ models, employeeId }) {
   }
 
   // 5. Recent transactions
-  const recentTransactions = await ImpactPointTransaction.find({ employeeId: targetEmployeeId })
+  const rawRecent = await ImpactPointTransaction.find({ employeeId: targetEmployeeId })
     .sort({ createdAt: -1 })
     .limit(10)
     .lean();
+
+  const recentTransactions = rawRecent.map((tx) => ({
+    ...tx,
+    employee: {
+      _id: tx.employeeId,
+      name: tx.employeeSnapshot?.fullName || employee.fullName,
+      fullName: tx.employeeSnapshot?.fullName || employee.fullName,
+      employeeCode: tx.employeeSnapshot?.employeeCode || employee.employeeCode,
+      department: tx.employeeSnapshot?.department || employee.job?.department || "General",
+    },
+    actor: {
+      _id: tx.actorUserId,
+      name: tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System",
+      fullName: tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System",
+      email: tx.actorSnapshot?.email || "",
+      role: tx.actorSnapshot?.role || "",
+    },
+  }));
 
   return {
     employeeId: employee._id,
     fullName: employee.fullName,
     employeeCode: employee.employeeCode,
-    department: employee.job?.department || "",
+    department: employee.job?.department || "General",
     balance,
     totalEarned,
     pointsEarned: totalEarned,

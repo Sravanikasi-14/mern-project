@@ -16,7 +16,9 @@ import {
   IconRefresh,
 } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
+import AppHeader from "../components/AppHeader";
 import "./OfferLetters.css";
 
 const STATUS_CONFIG = {
@@ -716,32 +718,10 @@ export default function OfferLettersManagement() {
 
   return (
     <main className="container-wide ol-page">
-      <div className="ol-header">
-        <div className="ol-header-copy">
-          <h1>Offer Letters</h1>
-        </div>
-        <div className="ol-header-actions">
-          <button
-            type="button"
-            className="ol-btn ol-btn-ghost"
-            onClick={() => {
-              fetchOffers();
-              fetchSummary();
-            }}
-            title="Refresh list"
-          >
-            <IconRefresh size={14} />
-            Refresh
-          </button>
-          <button type="button" className="ol-btn ol-btn-primary" onClick={handleOpenCreate}>
-            <span aria-hidden="true">+</span>
-            Add offer
-          </button>
-        </div>
-      </div>
+      <AppHeader title="Offer Letters" />
 
       {error && (
-        <div className="ol-alert ol-alert-error" role="alert">
+        <div className="ol-alert ol-alert-error" role="alert" style={{ marginBottom: 12 }}>
           <span>{error}</span>
           <button type="button" onClick={() => setError("")} aria-label="Dismiss error">
             <IconClose size={14} />
@@ -750,7 +730,7 @@ export default function OfferLettersManagement() {
       )}
 
       {successMsg && (
-        <div className="ol-alert ol-alert-success" role="status">
+        <div className="ol-alert ol-alert-success" role="status" style={{ marginBottom: 12 }}>
           <span>{successMsg}</span>
           <button type="button" onClick={() => setSuccessMsg("")} aria-label="Dismiss message">
             <IconClose size={14} />
@@ -758,27 +738,40 @@ export default function OfferLettersManagement() {
         </div>
       )}
 
-      <div className="ol-kpis">
-        <div className="ol-kpi">
-          <span className="ol-kpi-label">Total</span>
-          <span className="ol-kpi-value">{summary.total}</span>
-        </div>
-        <div className="ol-kpi">
-          <span className="ol-kpi-label">Draft</span>
-          <span className="ol-kpi-value is-draft">{summary.draft}</span>
-        </div>
-        <div className="ol-kpi">
-          <span className="ol-kpi-label">Sent</span>
-          <span className="ol-kpi-value is-sent">{summary.sent}</span>
-        </div>
-        <div className="ol-kpi">
-          <span className="ol-kpi-label">Accepted</span>
-          <span className="ol-kpi-value is-accepted">{summary.accepted}</span>
-        </div>
-        <div className="ol-kpi">
-          <span className="ol-kpi-label">Rejected</span>
-          <span className="ol-kpi-value is-rejected">{summary.rejected}</span>
-        </div>
+      {/* Compact Inline Offer Statistics Strip */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Total Offers: <strong style={{ color: "var(--ink)" }}>{summary.total}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Draft: <strong style={{ color: "var(--muted)" }}>{summary.draft}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Sent: <strong style={{ color: "#2563eb" }}>{summary.sent}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Accepted: <strong style={{ color: "var(--g-800, #155a37)" }}>{summary.accepted}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Rejected: <strong style={{ color: "#b91c1c" }}>{summary.rejected}</strong>
+        </span>
       </div>
 
       <div className="ol-toolbar">
@@ -822,6 +815,31 @@ export default function OfferLettersManagement() {
               Clear
             </button>
           )}
+        </div>
+
+        <div className="ol-toolbar-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              fetchOffers();
+              fetchSummary();
+            }}
+            title="Refresh list"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
+          >
+            <IconRefresh size={13} />
+            <span>Refresh</span>
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleOpenCreate}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
+          >
+            <span aria-hidden="true">+</span>
+            <span>Add offer</span>
+          </button>
         </div>
       </div>
 
@@ -1042,37 +1060,16 @@ export default function OfferLettersManagement() {
             </table>
           </div>
 
-        {pagination.totalPages > 1 && (
-          <div className="ol-pager">
-            <div>
-              {((currentPage - 1) * pagination.limit) + 1}–
-              {Math.min(currentPage * pagination.limit, pagination.totalOffers)} of{" "}
-              {pagination.totalOffers}
-            </div>
-            <div className="ol-pager-controls">
-              <button
-                type="button"
-                className="ol-btn ol-btn-ghost ol-btn-sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                Prev
-              </button>
-              <span className="ol-pager-page">
-                {currentPage} / {pagination.totalPages}
-              </span>
-              <button
-                type="button"
-                className="ol-btn ol-btn-ghost ol-btn-sm"
-                disabled={currentPage >= pagination.totalPages}
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(pagination.totalPages, p + 1))
-                }
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {pagination.totalOffers > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalOffers}
+            pageSize={pagination.limit}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={(p) => setCurrentPage(p)}
+            itemLabel="offer letters"
+          />
         )}
       </div>
 

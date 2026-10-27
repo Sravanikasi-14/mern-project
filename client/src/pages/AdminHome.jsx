@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
+import Pagination from "../components/Pagination";
 import { IconClose, IconCheck, IconChevronDown } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
+import "./PeopleManagement.css";
 
-const PAGE_SIZE_OPTIONS = [10, 50, 100, 200, 300];
+const PAGE_SIZE_OPTIONS = [8, 12, 24, 48, 100];
 
 const AVAILABLE_COLUMNS = [
   { id: "employeeCode", label: "Code" },
@@ -25,12 +27,18 @@ export default function AdminHome() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const onboardOfferId = searchParams.get("onboardOfferId");
+  const projectParam = searchParams.get("project");
+
+  // Selected project state: null = Projects Overview (Ref 1), string = Project Details (Ref 2)
+  const [selectedProject, setSelectedProject] = useState(projectParam || null);
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
 
   const [summary, setSummary] = useState(null);
+  const [allEmployeesPool, setAllEmployeesPool] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 10,
+    limit: 12,
     totalEmployees: 0,
     totalPages: 1,
   });
@@ -41,7 +49,9 @@ export default function AdminHome() {
   const [statusFilter, setStatusFilter] = useState(
     ["ACTIVE", "INACTIVE", "ALL"].includes(initialStatus) ? initialStatus : "ALL"
   );
-  const [pageSize, setPageSize] = useState(10);
+  const [sortBy, setSortBy] = useState("createdAt");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [pageSize, setPageSize] = useState(12);
   const [currentPage, setCurrentPage] = useState(1);
 
   const [visibleColumns, setVisibleColumns] = useState({
@@ -59,6 +69,7 @@ export default function AdminHome() {
   const [showColumnPicker, setShowColumnPicker] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [loadingPool, setLoadingPool] = useState(true);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -87,6 +98,20 @@ export default function AdminHome() {
     password: "",
     offerLetterId: null,
   });
+
+  // Keep URL searchParams synchronized with selectedProject
+  const handleSelectProject = (projName) => {
+    setSelectedProject(projName);
+    setCurrentPage(1);
+    setSearch("");
+    setDebouncedSearch("");
+    if (projName) {
+      searchParams.set("project", projName);
+    } else {
+      searchParams.delete("project");
+    }
+    setSearchParams(searchParams, { replace: true });
+  };
 
   // Check for offer letter onboarding parameter
   useEffect(() => {
@@ -144,20 +169,27 @@ export default function AdminHome() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Load summary only on mount and when mutations occur
+  // Load summary and all employees pool for project aggregation
   useEffect(() => {
     let cancelled = false;
-    const fetchSummary = async () => {
+    const fetchPoolAndSummary = async () => {
       try {
-        const res = await api.get("/employees/summary");
+        setLoadingPool(true);
+        const [sumRes, poolRes] = await Promise.all([
+          api.get("/employees/summary").catch(() => null),
+          api.get("/employees?limit=300").catch(() => null),
+        ]);
         if (!cancelled) {
-          setSummary(res.data);
+          if (sumRes?.data) setSummary(sumRes.data);
+          if (poolRes?.data?.employees) {
+            setAllEmployeesPool(poolRes.data.employees);
+          }
         }
-      } catch {
-        // Handled gracefully without blocking list load
+      } finally {
+        if (!cancelled) setLoadingPool(false);
       }
     };
-    fetchSummary();
+    fetchPoolAndSummary();
     return () => {
       cancelled = true;
     };
@@ -173,6 +205,8 @@ export default function AdminHome() {
         const queryParams = new URLSearchParams({
           page: String(currentPage),
           limit: String(pageSize),
+          sortBy: sortBy,
+          sortOrder: sortOrder,
         });
 
         if (debouncedSearch.trim()) {
@@ -181,6 +215,10 @@ export default function AdminHome() {
 
         if (statusFilter !== "ALL") {
           queryParams.set("status", statusFilter);
+        }
+
+        if (selectedProject && selectedProject !== "ALL") {
+          queryParams.set("project", selectedProject);
         }
 
         const employeesRes = await api.get(`/employees?${queryParams.toString()}`);
@@ -206,7 +244,77 @@ export default function AdminHome() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, refreshTrigger]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, selectedProject, sortBy, sortOrder, refreshTrigger]);
+
+  // Derive projects structure from all employees pool
+  const projectsData = useMemo(() => {
+    const map = new Map();
+    const deptMap = new Map();
+    const leadsMap = new Map();
+
+    allEmployeesPool.forEach((emp) => {
+      // Aggregate departments
+      const dept = emp.job?.department || "Operations";
+      deptMap.set(dept, (deptMap.get(dept) || 0) + 1);
+
+      // Check if project lead / manager
+      const role = (emp.job?.jobTitle || "").toLowerCase();
+      if (
+        role.includes("lead") ||
+        role.includes("manager") ||
+        role.includes("head") ||
+        role.includes("director") ||
+        role.includes("principal")
+      ) {
+        if (!leadsMap.has(emp._id)) {
+          leadsMap.set(emp._id, emp);
+        }
+      }
+
+      // Aggregate projects
+      const projName = emp.job?.project?.projectName?.trim();
+      const projKey = projName || "General Operations & Bench";
+      const projType = emp.job?.project?.projectType || (projName ? "MANDATE" : "BENCH");
+
+      if (!map.has(projKey)) {
+        map.set(projKey, {
+          name: projKey,
+          isBench: !projName,
+          projectType: projType,
+          location: emp.job?.workLocation || emp.city || "Bangalore HQ",
+          members: [],
+          lead: null,
+          departments: new Set(),
+        });
+      }
+
+      const pObj = map.get(projKey);
+      pObj.members.push(emp);
+      if (emp.job?.department) pObj.departments.add(emp.job.department);
+      if (!pObj.lead && (role.includes("lead") || role.includes("manager") || role.includes("head"))) {
+        pObj.lead = emp;
+      }
+    });
+
+    // If a project doesn't have an explicit lead, pick its most senior or first member
+    map.forEach((pObj) => {
+      if (!pObj.lead && pObj.members.length > 0) {
+        pObj.lead = pObj.members[0];
+      }
+    });
+
+    const projectList = Array.from(map.values()).sort(
+      (a, b) => b.members.length - a.members.length
+    );
+
+    const deptList = Array.from(deptMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const leadsList = Array.from(leadsMap.values()).slice(0, 4);
+
+    return { projectList, deptList, leadsList };
+  }, [allEmployeesPool]);
 
   const toggleColumn = (columnId) => {
     setVisibleColumns((prev) => ({
@@ -364,305 +472,691 @@ export default function AdminHome() {
     });
   };
 
+  const getInitials = (name) => {
+    if (!name) return "E";
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const selectedProjectInfo = useMemo(() => {
+    if (!selectedProject || selectedProject === "ALL") return null;
+    return projectsData.projectList.find((p) => p.name === selectedProject) || {
+      name: selectedProject,
+      projectType: "MANDATE",
+      location: "Bangalore HQ",
+      members: [],
+      lead: null,
+    };
+  }, [selectedProject, projectsData.projectList]);
+
+  // Total workforce & staffing calculations
+  const totalEmployeesCount = summary?.totalEmployees || allEmployeesPool.length || 0;
+  const activeEmployeesCount = summary?.activeEmployees || allEmployeesPool.filter((e) => e.status === "ACTIVE").length || 0;
+  const assignedEmployeesCount = summary?.assignedEmployees || allEmployeesPool.filter((e) => e.job?.project?.projectName).length || 0;
+  const activeProjectsCount = projectsData.projectList.filter((p) => !p.isBench).length;
+  const staffingRate = totalEmployeesCount > 0 ? Math.round((assignedEmployeesCount / totalEmployeesCount) * 100) : 0;
+
   return (
-    <main className="container-wide">
-      <AppHeader title="Employees" />
-
-      {/* Summary Cards */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <span className="stat-label">Total</span>
-          <span className="stat-value">{summary ? summary.totalEmployees : "—"}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Active</span>
-          <span className="stat-value" style={{ color: "#09090b" }}>
-            {summary ? summary.activeEmployees : "—"}
-          </span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Inactive</span>
-          <span className="stat-value" style={{ color: "#71717a" }}>
-            {summary ? summary.inactiveEmployees : "—"}
-          </span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">On Projects</span>
-          <span className="stat-value" style={{ color: "#27272a" }}>
-            {summary ? summary.assignedEmployees : "—"}
-          </span>
-        </div>
-        <div className="stat-card highlight">
-          <span className="stat-label">Monthly Payroll</span>
-          <span className="stat-value">
-            {summary ? formatCurrency(summary.totalMonthlySalary) : "—"}
-          </span>
-        </div>
-      </div>
-
-      {successMsg && <div className="success-alert">{successMsg}</div>}
-      {error && <div className="error">{error}</div>}
-
-      {/* Toolbar */}
-      <div className="toolbar">
-        <div className="toolbar-left">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search employees..."
-            className="search-input"
+    <div className="pm-container">
+      {/* =========================================================================
+          VIEW 1: PROJECTS OVERVIEW (REFERENCE 1 LAYOUT)
+          Active when selectedProject is null
+          ========================================================================= */}
+      {!selectedProject ? (
+        <>
+          <AppHeader
+            title="Employees"
+            actions={
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => handleSelectProject("ALL")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <span>All Employees</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setNewEmployee((prev) => ({ ...prev, projectName: "" }));
+                    setShowAddModal(true);
+                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
+                >
+                  <span>+</span> <span>Add Employee</span>
+                </button>
+              </div>
+            }
           />
 
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setCurrentPage(1);
+          {/* Compact Workforce & Project Metrics Strip */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 20,
+              background: "var(--card, #ffffff)",
+              border: "1px solid var(--hair, #e6ede8)",
+              borderRadius: 8,
+              padding: "8px 16px",
+              marginBottom: 16,
+              fontSize: 13,
+              flexWrap: "wrap",
             }}
-            className="filter-select"
           >
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            className="filter-select"
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size} per page
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="toolbar-right">
-          <div className="column-visibility-container">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setShowColumnPicker((prev) => !prev)}
-              style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-            >
-              <span>Columns</span>
-              <IconChevronDown size={12} />
-            </button>
-            {showColumnPicker && (
-              <div className="column-visibility-popover">
-                <strong style={{ fontSize: "12px", color: "#64748b" }}>Toggle Columns</strong>
-                {AVAILABLE_COLUMNS.map((col) => (
-                  <label key={col.id} className="column-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns[col.id]}
-                      onChange={() => toggleColumn(col.id)}
-                    />
-                    {col.label}
-                  </label>
-                ))}
-              </div>
-            )}
+            <span style={{ color: "var(--text-muted, #646d67)" }}>
+              Active Workforce: <strong style={{ color: "var(--ink, #131a15)" }}>{activeEmployeesCount}/{totalEmployeesCount}</strong>
+            </span>
+            <span style={{ color: "#d4d4d8" }}>•</span>
+            <span style={{ color: "var(--text-muted, #646d67)" }}>
+              Active Projects: <strong style={{ color: "var(--g-800, #155a37)" }}>{activeProjectsCount}/{projectsData.projectList.length}</strong>
+            </span>
+            <span style={{ color: "#d4d4d8" }}>•</span>
+            <span style={{ color: "var(--text-muted, #646d67)" }}>
+              Staffing Allocation: <strong style={{ color: "var(--g-700, #1d7347)" }}>{staffingRate}%</strong>
+            </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            style={{ display: "flex", alignItems: "center", gap: "6px" }}
-          >
-            <span>+</span> Add Employee
-          </button>
-        </div>
-      </div>
+          {/* Reference 1: Main Dashboard Composition (Projects Stack + Staffing Distribution) */}
+          <div className="pm-overview-grid">
+            {/* LEFT / CENTER COLUMN: Projects Stream */}
+            <section className="pm-projects-panel" aria-label="Active Projects Overview">
+              <div className="pm-panel-header">
+                <div className="pm-panel-title-group">
+                  <h2>Active Projects & Portfolios</h2>
+                  <p>Click any project to inspect assigned team members and roles</p>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <span className="pm-dist-badge">
+                    {projectsData.projectList.length} Portfolios
+                  </span>
+                </div>
+              </div>
 
-      {/* Error Banner with Retry */}
-      {error && (
-        <div className="table-error-banner">
-          <span>{error}</span>
-          <button
-            type="button"
-            className="btn-sm-retry"
-            onClick={() => setRefreshTrigger((prev) => prev + 1)}
-          >
-            Retry
-          </button>
-        </div>
-      )}
+              {loadingPool && projectsData.projectList.length === 0 ? (
+                <div className="pm-empty-box">
+                  <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
+                  <p>Loading projects & staffing data...</p>
+                </div>
+              ) : projectsData.projectList.length === 0 ? (
+                <div className="pm-empty-box">
+                  <h4>No active projects found</h4>
+                  <p>Assign employees to projects or create a new employee with a project name.</p>
+                </div>
+              ) : (
+                <div className="pm-projects-list">
+                  {projectsData.projectList.map((proj, idx) => {
+                    const badgeClass = proj.isBench
+                      ? "type-bench"
+                      : proj.projectType === "RETAIL"
+                      ? "type-retail"
+                      : proj.projectType === "INTERNAL"
+                      ? "type-internal"
+                      : "type-mandate";
 
-      {/* Table & States */}
-      <div className="data-table-container table-wrapper-relative">
-        {loading && employees.length > 0 && <div className="table-progress-bar" />}
-        <table className="data-table">
-          <thead>
-            <tr>
-              {visibleColumns.employeeCode && <th>Code</th>}
-              {visibleColumns.fullName && <th>Full Name</th>}
-              {visibleColumns.email && <th>Email</th>}
-              {visibleColumns.phoneNumber && <th>Phone</th>}
-              {visibleColumns.jobTitle && <th>Job Title</th>}
-              {visibleColumns.project && <th>Project</th>}
-              {visibleColumns.status && <th>Status</th>}
-              {visibleColumns.invitation && <th>Invitation</th>}
-              {visibleColumns.salary && <th>Salary</th>}
-              {visibleColumns.joiningDate && <th>Start Date</th>}
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody className={loading && employees.length > 0 ? "table-refreshing-dim" : ""}>
-            {loading && employees.length === 0 ? (
-              <TableSkeletonRows
-                colCount={Object.values(visibleColumns).filter(Boolean).length + 1}
-                rowCount={Math.min(pageSize, 10)}
-              />
-            ) : employees.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={Object.values(visibleColumns).filter(Boolean).length + 1}
-                  style={{ textAlign: "center", padding: "48px 24px" }}
-                >
-                  <div className="table-empty-state">
-                    <h3>No employees found</h3>
-                    <p>
-                      {debouncedSearch || statusFilter !== "ALL"
-                        ? "No employees match your search or filter."
-                        : "No employees have been added yet."}
-                    </p>
-                    {(debouncedSearch || statusFilter !== "ALL") && (
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        style={{ marginTop: "10px", fontSize: "13px" }}
-                        onClick={() => {
-                          setSearch("");
-                          setDebouncedSearch("");
-                          setStatusFilter("ALL");
-                          setCurrentPage(1);
-                        }}
+                    return (
+                      <div
+                        key={proj.name}
+                        className="pm-project-row"
+                        onClick={() => handleSelectProject(proj.isBench ? "ALL" : proj.name)}
+                        title={`View ${proj.members.length} team members on ${proj.name}`}
                       >
-                        Clear Filters
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ) : employees.map((emp) => (
-                <tr key={emp._id}>
-                  {visibleColumns.employeeCode && (
-                      <td>
-                        <strong>{emp.employeeCode}</strong>
-                      </td>
-                    )}
-                    {visibleColumns.fullName && <td>{emp.fullName}</td>}
-                    {visibleColumns.email && <td>{emp.email}</td>}
-                    {visibleColumns.phoneNumber && <td>{emp.phoneNumber || "—"}</td>}
-                    {visibleColumns.jobTitle && <td>{emp.job?.jobTitle || "—"}</td>}
-                    {visibleColumns.project && (
-                      <td>{emp.job?.project?.projectName || "—"}</td>
-                    )}
-                    {visibleColumns.status && (
-                      <td>
-                        <StatusBadge status={emp.status} />
-                      </td>
-                    )}
-                    {visibleColumns.invitation && (
-                      <td>
-                        <StatusBadge
-                          status={emp.invitation?.status || "PENDING"}
-                          label={
-                            emp.invitation?.status === "ACCEPTED"
-                              ? "Accepted"
-                              : emp.invitation?.status === "DELIVERY_FAILED"
-                              ? "Delivery Failed"
-                              : "Invite Pending"
-                          }
-                        />
-                      </td>
-                    )}
-                    {visibleColumns.salary && (
-                      <td>
-                        <span style={{ fontWeight: "500" }}>
-                          {formatCurrency(emp.currentMonthlySalary)}
-                        </span>
-                      </td>
-                    )}
-                    {visibleColumns.joiningDate && (
-                      <td>{formatDate(emp.job?.joiningDate)}</td>
-                    )}
-                    <td>
-                      <div className="row-actions">
+                        {/* Circular Badge on Left (Reference 1 style) */}
+                        <div className={`pm-project-badge-circle ${badgeClass}`}>
+                          <span className="pm-circle-main">{proj.members.length}</span>
+                          <span className="pm-circle-sub">staff</span>
+                        </div>
+
+                        {/* Project Info */}
+                        <div className="pm-project-info">
+                          <div className="pm-project-name-row">
+                            <h3 className="pm-project-name">{proj.name}</h3>
+                            <span
+                              className={`pm-project-pill ${
+                                proj.isBench
+                                  ? "bench"
+                                  : proj.projectType?.toLowerCase() === "retail"
+                                  ? "retail"
+                                  : proj.projectType?.toLowerCase() === "internal"
+                                  ? "internal"
+                                  : "mandate"
+                              }`}
+                            >
+                              {proj.isBench ? "Bench" : proj.projectType || "Mandate"}
+                            </span>
+                          </div>
+
+                          <div className="pm-project-subtext">
+                            <span>{proj.location}</span>
+                            <span className="pm-meta-dot">•</span>
+                            <span>
+                              {proj.lead ? `Lead: ${proj.lead.fullName}` : `${proj.members.length} Assigned`}
+                            </span>
+                            {proj.departments.size > 0 && (
+                              <>
+                                <span className="pm-meta-dot">•</span>
+                                <span>{Array.from(proj.departments).slice(0, 2).join(", ")}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Arrow Action Button on Right (Reference 1) */}
                         <button
                           type="button"
-                          className="btn-secondary btn-sm"
-                          onClick={() => handleViewDetails(emp._id)}
+                          className="pm-arrow-btn"
+                          aria-label={`Open ${proj.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectProject(proj.isBench ? "ALL" : proj.name);
+                          }}
                         >
-                          Details
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="12 5 19 12 12 19" />
+                          </svg>
                         </button>
-                        <button
-                          type="button"
-                          className="btn-secondary btn-sm"
-                          onClick={() => handleOpenEdit(emp)}
-                        >
-                          Edit
-                        </button>
-                        {emp.invitation?.status !== "ACCEPTED" && (
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* RIGHT COLUMN: Team Staffing Distribution (Replacing Calendar) + Leads Spotlight */}
+            <aside className="pm-side-column">
+              {/* Card A: Project Staffing & Team Distribution (Replacing Calendar) */}
+              <div className="pm-distribution-card">
+                <div className="pm-dist-title-row">
+                  <h3 className="pm-dist-title">Workforce Allocation</h3>
+                  <span className="pm-dist-badge">By Department</span>
+                </div>
+
+                <div className="pm-dist-list">
+                  {projectsData.deptList.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "var(--muted)" }}>No department data available.</p>
+                  ) : (
+                    projectsData.deptList.slice(0, 6).map((dept) => {
+                      const pct = totalEmployeesCount > 0 ? Math.round((dept.count / totalEmployeesCount) * 100) : 0;
+                      return (
+                        <div key={dept.name} className="pm-dist-item">
+                          <div className="pm-dist-item-head">
+                            <span className="pm-dist-name" title={dept.name}>{dept.name}</span>
+                            <span className="pm-dist-count">{dept.count} ({pct}%)</span>
+                          </div>
+                          <div className="pm-dist-track" role="progressbar" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
+                            <div className="pm-dist-fill" style={{ width: `${Math.max(pct, 6)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Card B: Project Leads & Mentors Spotlight (Matching Reference 1 Bottom Right) */}
+              <div className="pm-leads-card">
+                <div className="pm-leads-title-row">
+                  <h3 className="pm-leads-title">Project Leads & Managers</h3>
+                </div>
+
+                <div className="pm-leads-list">
+                  {projectsData.leadsList.length === 0 ? (
+                    <p style={{ fontSize: "13px", color: "var(--muted)" }}>No lead records available.</p>
+                  ) : (
+                    projectsData.leadsList.map((lead) => (
+                      <div
+                        key={lead._id}
+                        className="pm-lead-row"
+                        onClick={() => handleViewDetails(lead._id)}
+                        title={`View profile of ${lead.fullName}`}
+                      >
+                        <div className="pm-lead-left">
+                          <div className="pm-lead-avatar">
+                            {getInitials(lead.fullName)}
+                          </div>
+                          <div className="pm-lead-text">
+                            <span className="pm-lead-name">{lead.fullName}</span>
+                            <span className="pm-lead-role">
+                              {lead.job?.jobTitle || "Lead"} • {lead.job?.project?.projectName || "Platform"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pm-lead-arrow">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </>
+      ) : (
+        /* =========================================================================
+           VIEW 2: PROJECT DETAILS & EMPLOYEE CARDS GRID (REFERENCE 2 LAYOUT)
+           Active when selectedProject is non-null
+           ========================================================================= */
+        <>
+          <AppHeader
+            title={selectedProject === "ALL" ? "All Employees" : selectedProject}
+            actions={
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => handleSelectProject(null)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                  </svg>
+                  <span>Projects</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setNewEmployee((prev) => ({
+                      ...prev,
+                      projectName: selectedProject === "ALL" ? "" : selectedProject,
+                    }));
+                    setShowAddModal(true);
+                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
+                >
+                  <span>+</span> <span>Add Employee</span>
+                </button>
+              </div>
+            }
+          />
+
+          {/* Reference 2 Toolbar: Search, Filters, Sorting, View Toggle */}
+          <div className="pm-cards-toolbar">
+            <div className="pm-toolbar-left">
+              {/* Search by name/position */}
+              <div style={{ position: "relative", minWidth: "260px" }}>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name, role, email..."
+                  className="search-input"
+                  style={{ width: "100%", paddingLeft: "34px" }}
+                />
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ position: "absolute", left: "11px", top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
+
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+
+              {/* Sort By Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="createdAt">Sort by: Date Added</option>
+                <option value="fullName">Sort by: Name (A-Z)</option>
+                <option value="joiningDate">Sort by: Joining Date</option>
+                <option value="employeeCode">Sort by: Employee Code</option>
+              </select>
+
+              {/* Sort Order */}
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                title="Toggle Sort Direction"
+              >
+                {sortOrder === "asc" ? "Asc ↑" : "Desc ↓"}
+              </button>
+            </div>
+
+            <div className="pm-toolbar-right">
+              {/* View Toggle: Grid (Reference 2 cards) vs List (Table) */}
+              <div className="pm-view-toggle">
+                <button
+                  type="button"
+                  className={`pm-view-toggle-btn ${viewMode === "grid" ? "active" : ""}`}
+                  onClick={() => setViewMode("grid")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                  </svg>
+                  <span>Cards</span>
+                </button>
+                <button
+                  type="button"
+                  className={`pm-view-toggle-btn ${viewMode === "table" ? "active" : ""}`}
+                  onClick={() => setViewMode("table")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
+                  <span>Table</span>
+                </button>
+              </div>
+
+              {/* Page size */}
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size} per page
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Feedback messages */}
+          {successMsg && <div className="success-alert">{successMsg}</div>}
+          {error && (
+            <div className="table-error-banner" style={{ marginBottom: "16px" }}>
+              <span>{error}</span>
+              <button
+                type="button"
+                className="btn-sm-retry"
+                onClick={() => setRefreshTrigger((prev) => prev + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* -------------------------------------------------------------------
+              REFERENCE 2: RESPONSIVE EMPLOYEE PROFILE CARDS GRID
+              ------------------------------------------------------------------- */}
+          {viewMode === "grid" ? (
+            <>
+              {loading && employees.length === 0 ? (
+                <div className="pm-empty-box">
+                  <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
+                  <p>Loading employee profiles...</p>
+                </div>
+              ) : employees.length === 0 ? (
+                <div className="pm-empty-box">
+                  <h4>No employees found</h4>
+                  <p>
+                    {debouncedSearch || statusFilter !== "ALL"
+                      ? "No employees match your search or filter criteria."
+                      : "No team members are assigned to this project yet."}
+                  </p>
+                  {(debouncedSearch || statusFilter !== "ALL") && (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ marginTop: "12px" }}
+                      onClick={() => {
+                        setSearch("");
+                        setDebouncedSearch("");
+                        setStatusFilter("ALL");
+                        setCurrentPage(1);
+                      }}
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="pm-emp-grid">
+                  {employees.map((emp) => {
+                    const isActive = emp.status === "ACTIVE";
+                    return (
+                      <div key={emp._id} className="pm-emp-card">
+                        {/* Top Indicator & Status Badge */}
+                        <div className="pm-emp-card-top">
+                          <span
+                            className="pm-emp-dot-indicator"
+                            style={{ background: isActive ? "var(--g-600)" : "var(--muted)" }}
+                          />
+                          <span className={`pm-emp-status-badge ${isActive ? "active" : "inactive"}`}>
+                            {emp.status || "ACTIVE"}
+                          </span>
+                        </div>
+
+                        {/* Avatar & Identity Row */}
+                        <div className="pm-emp-avatar-row">
+                          <div className="pm-emp-avatar">
+                            {getInitials(emp.fullName)}
+                          </div>
+                          <div className="pm-emp-identity">
+                            <span
+                              className="pm-emp-name"
+                              onClick={() => handleViewDetails(emp._id)}
+                              title={emp.fullName}
+                            >
+                              {emp.fullName}
+                            </span>
+                            <span className="pm-emp-title" title={emp.job?.jobTitle || "Team Member"}>
+                              {emp.job?.jobTitle || "Team Member"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 2-Column Meta Grid (Department & Date of Joining) */}
+                        <div className="pm-emp-meta-grid">
+                          <div className="pm-emp-meta-col">
+                            <span className="pm-emp-meta-lbl">DEPARTMENT</span>
+                            <span className="pm-emp-meta-val" title={emp.job?.department || "General"}>
+                              {emp.job?.department || "General"}
+                            </span>
+                          </div>
+                          <div className="pm-emp-meta-col">
+                            <span className="pm-emp-meta-lbl">DATE OF JOINING</span>
+                            <span className="pm-emp-meta-val">
+                              {formatDate(emp.job?.joiningDate)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Contact Box (Email & Phone) */}
+                        <div className="pm-emp-contact-box">
+                          <div className="pm-emp-contact-row" title={emp.email}>
+                            <svg className="pm-emp-contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                              <polyline points="22,6 12,13 2,6" />
+                            </svg>
+                            <span className="pm-emp-contact-val">{emp.email}</span>
+                          </div>
+
+                          <div className="pm-emp-contact-row">
+                            <svg className="pm-emp-contact-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                            </svg>
+                            <span className="pm-emp-contact-val">
+                              {emp.phoneNumber || "Not provided"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Card Actions: Edit & View (Reference 2 style) */}
+                        <div className="pm-emp-card-actions">
+                          <button
+                            type="button"
+                            className="pm-card-btn-edit"
+                            onClick={() => handleOpenEdit(emp)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="pm-card-btn-view"
+                            onClick={() => handleViewDetails(emp._id)}
+                          >
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Table fallback view */
+            <div className="data-table-container table-wrapper-relative">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {visibleColumns.employeeCode && <th>Code</th>}
+                    {visibleColumns.fullName && <th>Full Name</th>}
+                    {visibleColumns.email && <th>Email</th>}
+                    {visibleColumns.phoneNumber && <th>Phone</th>}
+                    {visibleColumns.jobTitle && <th>Job Title</th>}
+                    {visibleColumns.project && <th>Project</th>}
+                    {visibleColumns.status && <th>Status</th>}
+                    {visibleColumns.invitation && <th>Invitation</th>}
+                    {visibleColumns.salary && <th>Salary</th>}
+                    {visibleColumns.joiningDate && <th>Start Date</th>}
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((emp) => (
+                    <tr key={emp._id}>
+                      {visibleColumns.employeeCode && <td><strong>{emp.employeeCode}</strong></td>}
+                      {visibleColumns.fullName && <td>{emp.fullName}</td>}
+                      {visibleColumns.email && <td>{emp.email}</td>}
+                      {visibleColumns.phoneNumber && <td>{emp.phoneNumber || "—"}</td>}
+                      {visibleColumns.jobTitle && <td>{emp.job?.jobTitle || "—"}</td>}
+                      {visibleColumns.project && <td>{emp.job?.project?.projectName || "—"}</td>}
+                      {visibleColumns.status && <td><StatusBadge status={emp.status} /></td>}
+                      {visibleColumns.invitation && (
+                        <td>
+                          <StatusBadge
+                            status={emp.invitation?.status || "PENDING"}
+                            label={
+                              emp.invitation?.status === "ACCEPTED"
+                                ? "Accepted"
+                                : emp.invitation?.status === "DELIVERY_FAILED"
+                                ? "Delivery Failed"
+                                : "Invite Pending"
+                            }
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.salary && (
+                        <td>
+                          <span style={{ fontWeight: "500" }}>
+                            {formatCurrency(emp.currentMonthlySalary)}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.joiningDate && <td>{formatDate(emp.job?.joiningDate)}</td>}
+                      <td>
+                        <div className="row-actions">
                           <button
                             type="button"
                             className="btn-secondary btn-sm"
-                            disabled={resendingId === emp._id}
-                            onClick={() => handleResendInvite(emp._id)}
-                            title="Resend onboarding invitation"
+                            onClick={() => handleViewDetails(emp._id)}
                           >
-                            {resendingId === emp._id ? "Sending..." : "Resend"}
+                            Details
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pagination.totalEmployees > 0 && (
-            <div className="pagination-bar">
-            <span className="subtitle">
-              Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
-              {Math.min(pagination.page * pagination.limit, pagination.totalEmployees)} of{" "}
-              {pagination.totalEmployees} employees
-            </span>
-
-            <div className="page-controls">
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                disabled={pagination.page <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </button>
-              <span style={{ fontSize: "13px", padding: "0 6px" }}>
-                Page {pagination.page} of {pagination.totalPages}
-              </span>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                disabled={pagination.page >= pagination.totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                Next
-              </button>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => handleOpenEdit(emp)}
+                          >
+                            Edit
+                          </button>
+                          {emp.invitation?.status !== "ACCEPTED" && (
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              disabled={resendingId === emp._id}
+                              onClick={() => handleResendInvite(emp._id)}
+                            >
+                              {resendingId === emp._id ? "Sending..." : "Resend"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        )}
+          )}
 
-      {/* Add Employee Modal (Simplified HR Creation & Invitation Workflow) */}
+          {/* Bottom Pagination */}
+          {pagination.totalEmployees > 0 && (
+            <Pagination
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalEmployees}
+              pageSize={pagination.limit}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={(p) => setCurrentPage(p)}
+              onPageSizeChange={(s) => {
+                setPageSize(s);
+                setCurrentPage(1);
+              }}
+              itemLabel="employees"
+            />
+          )}
+        </>
+      )}
+
+      {/* =========================================================================
+          Add Employee Modal (Preserved HR Creation & Invitation Workflow)
+          ========================================================================= */}
       {showAddModal && (
         <div className="modal-overlay" onClick={handleCloseAddModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "620px" }}>
@@ -688,9 +1182,9 @@ export default function AdminHome() {
                       width: "48px",
                       height: "48px",
                       borderRadius: "50%",
-                      background: "#27272a",
-                      color: "#fafafa",
-                      border: "1px solid #3f3f46",
+                      background: "var(--g-100)",
+                      color: "var(--g-800)",
+                      border: "1px solid rgba(21, 90, 55, 0.2)",
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -699,36 +1193,36 @@ export default function AdminHome() {
                   >
                     <IconCheck size={24} />
                   </div>
-                  <h3 style={{ margin: "0 0 6px", fontSize: "17px", color: "#f4f4f5" }}>
-                    Employee Created
+                  <h3 style={{ margin: "0 0 6px", fontSize: "17px", color: "var(--ink)" }}>
+                    Employee Created Successfully
                   </h3>
-                  <p style={{ margin: 0, fontSize: "13.5px", color: "#a1a1aa" }}>
+                  <p style={{ margin: 0, fontSize: "13.5px", color: "var(--muted)" }}>
                     {createdInvitationInfo.employee?.fullName} ({createdInvitationInfo.employee?.employeeCode})
                   </p>
                 </div>
 
                 <div
                   style={{
-                    background: "#18181b",
-                    border: "1px solid #27272a",
+                    background: "var(--panel)",
+                    border: "1px solid var(--hair)",
                     borderRadius: "8px",
                     padding: "16px",
                     marginBottom: "18px",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "13px" }}>
-                    <span style={{ color: "#a1a1aa" }}>Email</span>
-                    <strong style={{ color: "#f4f4f5" }}>{createdInvitationInfo.employee?.email}</strong>
+                    <span style={{ color: "var(--muted)" }}>Email</span>
+                    <strong style={{ color: "var(--ink)" }}>{createdInvitationInfo.employee?.email}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "14px", fontSize: "13px", alignItems: "center" }}>
-                    <span style={{ color: "#a1a1aa" }}>Invite Status</span>
+                    <span style={{ color: "var(--muted)" }}>Invite Status</span>
                     <StatusBadge
                       status={createdInvitationInfo.invitation?.status || "PENDING"}
                       label={createdInvitationInfo.invitation?.status || "Pending"}
                     />
                   </div>
 
-                  <label style={{ fontSize: "12px", color: "#a1a1aa", display: "block", marginBottom: "6px" }}>
+                  <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "6px" }}>
                     Onboarding Link (Valid for 7 days)
                   </label>
                   <div style={{ display: "flex", gap: "8px" }}>
@@ -736,9 +1230,9 @@ export default function AdminHome() {
                       readOnly
                       value={createdInvitationInfo.invitation?.inviteLink || ""}
                       style={{
-                        background: "#09090b",
-                        border: "1px solid #3f3f46",
-                        color: "#e4e4e7",
+                        background: "#ffffff",
+                        border: "1px solid var(--hair)",
+                        color: "var(--ink)",
                         fontSize: "12px",
                         padding: "8px 10px",
                         flex: 1,
@@ -760,11 +1254,11 @@ export default function AdminHome() {
                       {copiedInvite ? "Copied" : "Copy Link"}
                     </button>
                   </div>
-                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "#71717a", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px" }}>
                     {createdInvitationInfo.invitation?.emailSent ? (
                       <>
-                        <IconCheck size={14} style={{ color: "#15803d" }} />
-                        <span>Invitation email sent.</span>
+                        <IconCheck size={14} style={{ color: "var(--g-700)" }} />
+                        <span>Invitation email sent to employee.</span>
                       </>
                     ) : (
                       <span>You can copy and send this link directly to the employee.</span>
@@ -784,10 +1278,10 @@ export default function AdminHome() {
                   <div style={{
                     marginBottom: "16px",
                     padding: "10px 14px",
-                    background: "#ecfdf5",
-                    border: "1px solid #a7f3d0",
+                    background: "var(--g-100)",
+                    border: "1px solid rgba(29, 115, 71, 0.25)",
                     borderRadius: "8px",
-                    color: "#065f46",
+                    color: "var(--g-800)",
                     fontSize: "13px",
                     display: "flex",
                     alignItems: "center",
@@ -1000,7 +1494,6 @@ export default function AdminHome() {
           </div>
         </div>
       )}
-
-    </main>
+    </div>
   );
 }

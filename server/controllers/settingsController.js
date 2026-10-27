@@ -249,3 +249,166 @@ export async function sendTestEmailSettings(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * GET /api/settings/company
+ */
+export async function getCompanySettings(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    res.json({
+      success: true,
+      company: {
+        id: company._id,
+        companyName: company.companyName || "",
+        slug: company.slug || "",
+        status: company.status || "ACTIVE",
+        branding: {
+          displayName: company.branding?.displayName || "",
+          logoUrl: company.branding?.logoUrl || "",
+          primaryColor: company.branding?.primaryColor || "#155a37",
+        },
+        config: {
+          timezone: company.config?.timezone || "Asia/Kolkata",
+          currencyCode: company.config?.currencyCode || "INR",
+          enabledModules: company.config?.enabledModules || [],
+        },
+        primaryContact: {
+          fullName: company.primaryContact?.fullName || "",
+          email: company.primaryContact?.email || "",
+          phoneNumber: company.primaryContact?.phoneNumber || "",
+        },
+        subscription: {
+          plan: company.subscription?.plan || "ENTERPRISE",
+          maxEmployeeSeats: company.subscription?.maxEmployeeSeats || 100,
+          startDate: company.subscription?.startDate || null,
+          endDate: company.subscription?.endDate || null,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PUT /api/settings/company
+ */
+export async function updateCompanySettings(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const { companyName, displayName, timezone, currencyCode, primaryContact } = req.body || {};
+
+    if (companyName && typeof companyName === "string" && companyName.trim()) {
+      company.companyName = companyName.trim();
+    }
+
+    if (!company.branding) company.branding = {};
+    if (typeof displayName === "string") {
+      company.branding.displayName = displayName.trim();
+    }
+
+    if (!company.config) company.config = {};
+    if (typeof timezone === "string" && timezone.trim()) {
+      company.config.timezone = timezone.trim();
+    }
+    if (typeof currencyCode === "string" && currencyCode.trim()) {
+      company.config.currencyCode = currencyCode.trim().toUpperCase();
+    }
+
+    if (primaryContact && typeof primaryContact === "object") {
+      if (!company.primaryContact) company.primaryContact = {};
+      if (typeof primaryContact.fullName === "string") {
+        company.primaryContact.fullName = primaryContact.fullName.trim();
+      }
+      if (typeof primaryContact.email === "string" && primaryContact.email.trim()) {
+        const norm = normalizeEmail(primaryContact.email.trim());
+        if (norm && isValidEmail(norm)) {
+          company.primaryContact.email = norm;
+        }
+      }
+      if (typeof primaryContact.phoneNumber === "string") {
+        company.primaryContact.phoneNumber = primaryContact.phoneNumber.trim();
+      }
+    }
+
+    company.markModified("branding");
+    company.markModified("config");
+    company.markModified("primaryContact");
+    await company.save();
+
+    res.json({
+      success: true,
+      message: "Company profile settings updated successfully.",
+      company: {
+        id: company._id,
+        companyName: company.companyName,
+        slug: company.slug,
+        status: company.status,
+        branding: company.branding,
+        config: company.config,
+        primaryContact: company.primaryContact,
+        subscription: company.subscription,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/settings/audit-logs
+ */
+export async function getAuditLogsSettings(req, res, next) {
+  try {
+    const AuditLog = req.auth.models?.AuditLog;
+    if (!AuditLog) {
+      return res.json({
+        success: true,
+        logs: [],
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
+      });
+    }
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find({})
+        .sort({ timestamp: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      AuditLog.countDocuments({}),
+    ]);
+
+    res.json({
+      success: true,
+      logs: logs.map((log) => ({
+        id: log._id,
+        action: log.action,
+        actorEmail: log.actorEmail,
+        actorRole: log.actorRole,
+        targetType: log.targetType,
+        targetId: log.targetId,
+        timestamp: log.timestamp || log.createdAt,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

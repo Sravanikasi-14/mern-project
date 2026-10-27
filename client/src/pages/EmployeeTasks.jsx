@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
+import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
   IconCheck,
@@ -11,7 +12,7 @@ import {
   IconSearch,
 } from "../components/Icons";
 import api from "../services/api";
-
+import { useAuth } from "../context/AuthContext";
 import "./WorkManagement.css";
 
 const EMPLOYEE_TABS = {
@@ -23,8 +24,15 @@ const EMPLOYEE_TABS = {
   TEAM_QUEUE: "TEAM_QUEUE",
 };
 
+const VIEW_MODES = {
+  KANBAN: "KANBAN",
+  LIST: "LIST",
+};
+
 export default function EmployeeTasks() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(EMPLOYEE_TABS.ALL);
+  const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,9 +41,10 @@ export default function EmployeeTasks() {
   // Filters
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [search, setSearch] = useState("");
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
+  const [selectedProject, setSelectedProject] = useState("ALL");
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
 
-  // Metadata
+  // Metadata & Personal Points
   const [meta, setMeta] = useState({
     userRole: "",
     isManager: false,
@@ -43,14 +52,23 @@ export default function EmployeeTasks() {
     assignableEmployees: [],
     departments: [],
   });
+  const [myPoints, setMyPoints] = useState(null);
 
-  // In-layout Right Side Panel
-  const [sidePanelMode, setSidePanelMode] = useState("none"); // 'none' | 'details'
+  // Leaderboard state
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState("month");
+
+  // Drag and Drop state
+  const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
+  // Side Panel state: 'none' | 'details' | 'submit' | 'recognize'
+  const [sidePanelMode, setSidePanelMode] = useState("none");
   const [selectedTask, setSelectedTask] = useState(null);
 
-  // Task Execution & Submission State (Inline in panel)
+  // Task Execution & Submission State
   const [startingTaskId, setStartingTaskId] = useState(null);
-  const [showSubmitForm, setShowSubmitForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitForm, setSubmitForm] = useState({
@@ -60,49 +78,61 @@ export default function EmployeeTasks() {
   });
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // Manager Review State (Inline in panel for managers reviewing subordinates)
-  const [showReviewForm, setShowReviewForm] = useState(false);
-  const [reviewing, setReviewing] = useState(false);
-  const [reviewError, setReviewError] = useState("");
-  const [reviewDecision, setReviewDecision] = useState("APPROVED");
-  const [reviewComments, setReviewComments] = useState("");
+  // Peer Recognition state
+  const [recognizeForm, setRecognizeForm] = useState({
+    recipientId: "",
+    points: 10,
+    reason: "",
+  });
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognizeError, setRecognizeError] = useState("");
 
-  // Load Metadata
+  // Initial Data Fetch
   useEffect(() => {
     let cancelled = false;
-    async function fetchMeta() {
+    async function loadInitialData() {
       try {
-        const res = await api.get("/tasks/meta");
-        if (!cancelled && res.data?.success) {
-          const metaData = res.data?.data || res.data || {};
-          setMeta({
-            userRole: metaData.userRole || "",
-            isManager: Boolean(metaData.isManager),
-            directReportsCount: metaData.directReportsCount || 0,
-            assignableEmployees: Array.isArray(metaData.assignableEmployees)
-              ? metaData.assignableEmployees
-              : [],
-            departments: Array.isArray(metaData.departments) ? metaData.departments : [],
-          });
+        const [metaRes, myRes] = await Promise.all([
+          api.get("/tasks/meta"),
+          api.get("/impact-points/me"),
+        ]);
+
+        if (!cancelled) {
+          if (metaRes.data?.success) {
+            const metaData = metaRes.data?.data || metaRes.data || {};
+            setMeta({
+              userRole: metaData.userRole || "",
+              isManager: Boolean(metaData.isManager),
+              directReportsCount: metaData.directReportsCount || 0,
+              assignableEmployees: Array.isArray(metaData.assignableEmployees)
+                ? metaData.assignableEmployees
+                : [],
+              departments: Array.isArray(metaData.departments) ? metaData.departments : [],
+            });
+          }
+          if (myRes.data?.success) {
+            const summaryData = myRes.data?.summary || myRes.data?.data || myRes.data || null;
+            setMyPoints(summaryData);
+          }
         }
       } catch (err) {
-        console.error("Failed to fetch task metadata:", err);
+        console.error("Failed to load initial metadata/points:", err);
       }
     }
-    fetchMeta();
+    loadInitialData();
     return () => {
       cancelled = true;
     };
   }, []);
 
   // Fetch Tasks
-  const fetchTasks = async (page = 1) => {
+  const fetchTasks = async () => {
     try {
       setLoading(true);
       setError("");
 
       const params = {
-        page,
+        page: pagination.page,
         limit: pagination.limit,
       };
 
@@ -116,19 +146,15 @@ export default function EmployeeTasks() {
         }
       }
 
-      if (priorityFilter !== "ALL") {
-        params.priority = priorityFilter;
-      }
-      if (search.trim()) {
-        params.search = search.trim();
-      }
+      if (priorityFilter !== "ALL") params.priority = priorityFilter;
+      if (search.trim()) params.search = search.trim();
 
       const res = await api.get("/tasks", { params });
       if (res.data?.success) {
         const taskList = res.data?.tasks || res.data?.data?.tasks || [];
         const pag = res.data?.pagination || res.data?.data?.pagination || {
           page: 1,
-          limit: 20,
+          limit: 50,
           total: taskList.length,
           pages: 1,
         };
@@ -147,27 +173,51 @@ export default function EmployeeTasks() {
     }
   };
 
+  // Fetch Leaderboard
+  const fetchLeaderboard = async () => {
+    try {
+      setLeaderboardLoading(true);
+      const params = { period: leaderboardPeriod };
+      const res = await api.get("/impact-points/leaderboard", { params });
+      if (res.data?.success) {
+        const list =
+          res.data?.leaderboard ||
+          res.data?.data?.leaderboard ||
+          (Array.isArray(res.data?.data) ? res.data.data : []);
+        setLeaderboard(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Failed to load leaderboard:", err);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchTasks(1);
+    fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, priorityFilter]);
+  }, [activeTab, priorityFilter, pagination.page, pagination.limit]);
+
+  useEffect(() => {
+    fetchLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaderboardPeriod]);
+
+  // Auto-dismiss toasts after 4.5 seconds
+  useEffect(() => {
+    if (error || successMsg) {
+      const timer = setTimeout(() => {
+        setError("");
+        setSuccessMsg("");
+      }, 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [error, successMsg]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchTasks(1);
+    fetchTasks();
   };
-
-  // Metrics calculated from loaded dataset
-  const metrics = useMemo(() => {
-    const list = tasks || [];
-    return {
-      total: pagination.total || list.length,
-      todo: list.filter((t) => t.status === "ASSIGNED").length,
-      inProgress: list.filter((t) => t.status === "IN_PROGRESS").length,
-      submitted: list.filter((t) => t.status === "SUBMITTED").length,
-      completed: list.filter((t) => t.status === "APPROVED").length,
-    };
-  }, [tasks, pagination.total]);
 
   // Start Task
   const handleStartTask = async (task) => {
@@ -183,8 +233,8 @@ export default function EmployeeTasks() {
         };
         setSuccessMsg(`Task "${task.title}" is now In Progress.`);
         setTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
-        selectTask(updatedTask);
-        fetchTasks(pagination.page);
+        if (selectedTask?._id === task._id) setSelectedTask(updatedTask);
+        fetchTasks();
       }
     } catch (err) {
       setError(err.response?.data?.message || "Failed to start task");
@@ -193,22 +243,75 @@ export default function EmployeeTasks() {
     }
   };
 
-  // Submit Evidence Handler
-  const handleLinkChange = (index, val) => {
-    const updated = [...submitForm.links];
-    updated[index] = val;
-    setSubmitForm({ ...submitForm, links: updated });
+  // Drag and drop handlers
+  const handleDragStart = (e, task) => {
+    e.dataTransfer.setData("text/plain", task._id);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedTaskId(task._id);
   };
 
-  const addLinkField = () => {
-    setSubmitForm({ ...submitForm, links: [...submitForm.links, ""] });
+  const handleDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverCol(null);
   };
 
-  const removeLinkField = (index) => {
-    const updated = submitForm.links.filter((_, i) => i !== index);
-    setSubmitForm({ ...submitForm, links: updated.length ? updated : [""] });
+  const handleDragOver = (e, status) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverCol !== status) {
+      setDragOverCol(status);
+    }
   };
 
+  const handleDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setDragOverCol(null);
+  };
+
+  const handleDrop = async (e, targetStatus) => {
+    e.preventDefault();
+    setDragOverCol(null);
+    const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
+    if (!taskId) return;
+
+    const task = tasks.find((t) => t._id === taskId);
+    if (!task || task.status === targetStatus) return;
+
+    // Check Employee Role authorization for status transitions
+    if (targetStatus === "APPROVED") {
+      setError("Task approval requires manager or HR verification.");
+      return;
+    }
+
+    if (targetStatus === "ASSIGNED") {
+      setError("Only the assigning manager or an HR Admin can reassign tasks.");
+      return;
+    }
+
+    if (targetStatus === "SUBMITTED") {
+      if (task.status === "ASSIGNED") {
+        // Start task then open submit drawer
+        await handleStartTask(task);
+      }
+      setSelectedTask(task);
+      setSubmitError("");
+      setSidePanelMode("submit");
+      return;
+    }
+
+    if (targetStatus === "IN_PROGRESS") {
+      if (task.status === "ASSIGNED") {
+        handleStartTask(task);
+        return;
+      }
+      if (task.status === "SUBMITTED") {
+        setError("Deliverables already submitted. Awaiting manager review.");
+        return;
+      }
+    }
+  };
+
+  // Submit Evidence
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -250,13 +353,6 @@ export default function EmployeeTasks() {
     }
   };
 
-  const removeUploadedFile = (index) => {
-    setSubmitForm((prev) => ({
-      ...prev,
-      files: prev.files.filter((_, i) => i !== index),
-    }));
-  };
-
   const handleSubmitEvidence = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!selectedTask) return;
@@ -283,7 +379,7 @@ export default function EmployeeTasks() {
     });
 
     if (deliverables.length === 0 && !submitForm.notes.trim()) {
-      setSubmitError("Please provide submission notes or attach deliverables/links before submitting.");
+      setSubmitError("Please provide submission notes or attach deliverables before submitting.");
       return;
     }
 
@@ -305,100 +401,226 @@ export default function EmployeeTasks() {
         };
         setSelectedTask(updatedTask);
         setTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
-        setMetrics((prev) => ({
-          ...prev,
-          inProgress: Math.max(0, prev.inProgress - 1),
-          submitted: prev.submitted + 1,
-        }));
         setSuccessMsg(`Task "${selectedTask.title}" submitted successfully for verification.`);
         setSubmitForm({ notes: "", links: [""], files: [] });
-        fetchTasks(pagination.page);
+        setSidePanelMode("none");
+        fetchTasks();
       }
     } catch (err) {
-      setSubmitError(err.response?.data?.message || "Failed to submit deliverables for verification");
+      setSubmitError(err.response?.data?.message || "Failed to submit deliverables");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Manager Review Submit
-  const handleReviewSubmit = async (e) => {
+  // Peer Recognition
+  const handleAwardRecognition = async (e) => {
     e.preventDefault();
-    if (!selectedTask) return;
-
+    if (!recognizeForm.recipientId || !recognizeForm.points) return;
     try {
-      setReviewing(true);
-      setReviewError("");
-      const res = await api.post(`/tasks/${selectedTask._id}/review`, {
-        decision: reviewDecision,
-        comments: reviewComments.trim(),
+      setRecognizing(true);
+      setRecognizeError("");
+      const res = await api.post("/impact-points/recognize", {
+        recipientId: recognizeForm.recipientId,
+        points: Number(recognizeForm.points),
+        reason: recognizeForm.reason.trim(),
       });
-
       if (res.data?.success) {
-        setShowReviewForm(false);
-        setReviewComments("");
-        setSuccessMsg(res.data.message || `Review submitted: ${reviewDecision}.`);
-        fetchTasks(pagination.page);
+        setSidePanelMode("none");
+        setRecognizeForm({ recipientId: "", points: 10, reason: "" });
+        setSuccessMsg(res.data.message || "Recognition awarded successfully!");
+        fetchLeaderboard();
       }
     } catch (err) {
-      setReviewError(err.response?.data?.message || "Failed to review task");
+      setRecognizeError(err.response?.data?.message || "Failed to award recognition");
     } finally {
-      setReviewing(false);
+      setRecognizing(false);
     }
   };
 
-  const selectTask = (task) => {
-    setSelectedTask(task);
-    setShowReviewForm(false);
-    setSubmitError("");
-    setReviewError("");
-    setSidePanelMode("details");
+  // Metrics (Personal summary inspired by Stitch screen & Pryme reference)
+  const metrics = useMemo(() => {
+    const list = tasks || [];
+    const now = new Date();
+    const upcomingDeadlines = list.filter((t) => {
+      if (!t.deadline || t.status === "APPROVED") return false;
+      const due = new Date(t.deadline);
+      const diffHours = (due - now) / (1000 * 60 * 60);
+      return diffHours > 0 && diffHours <= 48;
+    }).length;
 
-    if (task.submissionNotes || task.deliverables?.length) {
-      const existingNotes = task.submissionNotes || "";
-      const existingLinks = [];
-      const existingFiles = [];
-      (task.deliverables || []).forEach((d) => {
-        if (d.links?.length) existingLinks.push(...d.links);
-        if (d.fileName || d.documentUrl) existingFiles.push(d);
+    const overdueCount = list.filter((t) => {
+      if (!t.deadline || t.status === "APPROVED") return false;
+      return new Date(t.deadline) < now;
+    }).length;
+
+    return {
+      inProgress: list.filter((t) => t.status === "IN_PROGRESS").length,
+      completed: list.filter((t) => t.status === "APPROVED").length,
+      upcoming: upcomingDeadlines,
+      overdue: overdueCount,
+      points: myPoints?.currentBalance || 0,
+      rank: myPoints?.currentRank || "—",
+    };
+  }, [tasks, myPoints]);
+
+  // Project Filter list
+  const projectSummaries = useMemo(() => {
+    const map = {};
+    (tasks || []).forEach((t) => {
+      const pName = t.projectName?.trim() || "General";
+      if (!map[pName]) {
+        map[pName] = { name: pName, count: 0 };
+      }
+      map[pName].count += 1;
+    });
+    return Object.values(map);
+  }, [tasks]);
+
+  const displayedTasks = useMemo(() => {
+    if (selectedProject === "ALL") return tasks;
+    return tasks.filter((t) => (t.projectName?.trim() || "General") === selectedProject);
+  }, [tasks, selectedProject]);
+
+  // Weekly timeline (Mon to Sun)
+  const weeklyTimeline = useMemo(() => {
+    const now = new Date();
+    const currentDay = now.getDay();
+    const diffToMon = (currentDay === 0 ? -6 : 1) - currentDay;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMon);
+    monday.setHours(0, 0, 0, 0);
+
+    const days = [];
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const isToday = d.toDateString() === now.toDateString();
+      const dateStr = d.toISOString().split("T")[0];
+
+      const dayTasks = (tasks || []).filter((t) => {
+        if (!t.deadline) return false;
+        const taskDate = new Date(t.deadline).toISOString().split("T")[0];
+        return taskDate === dateStr;
       });
-      setSubmitForm({
-        notes: existingNotes,
-        links: existingLinks.length ? existingLinks : [""],
-        files: existingFiles,
+
+      days.push({
+        dayName: dayNames[i],
+        dayNumber: d.getDate(),
+        month: d.toLocaleString("default", { month: "short" }),
+        isToday,
+        dateStr,
+        tasks: dayTasks,
       });
-    } else {
-      setSubmitForm({ notes: "", links: [""], files: [] });
     }
+    return days;
+  }, [tasks]);
+
+  // Kanban Columns
+  const kanbanColumns = [
+    {
+      id: "ASSIGNED",
+      title: "To Do / Assigned",
+      dotClass: "col-assigned",
+      tasks: displayedTasks.filter((t) => t.status === "ASSIGNED"),
+    },
+    {
+      id: "IN_PROGRESS",
+      title: "In Progress",
+      dotClass: "col-in-progress",
+      tasks: displayedTasks.filter((t) => t.status === "IN_PROGRESS"),
+    },
+    {
+      id: "SUBMITTED",
+      title: "Under Review",
+      dotClass: "col-submitted",
+      tasks: displayedTasks.filter((t) => t.status === "SUBMITTED" || t.status === "CHANGES_REQUESTED"),
+    },
+    {
+      id: "APPROVED",
+      title: "Completed",
+      dotClass: "col-approved",
+      tasks: displayedTasks.filter((t) => t.status === "APPROVED"),
+    },
+  ];
+
+  const getDeadlineInfo = (deadlineDate, status) => {
+    if (!deadlineDate) return { text: "No deadline", isOverdue: false, isSoon: false };
+    const now = new Date();
+    const due = new Date(deadlineDate);
+    const diffHours = (due - now) / (1000 * 60 * 60);
+
+    if (due < now && status !== "APPROVED") {
+      return { text: "Overdue", isOverdue: true, isSoon: false };
+    }
+    if (diffHours <= 48 && status !== "APPROVED") {
+      return { text: "Due in ≤48h", isOverdue: false, isSoon: true };
+    }
+    return { text: due.toLocaleDateString(), isOverdue: false, isSoon: false };
+  };
+
+  const selectTaskDetails = (task) => {
+    setSelectedTask(task);
+    setSidePanelMode("details");
   };
 
   return (
     <div className="container-wide split-page-container wm-page-container">
-      {/* Header */}
+      {/* Compact Top Header */}
       <AppHeader
-        title="My Tasks"
-        subtitle="Execute assigned initiatives, submit deliverables for review, and earn Impact Points"
+        title="Work & Impact"
         hideLogout={true}
-      />
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
+            <button
+              type="button"
+              className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
+              onClick={() => setViewMode(VIEW_MODES.KANBAN)}
+              style={{ fontSize: 11.5, padding: "3px 8px" }}
+            >
+              Board
+            </button>
+            <button
+              type="button"
+              className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
+              onClick={() => setViewMode(VIEW_MODES.LIST)}
+              style={{ fontSize: 11.5, padding: "3px 8px" }}
+            >
+              List
+            </button>
+          </div>
 
-      {/* Notifications */}
+          <button
+            type="button"
+            className="wm-btn-secondary"
+            onClick={() => setSidePanelMode("recognize")}
+            style={{ whiteSpace: "nowrap", height: 32, fontSize: 12, padding: "0 10px" }}
+          >
+            ★ Give Kudos
+          </button>
+        </div>
+      </AppHeader>
+
+      {/* Floating Non-intrusive Toast (Never pushes down summary cards) */}
       {(error || successMsg) && (
-        <div className="split-page-alerts">
+        <div className="wm-toast-container">
           {error && (
-            <div className="alert alert-danger" style={{ marginBottom: 16 }}>
-              <IconAlertCircle size={18} />
+            <div className="wm-toast-item error">
+              <IconAlertCircle size={16} />
               <span>{error}</span>
-              <button className="btn-icon" onClick={() => setError("")} style={{ marginLeft: "auto" }}>
+              <button className="wm-toast-close" onClick={() => setError("")}>
                 <IconClose size={14} />
               </button>
             </div>
           )}
-
           {successMsg && (
-            <div className="alert alert-success" style={{ marginBottom: 16 }}>
-              <IconCheck size={18} />
+            <div className="wm-toast-item success">
+              <IconCheck size={16} />
               <span>{successMsg}</span>
-              <button className="btn-icon" onClick={() => setSuccessMsg("")} style={{ marginLeft: "auto" }}>
+              <button className="wm-toast-close" onClick={() => setSuccessMsg("")}>
                 <IconClose size={14} />
               </button>
             </div>
@@ -406,89 +628,32 @@ export default function EmployeeTasks() {
         </div>
       )}
 
-      {/* Balanced 4-Column Metric Cards */}
-      <div className="wm-kpi-grid">
-        <div className="wm-kpi-card accent-slate">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label">To Do / Assigned</span>
-          </div>
-          <div className="wm-kpi-value">{metrics.todo}</div>
-          <div className="wm-kpi-subtext">Ready to commence</div>
-        </div>
-
-        <div className="wm-kpi-card accent-blue">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#2563eb" }}>In Progress</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#2563eb" }}>{metrics.inProgress}</div>
-          <div className="wm-kpi-subtext">Actively working</div>
-        </div>
-
-        <div className="wm-kpi-card accent-amber">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#d97706" }}>Under Review</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#d97706" }}>{metrics.submitted}</div>
-          <div className="wm-kpi-subtext">Submitted deliverables</div>
-        </div>
-
-        <div className="wm-kpi-card accent-emerald">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#059669" }}>Completed</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#059669" }}>{metrics.completed}</div>
-          <div className="wm-kpi-subtext">Approved & points credited</div>
-        </div>
-      </div>
-
-      {/* Main Responsive Grid Layout (Resizes dynamically when right side panel opens) */}
-      <div
-        className="split-page-grid wm-split-grid"
-        style={{
-          gridTemplateColumns: sidePanelMode !== "none" ? "minmax(0, 1fr) minmax(360px, 440px)" : "1fr",
-        }}
-      >
-        {/* Left Column: Task Table and Toolbar */}
-        <div className="split-page-left-col wm-left-col">
-          {/* Navigation & Filters Toolbar Card */}
-          <div className="wm-toolbar-card">
-            {/* Tab Selection Row */}
-            <div className="wm-tab-strip">
+      {/* Main 2-Region Grid Layout */}
+      <div className="wm-unified-grid">
+        {/* Main Workspace (Left ~75%) */}
+        <div className="wm-main-col">
+          {/* Consolidated Compact Toolbar: Tabs, Search & Filters in One Row */}
+          <div
+            className="wm-toolbar-card"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 10,
+              padding: "8px 14px",
+              marginBottom: 12,
+            }}
+          >
+            {/* Left: Task Tabs & Projects */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div className="wm-tab-group">
                 <button
                   type="button"
                   onClick={() => setActiveTab(EMPLOYEE_TABS.ALL)}
                   className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.ALL ? "active" : ""}`}
                 >
-                  All Tasks
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.TODO)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.TODO ? "active" : ""}`}
-                >
-                  To Do
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.IN_PROGRESS)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.IN_PROGRESS ? "active" : ""}`}
-                >
-                  In Progress
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.SUBMITTED)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.SUBMITTED ? "active" : ""}`}
-                >
-                  Under Review
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.COMPLETED)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.COMPLETED ? "active" : ""}`}
-                >
-                  Completed
+                  My Tasks
                 </button>
                 {meta.isManager && (
                   <button
@@ -496,110 +661,322 @@ export default function EmployeeTasks() {
                     onClick={() => setActiveTab(EMPLOYEE_TABS.TEAM_QUEUE)}
                     className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.TEAM_QUEUE ? "active" : ""}`}
                   >
-                    Direct Reports Queue
+                    Team Review Queue
                   </button>
                 )}
               </div>
 
-              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
-                {pagination.total} task{pagination.total === 1 ? "" : "s"}
-              </div>
+              {projectSummaries.length > 1 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={`wm-tab-btn ${selectedProject === "ALL" ? "active" : ""}`}
+                    onClick={() => setSelectedProject("ALL")}
+                    style={{ fontSize: 11.5, padding: "3px 8px" }}
+                  >
+                    All Projects
+                  </button>
+                  {projectSummaries.slice(0, 3).map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      className={`wm-tab-btn ${selectedProject === p.name ? "active" : ""}`}
+                      onClick={() => setSelectedProject(selectedProject === p.name ? "ALL" : p.name)}
+                      style={{ fontSize: 11.5, padding: "3px 8px" }}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Filters Row */}
-            <div className="wm-filter-row">
-              <form onSubmit={handleSearchSubmit} style={{ flex: 1, minWidth: 200, maxWidth: 360 }}>
-                <div className="wm-search-wrapper">
-                  <span className="wm-search-icon">
-                    <IconSearch size={15} />
-                  </span>
-                  <input
-                    type="text"
-                    className="wm-input-search"
-                    placeholder="Search my tasks..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
+            {/* Right: Search & Priority Filter */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <form onSubmit={handleSearchSubmit} className="wm-search-wrapper" style={{ minWidth: 160 }}>
+                <span className="wm-search-icon">
+                  <IconSearch size={14} />
+                </span>
+                <input
+                  type="text"
+                  className="wm-input-search"
+                  style={{ height: 30, fontSize: 12, paddingLeft: 28 }}
+                  placeholder="Search my deliverables..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </form>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <select
-                  className="wm-select"
-                  value={priorityFilter}
-                  onChange={(e) => setPriorityFilter(e.target.value)}
-                  style={{ width: "auto" }}
-                >
-                  <option value="ALL">Priority: All</option>
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High (+Bonus points)</option>
-                  <option value="CRITICAL">Critical (+Bonus points)</option>
-                </select>
-              </div>
+              <select
+                className="wm-select"
+                style={{ height: 30, fontSize: 12, padding: "0 28px 0 10px" }}
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+              >
+                <option value="ALL">Priority: All</option>
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
             </div>
           </div>
 
-          {/* Table Card */}
-          <div className="wm-table-card">
-            <div className="wm-table-container">
-              <table className="wm-table">
-                <thead>
-                  <tr>
-                    <th>Task Title</th>
-                    <th style={{ width: 110 }}>Priority</th>
-                    <th style={{ width: 120 }}>Deadline</th>
-                    <th style={{ width: 130 }}>Status</th>
-                    <th style={{ width: 110, textAlign: "right" }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <TableSkeletonRows cols={5} rows={5} />
-                  ) : tasks.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="wm-empty-state">
-                          <div className="wm-empty-icon">
-                            <IconInfo size={22} />
-                          </div>
-                          <div className="wm-empty-title">No tasks found</div>
-                          <p className="wm-empty-desc">
-                            {activeTab === EMPLOYEE_TABS.TODO
-                              ? "You have no pending tasks waiting to start."
-                              : activeTab === EMPLOYEE_TABS.IN_PROGRESS
-                              ? "No active tasks in progress."
-                              : "No tasks match the selected view."}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    tasks.map((task) => {
-                      const isSelected = selectedTask?._id === task._id && sidePanelMode === "details";
-                      const isPastDeadline =
-                        task.deadline &&
-                        new Date(task.deadline) < new Date() &&
-                        task.status !== "APPROVED";
+          {/* Weekly Delivery Schedule Strip */}
+          <div className="wm-timeline-card">
+            <div className="wm-timeline-header">
+              <h4 className="wm-timeline-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#155a37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Schedule & Milestones
+              </h4>
+            </div>
 
-                      return (
+            <div className="wm-timeline-days-grid">
+              {weeklyTimeline.map((day) => (
+                <div
+                  key={day.dateStr}
+                  className={`wm-timeline-day ${day.isToday ? "is-today" : ""}`}
+                >
+                  <div className="wm-timeline-day-header">
+                    <span>{day.dayName} {day.dayNumber}</span>
+                    {day.isToday && (
+                      <span style={{ fontSize: 9.5, background: "#155a37", color: "#ffffff", padding: "1px 4px", borderRadius: 3 }}>
+                        Today
+                      </span>
+                    )}
+                  </div>
+                  <div className="wm-timeline-day-tasks">
+                    {day.tasks.length === 0 ? (
+                      <span style={{ fontSize: 10, color: "#94a3b8", fontStyle: "italic", marginTop: 4 }}>
+                        Free day
+                      </span>
+                    ) : (
+                      day.tasks.map((task) => (
+                        <div
+                          key={task._id}
+                          className="wm-timeline-task-pill"
+                          onClick={() => selectTaskDetails(task)}
+                          title={task.title}
+                        >
+                          {task.title}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Kanban Board View */}
+          {viewMode === VIEW_MODES.KANBAN ? (
+            <div className="wm-kanban-board">
+              {kanbanColumns.map((col) => {
+                const isOver = dragOverCol === col.id;
+                return (
+                  <div
+                    key={col.id}
+                    className={`wm-kanban-col ${isOver ? "is-drop-target" : ""}`}
+                    onDragOver={(e) => handleDragOver(e, col.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, col.id)}
+                  >
+                    <div className="wm-kanban-col-header">
+                      <div className="wm-kanban-col-title">
+                        <span className={`wm-kanban-col-dot ${col.dotClass}`} />
+                        <span>{col.title}</span>
+                      </div>
+                      <span className="wm-kanban-count-pill">{col.tasks.length}</span>
+                    </div>
+
+                    <div className="wm-kanban-cards">
+                      {loading ? (
+                        <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                          Loading tasks...
+                        </div>
+                      ) : col.tasks.length === 0 ? (
+                        <div
+                          style={{
+                            padding: "36px 16px",
+                            textAlign: "center",
+                            color: "#94a3b8",
+                            fontSize: 12,
+                            border: "1px dashed #e2e8f0",
+                            borderRadius: 8,
+                            margin: "4px 0",
+                          }}
+                        >
+                          No tasks in this stage
+                        </div>
+                      ) : (
+                        col.tasks.map((task) => {
+                          const isDragging = draggedTaskId === task._id;
+                          const deadlineInfo = getDeadlineInfo(task.deadline, task.status);
+                          return (
+                            <div
+                              key={task._id}
+                              className={`wm-task-card ${isDragging ? "is-dragging" : ""}`}
+                              draggable={true}
+                              onDragStart={(e) => handleDragStart(e, task)}
+                              onDragEnd={handleDragEnd}
+                              onClick={() => selectTaskDetails(task)}
+                            >
+                              <div className="wm-task-card-header">
+                                <span className="wm-project-tag">
+                                  {task.projectName || "General"}
+                                </span>
+                                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                  <span
+                                    className={`wm-priority-badge ${
+                                      task.priority === "CRITICAL"
+                                        ? "wm-priority-critical"
+                                        : task.priority === "HIGH"
+                                        ? "wm-priority-high"
+                                        : task.priority === "LOW"
+                                        ? "wm-priority-low"
+                                        : "wm-priority-medium"
+                                    }`}
+                                  >
+                                    {task.priority}
+                                  </span>
+                                  <span className="wm-points-tag">
+                                    ★ {task.priority === "CRITICAL" || task.priority === "HIGH" ? "+20" : "+10"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <h5 className="wm-task-card-title">{task.title}</h5>
+
+                              {task.description && (
+                                <p className="wm-task-card-desc">{task.description}</p>
+                              )}
+
+                              <div className="wm-task-card-footer">
+                                <div style={{ fontSize: 11, color: "#64748b" }}>
+                                  Assigned by {task.assignedBySnapshot?.fullName?.split(" ")[0] || "HR"}
+                                </div>
+                                <div
+                                  className={`wm-task-due ${
+                                    deadlineInfo.isOverdue ? "overdue" : deadlineInfo.isSoon ? "soon" : ""
+                                  }`}
+                                >
+                                  {deadlineInfo.text}
+                                </div>
+                              </div>
+
+                              {/* Card Action Button Bar */}
+                              <div
+                                className="wm-card-actions-bar"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {task.status === "ASSIGNED" && (
+                                  <button
+                                    type="button"
+                                    className="wm-card-btn-action action-green"
+                                    onClick={() => handleStartTask(task)}
+                                    disabled={startingTaskId === task._id}
+                                  >
+                                    {startingTaskId === task._id ? "Starting..." : "Start Task →"}
+                                  </button>
+                                )}
+
+                                {task.status === "IN_PROGRESS" && (
+                                  <button
+                                    type="button"
+                                    className="wm-card-btn-action action-green"
+                                    onClick={() => {
+                                      setSelectedTask(task);
+                                      setSubmitError("");
+                                      setSidePanelMode("submit");
+                                    }}
+                                  >
+                                    Submit Work →
+                                  </button>
+                                )}
+
+                                {task.status === "SUBMITTED" && (
+                                  <span style={{ fontSize: 11, color: "#d97706", fontWeight: 600 }}>
+                                    Awaiting Review
+                                  </span>
+                                )}
+
+                                {task.status === "APPROVED" && (
+                                  <span style={{ fontSize: 11, color: "#059669", fontWeight: 700 }}>
+                                    Completed ✓
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  className="wm-card-btn-action"
+                                  style={{ marginLeft: "auto", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0" }}
+                                  onClick={() => selectTaskDetails(task)}
+                                >
+                                  Details
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View Mode */
+            <div className="wm-table-card">
+              <div className="wm-table-container">
+                <table className="wm-table">
+                  <thead>
+                    <tr>
+                      <th>Task Title</th>
+                      <th>Project</th>
+                      <th>Priority</th>
+                      <th>Deadline</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right" }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <TableSkeletonRows cols={6} rows={5} />
+                    ) : displayedTasks.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>
+                          <div className="wm-empty-state">
+                            <h4 className="wm-empty-title">No tasks found</h4>
+                            <p className="wm-empty-desc">You are all caught up on deliverables!</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      displayedTasks.map((task) => (
                         <tr
                           key={task._id}
-                          onClick={() => selectTask(task)}
-                          className={isSelected ? "selected-row" : ""}
+                          onClick={() => selectTaskDetails(task)}
+                          style={{ cursor: "pointer" }}
                         >
                           <td>
                             <div style={{ fontWeight: 600, color: "#0f172a" }}>{task.title}</div>
-                            {task.projectName && (
-                              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                                {task.projectName}
-                              </div>
-                            )}
+                          </td>
+                          <td>
+                            <span style={{ fontSize: 12, color: "#64748b" }}>
+                              {task.projectName || "General"}
+                            </span>
                           </td>
                           <td>
                             <span
                               className={`wm-priority-badge ${
-                                task.priority === "HIGH" || task.priority === "CRITICAL"
+                                task.priority === "CRITICAL"
+                                  ? "wm-priority-critical"
+                                  : task.priority === "HIGH"
                                   ? "wm-priority-high"
                                   : task.priority === "LOW"
                                   ? "wm-priority-low"
@@ -609,295 +986,346 @@ export default function EmployeeTasks() {
                               {task.priority}
                             </span>
                           </td>
-                          <td style={{ whiteSpace: "nowrap" }}>
-                            <div style={{ color: isPastDeadline ? "#dc2626" : "#475569", fontWeight: isPastDeadline ? 600 : 400 }}>
-                              {task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}
-                            </div>
-                            {isPastDeadline && (
-                              <span style={{ fontSize: 10, color: "#dc2626", fontWeight: 700 }}>
-                                Overdue
-                              </span>
-                            )}
-                          </td>
+                          <td>{task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}</td>
                           <td>
                             <StatusBadge status={task.status} />
                           </td>
                           <td style={{ textAlign: "right" }}>
-                            <div style={{ display: "inline-flex", gap: 6 }}>
-                              {task.status === "ASSIGNED" ? (
-                                <button
-                                  className="wm-btn-table-action"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleStartTask(task);
-                                  }}
-                                  disabled={startingTaskId === task._id}
-                                  style={{
-                                    background: "#2563eb",
-                                    color: "#ffffff",
-                                    borderColor: "#2563eb",
-                                  }}
-                                >
-                                  {startingTaskId === task._id ? "Starting..." : "Start"}
-                                </button>
-                              ) : (
-                                <button
-                                  className={`wm-btn-table-action ${isSelected ? "active" : ""}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectTask(task);
-                                  }}
-                                >
-                                  {isSelected ? "Viewing" : "View Details"}
-                                </button>
-                              )}
-                            </div>
+                            <button
+                              type="button"
+                              className="wm-btn-table-action"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectTaskDetails(task);
+                              }}
+                            >
+                              Details
+                            </button>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {pagination.pages > 1 && (
-              <div
-                style={{
-                  padding: "12px 20px",
-                  borderTop: "1px solid #e2e8f0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  backgroundColor: "#f8fafc",
-                  fontSize: 12,
-                  color: "#64748b",
-                }}
-              >
-                <span>
-                  Page {pagination.page} of {pagination.pages} ({pagination.total} total)
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    disabled={pagination.page <= 1}
-                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
-                    className="wm-btn-secondary"
-                    style={{ height: 32, padding: "0 12px", fontSize: 12 }}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    disabled={pagination.page >= pagination.pages}
-                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
-                    className="wm-btn-secondary"
-                    style={{ height: 32, padding: "0 12px", fontSize: 12 }}
-                  >
-                    Next
-                  </button>
-                </div>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
+
+              <Pagination
+                currentPage={pagination.page}
+                totalPages={pagination.pages}
+                totalItems={pagination.total}
+                pageSize={pagination.limit}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={(p) => setPagination((prev) => ({ ...prev, page: p }))}
+                onPageSizeChange={(s) => setPagination((prev) => ({ ...prev, limit: s, page: 1 }))}
+                itemLabel="tasks"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Right Column: Persistent In-Layout Side Panel (No modal backdrop) */}
-        {sidePanelMode === "details" && selectedTask && (
-          <div className="split-page-panel wm-side-panel">
-            {/* Header */}
-            <div className="wm-panel-header">
-              <div style={{ paddingRight: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <StatusBadge status={selectedTask.status} />
-                  <span
-                    className={`wm-priority-badge ${
-                      selectedTask.priority === "HIGH" || selectedTask.priority === "CRITICAL"
-                        ? "wm-priority-high"
-                        : selectedTask.priority === "LOW"
-                        ? "wm-priority-low"
-                        : "wm-priority-medium"
-                    }`}
-                  >
-                    {selectedTask.priority}
-                  </span>
-                </div>
-                <h3 className="wm-panel-title">
-                  {selectedTask.title}
-                </h3>
-              </div>
-              <button
-                className="wm-panel-close-btn"
-                onClick={() => setSidePanelMode("none")}
-                aria-label="Close details"
-              >
-                <IconClose size={16} />
-              </button>
+        {/* Stationary Vertical Impact Points Leaderboard (Right ~25% column) */}
+        <div className="wm-leaderboard-card">
+          <div className="wm-leaderboard-header">
+            <div className="wm-leaderboard-title-row">
+              <h3 className="wm-leaderboard-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#155a37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+                Leaderboard
+              </h3>
             </div>
 
-            {/* Scrollable Body */}
-            <div className="wm-panel-body">
-              {/* Metadata Card */}
-              <div style={{ background: "#f8fafc", borderRadius: 8, padding: 14, border: "1px solid #e2e8f0" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 12 }}>
-                  <div>
-                    <div style={{ color: "#64748b", fontWeight: 600 }}>Deadline</div>
-                    <div style={{ fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
-                      {selectedTask.deadline ? new Date(selectedTask.deadline).toLocaleDateString() : "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#64748b", fontWeight: 600 }}>Assigned By</div>
-                    <div style={{ fontWeight: 600, color: "#0f172a", marginTop: 2 }}>
-                      {selectedTask.assignedBySnapshot?.fullName || "Supervisor / HR"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#64748b", fontWeight: 600 }}>Project</div>
-                    <div style={{ fontWeight: 600, color: "#0f172a", marginTop: 2 }}>
-                      {selectedTask.projectName || "General Initiative"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#64748b", fontWeight: 600 }}>Potential Points</div>
-                    <div style={{ fontWeight: 700, color: "#059669", marginTop: 2 }}>
-                      {selectedTask.priority === "HIGH" || selectedTask.priority === "CRITICAL" ? "+20 pts" : "+10 pts"}
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="wm-leaderboard-tabs">
+              <button
+                type="button"
+                className={`wm-leaderboard-tab ${leaderboardPeriod === "month" ? "active" : ""}`}
+                onClick={() => setLeaderboardPeriod("month")}
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                className={`wm-leaderboard-tab ${leaderboardPeriod === "all" ? "active" : ""}`}
+                onClick={() => setLeaderboardPeriod("all")}
+              >
+                All Time
+              </button>
+            </div>
+          </div>
 
-              {/* Description */}
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                  Task Description
-                </div>
-                <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                  {selectedTask.description}
-                </div>
+          {/* Simple Compact Ranked List - Highlights Current Employee */}
+          <div className="wm-leaderboard-list">
+            {leaderboardLoading ? (
+              <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                Loading rankings...
               </div>
+            ) : leaderboard.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                No rankings recorded yet.
+              </div>
+            ) : (
+              leaderboard.map((item, idx) => {
+                const rankNum = item.rank || idx + 1;
+                const name = item.fullName || item.name || item.employee?.fullName || item.employee?.name || "Colleague";
+                const dept = item.department || item.employee?.job?.department || item.employee?.department || "General";
+                const points = item.balance ?? item.totalPoints ?? item.pointsEarned ?? 0;
+                const isCurrentUser =
+                  (item.employeeId && (String(item.employeeId) === String(user?.employeeId) || String(item.employeeId) === String(meta?.actorEmployeeId))) ||
+                  item.employee?._id === user?.employeeId ||
+                  item.employee?.email === user?.email ||
+                  (user?.name && name.toLowerCase() === user.name.toLowerCase());
 
-              {/* Criteria */}
-              {selectedTask.acceptanceCriteria?.length > 0 && (
+                return (
+                  <div
+                    key={item.employeeId || item.employee?._id || idx}
+                    className={`wm-leaderboard-item ${isCurrentUser ? "is-current-user" : ""}`}
+                  >
+                    <div className="wm-leaderboard-left">
+                      <span
+                        className={`wm-rank-number ${
+                          rankNum === 1
+                            ? "rank-1"
+                            : rankNum === 2
+                            ? "rank-2"
+                            : rankNum === 3
+                            ? "rank-3"
+                            : "rank-other"
+                        }`}
+                      >
+                        {rankNum}
+                      </span>
+                      <div className="wm-task-avatar">
+                        {(name[0] || "C").toUpperCase()}
+                      </div>
+                      <div className="wm-leaderboard-user">
+                        <div className="wm-leaderboard-name">
+                          <span>{name}</span>
+                          {isCurrentUser && <span className="wm-you-badge">You</span>}
+                        </div>
+                        <div className="wm-leaderboard-dept">{dept}</div>
+                      </div>
+                    </div>
+                    <div className="wm-leaderboard-score">{points} pts</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Leaderboard Footer: Quick Kudos button */}
+          <div className="wm-leaderboard-footer">
+            <button
+              type="button"
+              className="wm-btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => setSidePanelMode("recognize")}
+            >
+              + Nominate / Give Kudos
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Slide-out Side Panels (Details, Submit, Recognize) */}
+      {sidePanelMode !== "none" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: "min(460px, 94vw)",
+            background: "#ffffff",
+            boxShadow: "-4px 0 25px rgba(0,0,0,0.15)",
+            zIndex: 999,
+            display: "flex",
+            flexDirection: "column",
+            animation: "slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        >
+          {/* Details Mode */}
+          {sidePanelMode === "details" && selectedTask && (
+            <>
+              <div className="wm-panel-header">
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                    Success Criteria
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <StatusBadge status={selectedTask.status} />
+                    <span className="wm-priority-badge wm-priority-medium">
+                      {selectedTask.priority}
+                    </span>
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#334155" }}>
-                    {selectedTask.acceptanceCriteria.map((c, idx) => (
-                      <li key={idx} style={{ marginBottom: 4 }}>
-                        {c}
-                      </li>
-                    ))}
-                  </ul>
+                  <h3 className="wm-panel-header-title">{selectedTask.title}</h3>
                 </div>
-              )}
+                <button
+                  type="button"
+                  className="wm-panel-close-btn"
+                  onClick={() => setSidePanelMode("none")}
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
 
-              {/* Reviewer Feedback / Changes Requested */}
-              {selectedTask.review?.decision && (
-                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
-                    Review Decision: {selectedTask.review.decision}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
-                    Reviewed by {selectedTask.review.reviewerSnapshot?.fullName} on {new Date(selectedTask.review.reviewedAt).toLocaleDateString()}
-                  </div>
-                  {selectedTask.review.comments && (
-                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, fontSize: 12, color: "#92400e" }}>
-                      {selectedTask.review.comments}
+              <div className="wm-panel-body">
+                <div style={{ background: "#f8faf8", borderRadius: 10, padding: "14px 16px", border: "1px solid #e2e8f0" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, fontSize: 12 }}>
+                    <div>
+                      <div style={{ color: "#64748b", fontWeight: 600 }}>Project</div>
+                      <div style={{ fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                        {selectedTask.projectName || "General"}
+                      </div>
                     </div>
-                  )}
+                    <div>
+                      <div style={{ color: "#64748b", fontWeight: 600 }}>Deadline</div>
+                      <div style={{ fontWeight: 700, color: "#0f172a", marginTop: 2 }}>
+                        {selectedTask.deadline ? new Date(selectedTask.deadline).toLocaleDateString() : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: "#64748b", fontWeight: 600 }}>Assigned By</div>
+                      <div style={{ fontWeight: 600, color: "#0f172a", marginTop: 2 }}>
+                        {selectedTask.assignedBySnapshot?.fullName || "HR Admin"}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: "#64748b", fontWeight: 600 }}>Points Reward</div>
+                      <div style={{ fontWeight: 700, color: "#059669", marginTop: 2 }}>
+                        ★ {selectedTask.priority === "CRITICAL" || selectedTask.priority === "HIGH" ? "+20 pts" : "+10 pts"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {/* Submitted Deliverables On Record (Visible when submitted or approved) */}
-              {(selectedTask.status === "SUBMITTED" || selectedTask.status === "APPROVED") && (
-                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
-                    {selectedTask.status === "APPROVED" ? "Completed Deliverables On Record" : "Submitted Deliverables (Under Verification)"}
+                <div>
+                  <div className="wm-section-divider">Description</div>
+                  <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.5, whiteSpace: "pre-wrap", marginTop: 8 }}>
+                    {selectedTask.description}
                   </div>
-                  {selectedTask.submissionNotes && (
-                    <div style={{ fontStyle: "italic", fontSize: 12, color: "#475569", marginBottom: 8, background: "#f8fafc", padding: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                      &ldquo;{selectedTask.submissionNotes}&rdquo;
-                    </div>
-                  )}
-                  {selectedTask.deliverables?.map((deliv, idx) => (
-                    <div key={idx} style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: 8, border: "1px solid #e2e8f0", marginBottom: 6, fontSize: 12 }}>
-                      {deliv.description && <div style={{ fontWeight: 600 }}>{deliv.description}</div>}
-                      {deliv.links?.map((link, lIdx) => (
-                        <div key={lIdx} style={{ marginTop: 2 }}>
-                          <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>
-                            {link}
-                          </a>
-                        </div>
+                </div>
+
+                {selectedTask.acceptanceCriteria?.length > 0 && (
+                  <div>
+                    <div className="wm-section-divider">Acceptance Criteria</div>
+                    <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13, color: "#334155" }}>
+                      {selectedTask.acceptanceCriteria.map((c, idx) => (
+                        <li key={idx} style={{ marginBottom: 4 }}>{c}</li>
                       ))}
-                      {deliv.fileName && (
-                        <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6, color: "#475569" }}>
-                          <IconDocument size={14} />
-                          <span>{deliv.fileName}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {selectedTask.status === "APPROVED" && (
-                    <div style={{ marginTop: 8, padding: "10px 14px", borderRadius: 8, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#065f46", fontSize: 12, fontWeight: 600 }}>
-                      {selectedTask.pointsAwarded > 0
-                        ? `Task approved. ${selectedTask.pointsAwarded} Impact Points credited to your balance.`
-                        : "Task approved."}
-                    </div>
-                  )}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Submitted Deliverables if any */}
+                {selectedTask.deliverables?.length > 0 && (
+                  <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
+                    <div className="wm-section-divider">Submitted Deliverables</div>
+                    {selectedTask.submissionNotes && (
+                      <div style={{ fontStyle: "italic", fontSize: 12, color: "#475569", margin: "8px 0", background: "#f8faf8", padding: "10px 12px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                        &ldquo;{selectedTask.submissionNotes}&rdquo;
+                      </div>
+                    )}
+                    {selectedTask.deliverables.map((deliv, idx) => (
+                      <div key={idx} style={{ background: "#f1f5f9", borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, border: "1px solid #e2e8f0" }}>
+                        {deliv.description && <div style={{ fontWeight: 600, color: "#0f172a" }}>{deliv.description}</div>}
+                        {deliv.links?.map((link, lIdx) => (
+                          <div key={lIdx} style={{ marginTop: 4 }}>
+                            <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline", wordBreak: "break-all" }}>
+                              {link}
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="wm-panel-footer">
+                <button type="button" className="wm-btn-secondary" onClick={() => setSidePanelMode("none")}>
+                  Close
+                </button>
+                {selectedTask.status === "ASSIGNED" && (
+                  <button
+                    type="button"
+                    className="wm-btn-primary"
+                    onClick={() => handleStartTask(selectedTask)}
+                    disabled={startingTaskId === selectedTask._id}
+                  >
+                    {startingTaskId === selectedTask._id ? "Starting..." : "Start Task"}
+                  </button>
+                )}
+                {selectedTask.status === "IN_PROGRESS" && (
+                  <button
+                    type="button"
+                    className="wm-btn-primary"
+                    onClick={() => {
+                      setSubmitError("");
+                      setSidePanelMode("submit");
+                    }}
+                  >
+                    Submit Work
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Submit Deliverables Mode */}
+          {sidePanelMode === "submit" && selectedTask && (
+            <>
+              <div className="wm-panel-header">
+                <div>
+                  <h3 className="wm-panel-header-title">Submit Deliverables</h3>
+                  <p className="wm-panel-header-subtitle">{selectedTask.title}</p>
+                </div>
+                <button type="button" className="wm-panel-close-btn" onClick={() => setSidePanelMode("none")}>
+                  <IconClose size={16} />
+                </button>
+              </div>
+
+              {submitError && (
+                <div className="alert alert-danger" style={{ margin: "12px 20px 0", padding: "8px 12px", fontSize: 12 }}>
+                  <span>{submitError}</span>
                 </div>
               )}
 
-              {/* Work Deliverable Submission Section (Always open when IN_PROGRESS or CHANGES_REQUESTED) */}
-              {(selectedTask.status === "IN_PROGRESS" || selectedTask.status === "CHANGES_REQUESTED") && (
-                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-                    Submit Work for Verification
-                  </div>
-                  <p style={{ margin: "0 0 12px", fontSize: 12, color: "#64748b" }}>
-                    Provide notes, deliverables, and PR links for verification. Points are awarded upon approval.
-                  </p>
-
-                  {submitError && (
-                    <div className="alert alert-danger" style={{ marginBottom: 12, padding: "10px 14px", fontSize: 13 }}>
-                      <IconAlertCircle size={16} />
-                      <span>{submitError}</span>
-                    </div>
-                  )}
-
+              <form onSubmit={handleSubmitEvidence} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                <div className="wm-panel-body">
                   <div className="wm-form-group">
                     <label className="wm-form-label">
-                      Submission Notes <span style={{ color: "#64748b", fontWeight: 400 }}>(Summary of work completed)</span>
+                      <span>Completion Notes / Summary <span className="req">*</span></span>
                     </label>
                     <textarea
-                      rows={3}
+                      required
+                      rows={4}
                       className="wm-form-textarea"
-                      placeholder="Summarize the implementation, outcomes, or notes for the reviewer..."
+                      placeholder="Describe the solution implemented, verified criteria, and outcomes..."
                       value={submitForm.notes}
                       onChange={(e) => setSubmitForm({ ...submitForm, notes: e.target.value })}
                     />
                   </div>
 
                   <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      Deliverable Links <span style={{ color: "#64748b", fontWeight: 400 }}>(GitHub PR, Figma, Documents)</span>
-                    </label>
+                    <label className="wm-form-label">Deliverable Links (PR, Figma, Docs)</label>
                     {submitForm.links.map((link, idx) => (
-                      <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                      <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                         <input
-                          type="text"
+                          type="url"
                           className="wm-form-input"
-                          placeholder="e.g. github.com/org/repo/pull/101 or https://..."
+                          placeholder="https://github.com/... or https://figma.com/..."
                           value={link}
-                          onChange={(e) => handleLinkChange(idx, e.target.value)}
-                          style={{ flex: 1 }}
+                          onChange={(e) => {
+                            const updated = [...submitForm.links];
+                            updated[idx] = e.target.value;
+                            setSubmitForm({ ...submitForm, links: updated });
+                          }}
                         />
                         {submitForm.links.length > 1 && (
                           <button
                             type="button"
-                            className="wm-btn-secondary"
-                            onClick={() => removeLinkField(idx)}
-                            style={{ height: 38, padding: "0 10px" }}
+                            className="wm-panel-close-btn"
+                            onClick={() => {
+                              const updated = submitForm.links.filter((_, i) => i !== idx);
+                              setSubmitForm({ ...submitForm, links: updated });
+                            }}
                           >
                             <IconClose size={14} />
                           </button>
@@ -907,172 +1335,124 @@ export default function EmployeeTasks() {
                     <button
                       type="button"
                       className="wm-btn-secondary"
-                      onClick={addLinkField}
-                      style={{ height: 30, fontSize: 11, marginTop: 4 }}
+                      onClick={() => setSubmitForm({ ...submitForm, links: [...submitForm.links, ""] })}
+                      style={{ fontSize: 11, height: 28, alignSelf: "flex-start", marginTop: 4 }}
                     >
-                      + Add Another Link
+                      + Add Link
                     </button>
                   </div>
 
                   <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      Attach Evidence Document / File
-                    </label>
+                    <label className="wm-form-label">Attach File (optional, max 10MB)</label>
                     <input
                       type="file"
+                      className="wm-form-input"
                       onChange={handleFileUpload}
                       disabled={uploadingFile}
-                      style={{ fontSize: 12 }}
                     />
-                    {uploadingFile && <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>Uploading evidence file...</div>}
-
-                    {submitForm.files.map((f, idx) => (
-                      <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f1f5f9", padding: "6px 10px", borderRadius: 6, marginTop: 6, fontSize: 12 }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <IconDocument size={14} /> {f.fileName}
-                        </span>
-                        <button type="button" onClick={() => removeUploadedFile(idx)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", padding: 0 }}>
-                          <IconClose size={14} />
-                        </button>
+                    {uploadingFile && <span style={{ fontSize: 11, color: "#155a37" }}>Uploading file...</span>}
+                    {submitForm.files.map((f, i) => (
+                      <div key={i} style={{ fontSize: 12, color: "#155a37", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <span>📎 {f.fileName}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Inline Manager Review Form (When manager reviews team member) */}
-              {showReviewForm && selectedTask.status === "SUBMITTED" && (
-                <form onSubmit={handleReviewSubmit} style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 10 }}>
-                    Team Submission Review
-                  </div>
-                  {reviewError && (
-                    <div className="alert alert-danger" style={{ marginBottom: 12, padding: "10px 14px", fontSize: 12 }}>
-                      <span>{reviewError}</span>
-                    </div>
-                  )}
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      Decision
-                    </label>
-                    <select
-                      className="wm-select"
-                      value={reviewDecision}
-                      onChange={(e) => setReviewDecision(e.target.value)}
-                    >
-                      <option value="APPROVED">Approve (Award Points)</option>
-                      <option value="CHANGES_REQUESTED">Request Changes</option>
-                      <option value="REJECTED">Reject Submission</option>
-                    </select>
-                  </div>
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      Comments / Feedback
-                    </label>
-                    <textarea
-                      rows={3}
-                      className="wm-form-textarea"
-                      placeholder="Provide review notes..."
-                      value={reviewComments}
-                      onChange={(e) => setReviewComments(e.target.value)}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      className="wm-btn-secondary"
-                      onClick={() => setShowReviewForm(false)}
-                      disabled={reviewing}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="wm-btn-primary"
-                      disabled={reviewing}
-                    >
-                      {reviewing ? "Submitting..." : "Submit Review"}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            {/* Panel Footer */}
-            <div className="wm-panel-footer" style={{ justifyContent: "space-between" }}>
-              <button
-                className="wm-btn-secondary"
-                onClick={() => setSidePanelMode("none")}
-              >
-                Close Panel
-              </button>
-
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {selectedTask.status === "ASSIGNED" && (
-                  <button
-                    className="wm-btn-primary"
-                    onClick={() => handleStartTask(selectedTask)}
-                    disabled={startingTaskId === selectedTask._id}
-                  >
-                    {startingTaskId === selectedTask._id ? "Starting..." : "Start Task"}
+                <div className="wm-panel-footer">
+                  <button type="button" className="wm-btn-secondary" onClick={() => setSidePanelMode("none")}>
+                    Cancel
                   </button>
-                )}
-
-                {(selectedTask.status === "IN_PROGRESS" || selectedTask.status === "CHANGES_REQUESTED") && (
-                  <button
-                    type="button"
-                    className="wm-btn-primary"
-                    onClick={handleSubmitEvidence}
-                    disabled={submitting || uploadingFile}
-                  >
+                  <button type="submit" className="wm-btn-primary" disabled={submitting}>
                     {submitting ? "Submitting..." : "Submit for Verification"}
                   </button>
-                )}
+                </div>
+              </form>
+            </>
+          )}
 
-                {selectedTask.status === "SUBMITTED" && !showReviewForm && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "4px 10px",
-                        borderRadius: 12,
-                        background: "#fef3c7",
-                        color: "#92400e",
-                      }}
-                    >
-                      Awaiting Review
-                    </span>
-                    {meta.isManager && (
-                      <button
-                        className="wm-btn-primary"
-                        onClick={() => setShowReviewForm(true)}
-                      >
-                        Review Team Task
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {selectedTask.status === "APPROVED" && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "4px 10px",
-                      borderRadius: 12,
-                      background: "#dcfce7",
-                      color: "#166534",
-                    }}
-                  >
-                    Completed
-                  </span>
-                )}
+          {/* Give Kudos Mode */}
+          {sidePanelMode === "recognize" && (
+            <>
+              <div className="wm-panel-header">
+                <div>
+                  <h3 className="wm-panel-header-title">Give Kudos</h3>
+                </div>
+                <button type="button" className="wm-panel-close-btn" onClick={() => setSidePanelMode("none")}>
+                  <IconClose size={16} />
+                </button>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+
+              {recognizeError && (
+                <div className="alert alert-danger" style={{ margin: "12px 20px 0", padding: "8px 12px", fontSize: 12 }}>
+                  <span>{recognizeError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleAwardRecognition} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                <div className="wm-panel-body">
+                  <div className="wm-form-group">
+                    <label className="wm-form-label">
+                      <span>Recipient Colleague <span className="req">*</span></span>
+                    </label>
+                    <select
+                      required
+                      className="wm-form-select"
+                      value={recognizeForm.recipientId}
+                      onChange={(e) => setRecognizeForm({ ...recognizeForm, recipientId: e.target.value })}
+                    >
+                      <option value="">Select colleague...</option>
+                      {(meta?.assignableEmployees || []).map((emp) => (
+                        <option key={emp._id} value={emp._id}>
+                          {emp.fullName || emp.name} ({emp.employeeCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="wm-form-group">
+                    <label className="wm-form-label">
+                      <span>Points to Award <span className="req">*</span></span>
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      required
+                      className="wm-form-input"
+                      value={recognizeForm.points}
+                      onChange={(e) => setRecognizeForm({ ...recognizeForm, points: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="wm-form-group">
+                    <label className="wm-form-label">
+                      <span>Kudos Reason / Appreciation <span className="req">*</span></span>
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      className="wm-form-textarea"
+                      placeholder="Share what this team member accomplished..."
+                      value={recognizeForm.reason}
+                      onChange={(e) => setRecognizeForm({ ...recognizeForm, reason: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="wm-panel-footer">
+                  <button type="button" className="wm-btn-secondary" onClick={() => setSidePanelMode("none")}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="wm-btn-primary" disabled={recognizing}>
+                    {recognizing ? "Sending..." : "Send Kudos"}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

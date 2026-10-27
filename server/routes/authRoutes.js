@@ -4,6 +4,8 @@ import {
   login,
   logout,
   me,
+  updateProfile,
+  changePassword,
   setupInitialAdmin,
   verifyOnboardingInvitation,
 } from "../controllers/authController.js";
@@ -19,6 +21,8 @@ const router = express.Router();
 router.post("/login", loginLimiter, login);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
+router.put("/profile", authenticate, updateProfile);
+router.post("/change-password", authenticate, changePassword);
 
 // Controlled initial HR Admin setup for already-provisioned companies
 router.post("/setup-initial-admin", loginLimiter, setupInitialAdmin);

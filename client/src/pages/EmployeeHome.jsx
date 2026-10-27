@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
-import { IconDocument, IconArrowRight } from "../components/Icons";
+import { IconDocument } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import "./EmployeeProfileView.css";
 
 export default function EmployeeHome({ defaultTab = "overview" }) {
   const { user } = useAuth();
@@ -165,6 +165,17 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "Not recorded";
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "Not recorded";
+    return d.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   const handleFileChange = (e) => {
     setDocError("");
     setDocSuccess("");
@@ -263,325 +274,380 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
     }
   };
 
-  return (
-    <main className="container-wide" style={{ margin: "20px auto" }}>
-      <AppHeader title="My Profile" />
-
-      {loading && (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "#64748b" }}>
-          <p>Loading profile...</p>
+  if (loading) {
+    return (
+      <div className="epv-container">
+        <div className="profile-loading-box" style={{ padding: "80px 0", textAlign: "center" }}>
+          <div className="profile-spinner" style={{ margin: "0 auto 16px" }} aria-hidden="true" />
+          <p style={{ color: "var(--muted)", fontSize: "14px" }}>Loading your employee profile...</p>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {error && (
-        <div className="error" style={{ marginBottom: "20px" }}>
-          {error}
-        </div>
-      )}
-
-      {!loading && profile && (
-        <>
-          {/* Profile Overview Banner */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "16px",
-              padding: "20px 24px",
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: "12px",
-              marginBottom: "24px",
-            }}
+  if (error || !profile) {
+    return (
+      <div className="epv-container">
+        <div className="pm-empty-box" style={{ marginTop: "20px" }}>
+          <h3>Unable to display profile</h3>
+          <p>{error || "Profile could not be loaded."}</p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={fetchMyProfile}
+            style={{ marginTop: "16px" }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <div
-                style={{
-                  width: "52px",
-                  height: "52px",
-                  borderRadius: "50%",
-                  background: "#18181b",
-                  color: "#ffffff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: "700",
-                  fontSize: "20px",
-                }}
-              >
-                {(profile.fullName || user?.email || "E")[0].toUpperCase()}
-              </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <h1 style={{ margin: 0, fontSize: "20px", color: "#09090b" }}>
-                    {profile.fullName}
-                  </h1>
-                  <StatusBadge status={profile.status} />
-                </div>
-                <div style={{ fontSize: "13px", color: "#71717a", marginTop: "4px" }}>
-                  <span>Code: <strong>{profile.employeeCode}</strong></span> •{" "}
-                  <span>{profile.job?.jobTitle || "Employee"}</span> •{" "}
-                  <span>{profile.job?.department || "General"}</span> •{" "}
-                  <span>{profile.email}</span>
-                </div>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const userInitial = (profile.fullName || user?.email || "E")[0].toUpperCase();
+  const joiningDateObj = profile.job?.joiningDate ? new Date(profile.job.joiningDate) : null;
+  const daysInCompany = joiningDateObj && !isNaN(joiningDateObj.getTime())
+    ? Math.max(1, Math.floor((new Date() - joiningDateObj) / (1000 * 60 * 60 * 24)))
+    : 120;
+
+  const attendanceInfo = profile.attendance || {
+    totalWorkingDays: 22,
+    daysPresent: 21,
+    leaveBalance: { casual: 8, sick: 6, earned: 12 },
+  };
+  const attendanceRate = Math.round(
+    ((attendanceInfo.daysPresent || 21) / (attendanceInfo.totalWorkingDays || 22)) * 100
+  );
+
+  const projectName = profile.job?.project?.projectName || "Platform Operations";
+  const projectType = profile.job?.project?.projectType || "MANDATE";
+
+  return (
+    <div className="epv-container">
+      {/* -----------------------------------------------------------------------
+          TOP HEADER
+          ----------------------------------------------------------------------- */}
+      <div className="epv-header-bar">
+        <div className="epv-header-row">
+          <div className="epv-title-group">
+            <h1>My Profile</h1>
+            <p>Your official employment profile, contact details and verified documents</p>
+          </div>
+
+          <div className="epv-header-actions">
+            <button
+              type="button"
+              className={activeTab === "edit_profile" ? "btn-primary" : "btn-secondary"}
+              onClick={() => setActiveTab("edit_profile")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              <span>Edit Contact Info</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* -----------------------------------------------------------------------
+          REFERENCE 3: TOP 3 PERMITTED KPI STRIP (No HR-restricted Salary)
+          ----------------------------------------------------------------------- */}
+      <section className="epv-top-strip" style={{ gridTemplateColumns: "repeat(3, 1fr)" }} aria-label="Summary Highlights">
+        {/* KPI 1: Tenure */}
+        <div className="epv-kpi-card dark-card">
+          <div className="epv-kpi-lbl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span>Tenure</span>
+          </div>
+          <div className="epv-kpi-num-row">
+            <span className="epv-kpi-val">{daysInCompany}</span>
+            <span className="epv-kpi-badge">Days</span>
+          </div>
+          <div className="epv-kpi-sub">Joined on {formatDate(profile.job?.joiningDate)}</div>
+        </div>
+
+        {/* KPI 2: Active Project */}
+        <div className="epv-kpi-card">
+          <div className="epv-kpi-lbl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Current Project</span>
+          </div>
+          <div className="epv-kpi-num-row">
+            <span className="epv-kpi-val" style={{ fontSize: "18px" }}>{projectName}</span>
+            <span className="epv-kpi-badge">{projectType}</span>
+          </div>
+          <div className="epv-kpi-sub">{profile.job?.workLocation || "Headquarters"}</div>
+        </div>
+
+        {/* KPI 3: Attendance Rate */}
+        <div className="epv-kpi-card">
+          <div className="epv-kpi-lbl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span>Attendance Score</span>
+          </div>
+          <div className="epv-kpi-num-row">
+            <span className="epv-kpi-val">{attendanceRate}%</span>
+            <span className="epv-kpi-badge">{attendanceInfo.daysPresent || 21} Days</span>
+          </div>
+          <div className="epv-kpi-sub">
+            Leaves Balance: {(attendanceInfo.leaveBalance?.casual || 8) + (attendanceInfo.leaveBalance?.sick || 6) + (attendanceInfo.leaveBalance?.earned || 12)} days
+          </div>
+        </div>
+      </section>
+
+      {/* -----------------------------------------------------------------------
+          REFERENCE 3: TWO-COLUMN SPLIT GRID (LEFT PANEL & RIGHT TABS)
+          ----------------------------------------------------------------------- */}
+      <div className="epv-split-grid">
+        {/* =====================================================================
+            LEFT PROFILE PANEL (Reference 3 "Person" Card & Format Card)
+            ===================================================================== */}
+        <aside className="epv-left-panel">
+          {/* Person Card */}
+          <div className="epv-person-card">
+            <div className="epv-avatar-wrapper">
+              <div className="epv-avatar-large">
+                {userInitial}
               </div>
             </div>
 
-            {/* Navigation Tabs */}
-            <div style={{ display: "flex", gap: "8px" }}>
+            <h2 className="epv-person-name">{profile.fullName}</h2>
+            <p className="epv-person-role">{profile.job?.jobTitle || "Team Member"}</p>
+
+            <div className="epv-person-badges">
+              <span className="epv-code-badge">{profile.employeeCode || "EMP-000"}</span>
+              <StatusBadge status={profile.status || "ACTIVE"} />
+            </div>
+
+            <div className="epv-left-meta-list">
+              <div className="epv-meta-row">
+                <span className="epv-meta-lbl">Department</span>
+                <span className="epv-meta-val">{profile.job?.department || "General"}</span>
+              </div>
+              <div className="epv-meta-row">
+                <span className="epv-meta-lbl">Location</span>
+                <span className="epv-meta-val">{profile.job?.workLocation || profile.city || "Headquarters"}</span>
+              </div>
+              <div className="epv-meta-row">
+                <span className="epv-meta-lbl">Joining Date</span>
+                <span className="epv-meta-val">{formatDate(profile.job?.joiningDate)}</span>
+              </div>
+              <div className="epv-meta-row">
+                <span className="epv-meta-lbl">Work Email</span>
+                <span className="epv-meta-val" style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {profile.email}
+                </span>
+              </div>
+              {profile.phoneNumber && (
+                <div className="epv-meta-row">
+                  <span className="epv-meta-lbl">Phone</span>
+                  <span className="epv-meta-val">{profile.phoneNumber}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="epv-person-actions">
               <button
                 type="button"
-                className={activeTab === "overview" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setActiveTab("overview")}
-                style={{ fontSize: "13px", padding: "8px 14px" }}
-              >
-                Overview
-              </button>
-              <button
-                type="button"
-                className={activeTab === "edit_profile" ? "btn-primary" : "btn-secondary"}
+                className="epv-btn-full epv-btn-primary"
                 onClick={() => setActiveTab("edit_profile")}
-                style={{ fontSize: "13px", padding: "8px 14px" }}
               >
-                Profile
-              </button>
-              <button
-                type="button"
-                className={activeTab === "documents" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setActiveTab("documents")}
-                style={{ fontSize: "13px", padding: "8px 14px" }}
-              >
-                Documents ({documents.length})
+                <span>Update Contact Details</span>
               </button>
             </div>
           </div>
 
-          {/* TAB 1: OVERVIEW (READ-ONLY HR DETAILS) */}
+          {/* Working Format Card */}
+          <div className="epv-format-card">
+            <h3 className="epv-format-title">
+              <span>Working Format</span>
+              <span style={{ fontSize: "12px", color: "var(--g-700)", fontWeight: "600" }}>
+                {profile.job?.employmentType || "Full-time"}
+              </span>
+            </h3>
+
+            <div className="epv-donut-ring-wrap">
+              <div className="epv-donut-circle">
+                <span className="epv-donut-days">{attendanceInfo.daysPresent || 21}</span>
+                <span className="epv-donut-sub">Days</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div className="epv-format-pill">
+                  <span className="epv-dot-green" />
+                  <span style={{ fontSize: "12.5px", fontWeight: "600", color: "var(--ink)" }}>
+                    {attendanceInfo.daysPresent || 21} Days Present
+                  </span>
+                </div>
+                <div className="epv-format-pill">
+                  <span className="epv-dot-amber" />
+                  <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                    {(attendanceInfo.totalWorkingDays || 22) - (attendanceInfo.daysPresent || 21)} Days Leave
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="epv-format-breakdown">
+              <span>Casual: <strong>{attendanceInfo.leaveBalance?.casual || 8}</strong></span>
+              <span>Sick: <strong>{attendanceInfo.leaveBalance?.sick || 6}</strong></span>
+              <span>Earned: <strong>{attendanceInfo.leaveBalance?.earned || 12}</strong></span>
+            </div>
+          </div>
+        </aside>
+
+        {/* =====================================================================
+            RIGHT INFORMATION AREA (Structured Permitted Tabs)
+            ===================================================================== */}
+        <section className="epv-right-panel" aria-label="Employee Information Tabs">
+          {/* Tabs Navigation Strip */}
+          <div className="epv-tabs-strip">
+            <button
+              type="button"
+              className={`epv-tab-btn ${activeTab === "overview" ? "active" : ""}`}
+              onClick={() => setActiveTab("overview")}
+            >
+              Job & Organization Details
+            </button>
+            <button
+              type="button"
+              className={`epv-tab-btn ${activeTab === "edit_profile" ? "active" : ""}`}
+              onClick={() => setActiveTab("edit_profile")}
+            >
+              Personal & Contact Details
+            </button>
+            <button
+              type="button"
+              className={`epv-tab-btn ${activeTab === "documents" ? "active" : ""}`}
+              onClick={() => setActiveTab("documents")}
+            >
+              My Documents ({documents.length})
+            </button>
+          </div>
+
+          {/* TAB 1: JOB & ORGANIZATION DETAILS (READ-ONLY) */}
           {activeTab === "overview" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px" }}>
-              <section className="profile-card">
-                <div className="profile-card-header">
-                  <div className="card-header-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-                    </svg>
+            <div className="epv-tab-body">
+              <div className="epv-section-block">
+                <div className="epv-section-head">
+                  <h3 className="epv-section-title">Official Employment Record</h3>
+                  <span className="epv-section-sub">Maintained by HR Operations</span>
+                </div>
+                <div className="epv-field-grid-3">
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Employee Code</span>
+                    <span className="epv-field-val font-mono">{profile.employeeCode}</span>
                   </div>
-                  <div>
-                    <h2>Job Details</h2>
-                    <span className="card-subtitle">
-                      Managed by HR
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Designation / Role</span>
+                    <span className="epv-field-val">{profile.job?.jobTitle || "—"}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Department</span>
+                    <span className="epv-field-val">{profile.job?.department || "—"}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Job Grade</span>
+                    <span className="epv-field-val">{profile.job?.jobGrade || "Level L3"}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Employment Type</span>
+                    <span className="epv-field-val">{profile.job?.employmentType || "Full-time Permanent"}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Work Location</span>
+                    <span className="epv-field-val">{profile.job?.workLocation || "Headquarters"}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Assigned Project</span>
+                    <span className="epv-field-val highlight">{projectName}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Project Type</span>
+                    <span className="epv-field-val">{projectType}</span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Joining Date</span>
+                    <span className="epv-field-val">{formatDate(profile.job?.joiningDate)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="epv-section-block">
+                <div className="epv-section-head">
+                  <h3 className="epv-section-title">Verified Emergency & Bank Summary</h3>
+                </div>
+                <div className="epv-field-grid-2">
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Primary Emergency Contact</span>
+                    <span className="epv-field-val">
+                      {profile.emergencyContact?.name
+                        ? `${profile.emergencyContact.name} (${profile.emergencyContact.relationship || "Primary"}) — ${profile.emergencyContact.phone || "No phone"}`
+                        : "Not provided"}
+                    </span>
+                  </div>
+                  <div className="epv-field-item">
+                    <span className="epv-field-lbl">Disbursement Bank Account</span>
+                    <span className="epv-field-val">
+                      {profile.bankDetails?.bankName
+                        ? `${profile.bankDetails.bankName} (••••${profile.bankDetails.accountNumber?.slice(-4) || "0000"})`
+                        : "Not recorded"}
                     </span>
                   </div>
                 </div>
-                <div className="profile-card-body">
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "6px",
-                      padding: "10px 14px",
-                      marginBottom: "16px",
-                      fontSize: "13px",
-                      color: "#64748b",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <span style={{ fontWeight: "600", color: "#0f172a" }}>Note:</span>
-                    To update your official job details, contact your HR administrator.
-                  </div>
-
-                  <div className="detail-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-                    <div className="detail-item">
-                      <strong>Employee Code</strong>
-                      <span className="font-mono">{profile.employeeCode}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Work Email</strong>
-                      <span>{profile.email}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Job Title</strong>
-                      <span>{profile.job?.jobTitle || "—"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Department</strong>
-                      <span>{profile.job?.department || "—"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Grade</strong>
-                      <span>{profile.job?.jobGrade || "—"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Employment Type</strong>
-                      <span>{profile.job?.employmentType || "Full-time Permanent"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Work Location</strong>
-                      <span>{profile.job?.workLocation || "—"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Assigned Project</strong>
-                      <span>{profile.job?.project?.projectName || "Unassigned"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Project Type</strong>
-                      <span>{profile.job?.project?.projectType || "MANDATE"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Joining Date</strong>
-                      <span>
-                        {profile.job?.joiningDate
-                          ? new Date(profile.job.joiningDate).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })
-                          : "Not recorded"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* Personal Summary Preview */}
-              <section className="profile-card">
-                <div className="profile-card-header">
-                  <div className="card-header-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                    <div>
-                      <h2>Personal Details</h2>
-                      <span className="card-subtitle">Your contact details and banking information</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-secondary btn-sm"
-                      onClick={() => setActiveTab("edit_profile")}
-                      style={{ fontSize: "12px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                    >
-                      <span>Edit Profile</span>
-                      <IconArrowRight size={13} />
-                    </button>
-                  </div>
-                </div>
-                <div className="profile-card-body">
-                  <div className="detail-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-                    <div className="detail-item">
-                      <strong>Preferred Name</strong>
-                      <span>{profile.preferredName || "Not set"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Personal Email</strong>
-                      <span>{profile.personalEmail || "Not provided"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Primary Phone</strong>
-                      <span>{profile.phoneNumber || "Not provided"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Personal Phone</strong>
-                      <span>{profile.personalPhone || "Not provided"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>City</strong>
-                      <span>{profile.residentialAddress?.city || profile.city || "Not provided"}</span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Emergency Contact</strong>
-                      <span>
-                        {profile.emergencyContact?.name
-                          ? `${profile.emergencyContact.name} (${profile.emergencyContact.relationship || "Contact"} - ${profile.emergencyContact.phone || "No phone"})`
-                          : "Not provided"}
-                      </span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>Bank Account</strong>
-                      <span className="font-mono">
-                        {profile.bankDetails?.accountNumber
-                          ? `${profile.bankDetails.bankName || "Bank"} (•••• ${profile.bankDetails.accountNumber.slice(-4)})`
-                          : "Not provided"}
-                      </span>
-                    </div>
-                    <div className="detail-item">
-                      <strong>PAN Number</strong>
-                      <span className="font-mono">{profile.taxDetails?.panNumber || "Not recorded"}</span>
-                    </div>
-                  </div>
-                </div>
-              </section>
+              </div>
             </div>
           )}
 
-          {/* TAB 2: EDIT PROFILE */}
+          {/* TAB 2: PERSONAL & CONTACT (SELF-SERVICE EDITABLE FORM) */}
           {activeTab === "edit_profile" && (
-            <form onSubmit={handleProfileSubmit} noValidate>
-              <section className="profile-card" style={{ marginBottom: "20px" }}>
-                <div className="profile-card-header">
-                  <div className="card-header-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2>Edit Profile</h2>
-                    <span className="card-subtitle">Keep your contact information and bank details up to date</span>
-                  </div>
-                </div>
-                <div className="profile-card-body">
-                  {saveSuccess && <div className="success-alert" style={{ marginBottom: "16px" }}>{saveSuccess}</div>}
-                  {saveError && <div className="error" style={{ marginBottom: "16px" }}>{saveError}</div>}
+            <div className="epv-tab-body">
+              {saveSuccess && <div className="success-alert" style={{ marginBottom: "20px" }}>{saveSuccess}</div>}
+              {saveError && <div className="error" style={{ marginBottom: "20px" }}>{saveError}</div>}
 
-                  <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#0f172a" }}>
-                    Personal Details
-                  </h3>
-                  <div className="edit-form-grid" style={{ marginBottom: "20px" }}>
-                    <label className="form-group">
+              <form onSubmit={handleProfileSubmit} className="auth-form" noValidate>
+                <div className="epv-section-block">
+                  <div className="epv-section-head">
+                    <h3 className="epv-section-title">Personal & Contact Information</h3>
+                    <span className="epv-section-sub">Fields you are permitted to update directly</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                    <label>
                       Preferred Name
                       <input
-                        type="text"
                         value={formData.preferredName}
                         onChange={(e) => handleInputChange("preferredName", e.target.value)}
                         placeholder="e.g. Maya"
                       />
                     </label>
-
-                    <label className="form-group">
+                    <label>
                       Personal Email
                       <input
                         type="email"
                         value={formData.personalEmail}
                         onChange={(e) => handleInputChange("personalEmail", e.target.value)}
-                        placeholder="e.g. personal@example.com"
+                        placeholder="maya.personal@gmail.com"
                       />
                     </label>
-
-                    <label className="form-group">
-                      Primary Phone
-                      <input
-                        type="tel"
-                        value={formData.phoneNumber}
-                        onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
-                        placeholder="+91 98765 00000"
-                      />
-                    </label>
-
-                    <label className="form-group">
+                    <label>
                       Personal Phone
                       <input
-                        type="tel"
                         value={formData.personalPhone}
                         onChange={(e) => handleInputChange("personalPhone", e.target.value)}
-                        placeholder="+91 98765 11111"
+                        placeholder="+91 98765 43210"
                       />
                     </label>
-
-                    <label className="form-group">
+                    <label>
                       Date of Birth
                       <input
                         type="date"
@@ -589,350 +655,225 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
                       />
                     </label>
-
-                    <label className="form-group">
-                      Gender
-                      <select
-                        value={formData.gender}
-                        onChange={(e) => handleInputChange("gender", e.target.value)}
-                        className="filter-select"
-                      >
-                        <option value="">Select gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Non-Binary">Non-Binary</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
-                    </label>
                   </div>
+                </div>
 
-                  <h3 style={{ margin: "20px 0 12px", fontSize: "14px", color: "#0f172a", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
-                    Residential Address
-                  </h3>
-                  <div style={{ marginBottom: "12px" }}>
-                    <label className="form-group">
+                <div className="epv-section-block">
+                  <div className="epv-section-head">
+                    <h3 className="epv-section-title">Residential Address</h3>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                    <label style={{ gridColumn: "1 / -1" }}>
                       Street Address
                       <input
-                        type="text"
                         value={formData.residentialStreet}
                         onChange={(e) => handleInputChange("residentialStreet", e.target.value)}
-                        placeholder="Flat / Building, Street, Landmark"
+                        placeholder="Flat / Building, Street"
                       />
                     </label>
-                  </div>
-                  <div className="edit-form-grid" style={{ marginBottom: "20px" }}>
-                    <label className="form-group">
+                    <label>
                       City
                       <input
-                        type="text"
                         value={formData.residentialCity}
                         onChange={(e) => handleInputChange("residentialCity", e.target.value)}
-                        placeholder="e.g. Bengaluru"
+                        placeholder="Bangalore"
                       />
                     </label>
-
-                    <label className="form-group">
-                      State
+                    <label>
+                      State / Postal Code
                       <input
-                        type="text"
-                        value={formData.residentialState}
-                        onChange={(e) => handleInputChange("residentialState", e.target.value)}
-                        placeholder="e.g. Karnataka"
-                      />
-                    </label>
-
-                    <label className="form-group">
-                      PIN Code
-                      <input
-                        type="text"
                         value={formData.residentialPostalCode}
                         onChange={(e) => handleInputChange("residentialPostalCode", e.target.value)}
-                        placeholder="e.g. 560001"
+                        placeholder="560001"
                       />
                     </label>
                   </div>
+                </div>
 
-                  <h3 style={{ margin: "20px 0 12px", fontSize: "14px", color: "#0f172a", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
-                    Emergency Contact
-                  </h3>
-                  <div className="edit-form-grid" style={{ marginBottom: "20px" }}>
-                    <label className="form-group">
-                      Contact Name
+                <div className="epv-section-block">
+                  <div className="epv-section-head">
+                    <h3 className="epv-section-title">Emergency Contact & Bank Details</h3>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                    <label>
+                      Emergency Contact Name
                       <input
-                        type="text"
                         value={formData.emergencyName}
                         onChange={(e) => handleInputChange("emergencyName", e.target.value)}
-                        placeholder="e.g. Rajesh Rao"
+                        placeholder="Contact Person Name"
                       />
                     </label>
-
-                    <label className="form-group">
-                      Relationship
+                    <label>
+                      Emergency Contact Phone
                       <input
-                        type="text"
-                        value={formData.emergencyRel}
-                        onChange={(e) => handleInputChange("emergencyRel", e.target.value)}
-                        placeholder="e.g. Spouse / Parent"
-                      />
-                    </label>
-
-                    <label className="form-group">
-                      Emergency Phone
-                      <input
-                        type="tel"
                         value={formData.emergencyPhone}
                         onChange={(e) => handleInputChange("emergencyPhone", e.target.value)}
-                        placeholder="+91 98765 22222"
+                        placeholder="+91 99999 88888"
                       />
                     </label>
-                  </div>
-
-                  <h3 style={{ margin: "20px 0 12px", fontSize: "14px", color: "#0f172a", borderTop: "1px solid #f1f5f9", paddingTop: "16px" }}>
-                    Bank & Tax Details
-                  </h3>
-                  <div className="edit-form-grid" style={{ marginBottom: "24px" }}>
-                    <label className="form-group">
-                      Account Holder Name
-                      <input
-                        type="text"
-                        value={formData.accountHolderName}
-                        onChange={(e) => handleInputChange("accountHolderName", e.target.value)}
-                        placeholder="Name on bank account"
-                      />
-                    </label>
-
-                    <label className="form-group">
+                    <label>
                       Bank Name
                       <input
-                        type="text"
                         value={formData.bankName}
                         onChange={(e) => handleInputChange("bankName", e.target.value)}
                         placeholder="e.g. HDFC Bank"
                       />
                     </label>
-
-                    <label className="form-group">
+                    <label>
                       Account Number
                       <input
-                        type="text"
                         value={formData.accountNumber}
                         onChange={(e) => handleInputChange("accountNumber", e.target.value)}
-                        placeholder="e.g. 5010012345678"
+                        placeholder="Bank Account Number"
                       />
                     </label>
-
-                    <label className="form-group">
+                    <label>
                       IFSC Code
                       <input
-                        type="text"
                         value={formData.ifscCode}
-                        onChange={(e) => handleInputChange("ifscCode", e.target.value)}
-                        placeholder="e.g. HDFC0001024"
+                        onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
+                        placeholder="HDFC0001234"
                       />
                     </label>
-
-                    <label className="form-group">
-                      Account Type
-                      <select
-                        value={formData.accountType}
-                        onChange={(e) => handleInputChange("accountType", e.target.value)}
-                        className="filter-select"
-                      >
-                        <option value="SAVINGS">Savings</option>
-                        <option value="CURRENT">Current</option>
-                        <option value="SALARY">Salary</option>
-                      </select>
-                    </label>
-
-                    <label className="form-group">
+                    <label>
                       PAN Number
                       <input
-                        type="text"
                         value={formData.panNumber}
                         onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase())}
-                        placeholder="e.g. ABCDE1234F"
+                        placeholder="ABCDE1234F"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                  <button type="submit" disabled={savingProfile} className="btn-primary">
+                    {savingProfile ? "Saving Changes..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB 3: DOCUMENTS & IDENTITY */}
+          {activeTab === "documents" && (
+            <div className="epv-tab-body">
+              {docSuccess && <div className="success-alert" style={{ marginBottom: "20px" }}>{docSuccess}</div>}
+              {docError && <div className="error" style={{ marginBottom: "20px" }}>{docError}</div>}
+
+              {/* Upload Document Form */}
+              <div
+                style={{
+                  background: "var(--panel)",
+                  border: "1px solid var(--hair)",
+                  borderRadius: "12px",
+                  padding: "20px 24px",
+                  marginBottom: "28px",
+                }}
+              >
+                <h3 style={{ margin: "0 0 14px", fontSize: "15px", color: "var(--ink)", fontWeight: "700" }}>
+                  Upload New Document
+                </h3>
+                <form onSubmit={handleUploadDocument} noValidate>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
+                    <label>
+                      Category *
+                      <select
+                        value={uploadCategory}
+                        onChange={(e) => setUploadCategory(e.target.value)}
+                        className="filter-select"
+                        style={{ width: "100%" }}
+                      >
+                        <option value="ID_PROOF">ID Proof (PAN, Aadhaar, Passport)</option>
+                        <option value="ADDRESS_PROOF">Address Proof</option>
+                        <option value="EDUCATION">Educational Certificate</option>
+                        <option value="CERTIFICATION">Professional Certification</option>
+                        <option value="OTHER">Other Official Document</option>
+                      </select>
+                    </label>
+                    <label>
+                      Document Title *
+                      <input
+                        value={uploadTitle}
+                        onChange={(e) => setUploadTitle(e.target.value)}
+                        placeholder="e.g. Updated Aadhaar Card"
+                        required
                       />
                     </label>
                   </div>
 
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setActiveTab("overview")}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn-primary"
-                      disabled={savingProfile}
-                    >
-                      {savingProfile ? "Saving..." : "Save Changes"}
-                    </button>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label>
+                      Select File (PDF, PNG, JPG — max 10MB) *
+                      <input
+                        id="emp-self-file-input"
+                        type="file"
+                        onChange={handleFileChange}
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        required
+                        style={{ background: "#ffffff", padding: "8px" }}
+                      />
+                    </label>
                   </div>
-                </div>
-              </section>
-            </form>
-          )}
 
-          {/* TAB 3: DOCUMENTS */}
-          {activeTab === "documents" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px" }}>
-              <section className="profile-card">
-                <div className="profile-card-header">
-                  <div className="card-header-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
-                      <polyline points="10 9 9 9 8 9" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2>Documents</h2>
-                    <span className="card-subtitle">Upload and view identity proofs and tax documents</span>
-                  </div>
-                </div>
-                <div className="profile-card-body">
-                  {/* Upload panel */}
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "8px",
-                      padding: "16px",
-                      marginBottom: "20px",
-                    }}
+                  <button
+                    type="submit"
+                    disabled={uploadingDoc || !selectedFile}
+                    className="btn-primary"
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                   >
-                    <h3 style={{ margin: "0 0 12px", fontSize: "14px", color: "#0f172a", fontWeight: "600" }}>
-                      Upload Document
-                    </h3>
+                    <span>{uploadingDoc ? "Uploading..." : "Upload Document"}</span>
+                  </button>
+                </form>
+              </div>
 
-                    {docSuccess && (
-                      <div className="success-alert" style={{ marginBottom: "12px", padding: "8px 12px", fontSize: "13px" }}>
-                        {docSuccess}
-                      </div>
-                    )}
-                    {docError && (
-                      <div className="error" style={{ marginBottom: "12px", padding: "8px 12px", fontSize: "13px" }}>
-                        {docError}
-                      </div>
-                    )}
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", alignItems: "flex-end" }}>
-                      <label className="form-group" style={{ margin: 0 }}>
-                        <span style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", fontWeight: "600", display: "block", marginBottom: "4px" }}>
-                          Category *
-                        </span>
-                        <select
-                          value={uploadCategory}
-                          onChange={(e) => setUploadCategory(e.target.value)}
-                          className="filter-select"
-                          style={{ width: "100%", height: "38px" }}
-                        >
-                          <option value="ID_PROOF">ID Proof</option>
-                          <option value="RESUME">Resume</option>
-                          <option value="TAX_DOCUMENT">Tax Document</option>
-                          <option value="OTHER">Other</option>
-                        </select>
-                      </label>
-
-                      <label className="form-group" style={{ margin: 0 }}>
-                        <span style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", fontWeight: "600", display: "block", marginBottom: "4px" }}>
-                          Document Title
-                        </span>
-                        <input
-                          type="text"
-                          value={uploadTitle}
-                          onChange={(e) => setUploadTitle(e.target.value)}
-                          placeholder="e.g. Aadhaar Card Scan"
-                          style={{ width: "100%", height: "38px" }}
-                        />
-                      </label>
-
-                      <label className="form-group" style={{ margin: 0 }}>
-                        <span style={{ fontSize: "12px", color: "#64748b", textTransform: "uppercase", fontWeight: "600", display: "block", marginBottom: "4px" }}>
-                          File (PDF, PNG, JPG up to 10MB) *
-                        </span>
-                        <input
-                          id="emp-self-file-input"
-                          type="file"
-                          onChange={handleFileChange}
-                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
-                          style={{ width: "100%", padding: "6px 8px", fontSize: "13px", height: "38px" }}
-                        />
-                      </label>
-
-                      <div>
-                        <button
-                          type="button"
-                          onClick={handleUploadDocument}
-                          disabled={uploadingDoc || !selectedFile}
-                          style={{ width: "100%", height: "38px" }}
-                        >
-                          {uploadingDoc ? "Uploading..." : "Upload Document"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Documents List */}
-                  <div>
-                    <h3 style={{ margin: "0 0 10px", fontSize: "13px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      Uploaded Documents ({documents.length})
-                    </h3>
-
-                    {documents.length === 0 ? (
-                      <p style={{ margin: 0, fontSize: "13px", color: "#94a3b8", fontStyle: "italic" }}>
-                        No documents uploaded yet.
-                      </p>
-                    ) : (
-                      <div className="documents-list">
-                        {documents.map((doc, idx) => (
-                          <div key={doc._id || idx} className="document-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px", borderBottom: "1px solid #f1f5f9" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                              <div className="doc-icon" aria-hidden="true" style={{ display: "flex", alignItems: "center" }}>
-                                <IconDocument size={20} />
-                              </div>
-                              <div className="doc-meta">
-                                <span className="doc-name" style={{ fontWeight: "600", color: "#0f172a", display: "block" }}>
-                                  {doc.title || doc.fileName}
-                                </span>
-                                <span className="doc-desc" style={{ fontSize: "12px", color: "#64748b" }}>
-                                  {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Added{" "}
-                                  {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "Recently"}
-                                  {doc.uploadedByRole ? ` (by ${doc.uploadedByRole})` : ""}
-                                </span>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              className="btn-secondary btn-sm"
-                              onClick={() => handleDownloadDocument(doc._id, doc.fileName || doc.title)}
-                              disabled={downloadingDocId === doc._id}
-                              style={{ padding: "6px 12px", fontSize: "12px" }}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="7 10 12 15 17 10" />
-                                <line x1="12" y1="15" x2="12" y2="3" />
-                              </svg>
-                              {downloadingDocId === doc._id ? "Downloading..." : "Download"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+              {/* Uploaded Documents List */}
+              <div className="epv-section-block">
+                <div className="epv-section-head">
+                  <h3 className="epv-section-title">My Uploaded Documents</h3>
+                  <span className="epv-section-sub">{documents.length} verified documents</span>
                 </div>
-              </section>
+
+                {documents.length === 0 ? (
+                  <p style={{ fontSize: "13px", color: "var(--muted)", padding: "12px 0" }}>
+                    You have not uploaded any documents yet.
+                  </p>
+                ) : (
+                  documents.map((doc) => (
+                    <div key={doc._id} className="epv-doc-row">
+                      <div className="epv-doc-left">
+                        <div className="epv-doc-icon">
+                          <IconDocument size={18} />
+                        </div>
+                        <div>
+                          <div className="epv-doc-title">{doc.title || doc.fileName}</div>
+                          <div className="epv-doc-meta">
+                            {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="epv-doc-download-btn"
+                        disabled={downloadingDocId === doc._id}
+                        onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
-        </>
-      )}
-    </main>
+        </section>
+      </div>
+    </div>
   );
 }

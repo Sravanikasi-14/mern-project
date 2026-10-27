@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { IconClose } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
 
 const STATUS_BADGES = {
@@ -29,6 +30,19 @@ export default function AdminOnboardingReview() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
+
+  const totalSubmissions = submissions.length;
+  const totalPages = Math.ceil((totalSubmissions || 1) / pageSize);
+  const paginatedSubmissions = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return submissions.slice(start, start + pageSize);
+  }, [submissions, page, pageSize]);
 
   const [selectedSubmission, setSelectedSubmission] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -271,55 +285,61 @@ export default function AdminOnboardingReview() {
   }, [submissions]);
 
   return (
-    <div style={{ padding: "24px 32px", minHeight: "100vh", background: "#f8fafc" }}>
+    <div className="container-wide">
       <AppHeader
         title="Onboarding"
       />
 
-      {/* Summary KPI Cards */}
+      {/* Compact Inline Onboarding Statistics Strip */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: "16px",
-          margin: "24px 0",
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
         }}
       >
-        <div style={{ background: "#ffffff", padding: "18px 24px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: "12px", color: "#64748b", fontWeight: "600" }}>Total Onboarding</span>
-          <div style={{ fontSize: "24px", fontWeight: "700", color: "#0f172a", marginTop: "4px" }}>{counts.all}</div>
-        </div>
-        <div style={{ background: "#ffffff", padding: "18px 24px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: "12px", color: "#1d4ed8", fontWeight: "600" }}>Awaiting Review</span>
-          <div style={{ fontSize: "24px", fontWeight: "700", color: "#1d4ed8", marginTop: "4px" }}>{counts.submitted}</div>
-        </div>
-        <div style={{ background: "#ffffff", padding: "18px 24px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: "12px", color: "#b45309", fontWeight: "600" }}>Updates Requested</span>
-          <div style={{ fontSize: "24px", fontWeight: "700", color: "#b45309", marginTop: "4px" }}>{counts.changes}</div>
-        </div>
-        <div style={{ background: "#ffffff", padding: "18px 24px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: "12px", color: "#047857", fontWeight: "600" }}>Approved Hires</span>
-          <div style={{ fontSize: "24px", fontWeight: "700", color: "#047857", marginTop: "4px" }}>{counts.approved}</div>
-        </div>
-        <div style={{ background: "#ffffff", padding: "18px 24px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-          <span style={{ fontSize: "12px", color: "#b91c1c", fontWeight: "600" }}>Rejected</span>
-          <div style={{ fontSize: "24px", fontWeight: "700", color: "#b91c1c", marginTop: "4px" }}>{counts.rejected}</div>
-        </div>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Total Onboarding: <strong style={{ color: "var(--ink)" }}>{counts.all}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Awaiting Review: <strong style={{ color: counts.submitted > 0 ? "var(--g-800, #155a37)" : "var(--muted)" }}>{counts.submitted}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Updates Requested: <strong style={{ color: counts.changes > 0 ? "#b45309" : "var(--muted)" }}>{counts.changes}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Approved Hires: <strong style={{ color: "var(--g-800, #155a37)" }}>{counts.approved}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Rejected: <strong style={{ color: counts.rejected > 0 ? "#b91c1c" : "var(--muted)" }}>{counts.rejected}</strong>
+        </span>
       </div>
 
       {/* Filter and Search Bar */}
       <div
         style={{
-          background: "#ffffff",
-          padding: "16px 20px",
+          background: "var(--card)",
+          padding: "8px 14px",
           borderRadius: "10px",
-          border: "1px solid #e2e8f0",
-          marginBottom: "20px",
+          border: "1px solid var(--hair)",
+          boxShadow: "var(--shadow-sm)",
+          marginBottom: "14px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           flexWrap: "wrap",
-          gap: "12px",
+          gap: "10px",
         }}
       >
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -333,10 +353,11 @@ export default function AdminOnboardingReview() {
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: "600",
-                border: statusFilter === tab.key ? "1px solid #2563eb" : "1px solid #e2e8f0",
-                background: statusFilter === tab.key ? "#eff6ff" : "#ffffff",
-                color: statusFilter === tab.key ? "#2563eb" : "#475569",
+                border: statusFilter === tab.key ? "1px solid rgba(39, 134, 90, 0.3)" : "1px solid var(--hair)",
+                background: statusFilter === tab.key ? "var(--g-100)" : "transparent",
+                color: statusFilter === tab.key ? "var(--g-800)" : "var(--text-muted)",
                 cursor: "pointer",
+                transition: "all 0.15s ease",
               }}
             >
               {tab.label}
@@ -380,7 +401,7 @@ export default function AdminOnboardingReview() {
       {/* Submissions Table */}
       <div
         className="table-wrapper-relative"
-        style={{ background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", overflow: "hidden" }}
+        style={{ background: "var(--card)", borderRadius: "var(--r-md)", border: "1px solid var(--hair)", boxShadow: "var(--shadow-sm)", overflow: "hidden" }}
       >
         {loading && <div className="table-progress-bar" />}
         {loading && submissions.length === 0 ? (
@@ -438,7 +459,7 @@ export default function AdminOnboardingReview() {
                 </tr>
               </thead>
               <tbody className={loading ? "table-refreshing-dim" : ""}>
-                {submissions.map((sub) => {
+                {paginatedSubmissions.map((sub) => {
                   const badge = STATUS_BADGES[sub.status] || STATUS_BADGES.DRAFT;
                   const offer = sub.offerLetterId;
                   return (
@@ -505,6 +526,22 @@ export default function AdminOnboardingReview() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {totalSubmissions > 0 && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalSubmissions}
+            pageSize={pageSize}
+            pageSizeOptions={[10, 25, 50]}
+            onPageChange={(p) => setPage(p)}
+            onPageSizeChange={(s) => {
+              setPageSize(s);
+              setPage(1);
+            }}
+            itemLabel="submissions"
+          />
         )}
       </div>
 

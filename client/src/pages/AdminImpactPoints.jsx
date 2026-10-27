@@ -206,11 +206,8 @@ export default function AdminImpactPoints() {
         );
         setRecognizeForm({ recipientId: "", points: 10, reason: "" });
         setSidePanelMode("none");
-        if (activeTab === "LEADERBOARD") {
-          fetchLeaderboard();
-        } else {
-          fetchLedger(1);
-        }
+        fetchLeaderboard();
+        fetchLedger(1);
       }
     } catch (err) {
       setRecognizeError(err.response?.data?.message || "Failed to submit recognition");
@@ -271,7 +268,6 @@ export default function AdminImpactPoints() {
       {/* Header */}
       <AppHeader
         title="Impact Points"
-        subtitle="Reward verified contributions, manage performance recognition, and view transparent audit ledgers"
         hideLogout={true}
       >
         <button
@@ -308,39 +304,36 @@ export default function AdminImpactPoints() {
         </div>
       )}
 
-      {/* Summary KPI Cards - Strict 4-column balanced grid */}
-      <div className="wm-kpi-grid">
-        <div className="wm-kpi-card accent-blue">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#2563eb" }}>Points in Circulation</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#2563eb" }}>{stats.totalPoints}</div>
-          <div className="wm-kpi-subtext">Net balance across company</div>
-        </div>
-
-        <div className="wm-kpi-card accent-emerald">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#059669" }}>Total Points Earned</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#059669" }}>+{stats.totalEarned}</div>
-          <div className="wm-kpi-subtext">Tasks and recognition awards</div>
-        </div>
-
-        <div className="wm-kpi-card accent-rose">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#dc2626" }}>Total Deductions</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#dc2626" }}>-{stats.totalDeducted}</div>
-          <div className="wm-kpi-subtext">Reversals and adjustments</div>
-        </div>
-
-        <div className="wm-kpi-card accent-slate">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label">Employees with Points</span>
-          </div>
-          <div className="wm-kpi-value">{stats.participants}</div>
-          <div className="wm-kpi-subtext">Active participants ranked</div>
-        </div>
+      {/* Compact Inline Impact Statistics Strip */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Circulation: <strong style={{ color: "#2563eb" }}>{stats.totalPoints} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Total Earned: <strong style={{ color: "#059669" }}>+{stats.totalEarned} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Deductions: <strong style={{ color: "#dc2626" }}>-{stats.totalDeducted} pts</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Participants: <strong style={{ color: "var(--ink)" }}>{stats.participants}</strong>
+        </span>
       </div>
 
       {/* Main Responsive Grid Layout (Resizes dynamically when right side panel opens) */}
@@ -596,8 +589,12 @@ export default function AdminImpactPoints() {
                             {new Date(tx.createdAt).toLocaleDateString()}
                           </td>
                           <td>
-                            <div style={{ fontWeight: 600, color: "#0f172a" }}>{tx.employee?.name || "Unknown"}</div>
-                            <div style={{ fontSize: 11, color: "#64748b" }}>{tx.employee?.employeeCode}</div>
+                            <div style={{ fontWeight: 600, color: "#0f172a" }}>
+                              {tx.employee?.name || tx.employeeSnapshot?.fullName || "Employee"}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>
+                              {tx.employee?.employeeCode || tx.employeeSnapshot?.employeeCode || ""}
+                            </div>
                           </td>
                           <td style={{ whiteSpace: "nowrap" }}>
                             <span
@@ -634,7 +631,7 @@ export default function AdminImpactPoints() {
                             </div>
                           </td>
                           <td style={{ color: "#475569", fontSize: 12, whiteSpace: "nowrap" }}>
-                            {tx.actor?.name || "System"}
+                            {tx.actor?.name || tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System"}
                           </td>
                           <td style={{ textAlign: "right" }}>
                             {tx.transactionType !== "REVERSAL" && (
@@ -710,9 +707,6 @@ export default function AdminImpactPoints() {
                     <h3 className="wm-panel-title">
                       Award Recognition
                     </h3>
-                    <p className="wm-panel-subtitle">
-                      Grant Impact Points for team contributions
-                    </p>
                   </div>
                   <button
                     className="wm-panel-close-btn"
@@ -829,9 +823,6 @@ export default function AdminImpactPoints() {
                     <h3 className="wm-panel-title" style={{ color: "#b91c1c" }}>
                       Reverse Transaction
                     </h3>
-                    <p className="wm-panel-subtitle">
-                      Issue compensating audit adjustment
-                    </p>
                   </div>
                   <button
                     className="wm-panel-close-btn"
@@ -858,7 +849,7 @@ export default function AdminImpactPoints() {
                       <div>
                         <strong style={{ color: "#334155" }}>Employee:</strong>{" "}
                         <span style={{ fontWeight: 600, color: "#0f172a" }}>
-                          {selectedTx.employee?.name} ({selectedTx.employee?.employeeCode})
+                          {selectedTx.employee?.name || selectedTx.employeeSnapshot?.fullName || "Employee"} ({selectedTx.employee?.employeeCode || selectedTx.employeeSnapshot?.employeeCode || ""})
                         </span>
                       </div>
                       <div style={{ marginTop: 6 }}>

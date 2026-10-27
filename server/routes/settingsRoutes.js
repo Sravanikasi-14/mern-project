@@ -3,6 +3,9 @@ import {
   getEmailSettings,
   updateEmailSettings,
   sendTestEmailSettings,
+  getCompanySettings,
+  updateCompanySettings,
+  getAuditLogsSettings,
 } from "../controllers/settingsController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
@@ -13,6 +16,9 @@ const router = express.Router();
 
 router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN));
 
+router.get("/company", getCompanySettings);
+router.put("/company", updateCompanySettings);
+router.get("/audit-logs", getAuditLogsSettings);
 router.get("/email", getEmailSettings);
 router.put("/email", updateEmailSettings);
 router.post("/email/test", emailSendLimiter, sendTestEmailSettings);

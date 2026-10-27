@@ -1,0 +1,967 @@
+/* ==========================================================================
+   Employee Portal Dashboard Stylesheet
+   Design System: Forest-Green & Warm Neutral Bento Grid
+   ========================================================================== */
+
+/* Main Container */
+.emp-board-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-lg, 26px);
+  padding: 20px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   1. Board Header (Greeting, Meta, Actions)
+   ========================================================================== */
+
+.emp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+.emp-head__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emp-head__title {
+  letter-spacing: -0.035em;
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  line-height: 1.15;
+  margin: 0;
+}
+
+.emp-head__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted, #646d67);
+  font-size: 13.5px;
+}
+
+.emp-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.emp-badge-pill--green {
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.25);
+  color: var(--g-950, #0d3a23);
+}
+
+.emp-head__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Action Buttons */
+.btn--emp-primary {
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
+  color: #f2f8f4;
+  border: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(13, 58, 35, 0.25);
+}
+
+.btn--emp-primary:hover {
+  background: linear-gradient(180deg, var(--g-600, #27865a), var(--g-800, #155a37));
+  transform: translateY(-1px);
+}
+
+.btn--emp-secondary {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  color: var(--ink, #131a15);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.04);
+}
+
+.btn--emp-secondary:hover {
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.25);
+  color: var(--g-950, #0d3a23);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   2. Bento Grid System & Combined Operations
+   ========================================================================== */
+
+.emp-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap, 16px);
+}
+
+/* Combined Operations Card (Attendance + Leave) */
+.emp-combined-ops-grid {
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.emp-ops-attendance-col {
+  display: flex;
+  flex-direction: column;
+  padding-right: 24px;
+  border-right: 1px solid var(--hair, #e3e7e4);
+}
+
+.emp-ops-leave-col {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Dual Subsections inside Pay/Benefits and Work/Allocation Cards */
+.emp-dual-subsections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.emp-subpanel {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 104px;
+}
+
+.emp-subpanel-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #646d67);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.emp-empty-subtext {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin: 4px 0 0;
+}
+
+.emp-payslip-mini-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.emp-payslip-mini-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.emp-payslip-mini-amount {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+}
+
+.emp-payslip-mini-period {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+  margin-top: 2px;
+}
+
+.emp-asset-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emp-asset-mini-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink, #131a15);
+}
+
+.emp-asset-mini-name {
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emp-asset-mini-tag {
+  font-size: 11px;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--muted, #646d67);
+}
+
+.emp-project-mini-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.emp-task-action-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.emp-task-headline {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  display: block;
+}
+
+.emp-task-sub {
+  font-size: 11px;
+  color: var(--muted, #646d67);
+  display: block;
+  margin-top: 2px;
+}
+
+.emp-task-cta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-800, #155a37);
+  background: var(--g-100, #e3f2e9);
+  border: 1px solid rgba(29, 115, 71, 0.2);
+  border-radius: 999px;
+  padding: 4px 12px;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.emp-task-cta:hover {
+  background: var(--g-600, #27865a);
+  color: #fff;
+}
+
+/* Schedule & Observances Strip Card */
+.emp-schedule-strip-grid {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+.emp-schedule-holidays-col {
+  flex: 1;
+  min-width: 280px;
+}
+
+.emp-schedule-links-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emp-schedule-links-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #646d67);
+}
+
+.emp-quick-links-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emp-quick-link-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 999px;
+  padding: 6px 14px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.emp-quick-link-pill:hover {
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(29, 115, 71, 0.25);
+  color: var(--g-950, #0d3a23);
+  transform: translateY(-1px);
+}
+
+.emp-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 20px);
+  box-shadow: var(--shadow);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.emp-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.emp-card__title {
+  letter-spacing: -0.02em;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  margin: 0;
+}
+
+.emp-card__sub {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+  margin: 3px 0 0;
+}
+
+.emp-card__link {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-700, #1d7347);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.emp-card__link:hover {
+  color: var(--g-950, #0d3a23);
+  transform: translateX(2px);
+}
+
+/* ==========================================================================
+   4. Attendance Card & Punch Hub (Span 7)
+   ========================================================================== */
+
+.emp-att-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.emp-att-status-box {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.emp-att-state-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.emp-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.status-in {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-950, #0d3a23);
+  border: 1px solid rgba(39, 134, 90, 0.3);
+}
+
+.status-out {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.status-not-in {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.status-leave {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.emp-att-time-info {
+  font-size: 13.5px;
+  color: var(--ink, #131a15);
+}
+
+.emp-att-time-info strong {
+  font-weight: 700;
+}
+
+/* Punch Action Buttons */
+.emp-punch-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn--punch-in {
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
+  color: #ffffff;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(13, 58, 35, 0.25);
+}
+
+.btn--punch-in:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--g-600, #27865a), var(--g-800, #155a37));
+  transform: translateY(-1px);
+}
+
+.btn--punch-in:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn--punch-out {
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--card, #fdfdfc);
+  color: #b45309;
+  border: 1px solid #fde68a;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn--punch-out:hover:not(:disabled) {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.btn--punch-out:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Attendance Micro Details */
+.emp-att-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair, #e3e7e4);
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+.emp-att-geo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--g-700, #1d7347);
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   5. Leave Balances Card (Span 5)
+   ========================================================================== */
+
+.emp-leave-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.emp-leave-tile {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 14px;
+  padding: 12px 10px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.emp-leave-tile:hover {
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.25);
+}
+
+.emp-leave-tile__type {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.emp-leave-tile__count {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.emp-leave-tile__unit {
+  font-size: 11px;
+  color: var(--muted, #646d67);
+}
+
+.emp-leave-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.emp-leave-cutoff-note {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin-top: auto;
+  line-height: 1.4;
+  padding-top: 10px;
+  border-top: 1px solid var(--hair, #e3e7e4);
+}
+
+/* ==========================================================================
+   6. Row 2: Payslip, Assets & Tasks (Span 4 each)
+   ========================================================================== */
+
+/* Payslip Card */
+.emp-payslip-box {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.emp-payslip-amount {
+  font-size: clamp(22px, 2vw, 26px);
+  font-weight: 700;
+  color: var(--g-950, #0d3a23);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.emp-payslip-period {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+.emp-payslip-status {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.status-paid {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-950, #0d3a23);
+  border: 1px solid rgba(39, 134, 90, 0.25);
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* Assets Card */
+.emp-asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.emp-asset-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.emp-asset-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  color: var(--g-700, #1d7347);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.emp-asset-name {
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emp-asset-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+/* Project / Team Card */
+.emp-project-box {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.emp-project-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.emp-project-meta {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+/* ==========================================================================
+   7. Holidays Card (Span 8) & Self Service (Span 4)
+   ========================================================================== */
+
+.emp-holiday-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.emp-holiday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink, #131a15);
+}
+
+.emp-holiday-date {
+  font-weight: 700;
+  color: var(--g-800, #155a37);
+  background: var(--card, #fdfdfc);
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  border: 1px solid var(--hair, #e3e7e4);
+}
+
+.emp-self-service-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emp-service-link-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  transition: all 0.15s ease;
+}
+
+.emp-service-link-item:hover {
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.25);
+  color: var(--g-950, #0d3a23);
+  transform: translateX(2px);
+}
+
+/* Empty States */
+.emp-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--muted, #646d67);
+  font-size: 13px;
+}
+
+.emp-empty-icon {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 8px;
+  color: #9ca3af;
+}
+
+/* ==========================================================================
+   8. Quick Apply Leave Modal
+   ========================================================================== */
+
+.emp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(19, 26, 21, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.emp-modal-dialog {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 22px;
+  padding: 26px 28px;
+  width: 100%;
+  maxWidth: 480px;
+  box-shadow: 0 20px 40px rgba(19, 26, 21, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.emp-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.emp-modal-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+}
+
+.emp-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted, #646d67);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.emp-modal-close-btn:hover {
+  background: var(--panel, #f5f6f5);
+  color: var(--ink, #131a15);
+}
+
+.emp-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emp-form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.emp-form-input,
+.emp-form-select,
+.emp-form-textarea {
+  width: 100%;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--panel, #f5f6f5);
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink, #131a15);
+  outline: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.emp-form-input:focus,
+.emp-form-select:focus,
+.emp-form-textarea:focus {
+  background: var(--card, #fdfdfc);
+  border-color: var(--g-600, #27865a);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
+}
+
+/* ==========================================================================
+   9. Responsive Breakpoints
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .emp-bento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-card {
+    grid-column: span 1 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .emp-board-container {
+    padding: 18px 14px 22px;
+  }
+
+  .emp-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .emp-leave-tiles {
+    grid-template-columns: 1fr;
+  }
+}

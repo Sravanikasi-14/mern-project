@@ -208,6 +208,13 @@ export function createUserSchema() {
         type: UserOnboardingSchema,
         default: null,
       },
+      fullName: { type: String, trim: true, default: "" },
+      phoneNumber: { type: String, trim: true, default: "" },
+      preferences: {
+        emailNotifications: { type: Boolean, default: true },
+        weeklyDigest: { type: Boolean, default: true },
+        compactView: { type: Boolean, default: false },
+      },
       lastLoginAt: { type: Date, default: null },
       schemaVersion: { type: Number, default: 1 },
     },

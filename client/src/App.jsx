@@ -32,6 +32,7 @@ const AdminWorkManagement = lazy(() => import("./pages/AdminWorkManagement"));
 const AdminImpactPoints = lazy(() => import("./pages/AdminImpactPoints"));
 const EmployeeTasks = lazy(() => import("./pages/EmployeeTasks"));
 const EmployeeImpactPoints = lazy(() => import("./pages/EmployeeImpactPoints"));
+const EmployeeSettings = lazy(() => import("./pages/EmployeeSettings"));
 
 function RouteFallback() {
   return (
@@ -214,11 +215,21 @@ function App() {
             }
           />
           <Route
+            path="/admin/work-impact"
+            element={
+              <ProtectedRoute roles={["HR_ADMIN"]}>
+                <AppLayout>
+                  <AdminWorkManagement />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/impact-points"
             element={
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
-                  <AdminImpactPoints />
+                  <AdminWorkManagement />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -294,11 +305,21 @@ function App() {
             }
           />
           <Route
+            path="/app/work-impact"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <EmployeeTasks />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app/impact-points"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeImpactPoints />
+                  <EmployeeTasks />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -318,7 +339,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeHome defaultTab="edit_profile" />
+                  <EmployeeSettings />
                 </AppLayout>
               </ProtectedRoute>
             }

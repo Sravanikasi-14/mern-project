@@ -1,18 +1,23 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
+import AttendanceTimeline from "../components/AttendanceTimeline";
+import AttendanceSummaryMetrics from "../components/AttendanceSummaryMetrics";
+import Pagination from "../components/Pagination";
 import {
   IconClose,
   IconCheck,
   IconAlertCircle,
   IconClock,
-  IconRefresh,
 } from "../components/Icons";
-import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
+import "./Attendance.css";
 
 export default function EmployeeAttendance() {
+  const { user } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
@@ -32,20 +37,15 @@ export default function EmployeeAttendance() {
   const [trackingError, setTrackingError] = useState("");
   const unwatchRef = useRef(null);
 
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [attPage, setAttPage] = useState(1);
+  const [attPageSize, setAttPageSize] = useState(10);
+
   // Attendance History State
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRecords, setHistoryRecords] = useState([]);
-  const [historyStartDate, setHistoryStartDate] = useState("");
-  const [historyEndDate, setHistoryEndDate] = useState("");
-
-  const todayFormattedDate = useMemo(() => {
-    return new Date().toLocaleDateString(undefined, {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  }, []);
 
   const fetchAttendanceData = async (silent = false) => {
     try {
@@ -62,14 +62,20 @@ export default function EmployeeAttendance() {
     }
   };
 
-  const fetchAttendanceHistory = async (start = historyStartDate, end = historyEndDate) => {
+  const fetchAttendanceHistory = useCallback(async (targetDate = selectedDate) => {
     try {
       setHistoryLoading(true);
-      const params = { limit: 50 };
-      if (start) params.startDate = start;
-      if (end) params.endDate = end;
 
-      const res = await api.get("/employees/me/attendance/history", { params });
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth();
+      const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      const res = await api.get("/employees/me/attendance/history", {
+        params: { startDate, endDate, limit: 100 },
+      });
+
       if (res.data?.success) {
         setHistoryRecords(res.data.records || []);
       }
@@ -78,11 +84,11 @@ export default function EmployeeAttendance() {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, [selectedDate]);
 
   useEffect(() => {
     fetchAttendanceData();
-    fetchAttendanceHistory();
+    fetchAttendanceHistory(selectedDate);
 
     // Check live tracking status
     api
@@ -100,7 +106,19 @@ export default function EmployeeAttendance() {
         unwatchRef.current();
       }
     };
-  }, []);
+  }, [fetchAttendanceHistory, selectedDate]);
+
+  const handlePrevMonth = () => {
+    setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const monthYearLabel = useMemo(() => {
+    return selectedDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }, [selectedDate]);
 
   const handleCheckIn = async () => {
     try {
@@ -126,7 +144,7 @@ export default function EmployeeAttendance() {
       const response = await api.post("/employees/me/attendance/punch-in", { location: loc });
       setActionSuccess(response.data?.message || "Punched in successfully!");
       await fetchAttendanceData(true);
-      await fetchAttendanceHistory();
+      await fetchAttendanceHistory(selectedDate);
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch in. Please try again.");
     } finally {
@@ -158,7 +176,7 @@ export default function EmployeeAttendance() {
       const response = await api.post("/employees/me/attendance/punch-out", { location: loc });
       setActionSuccess(response.data?.message || "Punched out successfully!");
       await fetchAttendanceData(true);
-      await fetchAttendanceHistory();
+      await fetchAttendanceHistory(selectedDate);
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch out. Please try again.");
     } finally {
@@ -215,6 +233,144 @@ export default function EmployeeAttendance() {
     }
   };
 
+  // Derive days list for the month view
+  const monthDaysList = useMemo(() => {
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const recordsMap = new Map();
+    for (const r of historyRecords) {
+      recordsMap.set(r.date, r);
+    }
+
+    const list = [];
+    for (let day = totalDays; day >= 1; day--) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      if (dateStr > todayStr) {
+        continue;
+      }
+
+      const existing = recordsMap.get(dateStr);
+      if (existing) {
+        list.push(existing);
+      } else {
+        const dObj = new Date(year, month, day);
+        const dayOfWeek = dObj.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        list.push({
+          _id: dateStr,
+          date: dateStr,
+          status: isWeekend ? "WEEKEND" : "NOT_CHECKED_IN",
+          checkIn: null,
+          checkOut: null,
+          workingHours: "—",
+          notes: isWeekend ? "Weekend" : "No Punch",
+        });
+      }
+    }
+
+    return list;
+  }, [selectedDate, historyRecords]);
+
+  // Filtered list
+  const filteredDays = useMemo(() => {
+    return monthDaysList.filter((item) => {
+      if (statusFilter !== "ALL") {
+        if (statusFilter === "PRESENT" && !(item.status === "PRESENT" || item.status === "CHECKED_IN" || item.status === "CHECKED_OUT")) {
+          return false;
+        }
+        if (statusFilter === "LATE") {
+          if (!item.checkIn) return false;
+          const h = new Date(item.checkIn).getHours() + new Date(item.checkIn).getMinutes() / 60;
+          if (h <= 9.5) return false;
+        }
+        if (statusFilter === "ON_LEAVE" && item.status !== "ON_LEAVE") {
+          return false;
+        }
+        if (statusFilter === "ABSENT" && item.status !== "NOT_CHECKED_IN") {
+          return false;
+        }
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesDate = item.date.toLowerCase().includes(q);
+        const matchesStatus = (item.status || "").toLowerCase().includes(q);
+        const matchesNotes = (item.notes || "").toLowerCase().includes(q);
+        if (!matchesDate && !matchesStatus && !matchesNotes) return false;
+      }
+
+      return true;
+    });
+  }, [monthDaysList, statusFilter, searchQuery]);
+
+  useEffect(() => {
+    setAttPage(1);
+  }, [selectedDate, statusFilter, searchQuery]);
+
+  const totalDaysCount = filteredDays.length;
+  const totalDaysPages = Math.ceil((totalDaysCount || 1) / attPageSize);
+  const paginatedDays = useMemo(() => {
+    const start = (attPage - 1) * attPageSize;
+    return filteredDays.slice(start, start + attPageSize);
+  }, [filteredDays, attPage, attPageSize]);
+
+  // Calculate summary metrics for the selected month
+  const metrics = useMemo(() => {
+    let daysPresent = 0;
+    let lateClockIns = 0;
+    let earlyDepartures = 0;
+    let noClockOuts = 0;
+    let overtimeHours = 0;
+    let absentDays = 0;
+
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    for (const rec of monthDaysList) {
+      if (rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {
+        daysPresent++;
+
+        if (rec.checkIn) {
+          const inDate = new Date(rec.checkIn);
+          const inHours = inDate.getHours() + inDate.getMinutes() / 60;
+          if (inHours > 9.5) {
+            lateClockIns++;
+          }
+        }
+
+        if (rec.checkIn && !rec.checkOut && rec.date !== todayStr) {
+          noClockOuts++;
+        }
+
+        if (rec.checkIn && rec.checkOut) {
+          const inDate = new Date(rec.checkIn);
+          const outDate = new Date(rec.checkOut);
+          const workedHours = (outDate - inDate) / (1000 * 3600);
+          if (workedHours > 8) {
+            overtimeHours += Math.round(workedHours - 8);
+          }
+          if (workedHours < 7.5) {
+            earlyDepartures++;
+          }
+        }
+      } else if (rec.status === "ON_LEAVE" || rec.status === "NOT_CHECKED_IN") {
+        absentDays++;
+      }
+    }
+
+    return {
+      daysPresent,
+      lateClockIns,
+      earlyDepartures,
+      noClockOuts,
+      overtimeHours,
+      absentDays,
+    };
+  }, [monthDaysList]);
+
   const attendance = dashboardData?.attendance;
   const todayStatus = attendance?.today?.status || "NOT_CHECKED_IN";
   const checkInTimeFormatted = attendance?.today?.checkInTime
@@ -224,11 +380,17 @@ export default function EmployeeAttendance() {
     ? new Date(attendance.today.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
-  return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="Attendance" />
+  const userInitial = (user?.name || user?.email || "E")[0].toUpperCase();
+  const displayName = user?.name || user?.email?.split("@")[0] || "Employee";
 
-      {/* Action alerts */}
+  return (
+    <div className="attendance-page-container">
+      {/* App Header */}
+      <AppHeader
+        title="Attendance"
+      />
+
+      {/* Action feedback banners */}
       {actionSuccess && (
         <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <span>{actionSuccess}</span>
@@ -247,311 +409,273 @@ export default function EmployeeAttendance() {
         </div>
       )}
 
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "#71717a", fontSize: 15 }}>Loading attendance details...</p>
+      {/* Section 1: Signed-in Employee Punch & Action Card */}
+      <div
+        style={{
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 10,
+          padding: "16px 18px",
+          boxShadow: "var(--shadow-sm)",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14, marginBottom: 14 }}>
+          {/* Shift Status Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Shift Status:
+            </span>
+            <StatusBadge
+              status={todayStatus}
+              label={todayStatus === "CHECKED_IN" ? "Checked In" : todayStatus === "CHECKED_OUT" ? "Checked Out" : "Not Checked In"}
+            />
+            {checkInTimeFormatted && (
+              <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 500 }}>
+                In: <strong style={{ color: "var(--ink)" }}>{checkInTimeFormatted}</strong>
+                {checkOutTimeFormatted && <> · Out: <strong style={{ color: "var(--ink)" }}>{checkOutTimeFormatted}</strong></>}
+              </span>
+            )}
+          </div>
+
+          {/* Punch In / Out Actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            {todayStatus === "NOT_CHECKED_IN" && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleCheckIn}
+                disabled={checkingAttendance}
+                style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
+              >
+                {checkingAttendance ? "Acquiring GPS..." : "Punch In (With GPS)"}
+              </button>
+            )}
+
+            {todayStatus === "CHECKED_IN" && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleCheckOut}
+                disabled={checkingAttendance}
+                style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600, background: "#dc2626", borderColor: "#dc2626" }}
+              >
+                {checkingAttendance ? "Acquiring GPS..." : "Punch Out for Day"}
+              </button>
+            )}
+
+            {todayStatus === "CHECKED_OUT" && (
+              <div style={{ fontSize: 13, color: "#15803d", display: "flex", alignItems: "center", gap: 6, fontWeight: 600, background: "#eefaf2", padding: "8px 14px", borderRadius: 10 }}>
+                <IconCheck size={16} />
+                <span>Punched out for today. See logs below.</span>
+              </div>
+            )}
+
+            {/* Live Tracking toggle button */}
+            {isLiveTracking ? (
+              <button
+                type="button"
+                onClick={() => handleStopTracking(false)}
+                className="btn-secondary btn-sm"
+                style={{ color: "#dc2626", borderColor: "#fecaca" }}
+              >
+                Stop Location Sharing
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartTracking}
+                className="btn-secondary btn-sm"
+              >
+                Share Location (30 min)
+              </button>
+            )}
+          </div>
         </div>
-      ) : error ? (
-        <div className="error" style={{ padding: 24, textAlign: "center" }}>
-          <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => fetchAttendanceData()}>
-            Retry
+
+        {/* Geolocation feedback bar */}
+        {geoStatus === "ACQUIRING" && (
+          <div style={{ padding: "8px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 12.5, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <IconClock size={15} />
+            <span>Verifying location...</span>
+          </div>
+        )}
+
+        {geoError && (
+          <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12.5, color: "#991b1b", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconAlertCircle size={16} />
+              <span>{geoError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGeoError("");
+                setGeoStatus("IDLE");
+                todayStatus === "NOT_CHECKED_IN" ? handleCheckIn() : handleCheckOut();
+              }}
+              style={{ background: "#991b1b", color: "#ffffff", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {lastCapturedLocation && (
+          <div style={{ padding: "6px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 6 }}>
+            <IconCheck size={14} />
+            <span>
+              Location verified: {lastCapturedLocation.latitude?.toFixed(4)}, {lastCapturedLocation.longitude?.toFixed(4)}
+            </span>
+          </div>
+        )}
+
+        {/* Today's quick punch times summary */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: 12,
+            padding: "12px 16px",
+            background: "#f8faf8",
+            borderRadius: 12,
+            marginTop: 12,
+            border: "1px solid #eef2ef",
+          }}
+        >
+          <div>
+            <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Clock-In Today</span>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>
+              {checkInTimeFormatted || "—"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Clock-Out Today</span>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>
+              {checkOutTimeFormatted || "—"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Hours Today</span>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>
+              {attendance?.today?.workingHours || "—"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Monthly Rate</span>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--g-800, #155a37)", marginTop: 2 }}>
+              {attendance?.summary?.daysPresent || 0} / {attendance?.summary?.totalWorkingDays || 22} Days
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: Compact Summary Metrics Row (Reference Image 2) */}
+      <AttendanceSummaryMetrics
+        metrics={metrics}
+        periodLabel={monthYearLabel}
+        showAccentFirst={true}
+      />
+
+      {/* Section 3: Month Selector & Search Toolbar */}
+      <div className="att-toolbar">
+        <div className="att-month-selector">
+          <button
+            type="button"
+            className="att-month-nav-btn"
+            onClick={handlePrevMonth}
+            aria-label="Previous month"
+            title="Previous month"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
           </button>
+          <span className="att-month-title">{monthYearLabel}</span>
+          <button
+            type="button"
+            className="att-month-nav-btn"
+            onClick={handleNextMonth}
+            aria-label="Next month"
+            title="Next month"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="att-controls-right">
+          <div className="att-search-box">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16.5 16.5 4 4" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search date..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search day"
+            />
+          </div>
+
+          <select
+            className="att-filter-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            aria-label="Filter status"
+          >
+            <option value="ALL">All Status</option>
+            <option value="PRESENT">Present Only</option>
+            <option value="LATE">Late Clock-In</option>
+            <option value="ON_LEAVE">Leaves / Off</option>
+            <option value="ABSENT">Absent / No Punch</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Section 4: Daily Attendance Timeline List */}
+      {historyLoading && historyRecords.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 16px", color: "var(--muted)" }}>
+          <div className="spinner" style={{ margin: "0 auto 12px" }} />
+          <p style={{ margin: 0, fontSize: 14 }}>Loading attendance timeline...</p>
+        </div>
+      ) : filteredDays.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "48px 16px", background: "#ffffff", borderRadius: 16, border: "1px solid var(--hair)", color: "var(--muted)" }}>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>No attendance records found matching filters for {monthYearLabel}.</p>
         </div>
       ) : (
         <>
-          {/* TODAY'S ATTENDANCE CARD */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "24px 28px",
-              marginBottom: 24,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-                  Attendance Today
-                </h3>
-                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-                  {todayFormattedDate}
-                </p>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <StatusBadge
-                  status={todayStatus}
-                  label={todayStatus === "CHECKED_IN" ? "Checked In" : todayStatus === "CHECKED_OUT" ? "Checked Out" : "Not Checked In"}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 16,
-                padding: "16px 20px",
-                background: "#f9fafb",
-                borderRadius: 10,
-                marginBottom: 18,
-                border: "1px solid #f3f4f6",
-              }}
-            >
-              <div>
-                <span style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Check-In Time</span>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
-                  {checkInTimeFormatted || "—"}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Check-Out Time</span>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
-                  {checkOutTimeFormatted || "—"}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Hours Today</span>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
-                  {attendance?.today?.workingHours || "—"}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Monthly Attendance</span>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#09090b", marginTop: 4 }}>
-                  {attendance?.summary?.daysPresent || 0} / {attendance?.summary?.totalWorkingDays || 22} Days ({attendance?.summary?.attendanceRate || 0}%)
-                </div>
-              </div>
-            </div>
-
-            {/* Geolocation Feedback & Error Banner */}
-            {geoStatus === "ACQUIRING" && (
-              <div style={{ marginBottom: 16, padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 13, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8 }}>
-                <IconClock size={16} />
-                <span>Acquiring high-accuracy browser location... Please grant permission if prompted.</span>
-              </div>
-            )}
-
-            {geoError && (
-              <div style={{ marginBottom: 16, padding: "12px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 13, color: "#991b1b" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, marginBottom: 4 }}>
-                  <IconAlertCircle size={16} />
-                  <span>Location Permission Required</span>
-                </div>
-                <p style={{ margin: "0 0 8px", fontSize: 12.5, lineHeight: 1.4 }}>
-                  {geoError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGeoError("");
-                    setGeoStatus("IDLE");
-                    todayStatus === "NOT_CHECKED_IN" ? handleCheckIn() : handleCheckOut();
-                  }}
-                  style={{ background: "#991b1b", color: "#ffffff", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                >
-                  Retry Location Capture
-                </button>
-              </div>
-            )}
-
-            {lastCapturedLocation && (
-              <div style={{ marginBottom: 16, padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 8 }}>
-                <IconCheck size={14} />
-                <span>
-                  Verified Location: {lastCapturedLocation.latitude.toFixed(4)}, {lastCapturedLocation.longitude.toFixed(4)}
-                  {lastCapturedLocation.accuracy ? ` (±${Math.round(lastCapturedLocation.accuracy)}m)` : ""}
-                </span>
-              </div>
-            )}
-
-            {/* Punch Action Buttons */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-              {todayStatus === "NOT_CHECKED_IN" && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleCheckIn}
-                  disabled={checkingAttendance}
-                  style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
-                >
-                  {checkingAttendance ? "Verifying Location..." : "Punch In (With Geolocation)"}
-                </button>
-              )}
-
-              {todayStatus === "CHECKED_IN" && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleCheckOut}
-                  disabled={checkingAttendance}
-                  style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600, background: "#dc2626", borderColor: "#dc2626" }}
-                >
-                  {checkingAttendance ? "Verifying Location..." : "Punch Out for Day"}
-                </button>
-              )}
-
-              {todayStatus === "CHECKED_OUT" && (
-                <div style={{ fontSize: 13.5, color: "#15803d", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-                  <IconCheck size={16} />
-                  <span>You have completed work and punched out for today.</span>
-                </div>
-              )}
-            </div>
+          <div className="att-timeline-list">
+            {paginatedDays.map((rec) => (
+              <AttendanceTimeline
+                key={rec._id || rec.date}
+                date={rec.date}
+                checkIn={rec.checkIn}
+                checkOut={rec.checkOut}
+                workingHours={rec.workingHours}
+                durationMinutes={rec.durationMinutes}
+                status={rec.status}
+                notes={rec.notes}
+              />
+            ))}
           </div>
 
-          {/* LIVE EMPLOYEE LOCATION TRACKING CARD */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "22px 28px",
-              marginBottom: 24,
+          <Pagination
+            currentPage={attPage}
+            totalPages={totalDaysPages}
+            totalItems={totalDaysCount}
+            pageSize={attPageSize}
+            pageSizeOptions={[10, 20, 31]}
+            onPageChange={(p) => setAttPage(p)}
+            onPageSizeChange={(s) => {
+              setAttPageSize(s);
+              setAttPage(1);
             }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-                    Live Work Location Tracking
-                  </h3>
-                  {isLiveTracking ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px", borderRadius: 12, background: "#dcfce7", color: "#15803d", fontSize: 11, fontWeight: 700 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a" }}></span>
-                      TRACKING ACTIVE
-                    </span>
-                  ) : (
-                    <span style={{ padding: "2px 8px", borderRadius: 12, background: "#f4f4f5", color: "#71717a", fontSize: 11, fontWeight: 600 }}>
-                      STOPPED
-                    </span>
-                  )}
-                </div>
-                <p style={{ margin: 0, fontSize: 13, color: "#71717a", maxWidth: 680 }}>
-                  Authorized live tracking transmits periodic location updates to HR during field assignments or active hours. Sessions are time-bounded (30 min) and can be ended at any time.
-                </p>
-              </div>
-
-              <div>
-                {isLiveTracking ? (
-                  <button
-                    type="button"
-                    onClick={() => handleStopTracking(false)}
-                    className="btn-secondary"
-                    style={{ color: "#dc2626", borderColor: "#fecaca" }}
-                  >
-                    Stop Tracking
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleStartTracking}
-                    className="btn-secondary"
-                  >
-                    Start 30-Min Session
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {trackingError && (
-              <div style={{ padding: "8px 12px", background: "#fef2f2", color: "#991b1b", borderRadius: 6, fontSize: 12.5, marginBottom: 10 }}>
-                {trackingError}
-              </div>
-            )}
-
-            {isLiveTracking && trackingSession?.lastLocation && (
-              <div style={{ fontSize: 12.5, color: "#15803d", background: "#f0fdf4", padding: "8px 12px", borderRadius: 6 }}>
-                Active Session: Lat {trackingSession.lastLocation.latitude?.toFixed(4)}, Lon {trackingSession.lastLocation.longitude?.toFixed(4)}
-              </div>
-            )}
-          </div>
-
-          {/* ATTENDANCE HISTORY TABLE CARD */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "24px 28px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 14 }}>
-              <div>
-                <h3 style={{ margin: "0 0 2px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-                  Attendance Punch History
-                </h3>
-                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-                  Verified daily punch records with working hours and status.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <input
-                  type="date"
-                  value={historyStartDate}
-                  onChange={(e) => setHistoryStartDate(e.target.value)}
-                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
-                />
-                <span style={{ fontSize: 12, color: "#71717a" }}>to</span>
-                <input
-                  type="date"
-                  value={historyEndDate}
-                  onChange={(e) => setHistoryEndDate(e.target.value)}
-                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
-                />
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => fetchAttendanceHistory(historyStartDate, historyEndDate)}
-                >
-                  <IconRefresh size={13} />
-                  <span>Filter</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
-              {historyLoading && historyRecords.length > 0 && <div className="table-progress-bar" />}
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                    <th style={{ padding: "10px 12px" }}>Date</th>
-                    <th style={{ padding: "10px 12px" }}>Check-In</th>
-                    <th style={{ padding: "10px 12px" }}>Check-Out</th>
-                    <th style={{ padding: "10px 12px" }}>Hours Worked</th>
-                    <th style={{ padding: "10px 12px" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody className={historyLoading && historyRecords.length > 0 ? "table-refreshing-dim" : ""}>
-                  {historyLoading && historyRecords.length === 0 ? (
-                    <TableSkeletonRows colCount={5} rowCount={4} widths={["100px", "90px", "90px", "90px", "80px"]} />
-                  ) : historyRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} style={{ padding: "30px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                        No attendance punch records found for the selected period.
-                      </td>
-                    </tr>
-                  ) : (
-                    historyRecords.map((rec) => (
-                      <tr key={rec._id || rec.date} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                        <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>{rec.date}</td>
-                        <td style={{ padding: "12px" }}>{rec.checkInTime ? new Date(rec.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                        <td style={{ padding: "12px" }}>{rec.checkOutTime ? new Date(rec.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                        <td style={{ padding: "12px", fontWeight: 600 }}>{rec.workingHours || "—"}</td>
-                        <td style={{ padding: "12px" }}>
-                          <StatusBadge status={rec.status} />
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            itemLabel="days"
+            className="mt-3"
+          />
         </>
       )}
     </div>

@@ -1,10 +1,12 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
+import Pagination from "../components/Pagination";
 import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
+import AppHeader from "../components/AppHeader";
+import "./LeaveManagement.css";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
@@ -13,17 +15,10 @@ const STATUS_OPTIONS = [
   { value: "REJECTED", label: "Rejected" },
 ];
 
-const LEAVE_TYPE_OPTIONS = [
-  { value: "ALL", label: "All Types" },
-  { value: "CASUAL", label: "Casual" },
-  { value: "SICK", label: "Sick" },
-  { value: "EARNED", label: "Earned" },
-];
-
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const PAGE_SIZE_OPTIONS = [6, 12, 24, 48];
 
 export default function AdminLeaveManagement() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -38,6 +33,12 @@ export default function AdminLeaveManagement() {
     onLeaveToday: 0,
   });
 
+  // Calendar View State
+  const [calDate, setCalDate] = useState(() => new Date());
+
+  // View mode: "cards" | "table" (default cards as per Reference 1)
+  const [viewMode, setViewMode] = useState("cards");
+
   // Filters & Pagination state
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -48,10 +49,10 @@ export default function AdminLeaveManagement() {
   const [fromDateFilter, setFromDateFilter] = useState("");
   const [toDateFilter, setToDateFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(12);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 10,
+    limit: 12,
     total: 0,
     totalPages: 1,
   });
@@ -155,7 +156,7 @@ export default function AdminLeaveManagement() {
     fetchLeaveData();
   }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
 
-  // Live Cross-Portal Synchronization via SSE & visibility-aware background sync
+  // Live Cross-Portal Synchronization via SSE
   useEffect(() => {
     const baseURL = api.defaults.baseURL || "/api";
     const eventsUrl = `${baseURL.replace(/\/$/, "")}/leave-requests/events`;
@@ -171,21 +172,12 @@ export default function AdminLeaveManagement() {
             payload.type === "LEAVE_DECIDED" ||
             payload.type === "LEAVE_TYPE_CHANGED"
           ) {
-            // Live update of HR pending queue and summary counters without manual page refresh
             if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
           }
-        } catch {
-          // ignore non-json
-        }
+        } catch {}
       };
-      eventSource.onerror = () => {
-        // Browser reconnects automatically
-      };
-    } catch {
-      // EventSource fallback
-    }
+    } catch {}
 
-    // Visibility-aware background polling & window focus sync
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
         if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
@@ -209,7 +201,15 @@ export default function AdminLeaveManagement() {
     };
   }, []);
 
-  // Open details modal
+  // Quick Action Handler (Approve / Reject directly or via modal)
+  const handleQuickDecisionPrompt = (reqItem, action) => {
+    setSelectedRequest(reqItem);
+    setConfirmAction(action);
+    setDecisionRemarks("");
+    setDecisionError("");
+    setShowChangeTypeForm(false);
+  };
+
   const handleOpenDetails = async (reqItem) => {
     setSelectedRequest(reqItem);
     setConfirmAction(null);
@@ -234,14 +234,12 @@ export default function AdminLeaveManagement() {
         }
       }
     } catch (err) {
-      // Non-blocking fallback to row data
-      console.warn("Could not fetch full details, using table data", err);
+      console.warn("Could not fetch full details, using local data", err);
     } finally {
       setRequestDetailsLoading(false);
     }
   };
 
-  // Submit decision (APPROVE or REJECT)
   const handleSubmitDecision = async () => {
     if (!selectedRequest || !confirmAction) return;
 
@@ -259,6 +257,7 @@ export default function AdminLeaveManagement() {
       setConfirmAction(null);
       setDecisionRemarks("");
       await fetchLeaveData();
+      setTimeout(() => setActionSuccess(""), 4000);
     } catch (err) {
       setDecisionError(
         err.response?.data?.message || `Failed to ${confirmAction.toLowerCase()} leave request.`
@@ -268,7 +267,6 @@ export default function AdminLeaveManagement() {
     }
   };
 
-  // Submit leave type change (HR action on APPROVED request)
   const handleChangeLeaveType = async () => {
     if (!selectedRequest || !selectedNewType || !changeTypeReason.trim()) {
       setChangeTypeError("Please select a new leave type and enter a reason for the change.");
@@ -295,1049 +293,897 @@ export default function AdminLeaveManagement() {
         if (res.data.leaveBalance) {
           setEmployeeBalance(res.data.leaveBalance);
         }
-        const successMsg = res.data.message || "Leave type changed successfully.";
-        setChangeTypeSuccess(successMsg);
-        setActionSuccess(successMsg);
-        setShowChangeTypeForm(false);
-        setConfirmChangeType(false);
-        setSelectedNewType("");
-        setChangeTypeReason("");
-
-        // Immediately update item in table
-        setRequests((prev) =>
-          prev.map((r) =>
-            r._id === selectedRequest._id ? { ...r, leaveTypeCode: updated.leaveTypeCode } : r
-          )
-        );
-
+        const msg = res.data.message || "Leave type changed successfully.";
+        setChangeTypeSuccess(msg);
+        setActionSuccess(msg);
         await fetchLeaveData(true);
+        setTimeout(() => setChangeTypeSuccess(""), 3500);
       }
     } catch (err) {
-      setChangeTypeError(
-        err.response?.data?.message || "Failed to change leave type. Please try again."
-      );
+      setChangeTypeError(err.response?.data?.message || "Failed to change leave type.");
     } finally {
       setSubmittingChangeType(false);
     }
   };
 
-  const handleClearFilters = () => {
-    setSearch("");
-    setDebouncedSearch("");
-    setStatusFilter("ALL");
-    setTypeFilter("ALL");
-    setFromDateFilter("");
-    setToDateFilter("");
-    setPage(1);
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const getInitials = (name) => {
+    if (!name) return "E";
+    const parts = name.trim().split(" ");
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  // Calendar calculations: days of current selected month
+  const calendarData = useMemo(() => {
+    const year = calDate.getFullYear();
+    const month = calDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    // Monday-based week index (0 = Mon, 6 = Sun)
+    let startDayIdx = firstDay.getDay() - 1;
+    if (startDayIdx === -1) startDayIdx = 6;
+
+    const days = [];
+    // Days from previous month
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startDayIdx - 1; i >= 0; i--) {
+      days.push({
+        dayNum: prevMonthLastDay - i,
+        dateStr: `${year}-${String(month).padStart(2, "0")}-${String(prevMonthLastDay - i).padStart(2, "0")}`,
+        isOtherMonth: true,
+      });
+    }
+
+    // Days of current month
+    const totalDays = lastDay.getDate();
+    const today = new Date().toISOString().split("T")[0];
+
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      days.push({
+        dayNum: d,
+        dateStr,
+        isOtherMonth: false,
+        isToday: dateStr === today,
+      });
+    }
+
+    // Pad end of calendar to complete grid
+    const remaining = (7 - (days.length % 7)) % 7;
+    for (let r = 1; r <= remaining; r++) {
+      days.push({
+        dayNum: r,
+        dateStr: `${year}-${String(month + 2).padStart(2, "0")}-${String(r).padStart(2, "0")}`,
+        isOtherMonth: true,
+      });
+    }
+
+    // Filter approved leaves that intersect with days
+    const approvedRequests = requests.filter((r) => r.status === "APPROVED");
+
+    return {
+      monthName: calDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      days,
+      approvedRequests,
+    };
+  }, [calDate, requests]);
+
+  const handlePrevMonth = () => {
+    setCalDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCalDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
   };
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="Leave" />
+    <div className="lm-container">
+      <AppHeader title="Leave Requests" />
 
-      {/* Action alerts */}
-      {actionSuccess && (
-        <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <IconCheck size={16} />
-            <span>{actionSuccess}</span>
-          </span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")} aria-label="Dismiss alert">
-            <IconClose size={14} />
-          </button>
-        </div>
-      )}
+      {/* Global Alerts */}
+      {actionSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{actionSuccess}</div>}
+      {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      {actionError && (
-        <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span>{actionError}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")} aria-label="Dismiss alert">
-            <IconClose size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* SUMMARY STATS CARDS */}
-      <div className="stats-grid">
-        <div
-          className="stat-card"
-          style={{ cursor: "pointer", borderLeft: statusFilter === "PENDING" ? "4px solid #b45309" : undefined }}
-          onClick={() => {
-            setStatusFilter("PENDING");
-            setPage(1);
-          }}
-          title="Click to view pending requests"
-        >
-          <span className="stat-label">Pending</span>
-          <div className="stat-value" style={{ color: "#b45309" }}>{summary.pending}</div>
-        </div>
-
-        <div
-          className="stat-card"
-          style={{ cursor: "pointer", borderLeft: statusFilter === "APPROVED" ? "4px solid #15803d" : undefined }}
-          onClick={() => {
-            setStatusFilter("APPROVED");
-            setPage(1);
-          }}
-          title="Click to view approved requests"
-        >
-          <span className="stat-label">Approved</span>
-          <div className="stat-value" style={{ color: "#15803d" }}>{summary.approved}</div>
-        </div>
-
-        <div
-          className="stat-card"
-          style={{ cursor: "pointer", borderLeft: statusFilter === "REJECTED" ? "4px solid #b91c1c" : undefined }}
-          onClick={() => {
-            setStatusFilter("REJECTED");
-            setPage(1);
-          }}
-          title="Click to view rejected requests"
-        >
-          <span className="stat-label">Rejected</span>
-          <div className="stat-value" style={{ color: "#b91c1c" }}>{summary.rejected}</div>
-        </div>
-
-        <div className="stat-card highlight">
-          <span className="stat-label">On Leave Today</span>
-          <div className="stat-value" style={{ color: "#09090b" }}>{summary.onLeaveToday}</div>
-        </div>
-      </div>
-
-      {/* TOOLBAR & FILTERS */}
+      {/* Compact Inline Leave Statistics Strip */}
       <div
-        className="toolbar"
         style={{
-          background: "#ffffff",
-          padding: "16px 20px",
-          borderRadius: 12,
-          border: "1px solid #e4e4e7",
-          marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 12,
+          fontSize: 13,
+          flexWrap: "wrap",
         }}
       >
-        <div className="toolbar-left" style={{ flexWrap: "wrap", gap: 10 }}>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Pending Approvals: <strong style={{ color: summary.pending > 0 ? "#b06d0a" : "var(--ink)" }}>{summary.pending}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Approved: <strong style={{ color: "var(--g-800, #155a37)" }}>{summary.approved}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Rejected: <strong style={{ color: "#b91c1c" }}>{summary.rejected}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          On Leave Today: <strong style={{ color: "var(--g-800, #155a37)" }}>{summary.onLeaveToday || 0}</strong>
+        </span>
+      </div>
+
+      {/* Consolidated Single Leave Toolbar */}
+      <div
+        className="lm-toolbar"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 10,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 10,
+          padding: "8px 14px",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Status Filter Tabs */}
+          <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`text-filter-link ${statusFilter === opt.value ? "active" : ""}`}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  borderRadius: 5,
+                  fontWeight: statusFilter === opt.value ? 700 : 500,
+                  background: statusFilter === opt.value ? "#ffffff" : "transparent",
+                  color: statusFilter === opt.value ? "var(--g-950, #0d3a23)" : "var(--muted, #646d67)",
+                  border: "none",
+                  boxShadow: statusFilter === opt.value ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  setStatusFilter(opt.value);
+                  setPage(1);
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {/* Search Input */}
-          <div style={{ position: "relative", minWidth: 260 }}>
+          <div style={{ position: "relative", minWidth: 200 }}>
             <input
-              type="text"
-              className="search-input"
-              placeholder="Search by name, email, or code..."
+              type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ width: "100%", paddingLeft: 34 }}
+              placeholder="Search employee, role, reason..."
+              className="search-input"
+              style={{ width: "100%", paddingLeft: "30px", height: 32, fontSize: 12.5 }}
             />
             <svg
-              style={{ position: "absolute", left: 10, top: 11, color: "#71717a" }}
-              width="16"
-              height="16"
+              width="13"
+              height="13"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ position: "absolute", left: "9px", top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}
             >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </div>
 
-          {/* Status Filter */}
-          <select
-            className="filter-select"
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-
           {/* Leave Type Filter */}
           <select
-            className="filter-select"
             value={typeFilter}
             onChange={(e) => {
               setTypeFilter(e.target.value);
               setPage(1);
             }}
+            className="filter-select"
+            style={{ height: 32, fontSize: 12.5, padding: "0 8px" }}
           >
-            {filterLeaveTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
+            {filterLeaveTypes.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
               </option>
             ))}
           </select>
 
           {/* Date range filters */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="date"
-              className="filter-select"
-              title="From date filter"
-              value={fromDateFilter}
-              onChange={(e) => {
-                setFromDateFilter(e.target.value);
-                setPage(1);
-              }}
-              style={{ fontSize: 13, padding: "7px 10px" }}
-            />
-            <span style={{ color: "#71717a", fontSize: 12 }}>to</span>
-            <input
-              type="date"
-              className="filter-select"
-              title="To date filter"
-              value={toDateFilter}
-              onChange={(e) => {
-                setToDateFilter(e.target.value);
-                setPage(1);
-              }}
-              style={{ fontSize: 13, padding: "7px 10px" }}
-            />
-          </div>
-
-          {(search || statusFilter !== "ALL" || typeFilter !== "ALL" || fromDateFilter || toDateFilter) && (
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              onClick={handleClearFilters}
-              title="Reset all search and filter conditions"
-            >
-              Clear Filters
-            </button>
-          )}
+          <input
+            type="date"
+            value={fromDateFilter}
+            onChange={(e) => {
+              setFromDateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+            title="From Date"
+            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
+          />
+          <input
+            type="date"
+            value={toDateFilter}
+            onChange={(e) => {
+              setToDateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+            title="To Date"
+            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
+          />
         </div>
 
-        <div className="toolbar-right">
-          <label style={{ fontSize: 13, color: "#71717a", display: "flex", alignItems: "center", gap: 6 }}>
-            Show:
-            <select
-              className="filter-select"
-              value={limit}
-              onChange={(e) => {
-                setLimit(Number(e.target.value));
-                setPage(1);
-              }}
-              style={{ padding: "6px 10px", fontSize: 13 }}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* View Mode Toggle: Cards vs Table */}
+          <div className="pm-view-toggle" style={{ height: 32 }}>
+            <button
+              type="button"
+              className={`pm-view-toggle-btn ${viewMode === "cards" ? "active" : ""}`}
+              onClick={() => setViewMode("cards")}
+              style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
             >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size} / page
-                </option>
-              ))}
-            </select>
-          </label>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+              </svg>
+              <span>Cards</span>
+            </button>
+            <button
+              type="button"
+              className={`pm-view-toggle-btn ${viewMode === "table" ? "active" : ""}`}
+              onClick={() => setViewMode("table")}
+              style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              <span>Table</span>
+            </button>
+          </div>
+
+          <select
+            value={limit}
+            onChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(1);
+            }}
+            className="filter-select"
+            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size} / page
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => fetchLeaveData()}
+            title="Refresh leave requests"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
+          >
+            <IconRefresh size={13} />
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
-      {/* ERROR STATE */}
-      {error && (
-        <div className="error" style={{ textAlign: "center", padding: 24, marginBottom: 20 }}>
-          <p style={{ margin: "0 0 14px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={fetchLeaveData}>
-            Retry Loading Requests
-          </button>
+      {/* -----------------------------------------------------------------------
+          REFERENCE 1: LEAVE REQUESTS AND APPROVALS SECTION
+          ----------------------------------------------------------------------- */}
+      {viewMode === "cards" ? (
+        <>
+          {loading && requests.length === 0 ? (
+            <div className="pm-empty-box">
+              <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
+              <p>Loading leave requests...</p>
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="pm-empty-box">
+              <h4>No leave requests found</h4>
+              <p>
+                {debouncedSearch || statusFilter !== "ALL"
+                  ? "No requests match your search or filter criteria."
+                  : "No leave applications have been submitted yet."}
+              </p>
+              {(debouncedSearch || statusFilter !== "ALL") && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ marginTop: "12px" }}
+                  onClick={() => {
+                    setSearch("");
+                    setDebouncedSearch("");
+                    setStatusFilter("ALL");
+                    setTypeFilter("ALL");
+                    setFromDateFilter("");
+                    setToDateFilter("");
+                    setPage(1);
+                  }}
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="lm-requests-grid">
+              {requests.map((req) => {
+                const empName = req.employeeId?.fullName || "Employee";
+                const role = req.employeeId?.job?.jobTitle || "Team Member";
+                const isPending = req.status === "PENDING";
+                const isApproved = req.status === "APPROVED";
+                const typeCode = (req.leaveTypeCode || "CASUAL").toLowerCase();
+
+                return (
+                  <div key={req._id} className="lm-req-card">
+                    {/* Header */}
+                    <div className="lm-req-card-header">
+                      <div className="lm-req-employee-info">
+                        <div className="lm-req-avatar">
+                          {getInitials(empName)}
+                        </div>
+                        <div className="lm-req-emp-details">
+                          <h3 className="lm-req-emp-name" title={empName}>
+                            {empName}
+                          </h3>
+                          <span className="lm-req-emp-role" title={role}>
+                            {role}
+                          </span>
+                        </div>
+                      </div>
+
+                      <StatusBadge status={req.status} />
+                    </div>
+
+                    {/* Body */}
+                    <div className="lm-req-body">
+                      <div className="lm-req-meta-row">
+                        <span className={`lm-req-type-pill ${typeCode}`}>
+                          {req.leaveTypeCode || "CASUAL"}
+                        </span>
+                        <span className="lm-req-duration">
+                          {req.calculatedDays || req.durationDays || 1} Day(s)
+                        </span>
+                      </div>
+
+                      <div className="lm-req-dates-line">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <span>
+                          {formatDate(req.startDate)} to {formatDate(req.endDate)}
+                        </span>
+                      </div>
+
+                      <div className="lm-req-reason-box" title={req.reason}>
+                        "{req.reason || "No reason provided."}"
+                      </div>
+
+                      {req.reviewedBy && (
+                        <div className="lm-req-reviewer-row">
+                          <span>Decision by: <strong>{req.reviewedBy.fullName || "HR Admin"}</strong></span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer Actions (Reference 1 style) */}
+                    <div className="lm-req-card-actions">
+                      {isPending ? (
+                        <>
+                          <div className="lm-action-btn-group">
+                            <button
+                              type="button"
+                              className="lm-btn-approve"
+                              onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}
+                              title="Approve leave request"
+                              aria-label="Approve leave request"
+                            >
+                              <IconCheck size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="lm-btn-reject"
+                              onClick={() => handleQuickDecisionPrompt(req, "REJECT")}
+                              title="Reject leave request"
+                              aria-label="Reject leave request"
+                            >
+                              <IconClose size={16} />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            className="lm-btn-details"
+                            onClick={() => handleOpenDetails(req)}
+                          >
+                            Details
+                          </button>
+                        </>
+                      ) : isApproved ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => {
+                              handleOpenDetails(req);
+                              setShowChangeTypeForm(true);
+                            }}
+                            style={{ fontSize: "12px", padding: "4px 8px" }}
+                          >
+                            Change Type
+                          </button>
+                          <button
+                            type="button"
+                            className="lm-btn-details"
+                            onClick={() => handleOpenDetails(req)}
+                          >
+                            View Record
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="lm-btn-details"
+                          onClick={() => handleOpenDetails(req)}
+                          style={{ width: "100%", textAlign: "center" }}
+                        >
+                          View Reason & Record
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        /* Table Fallback View */
+        <div className="data-table-container table-wrapper-relative" style={{ marginBottom: 28 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Leave Type</th>
+                <th>Dates</th>
+                <th>Days</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th>Applied On</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((req) => (
+                <tr key={req._id}>
+                  <td>
+                    <strong>{req.employeeId?.fullName || "—"}</strong>
+                    <div style={{ fontSize: "11.5px", color: "var(--muted)" }}>
+                      {req.employeeId?.job?.jobTitle || "—"}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`lm-req-type-pill ${(req.leaveTypeCode || "CASUAL").toLowerCase()}`}>
+                      {req.leaveTypeCode || "CASUAL"}
+                    </span>
+                  </td>
+                  <td>
+                    {formatDate(req.startDate)} to {formatDate(req.endDate)}
+                  </td>
+                  <td><strong>{req.calculatedDays || req.durationDays || 1}</strong></td>
+                  <td><StatusBadge status={req.status} /></td>
+                  <td style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {req.reason || "—"}
+                  </td>
+                  <td>{formatDate(req.createdAt)}</td>
+                  <td>
+                    <div className="row-actions">
+                      {req.status === "PENDING" && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => handleQuickDecisionPrompt(req, "REJECT")}
+                          >
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => handleOpenDetails(req)}
+                      >
+                        Details
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* TABLE SECTION */}
-      <div
-        className="table-wrapper-relative"
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e4e4e7",
-          borderRadius: 14,
-          overflow: "hidden",
-        }}
-      >
-        {loading && requests.length > 0 && <div className="table-progress-bar" />}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-            <thead>
-              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Employee</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Leave Type</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Dates</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Duration</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Reason</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Submitted</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600 }}>Status</th>
-                <th style={{ padding: "12px 16px", fontWeight: 600, textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody className={loading && requests.length > 0 ? "table-refreshing-dim" : ""}>
-              {loading && requests.length === 0 ? (
-                <TableSkeletonRows colCount={8} rowCount={6} />
-              ) : requests.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "60px 20px", color: "#71717a" }}>
-                    <svg
-                      width="44"
-                      height="44"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#a1a1aa"
-                      strokeWidth="1.5"
-                      style={{ margin: "0 auto 12px", display: "block" }}
-                    >
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                      <line x1="16" y1="2" x2="16" y2="6" />
-                      <line x1="8" y1="2" x2="8" y2="6" />
-                      <line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
-                    <h4 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>No leave requests found</h4>
-                    <p style={{ margin: 0, fontSize: 13.5 }}>
-                      {statusFilter !== "ALL" || search || fromDateFilter || toDateFilter
-                        ? "No requests match your filters."
-                        : "No leave requests submitted yet."}
-                    </p>
-                    {(statusFilter !== "ALL" || search || fromDateFilter || toDateFilter) && (
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        style={{ marginTop: 12, fontSize: 13 }}
-                        onClick={() => {
-                          setSearch("");
-                          setDebouncedSearch("");
-                          setStatusFilter("ALL");
-                          setTypeFilter("ALL");
-                          setFromDateFilter("");
-                          setToDateFilter("");
-                          setPage(1);
-                        }}
-                      >
-                        Clear Filters
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ) : requests.map((item) => (
-                  <tr
-                    key={item._id}
-                    style={{
-                      borderBottom: "1px solid #f4f4f5",
-                      transition: "background 0.15s ease",
-                    }}
-                  >
-                    {/* Employee code & name */}
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ fontWeight: 600, color: "#09090b" }}>{item.employeeName}</div>
-                      <div style={{ fontSize: 12, color: "#71717a" }}>
-                        {item.employeeCode} • {item.department}
-                      </div>
-                    </td>
-
-                    {/* Leave Type */}
-                    <td style={{ padding: "14px 16px" }}>
-                      <span
-                        style={{
-                          padding: "3px 8px",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: "#f4f4f5",
-                          color: "#18181b",
-                          border: "1px solid #e4e4e7",
-                        }}
-                      >
-                        {item.leaveTypeCode}
-                      </span>
-                    </td>
-
-                    {/* Dates */}
-                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                      <div style={{ fontWeight: 500, color: "#09090b" }}>{item.fromDate}</div>
-                      <div style={{ fontSize: 12, color: "#71717a" }}>to {item.toDate}</div>
-                    </td>
-
-                    {/* Calculated leave duration */}
-                    <td style={{ padding: "14px 16px", fontWeight: 600 }}>
-                      {item.daysCount} {item.daysCount === 1 ? "day" : "days"}
-                    </td>
-
-                    {/* Reason preview */}
-                    <td style={{ padding: "14px 16px", maxWidth: 220 }}>
-                      <div
-                        style={{
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          color: "#52525b",
-                        }}
-                        title={item.reason}
-                      >
-                        {item.reason || "--"}
-                      </div>
-                    </td>
-
-                    {/* Submission Date */}
-                    <td style={{ padding: "14px 16px", color: "#71717a", fontSize: 12.5, whiteSpace: "nowrap" }}>
-                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "--"}
-                    </td>
-
-                    {/* Current Status */}
-                    <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
-                      <StatusBadge status={item.status} />
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ padding: "14px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                        <button
-                          type="button"
-                          className="btn-sm btn-secondary"
-                          onClick={() => handleOpenDetails(item)}
-                          title="View complete request details"
-                        >
-                          Review
-                        </button>
-
-                        {item.status === "PENDING" && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-sm"
-                              onClick={() => {
-                                handleOpenDetails(item);
-                                setConfirmAction("APPROVE");
-                              }}
-                              style={{ background: "#15803d", borderColor: "#15803d", color: "#ffffff" }}
-                              title="Quick approve"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-sm"
-                              onClick={() => {
-                                handleOpenDetails(item);
-                                setConfirmAction("REJECT");
-                              }}
-                              style={{ background: "#b91c1c", borderColor: "#b91c1c", color: "#ffffff" }}
-                              title="Quick reject"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-        {/* PAGINATION FOOTER */}
-        {requests.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "14px 20px",
-              borderTop: "1px solid #e4e4e7",
-              background: "#fafafa",
-              flexWrap: "wrap",
-              gap: 12,
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#71717a" }}>
-              Showing <strong>{(page - 1) * limit + 1}</strong> to{" "}
-              <strong>{Math.min(page * limit, pagination.total)}</strong> of{" "}
-              <strong>{pagination.total}</strong> leave requests
-            </div>
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <IconArrowLeft size={14} />
-                <span>Previous</span>
-              </button>
-
-              <span style={{ fontSize: 13, color: "#52525b", padding: "0 6px" }}>
-                Page <strong>{page}</strong> of <strong>{pagination.totalPages || 1}</strong>
-              </span>
-
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                disabled={page >= pagination.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <span>Next</span>
-                <IconArrowRight size={14} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* DETAILS & APPROVAL / REJECTION DRAWER/MODAL */}
-      {selectedRequest && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
+      {/* Pagination Bar */}
+      {pagination.total > 0 && (
+        <Pagination
+          currentPage={pagination.page}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.total}
+          pageSize={pagination.limit}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
+          onPageChange={(p) => setPage(p)}
+          onPageSizeChange={(s) => {
+            setLimit(s);
+            setPage(1);
           }}
-          onClick={() => !submittingDecision && setSelectedRequest(null)}
-        >
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 14,
-              padding: 24,
-              width: "100%",
-              maxWidth: 580,
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, borderBottom: "1px solid #e4e4e7", paddingBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                  Leave Request
-                </div>
-                <h3 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-                  {selectedRequest.employeeName || selectedRequest.employee?.fullName || "Employee Leave"}
-                </h3>
-                <span style={{ fontSize: 13, color: "#71717a" }}>
-                  {selectedRequest.employeeCode || selectedRequest.employee?.employeeCode || "N/A"} •{" "}
-                  {selectedRequest.department || selectedRequest.employee?.department || "General"}
-                </span>
-              </div>
+          itemLabel="leave applications"
+          className="my-3"
+        />
+      )}
+
+      {/* -----------------------------------------------------------------------
+          REFERENCE 1: LEAVE CALENDAR AND SCHEDULE VISUALIZATION
+          ----------------------------------------------------------------------- */}
+      <section className="lm-calendar-section" aria-label="Monthly Leave Schedule">
+        {/* Calendar Card */}
+        <div className="lm-calendar-card">
+          <div className="lm-cal-header-bar">
+            <h3 className="lm-cal-title">
+              Approved Leave Schedule — {calendarData.monthName}
+            </h3>
+            <div className="lm-cal-nav">
               <button
                 type="button"
-                className="btn-sm btn-secondary"
-                onClick={() => setSelectedRequest(null)}
-                disabled={submittingDecision}
-                aria-label="Close modal"
+                className="lm-cal-nav-btn"
+                onClick={handlePrevMonth}
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="lm-cal-nav-btn"
+                onClick={handleNextMonth}
+                aria-label="Next month"
+              >
+                ›
+              </button>
+            </div>
+          </div>
+
+          <div className="lm-cal-grid">
+            <div className="lm-cal-weekday">Mon</div>
+            <div className="lm-cal-weekday">Tue</div>
+            <div className="lm-cal-weekday">Wed</div>
+            <div className="lm-cal-weekday">Thu</div>
+            <div className="lm-cal-weekday">Fri</div>
+            <div className="lm-cal-weekday">Sat</div>
+            <div className="lm-cal-weekday">Sun</div>
+
+            {calendarData.days.map((day, idx) => {
+              // Find matching approved leaves for this day
+              const dayLeaves = calendarData.approvedRequests.filter((r) => {
+                const s = r.startDate?.split("T")[0];
+                const e = r.endDate?.split("T")[0];
+                return s && e && day.dateStr >= s && day.dateStr <= e;
+              });
+
+              return (
+                <div
+                  key={idx}
+                  className={`lm-cal-day ${day.isOtherMonth ? "other-month" : ""} ${day.isToday ? "today" : ""}`}
+                >
+                  <span className="lm-cal-day-num">{day.dayNum}</span>
+                  {dayLeaves.slice(0, 2).map((l, lIdx) => {
+                    const empShort = (l.employeeId?.fullName || "Leave").split(" ")[0];
+                    const tCode = (l.leaveTypeCode || "CASUAL").toLowerCase();
+                    return (
+                      <div
+                        key={lIdx}
+                        className={`lm-cal-leave-pill ${tCode}`}
+                        title={`${l.employeeId?.fullName || "Employee"}: ${l.leaveTypeCode} Leave`}
+                      >
+                        {empShort} · {l.leaveTypeCode?.slice(0, 3)}
+                      </div>
+                    );
+                  })}
+                  {dayLeaves.length > 2 && (
+                    <div style={{ fontSize: "9px", color: "var(--muted)", marginTop: 2 }}>
+                      +{dayLeaves.length - 2} more
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Side Card: Currently / Scheduled on Leave */}
+        <div className="lm-side-card">
+          <div className="lm-side-title-row">
+            <h3 className="lm-side-title">Upcoming Team Absences</h3>
+            <span style={{ fontSize: "12px", color: "var(--g-800)", fontWeight: "600" }}>
+              {calendarData.approvedRequests.length} Scheduled
+            </span>
+          </div>
+
+          <div className="lm-team-leave-list">
+            {calendarData.approvedRequests.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "var(--muted)", margin: "14px 0" }}>
+                No approved leaves scheduled for this month.
+              </p>
+            ) : (
+              calendarData.approvedRequests.slice(0, 5).map((r) => {
+                const name = r.employeeId?.fullName || "Team Member";
+                const type = r.leaveTypeCode || "Casual";
+                return (
+                  <div key={r._id} className="lm-team-leave-row">
+                    <div className="lm-team-leave-left">
+                      <div className="lm-req-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
+                        {getInitials(name)}
+                      </div>
+                      <div>
+                        <div className="lm-team-leave-name" title={name}>{name}</div>
+                        <div className="lm-team-leave-dates">
+                          {formatDate(r.startDate)} - {formatDate(r.endDate)}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`lm-req-type-pill ${type.toLowerCase()}`}>
+                      {type}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* -----------------------------------------------------------------------
+          CONFIRM DECISION MODAL (Quick Decision or Full Decision)
+          ----------------------------------------------------------------------- */}
+      {selectedRequest && confirmAction && (
+        <div className="modal-overlay" onClick={() => setConfirmAction(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h2>Confirm {confirmAction === "APPROVE" ? "Approval" : "Rejection"}</h2>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setConfirmAction(null)}
+                aria-label="Close"
               >
                 <IconClose size={14} />
               </button>
             </div>
 
-            {decisionError && <div className="error">{decisionError}</div>}
+            {decisionError && <div className="error" style={{ marginBottom: 14 }}>{decisionError}</div>}
 
-            {/* Request Summary Details */}
-            <div
-              style={{
-                background: "#f9fafb",
-                padding: "16px",
-                borderRadius: 10,
-                border: "1px solid #e4e4e7",
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                marginBottom: 16,
-                fontSize: 13,
-              }}
-            >
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Leave Type
-                </span>
-                <div style={{ fontWeight: 700, color: "#09090b", marginTop: 2 }}>
-                  {selectedRequest.leaveTypeCode}
-                </div>
+            <p style={{ fontSize: "13.5px", color: "var(--ink)", margin: "8px 0 16px" }}>
+              Are you sure you want to <strong>{confirmAction.toLowerCase()}</strong> this leave request for{" "}
+              <strong>{selectedRequest.employeeId?.fullName || "this employee"}</strong>?
+            </p>
+
+            <div style={{ background: "var(--panel)", padding: "12px 14px", borderRadius: 8, marginBottom: 16 }}>
+              <div style={{ fontSize: "13px", marginBottom: 4 }}>
+                <strong>Dates:</strong> {formatDate(selectedRequest.startDate)} to {formatDate(selectedRequest.endDate)} ({selectedRequest.calculatedDays || 1} day(s))
               </div>
-
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Duration
-                </span>
-                <div style={{ fontWeight: 700, color: "#09090b", marginTop: 2 }}>
-                  {selectedRequest.daysCount} {selectedRequest.daysCount === 1 ? "day" : "days"}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  From Date
-                </span>
-                <div style={{ fontWeight: 600, color: "#09090b", marginTop: 2 }}>
-                  {selectedRequest.fromDate}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  To Date
-                </span>
-                <div style={{ fontWeight: 600, color: "#09090b", marginTop: 2 }}>
-                  {selectedRequest.toDate}
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Status
-                </span>
-                <div style={{ marginTop: 2 }}>
-                  <StatusBadge status={selectedRequest.status} />
-                </div>
-              </div>
-
-              <div>
-                <span style={{ color: "#71717a", fontSize: 11.5, textTransform: "uppercase", fontWeight: 600 }}>
-                  Submitted
-                </span>
-                <div style={{ fontSize: 12, color: "#52525b", marginTop: 2 }}>
-                  {selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString() : "--"}
-                </div>
+              <div style={{ fontSize: "13px" }}>
+                <strong>Reason:</strong> {selectedRequest.reason || "Not specified"}
               </div>
             </div>
 
-            {/* Employee's Leave Balance Context (if fetched) */}
-            {employeeBalance?.balance && (
-              <div
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #e4e4e7",
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  marginBottom: 16,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 8 }}>
-                  Leave Balances
-                </div>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
-                  <div>
-                    <span style={{ color: "#71717a" }}>Casual: </span>
-                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.casual ?? 0} days</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#71717a" }}>Sick: </span>
-                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.sick ?? 0} days</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#71717a" }}>Earned: </span>
-                    <strong style={{ color: "#09090b" }}>{employeeBalance.balance.earned ?? 0} days</strong>
-                  </div>
-                </div>
-              </div>
-            )}
+            <label style={{ display: "block", marginBottom: 18 }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                Reviewer Remarks (Optional)
+              </span>
+              <textarea
+                rows={3}
+                value={decisionRemarks}
+                onChange={(e) => setDecisionRemarks(e.target.value)}
+                placeholder="Enter remarks or approval notes..."
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--hair)", boxSizing: "border-box" }}
+              />
+            </label>
 
-            {/* Reason */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#71717a", textTransform: "uppercase", marginBottom: 4 }}>
-                Reason
-              </label>
-              <div
-                style={{
-                  padding: "10px 14px",
-                  background: "#f4f4f5",
-                  borderRadius: 8,
-                  fontSize: 13.5,
-                  color: "#09090b",
-                  border: "1px solid #e4e4e7",
-                }}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmAction(null)}
               >
-                {selectedRequest.reason || "No written explanation provided."}
-              </div>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={confirmAction === "APPROVE" ? "btn-primary" : "btn-secondary"}
+                style={confirmAction === "REJECT" ? { background: "var(--rose)", color: "#fff", borderColor: "var(--rose)" } : {}}
+                onClick={handleSubmitDecision}
+                disabled={submittingDecision}
+              >
+                {submittingDecision ? "Submitting..." : `Confirm ${confirmAction}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -----------------------------------------------------------------------
+          DETAILS & CHANGE LEAVE TYPE MODAL
+          ----------------------------------------------------------------------- */}
+      {selectedRequest && !confirmAction && (
+        <div className="modal-overlay" onClick={() => setSelectedRequest(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="modal-header">
+              <h2>Leave Request Details</h2>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setSelectedRequest(null)}
+                aria-label="Close"
+              >
+                <IconClose size={14} />
+              </button>
             </div>
 
-            {/* Previous decision info if processed */}
-            {selectedRequest.status !== "PENDING" && selectedRequest.decision && (
-              <div
-                style={{
-                  padding: "12px 14px",
-                  background: selectedRequest.status === "APPROVED" ? "#f0fdf4" : "#fef2f2",
-                  borderRadius: 8,
-                  border: `1px solid ${selectedRequest.status === "APPROVED" ? "#bbf7d0" : "#fecaca"}`,
-                  marginBottom: 16,
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ fontWeight: 600, color: selectedRequest.status === "APPROVED" ? "#15803d" : "#b91c1c", marginBottom: 4 }}>
-                  Decision Record: {selectedRequest.status}
+            {changeTypeSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{changeTypeSuccess}</div>}
+            {changeTypeError && <div className="error" style={{ marginBottom: 14 }}>{changeTypeError}</div>}
+
+            <div style={{ padding: "8px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div className="lm-req-avatar" style={{ width: 48, height: 48, fontSize: 18 }}>
+                  {getInitials(selectedRequest.employeeId?.fullName)}
                 </div>
-                <div style={{ color: "#52525b", fontSize: 12 }}>
-                  Decided by: <strong>{selectedRequest.decision.decidedBy || "HR Admin"}</strong> on{" "}
-                  {selectedRequest.decision.decidedAt ? new Date(selectedRequest.decision.decidedAt).toLocaleString() : "--"}
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>{selectedRequest.employeeId?.fullName}</h3>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+                    {selectedRequest.employeeId?.job?.jobTitle || "Team Member"} • {selectedRequest.employeeId?.job?.department || "General"}
+                  </div>
                 </div>
-                {selectedRequest.decision.remarks && (
-                  <div style={{ marginTop: 6, fontStyle: "italic", color: "#3f3f46" }}>
-                    Remarks: "{selectedRequest.decision.remarks}"
-                  </div>
-                )}
               </div>
-            )}
 
-            {/* PENDING Decision Form & Actions */}
-            {selectedRequest.status === "PENDING" && (
-              <div style={{ marginTop: 18, borderTop: "1px solid #e4e4e7", paddingTop: 16 }}>
-                {!confirmAction ? (
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => setSelectedRequest(null)}
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmAction("REJECT")}
-                      style={{ background: "#b91c1c", borderColor: "#b91c1c", color: "#ffffff" }}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmAction("APPROVE")}
-                      style={{ background: "#15803d", borderColor: "#15803d", color: "#ffffff" }}
-                    >
-                      Approve
-                    </button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Leave Type</span>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{selectedRequest.leaveTypeCode}</div>
+                </div>
+                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Status</span>
+                  <div style={{ marginTop: 2 }}><StatusBadge status={selectedRequest.status} /></div>
+                </div>
+                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Duration</span>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{selectedRequest.calculatedDays || 1} Day(s)</div>
+                </div>
+                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Dates</span>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                    {formatDate(selectedRequest.startDate)} - {formatDate(selectedRequest.endDate)}
                   </div>
-                ) : (
-                  <div>
-                    <div
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        background: confirmAction === "APPROVE" ? "#f0fdf4" : "#fef2f2",
-                        border: `1px solid ${confirmAction === "APPROVE" ? "#bbf7d0" : "#fecaca"}`,
-                        marginBottom: 12,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      Are you sure you want to {confirmAction === "APPROVE" ? "approve" : "reject"} this leave request?
-                    </div>
-
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#09090b", marginBottom: 6 }}>
-                        Remarks (Optional)
-                      </label>
-                      <textarea
-                        rows="2"
-                        className="filter-select"
-                        placeholder="Add notes for the employee..."
-                        value={decisionRemarks}
-                        onChange={(e) => setDecisionRemarks(e.target.value)}
-                        style={{ width: "100%", padding: "8px 12px", fontFamily: "inherit" }}
-                      />
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setConfirmAction(null)}
-                        disabled={submittingDecision}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSubmitDecision}
-                        disabled={submittingDecision}
-                        style={{
-                          background: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
-                          borderColor: confirmAction === "APPROVE" ? "#15803d" : "#b91c1c",
-                          color: "#ffffff",
-                        }}
-                      >
-                        {submittingDecision
-                          ? "Saving..."
-                          : (confirmAction === "APPROVE" ? "Approve" : "Reject")}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
-            )}
 
-            {/* APPROVED: Change Leave Type Action */}
-            {selectedRequest.status === "APPROVED" && (
-              <div
-                style={{
-                  marginTop: 18,
-                  borderTop: "1px solid #e4e4e7",
-                  paddingTop: 16,
-                }}
-              >
-                {changeTypeSuccess && (
-                  <div className="success-alert" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                    <IconCheck size={14} />
-                    <span>{changeTypeSuccess}</span>
-                  </div>
-                )}
-                {changeTypeError && (
-                  <div className="error" style={{ marginBottom: 12, padding: "8px 12px", fontSize: 13 }}>
-                    {changeTypeError}
-                  </div>
-                )}
+              <div style={{ marginBottom: 18 }}>
+                <span style={{ fontSize: 11.5, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Reason for Leave</span>
+                <div style={{ padding: "10px 12px", background: "var(--panel)", borderRadius: 8, marginTop: 4, fontSize: 13, fontStyle: "italic" }}>
+                  "{selectedRequest.reason || "No reason specified."}"
+                </div>
+              </div>
 
-                {!showChangeTypeForm ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontSize: 12.5, color: "#71717a" }}>
-                      Need to reclassify this approved leave (e.g. Casual to Sick)?
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setSelectedRequest(null)}
-                      >
-                        Close
-                      </button>
-                      <button
-                        type="button"
-                        id="btn-change-leave-type"
-                        className="btn-primary"
-                        onClick={() => {
-                          setShowChangeTypeForm(true);
-                          setChangeTypeError("");
-                          setChangeTypeSuccess("");
-                          setConfirmChangeType(false);
-                          const firstOther = availableLeaveTypes.find(
-                            (t) => t.code !== selectedRequest.leaveTypeCode
-                          );
-                          setSelectedNewType(firstOther?.code || "");
-                        }}
-                        style={{
-                          background: "#0284c7",
-                          borderColor: "#0284c7",
-                          color: "#ffffff",
-                          fontSize: 13,
-                          padding: "6px 14px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <IconRefresh size={14} />
-                        <span>Change Leave Type</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: 10,
-                      padding: "16px 18px",
-                    }}
+              {/* Change Leave Type Form for APPROVED requests */}
+              {selectedRequest.status === "APPROVED" && (
+                <div style={{ borderTop: "1px solid var(--hair)", paddingTop: 16, marginTop: 16 }}>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => setShowChangeTypeForm((prev) => !prev)}
+                    style={{ marginBottom: 12 }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>
-                        Change Approved Leave Type
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          background: "#e2e8f0",
-                          color: "#475569",
-                          fontWeight: 600,
-                        }}
-                      >
-                        HR Admin Authorization
-                      </span>
-                    </div>
+                    {showChangeTypeForm ? "Cancel Leave Type Adjustment" : "Adjust / Change Leave Type"}
+                  </button>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: 4 }}>
-                          Current Leave Type
-                        </label>
-                        <div
-                          style={{
-                            padding: "8px 12px",
-                            background: "#e2e8f0",
-                            borderRadius: 6,
-                            fontWeight: 700,
-                            color: "#334155",
-                            fontSize: 13,
-                          }}
-                        >
-                          {selectedRequest.leaveTypeCode}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#0284c7", textTransform: "uppercase", marginBottom: 4 }}>
-                          New Leave Type *
-                        </label>
+                  {showChangeTypeForm && (
+                    <div style={{ background: "var(--panel)", padding: "14px", borderRadius: 8 }}>
+                      <label style={{ display: "block", marginBottom: 10 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Select New Leave Type:</span>
                         <select
-                          id="select-new-leave-type"
                           value={selectedNewType}
-                          onChange={(e) => {
-                            setSelectedNewType(e.target.value);
-                            setConfirmChangeType(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            borderRadius: 6,
-                            border: "1px solid #94a3b8",
-                            fontSize: 13,
-                            fontWeight: 600,
-                            background: "#ffffff",
-                          }}
+                          onChange={(e) => setSelectedNewType(e.target.value)}
+                          className="filter-select"
+                          style={{ width: "100%", marginTop: 4 }}
                         >
-                          <option value="">-- Select New Type --</option>
+                          <option value="">-- Choose Type --</option>
                           {availableLeaveTypes
                             .filter((t) => t.code !== selectedRequest.leaveTypeCode)
                             .map((t) => (
                               <option key={t.code} value={t.code}>
-                                {t.name} ({t.code})
+                                {t.name || t.code}
                               </option>
                             ))}
                         </select>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#334155", marginBottom: 4 }}>
-                        Reason for Change *
                       </label>
-                      <textarea
-                        id="input-change-type-reason"
-                        rows="2"
-                        className="filter-select"
-                        placeholder="Reason for changing the leave type..."
-                        value={changeTypeReason}
-                        onChange={(e) => {
-                          setChangeTypeReason(e.target.value);
-                          setConfirmChangeType(false);
-                        }}
-                        style={{ width: "100%", padding: "8px 12px", fontFamily: "inherit", fontSize: 13 }}
-                      />
-                    </div>
 
-                    {confirmChangeType ? (
-                      <div
-                        style={{
-                          padding: "10px 14px",
-                          borderRadius: 8,
-                          background: "#fef3c7",
-                          border: "1px solid #fde68a",
-                          marginBottom: 12,
-                          fontSize: 12.5,
-                          color: "#92400e",
-                        }}
-                      >
-                        <strong>Please confirm:</strong> You are changing this leave from{" "}
-                        <span style={{ textDecoration: "line-through" }}>{selectedRequest.leaveTypeCode}</span> to{" "}
-                        <strong>{selectedNewType}</strong>. Leave balances will be updated.
-                      </div>
-                    ) : null}
+                      <label style={{ display: "block", marginBottom: 12 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Reason for Adjustment:</span>
+                        <input
+                          value={changeTypeReason}
+                          onChange={(e) => setChangeTypeReason(e.target.value)}
+                          placeholder="e.g. Employee requested change from Casual to Sick leave"
+                          className="search-input"
+                          style={{ width: "100%", marginTop: 4 }}
+                        />
+                      </label>
 
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                       <button
                         type="button"
-                        className="btn-secondary"
-                        onClick={() => {
-                          setShowChangeTypeForm(false);
-                          setConfirmChangeType(false);
-                          setChangeTypeError("");
-                        }}
-                        disabled={submittingChangeType}
+                        className="btn-primary btn-sm"
+                        onClick={handleChangeLeaveType}
+                        disabled={submittingChangeType || !selectedNewType || !changeTypeReason.trim()}
                       >
-                        Cancel
+                        {submittingChangeType ? "Updating..." : "Save Leave Type Change"}
                       </button>
-
-                      {!confirmChangeType ? (
-                        <button
-                          type="button"
-                          id="btn-confirm-stage-leave-type"
-                          onClick={() => {
-                            if (!selectedNewType) {
-                              setChangeTypeError("Please select a new leave type.");
-                              return;
-                            }
-                            if (!changeTypeReason.trim()) {
-                              setChangeTypeError("Please enter a reason for the change.");
-                              return;
-                            }
-                            setChangeTypeError("");
-                            setConfirmChangeType(true);
-                          }}
-                          style={{
-                            background: "#0284c7",
-                            borderColor: "#0284c7",
-                            color: "#ffffff",
-                            fontSize: 13,
-                            padding: "6px 14px",
-                          }}
-                        >
-                          Continue
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          id="btn-save-changed-leave-type"
-                          onClick={handleChangeLeaveType}
-                          disabled={submittingChangeType}
-                          style={{
-                            background: "#15803d",
-                            borderColor: "#15803d",
-                            color: "#ffffff",
-                            fontSize: 13,
-                            padding: "6px 16px",
-                            fontWeight: 600,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          {submittingChangeType ? (
-                            "Saving..."
-                          ) : (
-                            <>
-                              <IconCheck size={14} />
-                              <span>Save Change</span>
-                            </>
-                          )}
-                        </button>
-                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
 
-            {/* REJECTED: Close action */}
-            {selectedRequest.status === "REJECTED" && (
-              <div style={{ marginTop: 18, borderTop: "1px solid #e4e4e7", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setSelectedRequest(null)}
-                >
-                  Close
-                </button>
-              </div>
-            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setSelectedRequest(null)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

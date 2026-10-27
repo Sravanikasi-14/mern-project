@@ -1,0 +1,755 @@
+/* ==========================================================================
+   HRMS Attendance & Timeline Design System
+   Approved Theme: Forest Green, Off-White (#f8faf8), and Crisp White Cards
+   Layout Inspired by Reference Images (Dashboard + Attendance Timeline Drawer)
+   ========================================================================== */
+
+/* Page Background & Shell */
+.attendance-page-container {
+  padding: 20px 24px 40px;
+  max-width: 1440px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Section 1: Compact Summary Metrics Row (Content-Aware Spacing)
+   ========================================================================== */
+.att-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.att-metric-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.04);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.att-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(19, 26, 21, 0.07);
+  border-color: rgba(29, 115, 71, 0.25);
+}
+
+.att-metric-card.accent-card {
+  background: linear-gradient(135deg, #155a37, #0d3a23);
+  color: #ffffff;
+  border-color: #0d3a23;
+}
+
+.att-metric-card.accent-card .att-metric-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.att-metric-card.accent-card .att-metric-val {
+  color: #ffffff;
+}
+
+.att-metric-card.accent-card .att-metric-sub {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.att-metric-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.att-metric-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  letter-spacing: -0.01em;
+}
+
+.att-metric-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-700, #1d7347);
+  flex-shrink: 0;
+}
+
+.att-metric-card.accent-card .att-metric-icon {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.att-metric-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+
+.att-metric-sub {
+  font-size: 11.5px;
+  color: var(--faint, #6c756f);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.att-trend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.att-trend-pill.positive {
+  background: #eefaf2;
+  color: #15803d;
+}
+
+.att-trend-pill.neutral {
+  background: #f4f4f5;
+  color: #71717a;
+}
+
+.att-trend-pill.warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+/* ==========================================================================
+   Section 2: Interactive Toolbar & Month Selector
+   ========================================================================== */
+.att-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.04);
+}
+
+.att-month-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f6f8f6;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 4px 6px;
+}
+
+.att-month-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  min-width: 130px;
+  text-align: center;
+}
+
+.att-month-nav-btn {
+  background: #ffffff;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted, #646d67);
+  padding: 0;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.att-month-nav-btn:hover {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  border-color: rgba(29, 115, 71, 0.3);
+}
+
+.att-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.att-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f6f8f6;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--ink, #131a15);
+}
+
+.att-search-box input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  color: inherit;
+  width: 170px;
+}
+
+.att-search-box input::placeholder {
+  color: var(--muted, #646d67);
+}
+
+.att-filter-select {
+  background: #f6f8f6;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink, #131a15);
+  cursor: pointer;
+  outline: none;
+}
+
+.att-filter-select:focus {
+  border-color: var(--g-600, #27865a);
+}
+
+/* ==========================================================================
+   Section 3: Reusable Horizontal Attendance Timeline Row
+   ========================================================================== */
+.att-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.att-timeline-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 14px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+  transition: all 0.18s ease;
+}
+
+.att-timeline-card:hover {
+  border-color: rgba(29, 115, 71, 0.25);
+  box-shadow: 0 4px 12px rgba(19, 26, 21, 0.06);
+}
+
+.att-timeline-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.att-timeline-day-label {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.att-timeline-day-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted, #646d67);
+}
+
+.att-timeline-status-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Timeline Track & Scale */
+.att-timeline-body {
+  display: grid;
+  grid-template-columns: 85px 1fr 85px 80px;
+  align-items: center;
+  gap: 16px;
+}
+
+.att-time-side {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  white-space: nowrap;
+}
+
+.att-time-side.punch-in {
+  text-align: left;
+}
+
+.att-time-side.punch-out {
+  text-align: right;
+}
+
+.att-time-side .att-time-caption {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted, #646d67);
+  display: block;
+}
+
+.att-duration-badge {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--g-800, #155a37);
+  white-space: nowrap;
+}
+
+.att-duration-badge .att-duration-sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted, #646d67);
+  display: block;
+}
+
+/* The Bar Track */
+.att-track-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 18px;
+  padding-bottom: 6px;
+}
+
+.att-scale-ticks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  pointer-events: none;
+  user-select: none;
+}
+
+.att-track-bar {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  background: #f1f5f2;
+  border-radius: 8px;
+  overflow: visible;
+  border: 1px solid #e2e8e4;
+}
+
+/* Segments on Timeline */
+.att-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.att-segment:hover {
+  filter: brightness(1.08);
+  transform: scaleY(1.15);
+  z-index: 5;
+}
+
+.att-segment.working {
+  background: linear-gradient(135deg, #1d7347, #2e8b57);
+}
+
+.att-segment.overtime {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+}
+
+.att-segment.break-time {
+  background: #0ea5e9;
+}
+
+.att-segment.off-day {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  color: #78350f;
+}
+
+.att-segment.late-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 5px;
+  background: #dc2626;
+  border-radius: 3px;
+  z-index: 4;
+}
+
+.att-segment.in-progress-pulse {
+  background: linear-gradient(90deg, #1d7347, #34d399, #1d7347);
+  background-size: 200% 100%;
+  animation: pulseBar 2s infinite linear;
+}
+
+@keyframes pulseBar {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+/* Tooltip popover */
+.att-segment-tooltip {
+  display: none;
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111827;
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 50;
+}
+
+.att-segment:hover .att-segment-tooltip {
+  display: block;
+}
+
+/* Empty day placeholder in timeline */
+.att-empty-day-track {
+  width: 100%;
+  height: 16px;
+  background: #f8faf8;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Section 4: HR Employee Attendance Drawer (Reference Image 2 overlay)
+   ========================================================================== */
+.att-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(19, 26, 21, 0.4);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.att-drawer-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(860px, 94vw);
+  background: #ffffff;
+  z-index: 1001;
+  box-shadow: -10px 0 36px rgba(19, 26, 21, 0.16);
+  border-left: 1px solid var(--hair, #e6ede8);
+  display: flex;
+  flex-direction: column;
+  animation: slideLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideLeft {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* Top bar with pager (< 1 out of 56 >) and close button */
+.att-drawer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.att-drawer-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+}
+
+.att-drawer-pager-btn {
+  background: #f6f8f6;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink, #131a15);
+  padding: 0;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.att-drawer-pager-btn:hover:not(:disabled) {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+.att-drawer-pager-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.att-drawer-close-btn {
+  background: #f6f8f6;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted, #646d67);
+  padding: 0;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.att-drawer-close-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+/* Drawer Employee Profile Banner */
+.att-drawer-emp-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: #fbfdfc;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.att-drawer-emp-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.att-drawer-emp-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1d7347, #0d3a23);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(13, 58, 35, 0.2);
+}
+
+.att-drawer-emp-info h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.att-drawer-emp-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+  flex-wrap: wrap;
+}
+
+.att-drawer-emp-tag {
+  background: #eef5f0;
+  color: var(--g-800, #155a37);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.att-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.att-drawer-action-btn {
+  background: #ffffff;
+  border: 1px solid var(--hair, #e6ede8);
+  color: var(--ink, #131a15);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+.att-drawer-action-btn:hover {
+  background: #f6f8f6;
+  border-color: rgba(29, 115, 71, 0.3);
+  color: var(--g-800, #155a37);
+}
+
+/* Scrollable Drawer Body */
+.att-drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  background: var(--page, #f8faf8);
+  scrollbar-width: thin;
+}
+
+/* Drawer Employee Metrics Compact Row */
+.att-drawer-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.att-drawer-metric-item {
+  background: #ffffff;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+}
+
+.att-drawer-metric-label {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+  font-weight: 600;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.att-drawer-metric-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  line-height: 1.1;
+}
+
+.att-drawer-metric-sub {
+  font-size: 10px;
+  color: var(--faint, #6c756f);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   Section 5: Responsive Layout Rules
+   ========================================================================== */
+@media (max-width: 900px) {
+  .att-timeline-body {
+    grid-template-columns: 70px 1fr 70px;
+    gap: 10px;
+  }
+  .att-duration-badge {
+    grid-column: span 3;
+    text-align: left;
+    margin-top: 4px;
+  }
+  .att-drawer-panel {
+    width: 100vw;
+  }
+}
+
+@media (max-width: 640px) {
+  .att-summary-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .att-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .att-month-selector {
+    justify-content: space-between;
+  }
+  .att-controls-right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .att-search-box input {
+    width: 100%;
+  }
+  .att-timeline-body {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .att-time-side.punch-out {
+    text-align: left;
+  }
+}

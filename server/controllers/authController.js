@@ -178,6 +178,89 @@ export async function me(req, res) {
   });
 }
 
+export async function updateProfile(req, res, next) {
+  try {
+    const { fullName, phoneNumber, preferences } = req.body || {};
+    const user = req.auth.user;
+    const company = req.auth.company;
+    const models = await getCompanyModels(company);
+
+    const updateFields = {};
+    if (fullName !== undefined) updateFields.fullName = String(fullName).trim();
+    if (phoneNumber !== undefined) updateFields.phoneNumber = String(phoneNumber).trim();
+    if (preferences && typeof preferences === "object") {
+      updateFields.preferences = {
+        emailNotifications: preferences.emailNotifications !== false,
+        weeklyDigest: preferences.weeklyDigest !== false,
+        compactView: Boolean(preferences.compactView),
+      };
+    }
+
+    const updatedUser = await models.User.findByIdAndUpdate(
+      user._id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    // If user is linked to an Employee record, update basic fields on Employee too
+    if (user.employeeId && models.Employee) {
+      const empUpdate = {};
+      if (fullName !== undefined) empUpdate.fullName = String(fullName).trim();
+      if (phoneNumber !== undefined) empUpdate.phoneNumber = String(phoneNumber).trim();
+      await models.Employee.findByIdAndUpdate(user.employeeId, { $set: empUpdate });
+    }
+
+    res.json({
+      message: "Profile updated successfully",
+      user: serializeUser(updatedUser),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!isNonEmptyString(currentPassword) || !isNonEmptyString(newPassword)) {
+      throw new HttpError(400, "Please provide your current password and new password.");
+    }
+
+    if (newPassword.length < 8) {
+      throw new HttpError(400, "New password must be at least 8 characters long.");
+    }
+
+    if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+      throw new HttpError(400, "New passwords do not match. Please verify and try again.");
+    }
+
+    const user = req.auth.user;
+    const company = req.auth.company;
+    const models = await getCompanyModels(company);
+
+    const userDoc = await models.User.findById(user._id).select("+passwordHash");
+    if (!userDoc) {
+      throw new HttpError(404, "User account not found.");
+    }
+
+    const isValidCurrent = await verifyPassword(currentPassword, userDoc.passwordHash);
+    if (!isValidCurrent) {
+      throw new HttpError(400, "Incorrect current password. Please try again.");
+    }
+
+    const newHash = await hashPassword(newPassword);
+    userDoc.passwordHash = newHash;
+    await userDoc.save();
+
+    res.json({
+      message: "Password changed successfully. Your account is secured.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function verifyOnboardingInvitation(req, res, next) {
   try {
     const token = req.query?.token;

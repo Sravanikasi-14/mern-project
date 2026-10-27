@@ -1,0 +1,497 @@
+/* ==========================================================================
+   Fernly HRMS — HR Payroll & Payslips Styling (Stitch Screen A Approved Design)
+   Layout: Master-Detail split inspired by financial invoice dashboard reference
+   Palette: Forest-Green (#0d3a23, #155a37, #1d7347), Off-White (#f8faf8), Crisp White (#ffffff)
+   ========================================================================== */
+
+.admin-payroll-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 20px 24px 40px;
+  box-sizing: border-box;
+}
+
+/* Metric Summary Row */
+.ap-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1024px) {
+  .ap-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .ap-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ap-metric-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ap-metric-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(19, 26, 21, 0.06);
+}
+
+.ap-metric-card.ap-hero {
+  background: linear-gradient(135deg, var(--g-950, #0d3a23) 0%, var(--g-800, #155a37) 100%);
+  border-color: var(--g-950, #0d3a23);
+  color: #ffffff;
+}
+
+.ap-metric-card.ap-hero .ap-metric-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ap-metric-card.ap-hero .ap-metric-value {
+  color: #ffffff;
+}
+
+.ap-metric-card.ap-hero .ap-metric-sub {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ap-metric-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #646d67);
+}
+
+.ap-metric-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ap-metric-sub {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin-top: 2px;
+}
+
+/* Cycle & Filter Toolbar */
+.ap-toolbar {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.03);
+}
+
+.ap-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ap-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ap-select {
+  padding: 7px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffffff;
+  font-weight: 500;
+  color: var(--ink, #131a15);
+}
+
+.ap-search-input {
+  padding: 7px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffffff;
+  color: var(--ink, #131a15);
+  min-width: 200px;
+  transition: border-color 0.15s ease;
+}
+
+.ap-search-input:focus {
+  outline: none;
+  border-color: var(--g-700, #1d7347);
+}
+
+.ap-filter-pill-group {
+  display: inline-flex;
+  background: var(--panel, #f5f6f5);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--hair, #e3e7e4);
+  gap: 2px;
+}
+
+.ap-filter-pill {
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: none;
+}
+
+.ap-filter-pill:hover {
+  color: var(--ink, #131a15);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ap-filter-pill.active {
+  color: var(--g-950, #0d3a23);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Master-Detail Layout Workspace */
+.ap-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .ap-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Left Column: Payslips Register List */
+.ap-list-panel {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ap-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+}
+
+.ap-list-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0;
+}
+
+.ap-list-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ap-card-item {
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--card, #ffffff);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.ap-card-item:hover {
+  border-color: rgba(29, 115, 71, 0.4);
+  background: #fbfdfc;
+  transform: translateY(-1px);
+}
+
+.ap-card-item.selected {
+  border-color: var(--g-700, #1d7347);
+  background: #f2f8f4;
+  box-shadow: 0 0 0 1px var(--g-700, #1d7347), 0 2px 8px rgba(29, 115, 71, 0.08);
+}
+
+.ap-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.ap-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0 0 2px;
+}
+
+.ap-card-sub {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+}
+
+.ap-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.ap-card-amount {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--g-950, #0d3a23);
+  letter-spacing: -0.01em;
+}
+
+/* Right Column: Selected Employee Payslip Deep-Dive */
+.ap-detail-panel {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ap-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ap-detail-title-group h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0 0 4px;
+}
+
+.ap-detail-meta {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Attendance Summary Bar */
+.ap-attendance-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 10px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.ap-att-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ap-att-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+}
+
+.ap-att-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.ap-att-val.green {
+  color: var(--g-800, #155a37);
+}
+
+.ap-att-val.red {
+  color: #b91c1c;
+}
+
+/* 2-Column Breakdown: Unified Shared Container */
+.ap-breakdown-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  background: #f8faf8;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+@media (max-width: 768px) {
+  .ap-breakdown-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+.ap-section-box {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ap-section-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+}
+
+.ap-section-title.earnings {
+  color: var(--g-800, #155a37);
+}
+
+.ap-section-title.deductions {
+  color: #b91c1c;
+}
+
+.ap-line-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
+}
+
+.ap-line-name {
+  color: var(--muted, #646d67);
+}
+
+.ap-line-amount {
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.ap-line-amount.deduct {
+  color: #b91c1c;
+}
+
+.ap-section-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hair, #e3e7e4);
+}
+
+/* Hero Net Take-Home Card */
+.ap-hero-netpay {
+  background: linear-gradient(135deg, var(--g-950, #0d3a23) 0%, var(--g-800, #155a37) 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 14px rgba(13, 58, 35, 0.16);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.ap-hero-netpay-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 4px;
+}
+
+.ap-hero-netpay-amount {
+  font-size: 30px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.ap-hero-netpay-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Banking & Transaction Footprint */
+.ap-banking-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}

@@ -1,0 +1,483 @@
+/* ==========================================================================
+   Fernly HRMS — Employee Payslips Styling (Stitch Screen B Approved Design)
+   Layout: Master-Detail split inspired by financial invoice dashboard reference
+   Palette: Forest-Green (#0d3a23, #1d7347), Off-White (#f8faf8), Crisp White (#ffffff)
+   ========================================================================== */
+
+.employee-payslips-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Metric Summary Row */
+.ep-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1024px) {
+  .ep-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .ep-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ep-metric-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ep-metric-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(19, 26, 21, 0.06);
+}
+
+.ep-metric-card.ep-hero {
+  background: linear-gradient(135deg, var(--g-950, #0d3a23) 0%, var(--g-800, #155a37) 100%);
+  border-color: var(--g-950, #0d3a23);
+  color: #ffffff;
+}
+
+.ep-metric-card.ep-hero .ep-metric-label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ep-metric-card.ep-hero .ep-metric-value {
+  color: #ffffff;
+}
+
+.ep-metric-card.ep-hero .ep-metric-sub {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.ep-metric-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #646d67);
+}
+
+.ep-metric-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ep-metric-sub {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  margin-top: 2px;
+}
+
+/* Toolbar Controls */
+.ep-toolbar {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.03);
+}
+
+.ep-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ep-filter-pill-group {
+  display: inline-flex;
+  background: var(--panel, #f5f6f5);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--hair, #e3e7e4);
+  gap: 2px;
+}
+
+.ep-filter-pill {
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: none;
+}
+
+.ep-filter-pill:hover {
+  color: var(--ink, #131a15);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ep-filter-pill.active {
+  color: var(--g-950, #0d3a23);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.ep-search-input {
+  padding: 7px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffffff;
+  color: var(--ink, #131a15);
+  min-width: 220px;
+  transition: border-color 0.15s ease;
+}
+
+.ep-search-input:focus {
+  outline: none;
+  border-color: var(--g-700, #1d7347);
+}
+
+.ep-select {
+  padding: 7px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13px;
+  background: #ffffff;
+  font-weight: 500;
+  color: var(--ink, #131a15);
+}
+
+/* Master-Detail Layout Workspace */
+.ep-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 360px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .ep-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Left Column: Payslips History List */
+.ep-list-panel {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ep-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+}
+
+.ep-list-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0;
+}
+
+.ep-list-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ep-card-item {
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--card, #ffffff);
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.ep-card-item:hover {
+  border-color: rgba(29, 115, 71, 0.4);
+  background: #fbfdfc;
+  transform: translateY(-1px);
+}
+
+.ep-card-item.selected {
+  border-color: var(--g-700, #1d7347);
+  background: #f2f8f4;
+  box-shadow: 0 0 0 1px var(--g-700, #1d7347), 0 2px 8px rgba(29, 115, 71, 0.08);
+}
+
+.ep-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.ep-card-period {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0 0 2px;
+}
+
+.ep-card-ref {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+}
+
+.ep-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.ep-card-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--g-950, #0d3a23);
+  letter-spacing: -0.01em;
+}
+
+/* Right Column: Selected Payslip Deep-Dive */
+.ep-detail-panel {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ep-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ep-detail-title-group h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  margin: 0 0 4px;
+}
+
+.ep-detail-meta {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Attendance Summary Bar */
+.ep-attendance-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 10px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.ep-att-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ep-att-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+}
+
+.ep-att-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.ep-att-val.green {
+  color: var(--g-800, #155a37);
+}
+
+.ep-att-val.red {
+  color: #b91c1c;
+}
+
+/* 2-Column Earnings & Deductions Breakdown */
+.ep-breakdown-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .ep-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ep-section-box {
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  padding: 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.ep-section-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+}
+
+.ep-section-title.earnings {
+  color: var(--g-800, #155a37);
+}
+
+.ep-section-title.deductions {
+  color: #b91c1c;
+}
+
+.ep-line-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
+}
+
+.ep-line-name {
+  color: var(--muted, #646d67);
+}
+
+.ep-line-amount {
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.ep-line-amount.deduct {
+  color: #b91c1c;
+}
+
+.ep-section-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hair, #e3e7e4);
+}
+
+/* Hero Net Take-Home Card */
+.ep-hero-netpay {
+  background: linear-gradient(135deg, var(--g-950, #0d3a23) 0%, var(--g-800, #155a37) 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 14px rgba(13, 58, 35, 0.16);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.ep-hero-netpay-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 4px;
+}
+
+.ep-hero-netpay-amount {
+  font-size: 30px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.ep-hero-netpay-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* Banking & Transaction Footprint */
+.ep-banking-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}

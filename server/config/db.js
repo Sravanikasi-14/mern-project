@@ -17,6 +17,7 @@ import { getPayslipModel } from "../models/Payslip.js";
 import { getCompanyAssetModel } from "../models/CompanyAsset.js";
 import { getTaskModel } from "../models/Task.js";
 import { getImpactPointTransactionModel } from "../models/ImpactPointTransaction.js";
+import { getNotificationModel } from "../models/Notification.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -139,6 +140,7 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     CompanyAsset: getCompanyAssetModel(connection),
     Task: getTaskModel(connection),
     ImpactPointTransaction: getImpactPointTransactionModel(connection),
+    Notification: getNotificationModel(connection),
   };
 }
 

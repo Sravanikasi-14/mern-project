@@ -9,10 +9,16 @@ import {
   IconArrowLeft,
   IconDocument,
   IconRefresh,
+  IconDownload,
+  IconFileText,
+  IconClock,
 } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
+import Pagination from "../components/Pagination";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import AppHeader from "../components/AppHeader";
+import "./AdminPayroll.css";
 
 function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return "₹0";
@@ -39,8 +45,12 @@ export default function AdminPayroll() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Active top tab: "ff_settlements" or "payroll_registers"
-  const [activeTab, setActiveTab] = useState("ff_settlements");
+  // Active top tab: "payroll_registers" or "ff_settlements"
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("settlementId") || params.get("tab") === "ff_settlements") return "ff_settlements";
+    return "payroll_registers";
+  });
 
   // Settlements List State
   const [settlements, setSettlements] = useState([]);
@@ -50,6 +60,8 @@ export default function AdminPayroll() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [settlementPage, setSettlementPage] = useState(1);
+  const [settlementPageSize, setSettlementPageSize] = useState(10);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -57,6 +69,17 @@ export default function AdminPayroll() {
     }, 300);
     return () => clearTimeout(t);
   }, [searchTerm]);
+
+  useEffect(() => {
+    setSettlementPage(1);
+  }, [debouncedSearchTerm, statusFilter]);
+
+  const totalSettlements = settlements.length;
+  const totalSettlementPages = Math.ceil((totalSettlements || 1) / settlementPageSize);
+  const paginatedSettlements = useMemo(() => {
+    const start = (settlementPage - 1) * settlementPageSize;
+    return settlements.slice(start, start + settlementPageSize);
+  }, [settlements, settlementPage, settlementPageSize]);
 
   // Selected Settlement Details State
   const [selectedSettlementId, setSelectedSettlementId] = useState(null);
@@ -107,6 +130,8 @@ export default function AdminPayroll() {
   const [payrollActionSuccess, setPayrollActionSuccess] = useState("");
   const [payrollActionError, setPayrollActionError] = useState("");
   const [payrollSearch, setPayrollSearch] = useState("");
+  const [payrollStatusFilter, setPayrollStatusFilter] = useState("ALL");
+  const [payrollDeptFilter, setPayrollDeptFilter] = useState("ALL");
 
   // Modals for Monthly Payroll
   const [showNewCycleModal, setShowNewCycleModal] = useState(false);
@@ -395,7 +420,13 @@ export default function AdminPayroll() {
     try {
       const res = await api.get(`/payroll/cycles/${cycleId}`);
       setSelectedCycle(res.data?.cycle || null);
-      setCyclePayslips(res.data?.payslips || []);
+      const fetchedPayslips = res.data?.payslips || [];
+      setCyclePayslips(fetchedPayslips);
+      if (fetchedPayslips.length > 0) {
+        setSelectedBreakdownPayslip(fetchedPayslips[0]);
+      } else {
+        setSelectedBreakdownPayslip(null);
+      }
     } catch (err) {
       setPayrollActionError(err.response?.data?.message || "Failed to load cycle details.");
     } finally {
@@ -601,76 +632,68 @@ export default function AdminPayroll() {
     setPayrollActionSuccess("Payroll register CSV exported successfully.");
   };
 
-  const filteredPayslips = useMemo(() => {
-    if (!payrollSearch.trim()) return cyclePayslips;
-    const q = payrollSearch.toLowerCase().trim();
-    return cyclePayslips.filter((p) => {
-      const name = (p.employeeSnapshot?.fullName || "").toLowerCase();
-      const code = (p.employeeSnapshot?.employeeCode || "").toLowerCase();
-      const dept = (p.employeeSnapshot?.department || "").toLowerCase();
-      return name.includes(q) || code.includes(q) || dept.includes(q);
+  const departmentsList = useMemo(() => {
+    const set = new Set();
+    cyclePayslips.forEach((p) => {
+      if (p.employeeSnapshot?.department) set.add(p.employeeSnapshot.department);
     });
-  }, [cyclePayslips, payrollSearch]);
+    return Array.from(set).sort();
+  }, [cyclePayslips]);
+
+  const filteredPayslips = useMemo(() => {
+    return cyclePayslips.filter((p) => {
+      if (payrollStatusFilter === "PAID" && p.paymentStatus !== "PAID" && p.status !== "PAID") return false;
+      if (payrollStatusFilter === "UNPAID" && (p.paymentStatus === "PAID" || p.status === "PAID")) return false;
+      if (payrollDeptFilter !== "ALL" && p.employeeSnapshot?.department !== payrollDeptFilter) return false;
+      if (payrollSearch.trim()) {
+        const q = payrollSearch.toLowerCase().trim();
+        const name = (p.employeeSnapshot?.fullName || "").toLowerCase();
+        const code = (p.employeeSnapshot?.employeeCode || "").toLowerCase();
+        const dept = (p.employeeSnapshot?.department || "").toLowerCase();
+        if (!name.includes(q) && !code.includes(q) && !dept.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [cyclePayslips, payrollSearch, payrollStatusFilter, payrollDeptFilter]);
+
+  const activeBreakdownPayslip = useMemo(() => {
+    if (!filteredPayslips || filteredPayslips.length === 0) return null;
+    const found = filteredPayslips.find((p) => p._id === selectedBreakdownPayslip?._id);
+    return found || filteredPayslips[0];
+  }, [filteredPayslips, selectedBreakdownPayslip]);
 
   return (
-    <main className="container-wide" style={{ paddingBottom: 48 }}>
-      {/* Top Breadcrumb and Header */}
-      <nav className="breadcrumb-bar" aria-label="Breadcrumb" style={{ marginBottom: 12 }}>
-        <Link to="/admin" className="breadcrumb-link">HR Portal</Link>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-current">Payroll</span>
-      </nav>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <h1 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 700, color: "#09090b" }}>
-            Payroll
-          </h1>
-        </div>
-
-        {selectedSettlementId && (
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              setSelectedSettlementId(null);
-              navigate("/admin/payroll");
-            }}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
-          >
-            <IconArrowLeft size={14} />
-            <span>Back to Settlements</span>
-          </button>
-        )}
-      </div>
+    <main className="container-wide admin-payroll-container">
+      <AppHeader
+        title="Payroll"
+        actions={
+          selectedSettlementId ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSelectedSettlementId(null);
+                navigate("/admin/payroll");
+              }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, height: 32 }}
+            >
+              <IconArrowLeft size={14} />
+              <span>Back to Settlements</span>
+            </button>
+          ) : null
+        }
+      />
 
       {/* Top Module Tabs */}
       <div
         style={{
           display: "flex",
           gap: 8,
-          borderBottom: "1px solid #e4e4e7",
-          marginBottom: 24,
+          borderBottom: "1px solid var(--hair)",
+          marginBottom: 14,
+          paddingBottom: 4,
         }}
       >
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab("ff_settlements");
-          }}
-          style={{
-            background: activeTab === "ff_settlements" ? "#18181b" : "transparent",
-            color: activeTab === "ff_settlements" ? "#ffffff" : "#71717a",
-            border: activeTab === "ff_settlements" ? "1px solid #18181b" : "1px solid transparent",
-            borderRadius: 8,
-            padding: "8px 16px",
-            fontSize: 13.5,
-            fontWeight: activeTab === "ff_settlements" ? 600 : 500,
-            cursor: "pointer",
-          }}
-        >
-          Final Settlements (F&F)
-        </button>
         <button
           type="button"
           onClick={() => {
@@ -678,17 +701,39 @@ export default function AdminPayroll() {
             setSelectedSettlementId(null);
           }}
           style={{
-            background: activeTab === "payroll_registers" ? "#18181b" : "transparent",
-            color: activeTab === "payroll_registers" ? "#ffffff" : "#71717a",
-            border: activeTab === "payroll_registers" ? "1px solid #18181b" : "1px solid transparent",
+            background: activeTab === "payroll_registers" ? "var(--g-800)" : "transparent",
+            color: activeTab === "payroll_registers" ? "#ffffff" : "var(--text-muted)",
+            border: activeTab === "payroll_registers" ? "1px solid var(--g-800)" : "1px solid transparent",
             borderRadius: 8,
-            padding: "8px 16px",
+            padding: "8px 18px",
             fontSize: 13.5,
             fontWeight: activeTab === "payroll_registers" ? 600 : 500,
             cursor: "pointer",
+            transition: "all 0.15s ease",
+            boxShadow: activeTab === "payroll_registers" ? "0 2px 4px rgba(21, 90, 55, 0.2)" : "none",
           }}
         >
-          Payroll Registers
+          Payroll Registers & Payslips
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("ff_settlements");
+          }}
+          style={{
+            background: activeTab === "ff_settlements" ? "var(--g-800)" : "transparent",
+            color: activeTab === "ff_settlements" ? "#ffffff" : "var(--text-muted)",
+            border: activeTab === "ff_settlements" ? "1px solid var(--g-800)" : "1px solid transparent",
+            borderRadius: 8,
+            padding: "8px 18px",
+            fontSize: 13.5,
+            fontWeight: activeTab === "ff_settlements" ? 600 : 500,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            boxShadow: activeTab === "ff_settlements" ? "0 2px 4px rgba(21, 90, 55, 0.2)" : "none",
+          }}
+        >
+          Final Settlements (F&F)
         </button>
       </div>
 
@@ -1485,62 +1530,80 @@ export default function AdminPayroll() {
                     </p>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-                      <thead>
-                        <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                          <th style={{ padding: "12px 16px" }}>Employee</th>
-                          <th style={{ padding: "12px 16px" }}>Last Day</th>
-                          <th style={{ padding: "12px 16px" }}>Reason</th>
-                          <th style={{ padding: "12px 16px" }}>Initiated</th>
-                          <th style={{ padding: "12px 16px" }}>Net Amount</th>
-                          <th style={{ padding: "12px 16px" }}>Status</th>
-                          <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className={loadingList ? "table-refreshing-dim" : ""}>
-                        {settlements.map((s) => (
-                          <tr key={s._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                            <td style={{ padding: "14px 16px" }}>
-                              <div style={{ fontWeight: 600, color: "#09090b" }}>
-                                {s.employeeId?.fullName || "Employee"}
-                              </div>
-                              <div style={{ fontSize: 12, color: "#71717a" }}>
-                                {s.employeeId?.employeeCode} • {s.employeeId?.job?.department || "General"}
-                              </div>
-                            </td>
-                            <td style={{ padding: "14px 16px", color: "#09090b" }}>
-                              {formatDate(s.exitDetails?.lastWorkingDay)}
-                            </td>
-                            <td style={{ padding: "14px 16px", color: "#52525b" }}>
-                              {s.exitDetails?.exitReason || "—"}
-                            </td>
-                            <td style={{ padding: "14px 16px", color: "#71717a", fontSize: 12.5 }}>
-                              {formatDate(s.exitDetails?.initiatedAt || s.createdAt)}
-                            </td>
-                            <td style={{ padding: "14px 16px", fontWeight: 700, color: "#09090b" }}>
-                              {formatCurrency(s.financialBreakdown?.netSettlementAmount)}
-                            </td>
-                            <td style={{ padding: "14px 16px" }}>
-                              <StatusBadge status={s.status} />
-                            </td>
-                            <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                              <button
-                                type="button"
-                                className="btn-sm btn-secondary"
-                                onClick={() => {
-                                  setSelectedSettlementId(s._id);
-                                  navigate(`/admin/payroll?settlementId=${s._id}`);
-                                }}
-                              >
-                                View
-                              </button>
-                            </td>
+                  <>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                        <thead>
+                          <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                            <th style={{ padding: "12px 16px" }}>Employee</th>
+                            <th style={{ padding: "12px 16px" }}>Last Day</th>
+                            <th style={{ padding: "12px 16px" }}>Reason</th>
+                            <th style={{ padding: "12px 16px" }}>Initiated</th>
+                            <th style={{ padding: "12px 16px" }}>Net Amount</th>
+                            <th style={{ padding: "12px 16px" }}>Status</th>
+                            <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className={loadingList ? "table-refreshing-dim" : ""}>
+                          {paginatedSettlements.map((s) => (
+                            <tr key={s._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                              <td style={{ padding: "14px 16px" }}>
+                                <div style={{ fontWeight: 600, color: "#09090b" }}>
+                                  {s.employeeId?.fullName || "Employee"}
+                                </div>
+                                <div style={{ fontSize: 12, color: "#71717a" }}>
+                                  {s.employeeId?.employeeCode} • {s.employeeId?.job?.department || "General"}
+                                </div>
+                              </td>
+                              <td style={{ padding: "14px 16px", color: "#09090b" }}>
+                                {formatDate(s.exitDetails?.lastWorkingDay)}
+                              </td>
+                              <td style={{ padding: "14px 16px", color: "#52525b" }}>
+                                {s.exitDetails?.exitReason || "—"}
+                              </td>
+                              <td style={{ padding: "14px 16px", color: "#71717a", fontSize: 12.5 }}>
+                                {formatDate(s.exitDetails?.initiatedAt || s.createdAt)}
+                              </td>
+                              <td style={{ padding: "14px 16px", fontWeight: 700, color: "#09090b" }}>
+                                {formatCurrency(s.financialBreakdown?.netSettlementAmount)}
+                              </td>
+                              <td style={{ padding: "14px 16px" }}>
+                                <StatusBadge status={s.status} />
+                              </td>
+                              <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-secondary"
+                                  onClick={() => {
+                                    setSelectedSettlementId(s._id);
+                                    navigate(`/admin/payroll?settlementId=${s._id}`);
+                                  }}
+                                >
+                                  View
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {totalSettlements > 0 && (
+                      <Pagination
+                        currentPage={settlementPage}
+                        totalPages={totalSettlementPages}
+                        totalItems={totalSettlements}
+                        pageSize={settlementPageSize}
+                        pageSizeOptions={[10, 25, 50]}
+                        onPageChange={(p) => setSettlementPage(p)}
+                        onPageSizeChange={(s) => {
+                          setSettlementPageSize(s);
+                          setSettlementPage(1);
+                        }}
+                        itemLabel="settlements"
+                      />
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1550,7 +1613,7 @@ export default function AdminPayroll() {
 
       {/* TAB 2: MONTHLY PAYROLL REGISTERS */}
       {activeTab === "payroll_registers" && (
-        <div style={{ display: "grid", gap: 20 }}>
+        <div style={{ display: "grid", gap: 14 }}>
           {/* Action Alerts */}
           {payrollActionSuccess && (
             <div role="status" style={{ padding: "12px 16px", background: "#f0fdf4", color: "#166534", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
@@ -1571,173 +1634,6 @@ export default function AdminPayroll() {
             </div>
           )}
 
-          {/* Top Summary Stat Grid */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-label">Active Period</span>
-              <span className="stat-value" style={{ fontSize: 20 }}>
-                {selectedCycle
-                  ? `${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear}`
-                  : "No Cycle"}
-              </span>
-              {selectedCycle && (
-                <div style={{ marginTop: 4 }}>
-                  <StatusBadge status={selectedCycle.status} />
-                </div>
-              )}
-            </div>
-
-            <div className="stat-card">
-              <span className="stat-label">Headcount</span>
-              <span className="stat-value">{selectedCycle ? selectedCycle.employeeCount : 0}</span>
-              <span style={{ fontSize: 11.5, color: "#71717a" }}>Processed employees</span>
-            </div>
-
-            <div className="stat-card">
-              <span className="stat-label">Gross Earnings</span>
-              <span className="stat-value" style={{ fontSize: 20, color: "#166534" }}>
-                {selectedCycle ? formatCurrency(selectedCycle.totalGrossEarnings) : "₹0"}
-              </span>
-              <span style={{ fontSize: 11.5, color: "#71717a" }}>Total earnings pool</span>
-            </div>
-
-            <div className="stat-card">
-              <span className="stat-label">Total Deductions</span>
-              <span className="stat-value" style={{ fontSize: 20, color: "#b91c1c" }}>
-                {selectedCycle ? formatCurrency(selectedCycle.totalEmployeeDeductions) : "₹0"}
-              </span>
-              <span style={{ fontSize: 11.5, color: "#71717a" }}>EPF & statutory</span>
-            </div>
-
-            <div className="stat-card highlight">
-              <span className="stat-label">Net Payable</span>
-              <span className="stat-value" style={{ fontSize: 22, color: "#09090b" }}>
-                {selectedCycle ? formatCurrency(selectedCycle.totalNetPayable) : "₹0"}
-              </span>
-              <span style={{ fontSize: 11.5, color: "#71717a" }}>Take-home disbursal</span>
-            </div>
-
-            <div className="stat-card">
-              <span className="stat-label">Disbursed</span>
-              <span className="stat-value" style={{ fontSize: 20, color: selectedCycle?.totalPaidAmount > 0 ? "#15803d" : "#71717a" }}>
-                {selectedCycle ? formatCurrency(selectedCycle.totalPaidAmount || 0) : "₹0"}
-              </span>
-              {selectedCycle && (
-                <div style={{ marginTop: 4 }}>
-                  <StatusBadge status={selectedCycle.paymentStatus || "UNPAID"} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Payroll Cycle Control Toolbar */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 12,
-              padding: "16px 20px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 12,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <label htmlFor="payrollCycleSelect" style={{ fontSize: 13, fontWeight: 600, color: "#18181b" }}>
-                Select Cycle:
-              </label>
-              <select
-                id="payrollCycleSelect"
-                value={selectedCycleId}
-                onChange={(e) => setSelectedCycleId(e.target.value)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #cbd5e1",
-                  fontSize: 13.5,
-                  minWidth: 200,
-                  fontWeight: 500,
-                }}
-              >
-                {payrollCycles.length === 0 ? (
-                  <option value="">No cycles available</option>
-                ) : (
-                  payrollCycles.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {monthNamesList[c.periodMonth - 1]} {c.periodYear} ({c.status})
-                    </option>
-                  ))
-                )}
-              </select>
-
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setShowNewCycleModal(true)}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <span>+ New Cycle</span>
-              </button>
-            </div>
-
-            {selectedCycle && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                {/* Recalculate Draft button (allowed on unfinalized cycles) */}
-                {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={handleRecalculateCycle}
-                    disabled={cycleActionLoading}
-                    title="Recalculate earnings and attendance for this period"
-                  >
-                    <span>Recalculate Draft</span>
-                  </button>
-                )}
-
-                {/* Finalize Cycle button */}
-                {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
-                  <button
-                    type="button"
-                    className="btn-primary btn-sm"
-                    onClick={handleFinalizeCycle}
-                    disabled={cycleActionLoading}
-                    style={{ background: "#2563eb", borderColor: "#1d4ed8" }}
-                    title="Finalize payroll and unlock payslips for employees"
-                  >
-                    <span>Finalize Payroll</span>
-                  </button>
-                )}
-
-                {/* Record Payment button (allowed on finalized cycles) */}
-                {(selectedCycle.status === "FINALIZED" || selectedCycle.status === "PARTIALLY_PAID") && (
-                  <button
-                    type="button"
-                    className="btn-primary btn-sm"
-                    onClick={handleOpenCyclePayModal}
-                    disabled={cycleActionLoading}
-                    style={{ background: "#15803d", borderColor: "#166534" }}
-                  >
-                    <span>Record Payment</span>
-                  </button>
-                )}
-
-                {/* Export CSV button */}
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={handleExportRegisterCsv}
-                  disabled={cyclePayslips.length === 0}
-                  title="Download register as CSV spreadsheet"
-                >
-                  <span>Export CSV</span>
-                </button>
-              </div>
-            )}
-          </div>
-
           {/* Validation Issues Alert Banner */}
           {selectedCycle?.validationIssues?.length > 0 && (
             <div
@@ -1745,12 +1641,12 @@ export default function AdminPayroll() {
                 background: "#fffbeb",
                 border: "1px solid #fde68a",
                 borderRadius: 10,
-                padding: "14px 18px",
+                padding: "12px 16px",
                 color: "#92400e",
                 fontSize: 13,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}>
                 <IconAlertTriangle size={16} />
                 <span>Validation Notices ({selectedCycle.validationIssues.length} employees skipped from calculation)</span>
               </div>
@@ -1764,152 +1660,407 @@ export default function AdminPayroll() {
             </div>
           )}
 
-          {/* Payroll Register Table Section */}
+          {/* Compact Inline Payroll Metrics Strip */}
           <div
-            className="table-wrapper-relative"
             style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 12,
-              padding: 24,
-              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              gap: 20,
+              background: "var(--card, #ffffff)",
+              border: "1px solid var(--hair, #e6ede8)",
+              borderRadius: 8,
+              padding: "8px 16px",
+              marginBottom: 12,
+              fontSize: 13,
+              flexWrap: "wrap",
             }}
           >
-            {loadingCycleDetails && <div className="table-progress-bar" />}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <h3 style={{ margin: "0 0 2px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-                  Employee Payroll Register
-                </h3>
-                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-                  {selectedCycle
-                    ? `Itemized breakdown for ${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear} · ${cyclePayslips.length} records`
-                    : "No active cycle selected"}
-                </p>
+            <span style={{ color: "var(--text-muted)" }}>
+              Net Payable: <strong style={{ color: "var(--g-800, #155a37)" }}>{selectedCycle ? formatCurrency(selectedCycle.totalNetPayable) : "₹0"}</strong>
+            </span>
+            <span style={{ color: "#d4d4d8" }}>•</span>
+            <span style={{ color: "var(--text-muted)" }}>
+              Payslips: <strong style={{ color: "var(--ink)" }}>{cyclePayslips.length}</strong>
+            </span>
+            <span style={{ color: "#d4d4d8" }}>•</span>
+            <span style={{ color: "var(--text-muted)" }}>
+              Pending Disbursals: <strong style={{ color: "#b45309" }}>{cyclePayslips.filter((p) => p.paymentStatus !== "PAID").length}</strong>
+            </span>
+            <span style={{ color: "#d4d4d8" }}>•</span>
+            <span style={{ color: "var(--text-muted)" }}>
+              Total Disbursed: <strong style={{ color: selectedCycle?.totalPaidAmount > 0 ? "var(--g-800)" : "var(--muted)" }}>{selectedCycle ? formatCurrency(selectedCycle.totalPaidAmount || 0) : "₹0"}</strong>
+            </span>
+          </div>
+
+          {/* Payroll Control & Filter Toolbar */}
+          <div className="ap-toolbar">
+            <div className="ap-toolbar-left">
+              <label htmlFor="payrollCycleSelect" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+                Period:
+              </label>
+              <select
+                id="payrollCycleSelect"
+                value={selectedCycleId}
+                onChange={(e) => setSelectedCycleId(e.target.value)}
+                className="ap-select"
+                style={{ fontWeight: 600, minWidth: 210 }}
+              >
+                {payrollCycles.length === 0 ? (
+                  <option value="">No cycles available</option>
+                ) : (
+                  payrollCycles.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {monthNamesList[c.periodMonth - 1]} {c.periodYear} ({c.status})
+                    </option>
+                  ))
+                )}
+              </select>
+
+              <div className="ap-filter-pill-group">
+                <button
+                  type="button"
+                  className={`ap-filter-pill ${payrollStatusFilter === "ALL" ? "active" : ""}`}
+                  onClick={() => setPayrollStatusFilter("ALL")}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={`ap-filter-pill ${payrollStatusFilter === "PAID" ? "active" : ""}`}
+                  onClick={() => setPayrollStatusFilter("PAID")}
+                >
+                  Paid
+                </button>
+                <button
+                  type="button"
+                  className={`ap-filter-pill ${payrollStatusFilter === "UNPAID" ? "active" : ""}`}
+                  onClick={() => setPayrollStatusFilter("UNPAID")}
+                >
+                  Pending
+                </button>
               </div>
 
-              {cyclePayslips.length > 0 && (
-                <input
-                  type="text"
-                  placeholder="Filter employees..."
-                  value={payrollSearch}
-                  onChange={(e) => setPayrollSearch(e.target.value)}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #d4d4d8",
-                    fontSize: 13,
-                    minWidth: 220,
-                  }}
-                />
+              {departmentsList.length > 0 && (
+                <select
+                  value={payrollDeptFilter}
+                  onChange={(e) => setPayrollDeptFilter(e.target.value)}
+                  className="ap-select"
+                  aria-label="Filter by department"
+                >
+                  <option value="ALL">All Departments</option>
+                  {departmentsList.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
 
-            {loadingCycleDetails && cyclePayslips.length === 0 ? (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a", background: "#f8fafc" }}>
-                      <th style={{ padding: "12px 14px" }}>Employee</th>
-                      <th style={{ padding: "12px 14px" }}>Department</th>
-                      <th style={{ padding: "12px 14px" }}>Working</th>
-                      <th style={{ padding: "12px 14px" }}>LOP</th>
-                      <th style={{ padding: "12px 14px" }}>Payable</th>
-                      <th style={{ padding: "12px 14px" }}>Gross Pay</th>
-                      <th style={{ padding: "12px 14px" }}>Deductions</th>
-                      <th style={{ padding: "12px 14px" }}>Net Pay</th>
-                      <th style={{ padding: "12px 14px" }}>Status</th>
-                      <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <TableSkeletonRows rows={6} cols={10} />
-                  </tbody>
-                </table>
+            <div className="ap-toolbar-right">
+              <input
+                type="search"
+                placeholder="Search employee or code..."
+                value={payrollSearch}
+                onChange={(e) => setPayrollSearch(e.target.value)}
+                className="ap-search-input"
+              />
+
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setShowNewCycleModal(true)}
+                style={{ fontSize: 12.5 }}
+              >
+                + New Cycle
+              </button>
+
+              {selectedCycle && (
+                <>
+                  {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={handleRecalculateCycle}
+                      disabled={cycleActionLoading}
+                      title="Recalculate earnings and attendance for this period"
+                      style={{ fontSize: 12.5 }}
+                    >
+                      Recalculate
+                    </button>
+                  )}
+
+                  {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      onClick={handleFinalizeCycle}
+                      disabled={cycleActionLoading}
+                      style={{ fontSize: 12.5, background: "var(--g-800)", borderColor: "var(--g-950)" }}
+                      title="Finalize payroll and unlock payslips for employees"
+                    >
+                      Finalize Payroll
+                    </button>
+                  )}
+
+                  {(selectedCycle.status === "FINALIZED" || selectedCycle.status === "PARTIALLY_PAID") && (
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      onClick={handleOpenCyclePayModal}
+                      disabled={cycleActionLoading}
+                      style={{ fontSize: 12.5, background: "var(--g-800)", borderColor: "var(--g-950)" }}
+                    >
+                      Record Payment
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={handleExportRegisterCsv}
+                    disabled={cyclePayslips.length === 0}
+                    title="Download register as CSV spreadsheet"
+                    style={{ fontSize: 12.5 }}
+                  >
+                    Export CSV
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Master-Detail Payslip Workspace (Stitch Screen A) */}
+          <div className="ap-workspace-grid">
+            {/* Left Column: Employee Register List */}
+            <div className="ap-list-panel">
+              <div className="ap-list-header">
+                <h3 className="ap-list-title">Employee Register</h3>
+                <span className="ap-list-count">{filteredPayslips.length} Employees</span>
               </div>
-            ) : filteredPayslips.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                {selectedCycle
-                  ? "No employee records found in this cycle."
-                  : "Please initiate or select a payroll cycle to view its register."}
-              </div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a", background: "#f8fafc" }}>
-                      <th style={{ padding: "12px 14px" }}>Employee</th>
-                      <th style={{ padding: "12px 14px" }}>Department</th>
-                      <th style={{ padding: "12px 14px" }}>Working</th>
-                      <th style={{ padding: "12px 14px" }}>LOP</th>
-                      <th style={{ padding: "12px 14px" }}>Payable</th>
-                      <th style={{ padding: "12px 14px" }}>Gross Pay</th>
-                      <th style={{ padding: "12px 14px" }}>Deductions</th>
-                      <th style={{ padding: "12px 14px" }}>Net Pay</th>
-                      <th style={{ padding: "12px 14px" }}>Status</th>
-                      <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className={loadingCycleDetails ? "table-refreshing-dim" : ""}>
-                    {filteredPayslips.map((p) => (
-                      <tr key={p._id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                        <td style={{ padding: "12px 14px" }}>
-                          <div style={{ fontWeight: 600, color: "#09090b" }}>{p.employeeSnapshot?.fullName}</div>
-                          <div style={{ fontSize: 11.5, color: "#71717a" }}>{p.employeeSnapshot?.employeeCode || "—"}</div>
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#52525b" }}>
-                          {p.employeeSnapshot?.department || "General"}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#52525b" }}>
-                          {p.daysBreakdown?.workingDays ?? "—"}d
-                        </td>
-                        <td style={{ padding: "12px 14px", color: p.daysBreakdown?.lossOfPayDays > 0 ? "#b91c1c" : "#71717a" }}>
-                          {p.daysBreakdown?.lossOfPayDays ?? 0}d
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#09090b" }}>
-                          {p.daysBreakdown?.payableDays ?? "—"}d
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 600, color: "#166534" }}>
-                          {formatCurrency(p.grossEarnings)}
-                        </td>
-                        <td style={{ padding: "12px 14px", color: "#b91c1c" }}>
-                          -{formatCurrency(p.totalDeductions)}
-                        </td>
-                        <td style={{ padding: "12px 14px", fontWeight: 700, color: "#09090b" }}>
-                          {formatCurrency(p.netPayable)}
-                        </td>
-                        <td style={{ padding: "12px 14px" }}>
-                          <StatusBadge status={p.paymentStatus === "PAID" ? "PAID" : p.status} />
-                        </td>
-                        <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", gap: 6 }}>
-                            <button
-                              type="button"
-                              className="btn-sm btn-secondary"
-                              onClick={() => setSelectedBreakdownPayslip(p)}
-                              title="View itemized earnings and deductions"
-                            >
-                              Breakdown
-                            </button>
-                            {selectedCycle?.status === "FINALIZED" || selectedCycle?.status === "PAID" ? (
-                              <button
-                                type="button"
-                                className="btn-sm btn-secondary"
-                                onClick={() => handleDownloadPayslipPdf(p)}
-                                title="Download authentic PDF payslip"
-                              >
-                                PDF
-                              </button>
-                            ) : null}
+
+              {loadingCycleDetails && cyclePayslips.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>
+                  <div className="spinner" style={{ margin: "0 auto 10px" }} />
+                  <div style={{ fontSize: 13 }}>Loading register...</div>
+                </div>
+              ) : filteredPayslips.length === 0 ? (
+                <div style={{ padding: "36px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+                  <IconFileText size={32} style={{ color: "#d4d4d8", margin: "0 auto 8px" }} />
+                  <div>No employee records found in this cycle.</div>
+                </div>
+              ) : (
+                filteredPayslips.map((p) => {
+                  const isSelected = activeBreakdownPayslip?._id === p._id;
+                  const isPaid = p.paymentStatus === "PAID" || p.status === "PAID";
+
+                  return (
+                    <div
+                      key={p._id}
+                      className={`ap-card-item ${isSelected ? "selected" : ""}`}
+                      onClick={() => setSelectedBreakdownPayslip(p)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setSelectedBreakdownPayslip(p);
+                      }}
+                    >
+                      <div className="ap-card-header">
+                        <div>
+                          <div className="ap-card-name">
+                            {p.employeeSnapshot?.fullName || "Employee"}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                          <div className="ap-card-sub">
+                            {p.employeeSnapshot?.employeeCode || "—"} • {p.employeeSnapshot?.department || "General"}
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "2px 8px",
+                            borderRadius: 12,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: isPaid ? "var(--g-100, #e3f2e9)" : "#eff6ff",
+                            color: isPaid ? "var(--g-800, #155a37)" : "#1d4ed8",
+                          }}
+                        >
+                          {isPaid ? <IconCheck size={11} /> : <IconClock size={11} />}
+                          <span>{isPaid ? "PAID" : p.status || "FINALIZED"}</span>
+                        </span>
+                      </div>
+
+                      <div className="ap-card-footer">
+                        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                          Payable Days: {p.daysBreakdown?.payableDays ?? "—"}d
+                        </span>
+                        <div className="ap-card-amount">
+                          {formatCurrency(p.netPayable)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Right Column: Selected Employee Payslip Deep-Dive */}
+            <div className="ap-detail-panel">
+              {activeBreakdownPayslip ? (
+                <>
+                  {/* Detail Header */}
+                  <div className="ap-detail-header">
+                    <div className="ap-detail-title-group">
+                      <h2>
+                        {activeBreakdownPayslip.employeeSnapshot?.fullName}
+                      </h2>
+                      <div className="ap-detail-meta">
+                        <span><strong>Code:</strong> {activeBreakdownPayslip.employeeSnapshot?.employeeCode || "—"}</span>
+                        <span>•</span>
+                        <span><strong>Designation:</strong> {activeBreakdownPayslip.employeeSnapshot?.jobTitle || "—"}</span>
+                        <span>•</span>
+                        <span><strong>Department:</strong> {activeBreakdownPayslip.employeeSnapshot?.department || "—"}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {(selectedCycle?.status === "FINALIZED" || selectedCycle?.status === "PAID") && (
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => handleDownloadPayslipPdf(activeBreakdownPayslip)}
+                          style={{ fontSize: 12.5, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                        >
+                          <IconDownload size={14} />
+                          <span>Download PDF</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Attendance & Days Summary Bar */}
+                  {activeBreakdownPayslip.daysBreakdown && (
+                    <div className="ap-attendance-bar">
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Total Days</span>
+                        <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.totalDaysInMonth ?? "—"}</span>
+                      </div>
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Working Days</span>
+                        <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.workingDays ?? "—"}</span>
+                      </div>
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Present</span>
+                        <span className="ap-att-val green">{activeBreakdownPayslip.daysBreakdown.presentDays ?? "—"}</span>
+                      </div>
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Paid Leave</span>
+                        <span className="ap-att-val" style={{ color: "#2563eb" }}>{activeBreakdownPayslip.daysBreakdown.paidLeaveDays ?? 0}</span>
+                      </div>
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Loss of Pay</span>
+                        <span className="ap-att-val red">{activeBreakdownPayslip.daysBreakdown.lossOfPayDays ?? 0}</span>
+                      </div>
+                      <div className="ap-att-item">
+                        <span className="ap-att-label">Payable Days</span>
+                        <span className="ap-att-val" style={{ fontWeight: 800 }}>{activeBreakdownPayslip.daysBreakdown.payableDays ?? "—"}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Itemized Financial Breakdown (2-Column) */}
+                  <div className="ap-breakdown-grid">
+                    {/* Left: Earnings */}
+                    <div className="ap-section-box">
+                      <div className="ap-section-title earnings">
+                        Earnings & Allowances
+                      </div>
+                      {(!activeBreakdownPayslip.earnings || activeBreakdownPayslip.earnings.length === 0) ? (
+                        <div className="ap-line-item">
+                          <span className="ap-line-name">Gross Base Salary</span>
+                          <span className="ap-line-amount">{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
+                        </div>
+                      ) : (
+                        activeBreakdownPayslip.earnings.map((e, idx) => (
+                          <div key={idx} className="ap-line-item">
+                            <span className="ap-line-name">{e.name}</span>
+                            <span className="ap-line-amount">{formatCurrency(e.amount)}</span>
+                          </div>
+                        ))
+                      )}
+                      <div className="ap-section-total">
+                        <span>Total Gross Earnings</span>
+                        <span style={{ color: "var(--g-800)" }}>{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
+                      </div>
+                    </div>
+
+                    {/* Right: Deductions */}
+                    <div className="ap-section-box">
+                      <div className="ap-section-title deductions">
+                        Statutory Deductions
+                      </div>
+                      {(!activeBreakdownPayslip.employeeDeductions || activeBreakdownPayslip.employeeDeductions.length === 0) ? (
+                        <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0", fontStyle: "italic" }}>
+                          No statutory deductions recorded
+                        </div>
+                      ) : (
+                        activeBreakdownPayslip.employeeDeductions.map((d, idx) => (
+                          <div key={idx} className="ap-line-item">
+                            <span className="ap-line-name">{d.name}</span>
+                            <span className="ap-line-amount deduct">-{formatCurrency(d.amount)}</span>
+                          </div>
+                        ))
+                      )}
+                      <div className="ap-section-total">
+                        <span>Total Deductions</span>
+                        <span style={{ color: "#b91c1c" }}>-{formatCurrency(activeBreakdownPayslip.totalDeductions)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hero Net Take-Home Card */}
+                  <div className="ap-hero-netpay">
+                    <div>
+                      <div className="ap-hero-netpay-label">Net Take-Home Salary</div>
+                      <div className="ap-hero-netpay-amount">
+                        {formatCurrency(activeBreakdownPayslip.netPayable)}
+                      </div>
+                    </div>
+                    <div className="ap-hero-netpay-badge">
+                      {activeBreakdownPayslip.paymentStatus === "PAID" ? <IconCheck size={14} /> : <IconClock size={14} />}
+                      <span>{activeBreakdownPayslip.paymentStatus === "PAID" ? "Disbursed" : activeBreakdownPayslip.status || "Finalized"}</span>
+                    </div>
+                  </div>
+
+                  {/* Banking & Disbursal Footprint */}
+                  <div className="ap-banking-footer">
+                    <div>
+                      <strong>Account:</strong>{" "}
+                      {activeBreakdownPayslip.employeeSnapshot?.bankDetails?.accountNumber
+                        ? `•••• ${activeBreakdownPayslip.employeeSnapshot.bankDetails.accountNumber.slice(-4)} (${activeBreakdownPayslip.employeeSnapshot.bankDetails.bankName || "Salary A/C"})`
+                        : "Direct Bank Transfer on file"}
+                    </div>
+                    {activeBreakdownPayslip.payments?.[0]?.referenceNumber ? (
+                      <div>
+                        <strong>Transaction Ref (UTR):</strong> {activeBreakdownPayslip.payments[0].referenceNumber}
+                      </div>
+                    ) : (
+                      <div>
+                        <strong>Statement Reference:</strong> {activeBreakdownPayslip.payslipNumber || `PS-${selectedCycle?.periodYear || 2026}-${String(selectedCycle?.periodMonth || 10).padStart(2, "0")}`}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--muted)" }}>
+                  <IconFileText size={40} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
+                  <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Select an employee record</div>
+                  <div>Choose an employee from the left register to inspect itemized allowances, deductions, and banking details.</div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2184,182 +2335,7 @@ export default function AdminPayroll() {
         </div>
       )}
 
-      {/* EMPLOYEE SALARY BREAKDOWN MODAL */}
-      {selectedBreakdownPayslip && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1050,
-            padding: 16,
-          }}
-          onClick={() => setSelectedBreakdownPayslip(null)}
-        >
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 14,
-              padding: 28,
-              width: "100%",
-              maxWidth: 680,
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-              <div>
-                <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-                  {selectedBreakdownPayslip.employeeSnapshot?.fullName}
-                </h3>
-                <div style={{ fontSize: 13, color: "#71717a" }}>
-                  {selectedBreakdownPayslip.employeeSnapshot?.employeeCode} · {selectedBreakdownPayslip.employeeSnapshot?.jobTitle} · {selectedBreakdownPayslip.employeeSnapshot?.department}
-                </div>
-              </div>
 
-              <button
-                type="button"
-                className="btn-sm btn-secondary"
-                onClick={() => setSelectedBreakdownPayslip(null)}
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-
-            {/* Attendance & Days Breakdown Bar */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(6, 1fr)",
-                gap: 8,
-                background: "#f8fafc",
-                padding: "10px 14px",
-                borderRadius: 8,
-                border: "1px solid #e2e8f0",
-                fontSize: 12,
-                textAlign: "center",
-                marginBottom: 20,
-              }}
-            >
-              <div>
-                <div style={{ color: "#64748b" }}>Total Days</div>
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selectedBreakdownPayslip.daysBreakdown?.totalDaysInMonth}</div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b" }}>Working Days</div>
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{selectedBreakdownPayslip.daysBreakdown?.workingDays}</div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b" }}>Present</div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#166534" }}>{selectedBreakdownPayslip.daysBreakdown?.presentDays}</div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b" }}>Paid Leave</div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#2563eb" }}>{selectedBreakdownPayslip.daysBreakdown?.paidLeaveDays}</div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b" }}>Loss of Pay</div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#b91c1c" }}>{selectedBreakdownPayslip.daysBreakdown?.lossOfPayDays}</div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b" }}>Payable Days</div>
-                <div style={{ fontWeight: 800, fontSize: 13.5, color: "#0f172a" }}>{selectedBreakdownPayslip.daysBreakdown?.payableDays}</div>
-              </div>
-            </div>
-
-            {/* Financial Columns */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-              {/* Earnings */}
-              <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#166534", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
-                  Earnings & Allowances
-                </div>
-                {selectedBreakdownPayslip.earnings?.map((e, idx) => (
-                  <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0" }}>
-                    <span style={{ color: "#52525b" }}>{e.name}</span>
-                    <span style={{ fontWeight: 600 }}>{formatCurrency(e.amount)}</span>
-                  </div>
-                ))}
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 6 }}>
-                  <span>Gross Earnings</span>
-                  <span style={{ color: "#166534" }}>{formatCurrency(selectedBreakdownPayslip.grossEarnings)}</span>
-                </div>
-              </div>
-
-              {/* Deductions */}
-              <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 14 }}>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: "#b91c1c", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, marginBottom: 8 }}>
-                  Employee Deductions
-                </div>
-                {(!selectedBreakdownPayslip.employeeDeductions || selectedBreakdownPayslip.employeeDeductions.length === 0) ? (
-                  <div style={{ fontSize: 12, color: "#a1a1aa", fontStyle: "italic", padding: "6px 0" }}>No deductions</div>
-                ) : (
-                  selectedBreakdownPayslip.employeeDeductions.map((d, idx) => (
-                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "5px 0" }}>
-                      <span style={{ color: "#52525b" }}>{d.name}</span>
-                      <span style={{ fontWeight: 600, color: "#b91c1c" }}>-{formatCurrency(d.amount)}</span>
-                    </div>
-                  ))
-                )}
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 6 }}>
-                  <span>Total Deductions</span>
-                  <span style={{ color: "#b91c1c" }}>-{formatCurrency(selectedBreakdownPayslip.totalDeductions)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Net Pay Banner */}
-            <div
-              style={{
-                background: "#18181b",
-                color: "#ffffff",
-                padding: "14px 18px",
-                borderRadius: 8,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 11.5, textTransform: "uppercase", color: "#a1a1aa", fontWeight: 600 }}>Net Take-Home Salary</div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>{formatCurrency(selectedBreakdownPayslip.netPayable)}</div>
-              </div>
-              <div>
-                <StatusBadge status={selectedBreakdownPayslip.paymentStatus === "PAID" ? "PAID" : selectedBreakdownPayslip.status} />
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setSelectedBreakdownPayslip(null)}
-              >
-                Close
-              </button>
-              {(selectedBreakdownPayslip.status === "FINALIZED" || selectedBreakdownPayslip.status === "PAID") && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => handleDownloadPayslipPdf(selectedBreakdownPayslip)}
-                >
-                  Download PDF Payslip
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* RECORD PAYMENT MODAL */}
       {showPayModal && (

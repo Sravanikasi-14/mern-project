@@ -92,32 +92,142 @@ export default function ChatbotWidget() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const launcherRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Draggable Launcher State
+  const [position, setPosition] = useState(() => {
+    try {
+      const saved = localStorage.getItem("hrms_assistant_position");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragInfoRef = useRef({
+    startX: 0,
+    startY: 0,
+    startPosX: 0,
+    startPosY: 0,
+    hasMoved: false,
+    pointerId: null,
+  });
+
+  const clampPosition = (x, y) => {
+    const launcherWidth = launcherRef.current?.offsetWidth || 150;
+    const launcherHeight = launcherRef.current?.offsetHeight || 48;
+    const margin = 16;
+    const minX = margin;
+    const maxX = Math.max(margin, window.innerWidth - launcherWidth - margin);
+    const minY = margin;
+    const maxY = Math.max(margin, window.innerHeight - launcherHeight - margin);
+
+    return {
+      x: Math.max(minX, Math.min(x, maxX)),
+      y: Math.max(minY, Math.min(y, maxY)),
+    };
   };
 
+  // Adjust position on window resize to ensure launcher never falls offscreen
   useEffect(() => {
-    if (isOpen) {
-      scrollToBottom();
-      setTimeout(() => inputRef.current?.focus(), 150);
-    }
-  }, [isOpen, messages, loading]);
-
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+    const handleResize = () => {
+      if (position) {
+        setPosition((prev) => (prev ? clampPosition(prev.x, prev.y) : null));
       }
     };
-  }, []);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [position]);
 
-  const handleStopGenerating = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setLoading(false);
+  const handlePointerDown = (e) => {
+    // Only drag on primary pointer
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+
+    const launcherEl = launcherRef.current;
+    if (!launcherEl) return;
+
+    const rect = launcherEl.getBoundingClientRect();
+    const currentX = position ? position.x : rect.left;
+    const currentY = position ? position.y : rect.top;
+
+    dragInfoRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: currentX,
+      startPosY: currentY,
+      hasMoved: false,
+      pointerId: e.pointerId,
+    };
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
     }
+
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (e) => {
+    const info = dragInfoRef.current;
+    if (info.pointerId === null || info.pointerId !== e.pointerId) return;
+
+    const deltaX = e.clientX - info.startX;
+    const deltaY = e.clientY - info.startY;
+
+    if (!info.hasMoved && Math.hypot(deltaX, deltaY) > 5) {
+      info.hasMoved = true;
+    }
+
+    if (info.hasMoved) {
+      const rawX = info.startPosX + deltaX;
+      const rawY = info.startPosY + deltaY;
+      const clamped = clampPosition(rawX, rawY);
+      setPosition(clamped);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    const info = dragInfoRef.current;
+    if (info.pointerId === null || info.pointerId !== e.pointerId) return;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    setIsDragging(false);
+    info.pointerId = null;
+
+    if (info.hasMoved) {
+      // Persist user-selected launcher position
+      setPosition((curr) => {
+        if (curr) {
+          try {
+            localStorage.setItem("hrms_assistant_position", JSON.stringify(curr));
+          } catch {
+            // ignore
+          }
+        }
+        return curr;
+      });
+    } else {
+      // It was a tap/click, not a drag: open assistant
+      setIsOpen(true);
+    }
+  };
+
+  const handlePointerCancel = (e) => {
+    dragInfoRef.current.pointerId = null;
+    setIsDragging(false);
   };
 
   const handleSend = async (messageText) => {
@@ -273,6 +383,14 @@ export default function ChatbotWidget() {
     }
   };
 
+  const handleStopGenerating = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -290,18 +408,51 @@ export default function ChatbotWidget() {
     inputRef.current?.focus();
   };
 
+  const containerStyle = position
+    ? {
+        position: "fixed",
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        bottom: "auto",
+        right: "auto",
+      }
+    : undefined;
+
+  const windowPlacementClass = position
+    ? `${position.y > (typeof window !== "undefined" ? window.innerHeight / 2 : 500) ? "open-above" : "open-below"} ${
+        position.x > (typeof window !== "undefined" ? window.innerWidth / 2 : 500) ? "align-right" : "align-left"
+      }`
+    : "default-placement";
+
   return (
-    <div className="hrms-chatbot-container">
-      {/* Floating Chat Launcher Button */}
+    <div className={`hrms-chatbot-container ${isDragging ? "is-dragging" : ""}`} style={containerStyle}>
+      {/* Draggable Floating Chat Launcher Button */}
       {!isOpen && (
         <button
+          ref={launcherRef}
           type="button"
-          className="hrms-chatbot-launcher"
-          onClick={() => setIsOpen(true)}
-          aria-label="Open HRMS AI Assistant"
+          className={`hrms-chatbot-launcher ${isDragging ? "dragging" : ""}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          aria-label="Open HRMS AI Assistant (Draggable)"
+          title="Click to open HR Assistant · Drag to reposition anywhere"
+          style={{ touchAction: "none" }}
         >
+          {/* Grip handle icon */}
+          <div className="hrms-chatbot-drag-grip" aria-hidden="true" title="Drag to move launcher">
+            <svg width="8" height="13" viewBox="0 0 8 14" fill="currentColor">
+              <circle cx="2" cy="2" r="1.2" />
+              <circle cx="6" cy="2" r="1.2" />
+              <circle cx="2" cy="7" r="1.2" />
+              <circle cx="6" cy="7" r="1.2" />
+              <circle cx="2" cy="12" r="1.2" />
+              <circle cx="6" cy="12" r="1.2" />
+            </svg>
+          </div>
           <div className="hrms-chatbot-launcher-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               <path d="M8 9h.01M12 9h.01M16 9h.01" />
             </svg>
@@ -312,7 +463,7 @@ export default function ChatbotWidget() {
 
       {/* Floating Chat Modal */}
       {isOpen && (
-        <div className="hrms-chatbot-window">
+        <div className={`hrms-chatbot-window ${windowPlacementClass}`}>
           {/* Header */}
           <div className="hrms-chatbot-header">
             <div className="hrms-chatbot-header-info">

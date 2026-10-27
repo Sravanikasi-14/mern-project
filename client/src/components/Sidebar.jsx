@@ -105,23 +105,13 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
-    id: "work-management",
-    label: "Work Management",
+    id: "work-impact",
+    label: "Work & Impact",
     path: "/admin/work-management",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-    ),
-  },
-  {
-    id: "impact-points",
-    label: "Impact Points",
-    path: "/admin/impact-points",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
       </svg>
     ),
   },
@@ -228,23 +218,13 @@ const EMPLOYEE_NAV_ITEMS = [
     ),
   },
   {
-    id: "tasks",
-    label: "My Tasks",
+    id: "work-impact",
+    label: "Work & Impact",
     path: "/app/tasks",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-    ),
-  },
-  {
-    id: "impact-points",
-    label: "Impact Points",
-    path: "/app/impact-points",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
       </svg>
     ),
   },
@@ -307,6 +287,16 @@ export default function Sidebar({
           current.startsWith("/admin/employees")
         );
       }
+      if (item.id === "work-impact") {
+        return (
+          current === "/admin/work-management" ||
+          current.startsWith("/admin/work-management/") ||
+          current === "/admin/impact-points" ||
+          current.startsWith("/admin/impact-points/") ||
+          current === "/admin/work-impact" ||
+          current.startsWith("/admin/work-impact/")
+        );
+      }
       if (item.path) {
         return current === item.path || current.startsWith(item.path + "/");
       }
@@ -323,6 +313,16 @@ export default function Sidebar({
         current.startsWith("/app/profile/") ||
         current === "/app/documents" ||
         current.startsWith("/app/documents/")
+      );
+    }
+    if (item.id === "work-impact") {
+      return (
+        current === "/app/tasks" ||
+        current.startsWith("/app/tasks/") ||
+        current === "/app/impact-points" ||
+        current.startsWith("/app/impact-points/") ||
+        current === "/app/work-impact" ||
+        current.startsWith("/app/work-impact/")
       );
     }
     if (item.path) {
@@ -362,15 +362,16 @@ export default function Sidebar({
       <div className="sidebar-brand-wrapper">
         <div className="sidebar-brand">
           <div className="brand-logo-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3.5" y="3.5" width="25" height="25" rx="8.5" />
+              <path d="M16 23.5v-9" />
+              <path d="M16 16c0-4.2 2.9-6.9 7-6.9 0 4.2-2.9 6.9-7 6.9Z" />
+              <path d="M16 19c0-3.3-2.3-5.4-5.6-5.4 0 3.3 2.3 5.4 5.6 5.4Z" />
             </svg>
           </div>
           {!collapsed && (
             <div className="brand-text-block">
-              <span className="brand-title">{company?.companyName || "HRMS PORTAL"}</span>
+              <span className="brand-title">{company?.companyName || "HRMS Portal"}</span>
               <span className="brand-subtitle">Enterprise Suite</span>
             </div>
           )}

@@ -237,20 +237,14 @@ describe("Dedicated Employee Portal Dashboard API", () => {
   });
 
   it("6. Rejects leave application when requested days exceed balance", async () => {
-    const today = new Date();
-    const start = new Date(today);
-    start.setDate(start.getDate() + 10);
-    const end = new Date(today);
-    end.setDate(end.getDate() + 25); // 16 days > remaining 6 casual days
-
     const res = await request(app)
       .post("/api/employees/me/leave-requests")
       .set("Cookie", employeeCookie)
       .send({
         leaveType: "CASUAL",
-        startDate: start.toISOString().split("T")[0],
-        endDate: end.toISOString().split("T")[0],
-        reason: "Vacation",
+        startDate: "2026-12-01",
+        endDate: "2026-12-14", // 10 working days, exceeds remaining 8 casual balance while <= 14 consecutive days cap
+        reason: "Extended holiday",
       });
 
     assert.equal(res.status, 400);

@@ -350,12 +350,9 @@ export default function EditEmployee() {
 
       <div className="edit-form-header-banner">
         <div>
-          <h1 style={{ margin: "0 0 6px", fontSize: "22px", color: "#09090b" }}>
+          <h1 style={{ margin: "0", fontSize: "20px", fontWeight: 700, color: "#09090b" }}>
             Edit Employee: {formData.fullName}
           </h1>
-          <p className="subtitle">
-            Update employee details, role, and salary.
-          </p>
         </div>
         <span className="meta-tag">Code: {formData.employeeCode}</span>
       </div>
@@ -690,8 +687,7 @@ export default function EditEmployee() {
               </svg>
             </div>
             <div>
-              <h2>Employee Documents Management</h2>
-              <span className="card-subtitle">Upload and maintain official employment contracts, offer letters, or compliance files</span>
+              <h2>Documents</h2>
             </div>
           </div>
           <div className="profile-card-body">

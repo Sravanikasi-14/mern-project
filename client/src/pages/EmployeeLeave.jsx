@@ -1,15 +1,25 @@
 import { useEffect, useState, useMemo } from "react";
-import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import {
   IconClose,
+  IconCheck,
   IconAlertCircle,
   IconAlertTriangle,
   IconInfo,
   IconClock,
 } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
+import AppHeader from "../components/AppHeader";
+import "./LeaveManagement.css";
+
+const STATUS_FILTERS = [
+  { value: "ALL", label: "All" },
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+];
 
 export default function EmployeeLeave() {
   const [loading, setLoading] = useState(true);
@@ -18,6 +28,9 @@ export default function EmployeeLeave() {
   const [actionError, setActionError] = useState("");
 
   const [dashboardData, setDashboardData] = useState(null);
+  const [reqStatusFilter, setReqStatusFilter] = useState("ALL");
+  const [appPage, setAppPage] = useState(1);
+  const [appPageSize, setAppPageSize] = useState(5);
 
   // Apply Leave Modal
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -179,13 +192,9 @@ export default function EmployeeLeave() {
           ) {
             fetchLeaveData(true);
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       };
-    } catch {
-      // EventSource fallback
-    }
+    } catch {}
 
     return () => {
       if (eventSource) eventSource.close();
@@ -232,13 +241,25 @@ export default function EmployeeLeave() {
       return;
     }
 
+    if (!leaveForm.reason.trim()) {
+      setLeaveModalError("Please provide a brief reason for your leave request.");
+      return;
+    }
+
+    setSubmittingLeave(true);
     try {
-      setSubmittingLeave(true);
-      const res = await api.post("/employees/me/leave-requests", leaveForm);
-      setActionSuccess(res.data?.message || "Leave request submitted successfully!");
+      const res = await api.post("/employees/me/leave-requests", {
+        leaveType: leaveForm.leaveType,
+        startDate: leaveForm.startDate,
+        endDate: leaveForm.endDate,
+        reason: leaveForm.reason.trim(),
+      });
+
+      setActionSuccess(res.data?.message || "Leave application submitted successfully!");
       setShowLeaveModal(false);
       setLeaveForm({ leaveType: "CASUAL", startDate: "", endDate: "", reason: "" });
       await fetchLeaveData(true);
+      setTimeout(() => setActionSuccess(""), 4500);
     } catch (err) {
       setLeaveModalError(err.response?.data?.message || "Failed to submit leave request.");
     } finally {
@@ -246,450 +267,483 @@ export default function EmployeeLeave() {
     }
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const employeeName = dashboardData?.employee?.fullName || "Employee";
+  const firstName = employeeName.split(" ")[0];
   const leave = dashboardData?.leave;
-  const holidays = dashboardData?.holidays || [];
-  const detailedBalances = Array.isArray(leave?.detailed) ? leave.detailed : [];
-  const recentRequests = Array.isArray(leave?.requests) ? leave.requests : [];
+  const detailedBalances = leave?.detailed || [];
+  const recentRequests = leave?.recentRequests || [];
+  const scheduledUpcoming = (leave?.scheduledRanges || []).filter((r) => r.status === "APPROVED" || r.status === "PENDING");
+  const holidays = dashboardData?.companyHolidays || [];
+
+  // Summary counts
+  const totalAvailable = detailedBalances.reduce((sum, b) => sum + (b.available || 0), 0) || (leave?.summary?.remaining ?? 20);
+  const totalUsed = detailedBalances.reduce((sum, b) => sum + (b.used || 0), 0) || (leave?.summary?.used ?? 3);
+  const pendingCount = recentRequests.filter((r) => r.status === "PENDING").length;
+  const rejectedCount = recentRequests.filter((r) => r.status === "REJECTED").length;
+
+  // Filtered requests
+  const filteredRequests = useMemo(() => {
+    if (reqStatusFilter === "ALL") return recentRequests;
+    return recentRequests.filter((r) => r.status === reqStatusFilter);
+  }, [recentRequests, reqStatusFilter]);
+
+  useEffect(() => {
+    setAppPage(1);
+  }, [reqStatusFilter]);
+
+  const totalAppRequests = filteredRequests.length;
+  const totalAppPages = Math.ceil((totalAppRequests || 1) / appPageSize);
+  const paginatedRequests = useMemo(() => {
+    const start = (appPage - 1) * appPageSize;
+    return filteredRequests.slice(start, start + appPageSize);
+  }, [filteredRequests, appPage, appPageSize]);
 
   return (
-    <div className="container-wide" style={{ paddingBottom: 60 }}>
-      <AppHeader title="Leave" />
-
-      {/* Action alerts */}
-      {actionSuccess && (
-        <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <span>{actionSuccess}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionSuccess("")} aria-label="Dismiss">
-            <IconClose size={14} />
+    <div className="lm-container">
+      <AppHeader
+        title="Leave Requests"
+        actions={
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleOpenLeaveModal}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, fontSize: 13 }}
+          >
+            <span>+</span>
+            <span>Apply Leave</span>
           </button>
-        </div>
-      )}
+        }
+      />
 
-      {actionError && (
-        <div className="error" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <span>{actionError}</span>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => setActionError("")} aria-label="Dismiss">
-            <IconClose size={14} />
-          </button>
-        </div>
-      )}
+      {/* Alerts */}
+      {actionSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{actionSuccess}</div>}
+      {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "#71717a", fontSize: 15 }}>Loading leave records...</p>
-        </div>
-      ) : error ? (
-        <div className="error" style={{ padding: 24, textAlign: "center" }}>
-          <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => fetchLeaveData()}>
-            Retry
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* TOP BAR / APPLY BUTTON */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-                Leave Balances
-              </h3>
-              <p style={{ margin: "2px 0 0", fontSize: 13, color: "#71717a" }}>
-                Pending requests do not deduct balances until formally approved by HR.
-              </p>
+      {/* Compact Inline Personal Leave Statistics Strip */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          marginBottom: 14,
+          fontSize: 13,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Available Balance: <strong style={{ color: "var(--g-800, #155a37)" }}>{totalAvailable} days</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Used: <strong style={{ color: "var(--ink)" }}>{totalUsed} days</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Pending: <strong style={{ color: pendingCount > 0 ? "#b06d0a" : "var(--ink)" }}>{pendingCount}</strong>
+        </span>
+        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span style={{ color: "var(--text-muted, #646d67)" }}>
+          Rejected: <strong style={{ color: rejectedCount > 0 ? "#b91c1c" : "var(--ink)" }}>{rejectedCount}</strong>
+        </span>
+      </div>
+
+      {/* -----------------------------------------------------------------------
+          MAIN SPLIT GRID (Reference 2 Layout)
+          ----------------------------------------------------------------------- */}
+      <div className="el-main-grid">
+        {/* LEFT COLUMN: Leave Balance Overview & My Requests */}
+        <div>
+          {/* Card A: Leave Balance Overview (Reference 2 Table) */}
+          <div className="el-card">
+            <div className="el-card-head">
+              <div>
+                <h3 className="el-card-title">Leave Balances</h3>
+              </div>
+              <span className="text-nav-badge" style={{ fontSize: 12, padding: "4px 10px" }}>
+                2026 Cycle
+              </span>
             </div>
 
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleOpenLeaveModal}
-              style={{ padding: "9px 18px", fontSize: 13.5, fontWeight: 600 }}
-            >
-              Apply for Leave
-            </button>
-          </div>
-
-          {/* LEAVE BALANCE CARDS GRID */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginBottom: 28,
-            }}
-          >
-            {detailedBalances.length === 0 ? (
-              // Fallback simple cards
-              <>
-                <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-                  <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Casual Leave</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 6 }}>{leave?.balance?.casual ?? 0} <span style={{ fontSize: 13, fontWeight: 500, color: "#71717a" }}>days remaining</span></div>
-                </div>
-                <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-                  <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Sick Leave</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 6 }}>{leave?.balance?.sick ?? 0} <span style={{ fontSize: 13, fontWeight: 500, color: "#71717a" }}>days remaining</span></div>
-                </div>
-                <div style={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "18px 20px" }}>
-                  <div style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>Earned Leave</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#09090b", marginTop: 6 }}>{leave?.balance?.earned ?? 0} <span style={{ fontSize: 13, fontWeight: 500, color: "#71717a" }}>days remaining</span></div>
-                </div>
-              </>
+            {loading && detailedBalances.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center" }}>
+                <div className="profile-spinner" style={{ margin: "0 auto 10px" }} />
+                <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading balances...</p>
+              </div>
+            ) : detailedBalances.length === 0 ? (
+              /* Fallback rows if detailed is empty */
+              <table className="el-balance-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Allocation</th>
+                    <th>Used</th>
+                    <th>Remaining</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <div className="el-type-row">
+                        <div className="el-type-icon">CL</div>
+                        <span>Casual Leave</span>
+                      </div>
+                    </td>
+                    <td>12 days</td>
+                    <td>{12 - (leave?.balance?.casual ?? 12)} days</td>
+                    <td><strong>{leave?.balance?.casual ?? 0} days</strong></td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div className="el-type-row">
+                        <div className="el-type-icon">SL</div>
+                        <span>Sick Leave</span>
+                      </div>
+                    </td>
+                    <td>8 days</td>
+                    <td>{8 - (leave?.balance?.sick ?? 8)} days</td>
+                    <td><strong>{leave?.balance?.sick ?? 0} days</strong></td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div className="el-type-row">
+                        <div className="el-type-icon">EL</div>
+                        <span>Earned Leave</span>
+                      </div>
+                    </td>
+                    <td>15 days</td>
+                    <td>{15 - (leave?.balance?.earned ?? 15)} days</td>
+                    <td><strong>{leave?.balance?.earned ?? 0} days</strong></td>
+                  </tr>
+                </tbody>
+              </table>
             ) : (
-              detailedBalances.map((type) => (
-                <div
-                  key={type.code}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #e4e4e7",
-                    borderRadius: 12,
-                    padding: "18px 20px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <span style={{ fontSize: 12, color: "#71717a", textTransform: "uppercase", fontWeight: 600 }}>
-                      {type.name}
-                    </span>
-                    <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, background: "#f4f4f5", color: "#52525b", fontWeight: 600 }}>
-                      {type.code}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#09090b", marginTop: 8 }}>
-                    {type.available ?? 0}
-                    <span style={{ fontSize: 13, fontWeight: 500, color: "#71717a", marginLeft: 6 }}>days remaining</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#71717a", marginTop: 6 }}>
-                    Allocated: {type.totalAllowed ?? "—"} · Used: {type.used ?? 0}
-                  </div>
-                </div>
-              ))
+              <table className="el-balance-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Allocation</th>
+                    <th>Used</th>
+                    <th>Applied</th>
+                    <th>Remaining</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailedBalances.map((type) => (
+                    <tr key={type.code}>
+                      <td>
+                        <div className="el-type-row">
+                          <div className="el-type-icon">
+                            {type.code?.slice(0, 2) || "LV"}
+                          </div>
+                          <span>{type.name || type.code}</span>
+                        </div>
+                      </td>
+                      <td>{type.totalAllowed != null ? `${type.totalAllowed} days` : "—"}</td>
+                      <td>{type.used || 0} days</td>
+                      <td>{type.applied || 0} days</td>
+                      <td>
+                        <strong style={{ color: "var(--g-800)" }}>
+                          {type.available ?? 0} days
+                        </strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
 
-          {/* UPCOMING HOLIDAYS */}
-          {holidays.length > 0 && (
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #e4e4e7",
-                borderRadius: 14,
-                padding: "20px 24px",
-                marginBottom: 28,
-              }}
-            >
-              <h4 style={{ margin: "0 0 14px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-                Upcoming Official Holidays
-              </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-                {holidays.map((h, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "12px 14px",
-                      background: "#f9fafb",
-                      border: "1px solid #f3f4f6",
-                      borderRadius: 8,
-                    }}
+          {/* Card B: My Leave Requests (Reference 2 Recent Applications) */}
+          <div className="el-card">
+            <div className="el-card-head" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h3 className="el-card-title">Leave Requests</h3>
+              </div>
+
+              {/* Text-based Filter Links (Requirement 4) */}
+              <div className="text-filter-group">
+                {STATUS_FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    className={`text-filter-link ${reqStatusFilter === f.value ? "active" : ""}`}
+                    onClick={() => setReqStatusFilter(f.value)}
                   >
-                    <div style={{ fontSize: 11.5, color: "#2563eb", fontWeight: 700, textTransform: "uppercase" }}>{h.day} · {h.date}</div>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, color: "#09090b", marginTop: 2 }}>{h.name}</div>
-                    <div style={{ fontSize: 11.5, color: "#71717a", marginTop: 2 }}>{h.type}</div>
-                  </div>
+                    {f.label}
+                  </button>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* RECENT LEAVE REQUESTS TABLE */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #e4e4e7",
-              borderRadius: 14,
-              padding: "24px 28px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <div>
-                <h3 style={{ margin: "0 0 2px", fontSize: 17, fontWeight: 700, color: "#09090b" }}>
-                  My Time-Off Requests History
-                </h3>
-                <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-                  Status and approvals for your submitted leave applications.
-                </p>
-              </div>
-            </div>
-
-            <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
-              {loading && recentRequests && recentRequests.length > 0 && <div className="table-progress-bar" />}
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <div style={{ overflowX: "auto" }}>
+              <table className="el-balance-table">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
-                    <th style={{ padding: "10px 12px" }}>Leave Period</th>
-                    <th style={{ padding: "10px 12px" }}>Days</th>
-                    <th style={{ padding: "10px 12px" }}>Leave Type</th>
-                    <th style={{ padding: "10px 12px" }}>Status</th>
-                    <th style={{ padding: "10px 12px" }}>Reason</th>
-                    <th style={{ padding: "10px 12px" }}>Applied On</th>
+                  <tr>
+                    <th>Period</th>
+                    <th>Days</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Reason</th>
+                    <th>Applied</th>
                   </tr>
                 </thead>
-                <tbody className={loading && recentRequests && recentRequests.length > 0 ? "table-refreshing-dim" : ""}>
-                  {loading && (!recentRequests || recentRequests.length === 0) ? (
-                    <TableSkeletonRows colCount={6} rowCount={4} widths={["140px", "60px", "80px", "70px", "140px", "80px"]} />
-                  ) : !recentRequests || recentRequests.length === 0 ? (
+                <tbody>
+                  {filteredRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ padding: "36px 16px", textAlign: "center", color: "#71717a", fontSize: 13.5 }}>
-                        <div style={{ marginBottom: 6, fontWeight: 600, color: "#18181b" }}>No leave requests submitted</div>
-                        You have not submitted any time-off applications yet.
+                      <td colSpan={6} style={{ textAlign: "center", padding: "36px 0", color: "var(--muted)" }}>
+                        No {reqStatusFilter !== "ALL" ? reqStatusFilter.toLowerCase() : ""} leave requests found.
                       </td>
                     </tr>
                   ) : (
-                    recentRequests.map((req) => (
-                      <tr key={req._id || req.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                        <td style={{ padding: "12px", fontWeight: 600, color: "#09090b" }}>
-                          {req.startDate} to {req.endDate}
+                    paginatedRequests.map((req) => (
+                      <tr key={req._id || req.id}>
+                        <td>
+                          <strong>{formatDate(req.startDate)}</strong>
+                          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                            to {formatDate(req.endDate)}
+                          </div>
                         </td>
-                        <td style={{ padding: "12px", fontWeight: 700 }}>{req.days} {req.days === 1 ? "day" : "days"}</td>
-                        <td style={{ padding: "12px" }}>{req.leaveType}</td>
-                        <td style={{ padding: "12px" }}>
-                          <StatusBadge status={req.status} />
+                        <td><strong>{req.calculatedDays || req.durationDays || 1}d</strong></td>
+                        <td>
+                          <span className={`lm-req-type-pill ${(req.leaveTypeCode || "CASUAL").toLowerCase()}`}>
+                            {req.leaveTypeCode || "CASUAL"}
+                          </span>
                         </td>
-                        <td style={{ padding: "12px", color: "#52525b", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <td><StatusBadge status={req.status} /></td>
+                        <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={req.reason}>
                           {req.reason || "—"}
                         </td>
-                        <td style={{ padding: "12px", color: "#71717a" }}>
-                          {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "—"}
-                        </td>
+                        <td style={{ fontSize: 12, color: "var(--muted)" }}>{formatDate(req.createdAt)}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
-        </>
-      )}
 
-      {/* APPLY FOR LEAVE MODAL */}
+            {totalAppRequests > 0 && (
+              <Pagination
+                currentPage={appPage}
+                totalPages={totalAppPages}
+                totalItems={totalAppRequests}
+                pageSize={appPageSize}
+                pageSizeOptions={[5, 10, 20]}
+                onPageChange={(p) => setAppPage(p)}
+                onPageSizeChange={(s) => {
+                  setAppPageSize(s);
+                  setAppPage(1);
+                }}
+                itemLabel="applications"
+                compact={true}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Upcoming Leaves & Official Holidays */}
+        <div>
+          {/* Card C: Upcoming Leaves (Reference 2 Scheduled Time Off) */}
+          <div className="el-card">
+            <div className="el-card-head">
+              <div>
+                <h3 className="el-card-title">Upcoming Leaves</h3>
+              </div>
+              <span className="text-nav-badge">
+                {scheduledUpcoming.length}
+              </span>
+            </div>
+
+            <div className="el-upcoming-list">
+              {scheduledUpcoming.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0" }}>
+                  No upcoming leaves scheduled.
+                </p>
+              ) : (
+                scheduledUpcoming.map((item, idx) => {
+                  const s = item.startDate || item.fromDate;
+                  const e = item.endDate || item.toDate;
+                  const isAppr = item.status === "APPROVED";
+                  return (
+                    <div key={idx} className="el-upcoming-card">
+                      <div className="el-upcoming-card-top">
+                        <span className="el-upcoming-type">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                          </svg>
+                          <span>{item.leaveType || item.leaveTypeCode || "Leave"}</span>
+                        </span>
+                        <StatusBadge status={item.status} />
+                      </div>
+
+                      <div className="el-upcoming-dates">
+                        {formatDate(s)} {s !== e && `— ${formatDate(e)}`}
+                      </div>
+
+                      <div className="el-upcoming-duration">
+                        {item.days || item.calculatedDays || 1} Day(s) {isAppr ? "· Scheduled" : "· Pending"}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Card D: Upcoming Official Holidays */}
+          {holidays.length > 0 && (
+            <div className="el-card">
+              <div className="el-card-head">
+                <div>
+                  <h3 className="el-card-title">Company Holidays</h3>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {holidays.slice(0, 4).map((h, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--hair)",
+                      background: "var(--panel)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{h.name}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{h.day} · {h.date}</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--g-800)", background: "var(--g-100)", padding: "2px 6px", borderRadius: 4 }}>
+                      {h.type}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* -----------------------------------------------------------------------
+          APPLY FOR LEAVE MODAL
+          ----------------------------------------------------------------------- */}
       {showLeaveModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-          onClick={() => !submittingLeave && setShowLeaveModal(false)}
-        >
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 14,
-              padding: 24,
-              width: "100%",
-              maxWidth: 480,
-              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#09090b" }}>
-                Apply for Time Off
-              </h3>
+        <div className="modal-overlay" onClick={() => setShowLeaveModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h2>Apply for Leave</h2>
               <button
                 type="button"
-                className="btn-sm btn-secondary"
+                className="btn-secondary btn-sm"
                 onClick={() => setShowLeaveModal(false)}
-                disabled={submittingLeave}
+                aria-label="Close"
               >
                 <IconClose size={14} />
               </button>
             </div>
 
-            {leaveModalError && <div className="error" style={{ marginBottom: 14 }}>{leaveModalError}</div>}
+            {leaveModalError && <div className="error" style={{ marginBottom: 16 }}>{leaveModalError}</div>}
 
-            <form onSubmit={handleApplyLeave} style={{ display: "grid", gap: 14 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                  Leave Type <span style={{ color: "#ef4444" }}>*</span>
+            <form onSubmit={handleApplyLeave} className="auth-form" noValidate>
+              <div style={{ marginBottom: 14 }}>
+                <label>
+                  Leave Type *
+                  <select
+                    value={leaveForm.leaveType}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
+                    className="filter-select"
+                    style={{ width: "100%", marginTop: 4 }}
+                  >
+                    {detailedBalances.map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.name || t.code} ({t.available ?? 0} days remaining)
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <select
-                  value={leaveForm.leaveType}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
-                  style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #d4d4d8", fontSize: 13.5 }}
-                >
-                  {(detailedBalances.length > 0 ? detailedBalances : [
-                    { code: "CASUAL", name: "Casual Leave", available: leave?.balance?.casual ?? 0 },
-                    { code: "SICK", name: "Sick Leave", available: leave?.balance?.sick ?? 0 },
-                    { code: "EARNED", name: "Earned Leave", available: leave?.balance?.earned ?? 0 },
-                  ]).map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.name} ({item.available ?? 0} available)
-                    </option>
-                  ))}
-                </select>
               </div>
 
-              {(() => {
-                const activeScheduledRanges = dashboardData?.leave?.scheduledRanges || [];
-                const dateConflict = getLeaveOverlapConflict(
-                  leaveForm.startDate,
-                  leaveForm.endDate,
-                  activeScheduledRanges
-                );
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                <label>
+                  Start Date *
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.startDate}
+                    min={leaveEligibility.earliestEligibleDate}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setLeaveForm((prev) => ({
+                        ...prev,
+                        startDate: newStart,
+                        endDate: prev.endDate && prev.endDate >= newStart ? prev.endDate : newStart,
+                      }));
+                    }}
+                    style={{ marginTop: 4 }}
+                  />
+                </label>
+                <label>
+                  End Date *
+                  <input
+                    type="date"
+                    required
+                    value={leaveForm.endDate}
+                    min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
+                    style={{ marginTop: 4 }}
+                  />
+                </label>
+              </div>
 
-                return (
-                  <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                          Start Date <span style={{ color: "#ef4444" }}>*</span>
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          min={leaveEligibility.earliestEligibleDate}
-                          value={leaveForm.startDate}
-                          onChange={(e) => {
-                            const newStart = e.target.value;
-                            setLeaveForm((prev) => ({
-                              ...prev,
-                              startDate: newStart,
-                              endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
-                            }));
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
-                            fontSize: 13.5,
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                          End Date <span style={{ color: "#ef4444" }}>*</span>
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
-                          value={leaveForm.endDate}
-                          onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: dateConflict ? "1.5px solid #ef4444" : "1px solid #d4d4d8",
-                            fontSize: 13.5,
-                          }}
-                        />
-                      </div>
-                    </div>
+              <div style={{ marginBottom: 20 }}>
+                <label>
+                  Reason for Leave *
+                  <textarea
+                    rows={3}
+                    required
+                    value={leaveForm.reason}
+                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                    placeholder="Briefly state reason for your absence..."
+                    style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid var(--hair)", boxSizing: "border-box", marginTop: 4 }}
+                  />
+                </label>
+              </div>
 
-                    {dateConflict && (
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          lineHeight: 1.45,
-                          padding: "10px 14px",
-                          borderRadius: 8,
-                          background: "#fef2f2",
-                          border: "1px solid #fecaca",
-                          color: "#991b1b",
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <IconAlertCircle size={16} />
-                          <span>Overlapping Leave Date Conflict</span>
-                        </div>
-                        <div>
-                          Selected dates overlap with an existing {dateConflict.status} ({dateConflict.leaveType} leave from {dateConflict.startDate} to {dateConflict.endDate}).
-                        </div>
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        fontSize: 12,
-                        lineHeight: 1.4,
-                        padding: "8px 10px",
-                        borderRadius: 6,
-                        background: leaveEligibility.isTodayEligible ? "#f0fdf4" : "#fffbeb",
-                        border: `1px solid ${leaveEligibility.isTodayEligible ? "#bbf7d0" : "#fde68a"}`,
-                        color: leaveEligibility.isTodayEligible ? "#166534" : "#92400e",
-                      }}
-                    >
-                      {leaveEligibility.hasConfigError ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          <IconAlertTriangle size={14} />
-                          <span>Configuration Error: {leaveEligibility.configError}. Please contact HR.</span>
-                        </span>
-                      ) : leaveEligibility.isTodayEligible ? (
-                        <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 6 }}>
-                          <IconInfo size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-                          <span>
-                            <strong>Same-day leave available:</strong> Today ({leaveEligibility.todayStr}) is eligible until <strong>{leaveEligibility.cutoffTime}</strong> ({leaveEligibility.timezone}).
-                          </span>
-                        </span>
-                      ) : (
-                        <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 6 }}>
-                          <IconClock size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-                          <span>
-                            <strong>Same-day cutoff passed:</strong> Cutoff was {leaveEligibility.cutoffTime} ({leaveEligibility.timezone}). Earliest selectable date is tomorrow (<strong>{leaveEligibility.tomorrowStr}</strong>).
-                          </span>
-                        </span>
-                      )}
-                    </div>
-
-                    <div>
-                      <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#09090b" }}>
-                        Reason for Leave <span style={{ color: "#ef4444" }}>*</span>
-                      </label>
-                      <textarea
-                        rows="3"
-                        required
-                        placeholder="Why are you requesting time off?"
-                        value={leaveForm.reason}
-                        onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                        style={{
-                          width: "100%",
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #d4d4d8",
-                          fontSize: 13.5,
-                          fontFamily: "inherit",
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setShowLeaveModal(false)}
-                        disabled={submittingLeave}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="btn-primary"
-                        disabled={submittingLeave || Boolean(dateConflict)}
-                      >
-                        {submittingLeave ? "Submitting..." : "Apply for Leave"}
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowLeaveModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingLeave}
+                  className="btn-primary"
+                >
+                  {submittingLeave ? "Submitting..." : "Submit Application"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
