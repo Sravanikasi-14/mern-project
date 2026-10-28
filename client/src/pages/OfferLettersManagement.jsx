@@ -1649,11 +1649,11 @@ export default function OfferLettersManagement() {
                         }}
                       />
                     ) : (
-                      <div style={{ textAlign: "center", padding: "100px 20px", color: "#a1a1aa" }}>
+                      <div style={{ textAlign: "center", padding: "32px 20px", color: "#a1a1aa" }}>
                         <div style={{ marginBottom: "8px", display: "flex", justifyContent: "center" }}>
                           <IconClock size={32} />
                         </div>
-                        <div>Generating live offer document preview...</div>
+                        <div>Generating preview…</div>
                       </div>
                     )}
                   </div>
@@ -1820,7 +1820,7 @@ export default function OfferLettersManagement() {
                 overflow: "hidden",
               }}>
                 {previewModalLoading ? (
-                  <div style={{ textAlign: "center", padding: "100px", color: "#71717a" }}>Loading document...</div>
+                  <div style={{ textAlign: "center", padding: "32px", color: "#71717a" }}>Loading document…</div>
                 ) : (
                   <iframe
                     srcDoc={previewModalOffer.content || "<p>No content rendered</p>"}

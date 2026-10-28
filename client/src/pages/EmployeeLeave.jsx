@@ -318,7 +318,7 @@ export default function EmployeeLeave() {
   return (
     <div className="lm-container">
       <AppHeader
-        title="Leave Requests"
+        title="Leave"
         actions={
           <button
             type="button"

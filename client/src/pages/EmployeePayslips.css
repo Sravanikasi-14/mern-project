@@ -5,8 +5,9 @@
    ========================================================================== */
 
 .employee-payslips-container {
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  width: 100%;
+  margin: 0;
   box-sizing: border-box;
 }
 

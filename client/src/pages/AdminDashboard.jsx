@@ -227,20 +227,7 @@ export default function AdminDashboard() {
         })),
         recentOffers: [],
         upcomingHolidays: [],
-        salaryExpenses: [
-          { month: "Jan", amount: 0 },
-          { month: "Feb", amount: 0 },
-          { month: "Mar", amount: 0 },
-          { month: "Apr", amount: 0 },
-          { month: "May", amount: 0 },
-          { month: "Jun", amount: 0 },
-          { month: "Jul", amount: 0 },
-          { month: "Aug", amount: 0 },
-          { month: "Sep", amount: 0 },
-          { month: "Oct", amount: 0 },
-          { month: "Nov", amount: 0 },
-          { month: "Dec", amount: 0 },
-        ],
+        salaryExpenses: [],
         companyAssets: {
           totalEmployees: totalEmp,
           employeesWithAssets: Math.round(totalEmp * 0.75),
@@ -356,10 +343,17 @@ export default function AdminDashboard() {
     });
   }, [data?.attendanceCalendar?.days, totalEmployees]);
 
-  // Max expense amount for normalization in salary trend bars
+  const payrollHistoryBars = useMemo(
+    () => salaryExpenses.filter((s) => Number(s.amount || 0) > 0 && s.hasCycle !== false),
+    [salaryExpenses]
+  );
+
   const maxExpense = useMemo(() => {
-    return Math.max(1, ...salaryExpenses.map((s) => Number(s.amount || 0)));
-  }, [salaryExpenses]);
+    if (payrollHistoryBars.length === 0) return 1;
+    return Math.max(1, ...payrollHistoryBars.map((s) => Number(s.amount || 0)));
+  }, [payrollHistoryBars]);
+
+  const hasSalaryHistory = payrollHistoryBars.length > 0;
 
   return (
     <div className="board-container admin-dashboard-page">
@@ -463,7 +457,7 @@ export default function AdminDashboard() {
             ROW 1: WORKFORCE OVERVIEW (4 COMPACT KPI CARDS, SPAN 3 EACH)
             ==================================================================== */}
         {/* Card 1: Total Workforce (Hero Deep Green Gradient) */}
-        <Link to="/admin" className="card stat stat--hero" style={{ gridColumn: "span 3" }}>
+        <Link to="/admin" className="card stat stat--hero stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title">Total Workforce</h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -473,12 +467,11 @@ export default function AdminDashboard() {
           <p className="stat__num">{totalEmployees}</p>
           <p className="stat__note">
             <span className="trend-badge is-green">Active</span>
-            <span>On company payroll</span>
           </p>
         </Link>
 
         {/* Card 2: Present Today */}
-        <Link to="/admin/attendance?filter=PRESENT" className="card stat" style={{ gridColumn: "span 3" }}>
+        <Link to="/admin/attendance?filter=PRESENT" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title">Present Today</h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -488,12 +481,12 @@ export default function AdminDashboard() {
           <p className="stat__num">{summary.todayPresent ?? 0}</p>
           <p className="stat__note">
             <span className="trend-badge is-green">{attendanceRate}%</span>
-            <span>Active presence rate</span>
+            <span>present</span>
           </p>
         </Link>
 
         {/* Card 3: Absent / Late / On Leave */}
-        <Link to="/admin/leave" className="card stat" style={{ gridColumn: "span 3" }}>
+        <Link to="/admin/leave" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title">On Leave & Exceptions</h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -507,7 +500,7 @@ export default function AdminDashboard() {
         </Link>
 
         {/* Card 4: Pending HR Actions */}
-        <Link to="/admin/leave?status=PENDING" className="card stat" style={{ gridColumn: "span 3" }}>
+        <Link to="/admin/leave?status=PENDING" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title">Pending HR Actions</h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -517,7 +510,6 @@ export default function AdminDashboard() {
           <p className="stat__num">{totalPendingActions}</p>
           <p className="stat__note">
             <span className="trend-badge is-amber">Review</span>
-            <span>Awaiting authorization</span>
           </p>
         </Link>
 
@@ -526,13 +518,14 @@ export default function AdminDashboard() {
             - Left (Span 8): Attendance & Work Hours Analytics (Capsule Bar Chart)
             - Right (Span 4): Pending HR Actions List
             ==================================================================== */}
+        <div className="dash-stack dash-stack--primary">
         <section className="card analytics-card">
           <div className="card__head">
             <div>
               <h2 className="card__title">Attendance Trends</h2>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="analytics-toolbar">
               <div className="seg-control" role="tablist" aria-label="Select date range">
                 <button
                   type="button"
@@ -627,12 +620,93 @@ export default function AdminDashboard() {
 
             <div className="shift-status-pill">
               <span className="pulse-dot" />
-              <span>{hoveredDay ? `Viewing ${hoveredDay.date || "Day"}` : `Shift active · Office starts ${meta.officeStartTime || "09:30 AM"}`}</span>
+              <span>{hoveredDay ? hoveredDay.date : `Starts ${meta.officeStartTime || "09:30 AM"}`}</span>
             </div>
           </div>
         </section>
 
-        {/* Action Center (Span 4) */}
+        <section className="card recruitment-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Offer Letters</h2>
+            </div>
+            <div className="analytics-toolbar">
+              <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% accepted</span>
+              <Link to="/admin/offers" className="card-shortcut-link">
+                <span>View</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
+
+          <div className="funnel-process-row">
+            <Link to="/admin/offers" className="funnel-stage-tile" title="View all generated offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-dark" />
+                <span className="stage-name">Offers Generated</span>
+              </div>
+              <span className="stage-number">{funnel.offersGenerated || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
+              </div>
+            </Link>
+
+            <Link to="/admin/offers?status=SENT" className="funnel-stage-tile" title="View pending candidate offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-amber" />
+                <span className="stage-name">Pending Review</span>
+              </div>
+              <span className="stage-number">{funnel.pending || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
+              </div>
+            </Link>
+
+            <Link to="/admin/offers?status=ACCEPTED" className="funnel-stage-tile" title="View accepted offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-green" />
+                <span className="stage-name">Accepted</span>
+              </div>
+              <span className="stage-number">{funnel.accepted || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
+              </div>
+            </Link>
+
+            <Link to="/admin/offers?status=REJECTED" className="funnel-stage-tile" title="View declined offers">
+              <div className="stage-top">
+                <span className="stage-dot dot-rose" />
+                <span className="stage-name">Declined</span>
+              </div>
+              <span className="stage-number">{funnel.declined || 0}</span>
+              <div className="stage-meter">
+                <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
+              </div>
+            </Link>
+          </div>
+        </section>
+
+        <section className="card dash-workforce-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Workforce Allocation</h2>
+            </div>
+            <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
+              <span>Directory</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+          <WorkforceAllocation
+            hideTitle
+            compact
+            loading={loading}
+            total={totalEmployees}
+            departments={Array.isArray(data?.workforce?.departments) ? data.workforce.departments : []}
+          />
+        </section>
+        </div>
+
+        <div className="dash-stack dash-stack--secondary">
         <section className="card pending-actions-card">
           <div className="card__head">
             <div>
@@ -650,7 +724,7 @@ export default function AdminDashboard() {
               <div className="task-details">
                 <p className="task-title">Leave Approvals ({pendingLeaves.length})</p>
                 <p className="task-desc">
-                  {pendingLeaves.length > 0 ? `${pendingLeaves.length} employee request(s) awaiting review` : "All leave requests up to date"}
+                  {pendingLeaves.length > 0 ? `${pendingLeaves.length} waiting` : "None pending"}
                 </p>
               </div>
               <span className={`task-action-pill ${pendingLeaves.length > 0 ? "is-urgent" : ""}`}>Review</span>
@@ -663,7 +737,7 @@ export default function AdminDashboard() {
               </div>
               <div className="task-details">
                 <p className="task-title">Candidate Offers ({pendingOffersCount})</p>
-                <p className="task-desc">{pendingOffersCount > 0 ? `${pendingOffersCount} candidate offer(s) awaiting response` : "All issued offers tracked"}</p>
+                <p className="task-desc">{pendingOffersCount > 0 ? `${pendingOffersCount} awaiting response` : "None waiting"}</p>
               </div>
               <span className="task-action-pill">Track</span>
             </Link>
@@ -674,8 +748,8 @@ export default function AdminDashboard() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
               </div>
               <div className="task-details">
-                <p className="task-title">Onboarding Pipeline</p>
-                <p className="task-desc">Employee profile & credentials verification</p>
+                <p className="task-title">Onboarding</p>
+                <p className="task-desc">Profile and credential checks</p>
               </div>
               <span className="task-action-pill">Verify</span>
             </Link>
@@ -686,93 +760,22 @@ export default function AdminDashboard() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="7" cy="15" r="1.5"/></svg>
               </div>
               <div className="task-details">
-                <p className="task-title">Payroll Status ({payrollCycle.statusLabel || "Draft"})</p>
-                <p className="task-desc">{payrollCycle.pendingAction || "Review monthly compensation register"}</p>
+                <p className="task-title">Payroll ({payrollCycle.statusLabel || "Draft"})</p>
+                <p className="task-desc">{payrollCycle.pendingAction || "Open this month’s register"}</p>
               </div>
               <span className="task-action-pill">Process</span>
             </Link>
           </div>
         </section>
 
-        {/* ====================================================================
-            ROW 3: ASYMMETRIC 7 / 5 SPLIT
-            - Left (Span 7): Recruitment & Offer Letters Process Funnel
-            - Right (Span 5): Payroll & Compensation Health
-            ==================================================================== */}
-        <section className="card recruitment-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Offer Letters</h2>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% Conversion</span>
-              <Link to="/admin/offers" className="card-shortcut-link">
-                <span>Offer Letters</span>
-                <span aria-hidden="true">→</span>
-              </Link>
-            </div>
-          </div>
-
-          <div className="funnel-process-row">
-            {/* Stage 1: Generated */}
-            <Link to="/admin/offers" className="funnel-stage-tile" title="View all generated offers">
-              <div className="stage-top">
-                <span className="stage-dot dot-dark" />
-                <span className="stage-name">Offers Generated</span>
-              </div>
-              <span className="stage-number">{funnel.offersGenerated || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
-              </div>
-            </Link>
-
-            {/* Stage 2: Pending */}
-            <Link to="/admin/offers?status=SENT" className="funnel-stage-tile" title="View pending candidate offers">
-              <div className="stage-top">
-                <span className="stage-dot dot-amber" />
-                <span className="stage-name">Pending Review</span>
-              </div>
-              <span className="stage-number">{funnel.pending || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
-              </div>
-            </Link>
-
-            {/* Stage 3: Accepted */}
-            <Link to="/admin/offers?status=ACCEPTED" className="funnel-stage-tile" title="View accepted offers">
-              <div className="stage-top">
-                <span className="stage-dot dot-green" />
-                <span className="stage-name">Accepted</span>
-              </div>
-              <span className="stage-number">{funnel.accepted || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
-              </div>
-            </Link>
-
-            {/* Stage 4: Declined */}
-            <Link to="/admin/offers?status=REJECTED" className="funnel-stage-tile" title="View declined offers">
-              <div className="stage-top">
-                <span className="stage-dot dot-rose" />
-                <span className="stage-name">Declined</span>
-              </div>
-              <span className="stage-number">{funnel.declined || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
-              </div>
-            </Link>
-          </div>
-        </section>
-
-        {/* Payroll & Compensation Health (Span 5) */}
         <section className="card payroll-card">
           <div className="card__head">
             <div>
               <h2 className="card__title">Payroll</h2>
-              <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear} Cycle</p>
+              <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear}</p>
             </div>
             <Link to="/admin/payroll" className="card-shortcut-link">
-              <span>Payroll</span>
+              <span>Open</span>
               <span aria-hidden="true">→</span>
             </Link>
           </div>
@@ -791,45 +794,29 @@ export default function AdminDashboard() {
             </span>
           </div>
 
-          {/* 12-Month Expense Trend Mini Bars */}
-          <div className="expense-mini-bars" aria-label="12-month salary expense history">
-            {salaryExpenses.map((exp, idx) => {
-              const val = Number(exp.amount || 0);
-              const heightPct = Math.max(10, Math.min(100, Math.round((val / maxExpense) * 100)));
-              return (
-                <div key={`${exp.month}-${idx}`} className="expense-bar-col" title={`${exp.month}: ${formatShortCurrency(val, currencySym)}`}>
-                  <div className="expense-bar-fill" style={{ height: `${heightPct}%` }} />
-                  <span className="expense-bar-month">{exp.month?.[0]}</span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ====================================================================
-            ROW 4: ASYMMETRIC 7 / 5 SPLIT
-            - Left (Span 7): Recent Workforce Activity
-            - Right (Span 5): Resources & Staffing Allocation (Combined Assets & Teams)
-            ==================================================================== */}
-        <section className="card dash-workforce-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Workforce Allocation</h2>
-              <p className="card__sub">Headcount by department</p>
+          {hasSalaryHistory ? (
+            <div className="expense-mini-bars" role="img" aria-label="Processed payroll totals by month">
+              {payrollHistoryBars.map((exp, idx) => {
+                const val = Number(exp.amount || 0);
+                const heightPct = Math.max(12, Math.min(100, Math.round((val / maxExpense) * 100)));
+                return (
+                  <div
+                    key={`${exp.month}-${idx}`}
+                    className="expense-bar-col"
+                    title={`${exp.month}: ${formatShortCurrency(val, currencySym)}`}
+                    aria-label={`${exp.month} ${formatShortCurrency(val, currencySym)}`}
+                  >
+                    <div className="expense-bar-fill" style={{ height: `${heightPct}%` }} />
+                    <span className="expense-bar-month">{exp.month}</span>
+                  </div>
+                );
+              })}
             </div>
-            <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
-              <span>Directory</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-          </div>
-          <WorkforceAllocation
-            hideTitle
-            compact
-            loading={loading}
-            total={totalEmployees}
-            departments={Array.isArray(data?.workforce?.departments) ? data.workforce.departments : []}
-          />
+          ) : (
+            <p className="payroll-history-empty">No processed payroll history for {selectedYear}.</p>
+          )}
         </section>
+        </div>
 
         <section className="card team-activity-card">
           <div className="card__head">
@@ -844,7 +831,7 @@ export default function AdminDashboard() {
 
           <div className="activity-list">
             {recentLeaves.length === 0 ? (
-              <p style={{ color: "var(--muted)", fontSize: "13px", margin: "14px 0" }}>
+              <p className="activity-empty">
                 No recent activity recorded for this period.
               </p>
             ) : (
@@ -886,11 +873,11 @@ export default function AdminDashboard() {
         </section>
 
         {/* ====================================================================
-            ROW 5: UPCOMING HOLIDAYS FOOTER STRIP (SPAN 12 FULL WIDTH)
+            Holidays footer strip
             ==================================================================== */}
         <section className="card holidays-strip-card">
           <div className="card__head" style={{ marginBottom: 8 }}>
-            <h3 className="card__title" style={{ fontSize: "15px" }}>Upcoming Company Holidays & Observances</h3>
+            <h3 className="card__title" style={{ fontSize: "15px" }}>Holidays</h3>
             <Link to="/admin/policies" className="card-shortcut-link">
               <span>Policy Calendar</span>
               <span aria-hidden="true">→</span>
@@ -900,7 +887,7 @@ export default function AdminDashboard() {
           <div className="holidays-strip-row" role="list" aria-label="Upcoming holidays list">
             {upcomingHolidays.length === 0 ? (
               <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
-                No scheduled holidays remaining this month.
+                None remaining this month.
               </span>
             ) : (
               upcomingHolidays.map((h, idx) => (

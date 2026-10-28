@@ -277,7 +277,7 @@ export default function AdminImpactPoints() {
           onClick={toggleRecognizePanel}
           style={{ whiteSpace: "nowrap" }}
         >
-          {sidePanelMode === "recognize" ? "Cancel Recognition" : "+ Recognize Employee"}
+          {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
         </button>
       </AppHeader>
 

@@ -27,10 +27,9 @@ export default function Login() {
 
   if (loading) {
     return (
-      <main className="container" style={{ textAlign: "center", padding: "48px 24px" }}>
-        <div className="spinner" style={{ margin: "0 auto 16px" }} />
-        <h2 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>Signing in</h2>
-        <p className="subtitle">Verifying your session...</p>
+      <main className="container" style={{ textAlign: "center", padding: "32px 24px" }}>
+        <div className="spinner" style={{ margin: "0 auto 12px" }} />
+        <h2 style={{ margin: 0, fontSize: 16, color: "#09090b" }}>Signing in</h2>
       </main>
     );
   }
@@ -111,7 +110,6 @@ export default function Login() {
   return (
     <main className="container">
       <h1>Sign in</h1>
-      <p className="subtitle">Sign in to your account.</p>
 
       {warning && (
         <div role="status" className="warning-alert">

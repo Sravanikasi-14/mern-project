@@ -23,20 +23,17 @@ export default function ProtectedRoute({ children, roles }) {
           style={{
             textAlign: "center",
             maxWidth: 380,
-            padding: 32,
+            padding: 24,
             background: "#ffffff",
             borderRadius: 12,
             border: "1px solid #e4e4e7",
             boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
           }}
         >
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 700, color: "#09090b" }}>
-            Restoring Session
+          <div className="spinner" style={{ margin: "0 auto 12px" }} />
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#09090b" }}>
+            Signing in
           </h2>
-          <p style={{ margin: 0, fontSize: 13, color: "#71717a" }}>
-            Verifying your authentication credentials securely...
-          </p>
         </div>
       </div>
     );

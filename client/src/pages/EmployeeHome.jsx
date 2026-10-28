@@ -279,7 +279,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
       <div className="epv-container">
         <div className="profile-loading-box">
           <div className="profile-spinner" style={{ margin: "0 auto 16px" }} aria-hidden="true" />
-          <p style={{ color: "var(--muted)", fontSize: "14px" }}>Loading your employee profile...</p>
+          <p style={{ color: "var(--muted)", fontSize: "14px" }}>Loading profile…</p>
         </div>
       </div>
     );

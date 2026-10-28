@@ -331,10 +331,10 @@ export default function CandidateOnboardingPage() {
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "32px 16px" }}>
       <div style={{ maxWidth: "860px", margin: "0 auto" }}>
         {/* Header Banner */}
-        <div style={{ background: "#ffffff", padding: "24px 32px", borderRadius: "12px", border: "1px solid #e2e8f0", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div style={{ background: "#ffffff", padding: "16px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <span style={{ fontSize: "11px", fontWeight: "700", letterSpacing: "0.5px", color: "#2563eb", textTransform: "uppercase" }}>Employee Onboarding Portal</span>
-            <h1 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", margin: "4px 0 0" }}>{company?.name || "Company"}</h1>
+            <h1 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", margin: 0 }}>Onboarding</h1>
+            <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>{company?.name || "Company"}</p>
           </div>
 
           <div>

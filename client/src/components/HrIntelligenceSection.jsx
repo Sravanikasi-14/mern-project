@@ -178,9 +178,9 @@ export default function HrIntelligenceSection() {
             </svg>
           </div>
           <div>
-            <h3 className="hr-intelligence-empty-title">All Systems Clear</h3>
+            <h3 className="hr-intelligence-empty-title">No issues</h3>
             <p className="hr-intelligence-empty-desc">
-              No pending operational bottlenecks or data anomalies detected. All employee profiles, tasks, leaves, and payroll records are currently up to date.
+              Profiles, tasks, leave, and payroll look up to date.
             </p>
           </div>
         </div>

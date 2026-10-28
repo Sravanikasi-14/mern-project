@@ -415,12 +415,12 @@ export default function EmployeeDashboard() {
               }}
             >
               {todayStatus === "CHECKED_IN"
-                ? "● Shift Active"
+                ? "Shift active"
                 : todayStatus === "CHECKED_OUT"
-                ? "✓ Shift Completed"
+                ? "Shift completed"
                 : todayStatus === "ON_LEAVE"
-                ? "✈ On Leave"
-                : "○ Not Clocked In"}
+                ? "On leave"
+                : "Not clocked in"}
             </span>
           </div>
         </div>
@@ -482,9 +482,9 @@ export default function EmployeeDashboard() {
 
       {/* Loading Skeleton / State */}
       {loading && !dashboardData && (
-        <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "var(--muted)", fontSize: 14 }}>Loading your employee workspace...</p>
+        <div className="page-loading">
+          <div className="spinner" style={{ margin: "0 auto 12px" }} />
+          <p style={{ margin: 0 }}>Loading dashboard…</p>
         </div>
       )}
 
@@ -513,7 +513,7 @@ export default function EmployeeDashboard() {
                     <h2 className="emp-card__title">Attendance</h2>
                   </div>
                   <Link to="/app/attendance" className="emp-card__link">
-                    <span>Attendance Log</span>
+                    <span>View</span>
                     <span aria-hidden="true">→</span>
                   </Link>
                 </div>
@@ -548,12 +548,12 @@ export default function EmployeeDashboard() {
                           }}
                         />
                         {todayStatus === "CHECKED_IN"
-                          ? "Currently Checked In"
+                          ? "Checked in"
                           : todayStatus === "CHECKED_OUT"
-                          ? "Shift Completed"
+                          ? "Shift completed"
                           : todayStatus === "ON_LEAVE"
-                          ? "On Approved Leave"
-                          : "Not Checked In Today"}
+                          ? "On leave"
+                          : "Not checked in"}
                       </span>
 
                       <div className="emp-att-time-info">
@@ -564,10 +564,10 @@ export default function EmployeeDashboard() {
                           <span>In: <strong>{checkInTimeFormatted}</strong> · Out: <strong>{checkOutTimeFormatted}</strong></span>
                         )}
                         {todayStatus === "NOT_CHECKED_IN" && (
-                          <span>Ready to start work today</span>
+                          <span>Punch in to start your shift</span>
                         )}
                         {todayStatus === "ON_LEAVE" && (
-                          <span>Enjoy your approved time off</span>
+                          <span>Approved leave today</span>
                         )}
                       </div>
                     </div>
@@ -626,7 +626,7 @@ export default function EmployeeDashboard() {
                     <h2 className="emp-card__title">Leave Balances</h2>
                   </div>
                   <Link to="/app/leave" className="emp-card__link">
-                    <span>Leave Requests</span>
+                    <span>View</span>
                     <span aria-hidden="true">→</span>
                   </Link>
                 </div>
@@ -653,7 +653,7 @@ export default function EmployeeDashboard() {
                   <div style={{ marginTop: 10 }}>
                     <span className="emp-leave-pending-badge">
                       <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#b45309" }} />
-                      {leave.summary.pending} request(s) awaiting review
+                      {leave.summary.pending} pending
                     </span>
                   </div>
                 )}
@@ -711,7 +711,7 @@ export default function EmployeeDashboard() {
                     </span>
                   </div>
                 ) : (
-                  <p className="emp-empty-subtext">No finalized payslip records on file yet.</p>
+                  <p className="emp-empty-subtext">No payslip yet.</p>
                 )}
               </div>
 
@@ -733,7 +733,7 @@ export default function EmployeeDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="emp-empty-subtext">No company hardware currently assigned to your account.</p>
+                  <p className="emp-empty-subtext">None assigned.</p>
                 )}
               </div>
             </div>
@@ -814,7 +814,7 @@ export default function EmployeeDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="emp-empty-subtext">No upcoming company holidays scheduled this quarter.</p>
+                  <p className="emp-empty-subtext">None this quarter.</p>
                 )}
               </div>
 

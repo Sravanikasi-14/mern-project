@@ -368,6 +368,7 @@ export default function AdminWorkManagement() {
       activeTasks: list.filter((t) => t.status !== "APPROVED" && t.status !== "REJECTED").length,
       completedTasks: list.filter((t) => isCompletedToday(t, timeZone)).length,
       overdueTasks: overdueCount,
+      reviewQueueCount: list.filter((t) => t.status === "SUBMITTED" || t.status === "CHANGES_REQUESTED").length,
       activeProjects: Math.max(activeProjects.size, 1),
     };
   }, [tasks, timeZone]);
@@ -566,7 +567,7 @@ export default function AdminWorkManagement() {
                   className={`wm-tab-btn ${activeTab === TASK_TABS.REVIEW_QUEUE ? "active" : ""}`}
                 >
                   <span>Review Queue</span>
-                  {metrics.overdueTasks > 0 && (
+                  {metrics.reviewQueueCount > 0 && (
                     <span
                       style={{
                         padding: "1px 5px",
@@ -577,7 +578,7 @@ export default function AdminWorkManagement() {
                         fontWeight: 700,
                       }}
                     >
-                      {metrics.overdueTasks}
+                      {metrics.reviewQueueCount}
                     </span>
                   )}
                 </button>
@@ -676,9 +677,8 @@ export default function AdminWorkManagement() {
                   <line x1="8" y1="2" x2="8" y2="6" />
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
-                Weekly Delivery Schedule
+                This week
               </h4>
-              <span style={{ fontSize: 11, color: "#64748b" }}>This week's milestones</span>
             </div>
 
             <div className="wm-timeline-days-grid">
@@ -757,7 +757,7 @@ export default function AdminWorkManagement() {
                           }}
                         >
                           {col.id === "APPROVED"
-                            ? "No tasks completed today. Older completions remain in List view."
+                            ? "None today"
                             : "Drop here"}
                         </div>
                       ) : (

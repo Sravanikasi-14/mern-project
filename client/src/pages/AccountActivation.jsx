@@ -89,8 +89,8 @@ export default function AccountActivation() {
     return (
       <main className="container" style={{ textAlign: "center", padding: "64px 24px" }}>
         <div className="spinner" style={{ margin: "0 auto 16px" }} />
-        <h2 style={{ margin: "0 0 6px", fontSize: 18, color: "#09090b" }}>Verifying Activation Link</h2>
-        <p className="subtitle">Please wait while we check your account details...</p>
+        <h2 style={{ margin: "0 0 6px", fontSize: 18, color: "#09090b" }}>Verifying link</h2>
+        <p className="subtitle">Checking your account…</p>
       </main>
     );
   }

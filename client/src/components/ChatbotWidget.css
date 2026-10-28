@@ -5,11 +5,16 @@
 
 .hrms-chatbot-container {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: 16px;
+  right: 16px;
   z-index: 1050;
   font-family: inherit;
   transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.hrms-chatbot-container > * {
+  pointer-events: auto;
 }
 
 .hrms-chatbot-container.is-dragging {
@@ -20,12 +25,15 @@
 .hrms-chatbot-launcher {
   display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  gap: 0;
   background: linear-gradient(135deg, #1d7347, #0d3a23);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 9999px;
-  padding: 10px 16px 10px 12px;
+  border-radius: 50%;
+  padding: 0;
   font-size: 13.5px;
   font-weight: 600;
   cursor: grab;
@@ -49,12 +57,7 @@
 }
 
 .hrms-chatbot-drag-grip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.65);
-  cursor: grab;
-  padding-right: 2px;
+  display: none;
 }
 
 .hrms-chatbot-launcher.dragging .hrms-chatbot-drag-grip {
@@ -71,9 +74,10 @@
 /* Chat Window Modal / Drawer */
 .hrms-chatbot-window {
   position: absolute;
-  width: 380px;
-  height: 520px;
+  width: min(380px, calc(100vw - 24px));
+  height: min(520px, calc(100dvh - 100px));
   max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
@@ -497,13 +501,13 @@
 /* Mobile Responsiveness */
 @media (max-width: 640px) {
   .hrms-chatbot-container {
-    bottom: 16px;
-    right: 16px;
+    bottom: 12px;
+    right: 12px;
   }
 
   .hrms-chatbot-window {
-    width: calc(100vw - 32px);
-    height: calc(100vh - 90px);
+    width: min(380px, calc(100vw - 24px));
+    height: min(520px, calc(100vh - 84px));
     bottom: 56px;
     right: 0;
   }

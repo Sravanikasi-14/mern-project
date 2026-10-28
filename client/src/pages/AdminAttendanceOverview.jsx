@@ -646,24 +646,6 @@ export default function AdminAttendanceOverview() {
       </div>
       )}
 
-      {section === "overview" && (
-      <div
-        style={{
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 10,
-          padding: "16px 18px",
-          marginBottom: 16,
-        }}
-      >
-        <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 650 }}>Today at a glance</h3>
-        <p style={{ margin: 0, color: "var(--muted)", fontSize: 13 }}>
-          {summary.presentCount} present · {summary.checkedInCount} on duty · {summary.liveTrackingCount} transmitting GPS.
-          Open Records for history, or Live Tracking for the map.
-        </p>
-      </div>
-      )}
-
       {section === "records" && (
       <div
         style={{

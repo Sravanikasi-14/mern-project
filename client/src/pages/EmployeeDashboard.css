@@ -11,10 +11,10 @@
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 20px 24px 24px;
+  padding: 16px 20px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   box-shadow: none;
   min-width: 0;
   box-sizing: border-box;
@@ -29,7 +29,7 @@
   justify-content: space-between;
   align-items: flex-end;
   flex-wrap: wrap;
-  gap: 16px 24px;
+  gap: 10px 16px;
 }
 
 .emp-head__title-group {
@@ -39,11 +39,11 @@
 }
 
 .emp-head__title {
-  letter-spacing: -0.035em;
-  font-size: clamp(26px, 2.4vw, 34px);
+  letter-spacing: -0.02em;
+  font-size: var(--fs-page, 22px);
   font-weight: 700;
   color: var(--ink, #131a15);
-  line-height: 1.15;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -148,14 +148,14 @@
 .emp-combined-ops-grid {
   display: grid;
   grid-template-columns: 7fr 5fr;
-  gap: 24px;
+  gap: var(--gap, 14px);
   align-items: start;
 }
 
 .emp-ops-attendance-col {
   display: flex;
   flex-direction: column;
-  padding-right: 24px;
+  padding-right: var(--gap, 14px);
   border-right: 1px solid var(--hair, #e3e7e4);
 }
 
@@ -311,7 +311,7 @@
 
 .emp-schedule-holidays-col {
   flex: 1;
-  min-width: 280px;
+  min-width: 0;
 }
 
 .emp-schedule-links-col {
@@ -360,9 +360,9 @@
 .emp-card {
   background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 20px);
+  border-radius: var(--r-md, 12px);
   box-shadow: var(--shadow);
-  padding: 22px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -375,12 +375,12 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .emp-card__title {
   letter-spacing: -0.02em;
-  font-size: 17px;
+  font-size: var(--fs-section, 16px);
   font-weight: 600;
   color: var(--ink, #131a15);
   margin: 0;
@@ -950,6 +950,18 @@
   .emp-card {
     grid-column: span 1 !important;
   }
+
+  .emp-combined-ops-grid {
+    grid-template-columns: 1fr;
+    gap: var(--gap, 14px);
+  }
+
+  .emp-ops-attendance-col {
+    padding-right: 0;
+    border-right: none;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--hair, #e3e7e4);
+  }
 }
 
 @media (max-width: 640px) {
@@ -963,6 +975,10 @@
   }
 
   .emp-leave-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .emp-dual-subsections {
     grid-template-columns: 1fr;
   }
 }

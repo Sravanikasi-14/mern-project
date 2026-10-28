@@ -608,7 +608,7 @@ export default function EmployeeTasks() {
                   type="text"
                   className="wm-input-search"
                   style={{ height: 30, fontSize: 12, paddingLeft: 28 }}
-                  placeholder="Search my deliverables..."
+                  placeholder="Search tasks..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -639,7 +639,7 @@ export default function EmployeeTasks() {
                   <line x1="8" y1="2" x2="8" y2="6" />
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
-                Schedule & Milestones
+                This week
               </h4>
             </div>
 
@@ -719,7 +719,7 @@ export default function EmployeeTasks() {
                           }}
                         >
                           {col.id === "APPROVED"
-                            ? "No tasks completed today. Older completions remain in List view."
+                            ? "None today"
                             : "No tasks in this stage"}
                         </div>
                       ) : (
@@ -861,7 +861,7 @@ export default function EmployeeTasks() {
                         <td colSpan={6}>
                           <div className="wm-empty-state">
                             <h4 className="wm-empty-title">No tasks found</h4>
-                            <p className="wm-empty-desc">You are all caught up on deliverables!</p>
+                            <p className="wm-empty-desc">No matching tasks.</p>
                           </div>
                         </td>
                       </tr>

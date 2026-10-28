@@ -182,7 +182,7 @@ export default function EmployeeImpactPoints() {
             onClick={() => setSidePanelMode(sidePanelMode === "recognize" ? "none" : "recognize")}
             style={{ whiteSpace: "nowrap" }}
           >
-            {sidePanelMode === "recognize" ? "Cancel Recognition" : "+ Recognize Colleague"}
+            {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
           </button>
         )}
       </AppHeader>
@@ -354,10 +354,8 @@ export default function EmployeeImpactPoints() {
                             <div className="wm-empty-icon">
                               <IconInfo size={22} />
                             </div>
-                            <div className="wm-empty-title">No Activity Recorded Yet</div>
-                            <p className="wm-empty-desc">
-                              Complete assigned tasks or collaborate with colleagues to earn verified Impact Points.
-                            </p>
+                            <div className="wm-empty-title">No activity yet</div>
+                            <p className="wm-empty-desc">Points appear here after approved work or recognition.</p>
                           </div>
                         </td>
                       </tr>
@@ -510,54 +508,9 @@ export default function EmployeeImpactPoints() {
             )}
           </div>
 
-          {/* Earning Guide Card */}
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 12,
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
-              padding: "20px 24px",
-            }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>
-              How to Earn Impact Points
-            </div>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px", lineHeight: 1.5 }}>
-              Impact Points acknowledge measurable contributions and teamwork across the company. Points are awarded through verified workflows:
-            </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-              <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-                  1. On-Time Task Delivery
-                </div>
-                <div style={{ color: "#64748b", lineHeight: 1.4 }}>
-                  Complete assigned initiatives with verifiable deliverables before deadline (+10 pts standard).
-                </div>
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-                  2. Priority Milestone Bonus
-                </div>
-                <div style={{ color: "#64748b", lineHeight: 1.4 }}>
-                  High-priority or critical initiatives qualify for accelerated point allocations (+20 pts).
-                </div>
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: 14, borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-                  3. Colleague Recognition
-                </div>
-                <div style={{ color: "#64748b", lineHeight: 1.4 }}>
-                  Discretionary recognition granted by managers for cross-functional support and assistance.
-                </div>
-              </div>
-            </div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 14, borderTop: "1px solid #f1f5f9", paddingTop: 10 }}>
-              Impact Points reflect workplace recognition within the HRMS rewards system and do not determine formal appraisals.
-            </div>
-          </div>
+          <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 0" }}>
+            Points come from approved tasks and recognition. They do not determine appraisals.
+          </p>
         </div>
 
         {/* Right Column: Persistent In-Layout Recognition Panel (For managers recognizing direct reports) */}

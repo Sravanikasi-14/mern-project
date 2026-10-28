@@ -6,9 +6,9 @@
 
 /* Page Background & Shell */
 .attendance-page-container {
-  padding: 20px 24px 40px;
-  max-width: 1440px;
-  margin: 0 auto;
+  padding: 16px 20px 20px;
+  max-width: none;
+  margin: 0;
   box-sizing: border-box;
 }
 
@@ -17,7 +17,7 @@
    ========================================================================== */
 .att-summary-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -206,6 +206,9 @@
   padding: 7px 12px;
   font-size: 13px;
   color: var(--ink, #131a15);
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
 }
 
 .att-search-box input {
@@ -214,7 +217,9 @@
   outline: none;
   font-size: 13px;
   color: inherit;
-  width: 170px;
+  width: 100%;
+  min-width: 0;
+  max-width: 280px;
 }
 
 .att-search-box input::placeholder {

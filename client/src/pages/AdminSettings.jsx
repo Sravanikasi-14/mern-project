@@ -21,12 +21,12 @@ import {
 import api from "../services/api";
 
 const SETTINGS_TABS = [
-  { id: "profile", label: "My Profile", icon: IconUser, badge: null },
-  { id: "security", label: "Account & Security", icon: IconShield, badge: null },
-  { id: "preferences", label: "My Preferences", icon: IconSettings, badge: null },
-  { id: "company", label: "Workspace Settings", icon: IconBriefcase, badge: null },
-  { id: "email", label: "Email & SMTP", icon: IconMail, badge: null },
-  { id: "audit", label: "Audit Log", icon: IconClipboardList, badge: null },
+  { id: "profile", label: "Profile", icon: IconUser, badge: null },
+  { id: "security", label: "Security", icon: IconShield, badge: null },
+  { id: "preferences", label: "Preferences", icon: IconSettings, badge: null },
+  { id: "company", label: "Workspace", icon: IconBriefcase, badge: null },
+  { id: "email", label: "Email", icon: IconMail, badge: null },
+  { id: "audit", label: "Audit", icon: IconClipboardList, badge: null },
 ];
 
 export default function AdminSettings() {
@@ -536,10 +536,8 @@ export default function AdminSettings() {
           {/* ============================================================== */}
           {activeTab === "profile" && (
             <div>
-              <div style={{ marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--hair, #e6ede8)" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                  My Profile
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Profile</h2>
               </div>
 
               <form onSubmit={handleSaveProfile}>
@@ -668,10 +666,8 @@ export default function AdminSettings() {
           {/* ============================================================== */}
           {activeTab === "security" && (
             <div>
-              <div style={{ marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--hair, #e6ede8)" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                  Account & Security
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Security</h2>
               </div>
 
               {/* Change Password Section */}
@@ -818,7 +814,7 @@ export default function AdminSettings() {
               {/* Session Security Overview */}
               <div>
                 <h3 style={{ margin: "0 0 10px", fontSize: "14px", fontWeight: 700, color: "var(--ink)" }}>
-                  Workspace Security & Authentication Status
+                  Session status
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <div style={{ padding: "12px", border: "1px solid var(--hair)", borderRadius: "8px", background: "#f8faf8" }}>
@@ -866,10 +862,8 @@ export default function AdminSettings() {
           {/* ============================================================== */}
           {activeTab === "preferences" && (
             <div>
-              <div style={{ marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--hair, #e6ede8)" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                  My Preferences
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Preferences</h2>
               </div>
 
               <form onSubmit={handleSavePreferences}>
@@ -1050,10 +1044,8 @@ export default function AdminSettings() {
           {/* ============================================================== */}
           {activeTab === "company" && (
             <div>
-              <div style={{ marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--hair, #e6ede8)" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                  Workspace Settings
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Workspace</h2>
               </div>
 
               {/* Operational Policies Cross-Link Banner */}
@@ -1062,8 +1054,8 @@ export default function AdminSettings() {
                   background: "var(--g-100, #e3f2e9)",
                   border: "1px solid rgba(39, 134, 90, 0.28)",
                   borderRadius: "10px",
-                  padding: "14px 18px",
-                  marginBottom: "22px",
+                  padding: "10px 14px",
+                  marginBottom: "14px",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
@@ -1281,10 +1273,8 @@ export default function AdminSettings() {
           {/* ============================================================== */}
           {activeTab === "email" && (
             <div>
-              <div style={{ marginBottom: "20px", paddingBottom: "14px", borderBottom: "1px solid var(--hair, #e6ede8)" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                  Email Delivery & SMTP
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Email</h2>
               </div>
 
               {/* Status Header */}
@@ -1511,21 +1501,17 @@ export default function AdminSettings() {
           {activeTab === "audit" && (
             <div>
               <div
+                className="settings-panel-head"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   flexWrap: "wrap",
                   gap: "12px",
-                  marginBottom: "16px",
-                  paddingBottom: "14px",
-                  borderBottom: "1px solid var(--hair, #e6ede8)",
                 }}
               >
                 <div>
-                  <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)" }}>
-                    Audit Log
-                  </h2>
+                  <h2 className="settings-panel-title">Audit</h2>
                 </div>
 
                 <button

@@ -121,7 +121,7 @@ export default function ChatbotWidget() {
   });
 
   const clampPosition = (x, y) => {
-    const launcherWidth = launcherRef.current?.offsetWidth || 150;
+    const launcherWidth = launcherRef.current?.offsetWidth || 48;
     const launcherHeight = launcherRef.current?.offsetHeight || 48;
     const margin = 16;
     const minX = margin;
@@ -436,28 +436,16 @@ export default function ChatbotWidget() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
-          aria-label="Open HRMS AI Assistant (Draggable)"
-          title="Click to open HR Assistant · Drag to reposition anywhere"
+          aria-label="Open HR Assistant. Drag to reposition."
+          title="HR Assistant — click to open, drag to move"
           style={{ touchAction: "none" }}
         >
-          {/* Grip handle icon */}
-          <div className="hrms-chatbot-drag-grip" aria-hidden="true" title="Drag to move launcher">
-            <svg width="8" height="13" viewBox="0 0 8 14" fill="currentColor">
-              <circle cx="2" cy="2" r="1.2" />
-              <circle cx="6" cy="2" r="1.2" />
-              <circle cx="2" cy="7" r="1.2" />
-              <circle cx="6" cy="7" r="1.2" />
-              <circle cx="2" cy="12" r="1.2" />
-              <circle cx="6" cy="12" r="1.2" />
-            </svg>
-          </div>
-          <div className="hrms-chatbot-launcher-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <div className="hrms-chatbot-launcher-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               <path d="M8 9h.01M12 9h.01M16 9h.01" />
             </svg>
           </div>
-          <span>HR Assistant</span>
         </button>
       )}
 

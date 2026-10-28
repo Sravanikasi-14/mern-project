@@ -947,7 +947,7 @@ export default function AdminHome() {
                   <p>
                     {debouncedSearch || statusFilter !== "ALL"
                       ? "No employees match your search or filter criteria."
-                      : "No team members are assigned to this project yet."}
+                      : "No employees on this project yet."}
                   </p>
                   {(debouncedSearch || statusFilter !== "ALL") && (
                     <button

@@ -114,7 +114,7 @@ export default function EmployeeAssets() {
 
       {/* Loading Skeleton */}
       {loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 18, marginTop: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14, marginTop: 12 }}>
           {[1, 2, 3].map((n) => (
             <div
               key={n}

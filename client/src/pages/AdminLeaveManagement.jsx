@@ -665,7 +665,7 @@ export default function AdminLeaveManagement() {
               <p>
                 {debouncedSearch || statusFilter !== "ALL"
                   ? "No requests match your search or filter criteria."
-                  : "No leave applications have been submitted yet."}
+                  : "No leave requests yet."}
               </p>
               {(debouncedSearch || statusFilter !== "ALL") && (
                 <button
@@ -822,7 +822,7 @@ export default function AdminLeaveManagement() {
         </>
       ) : (
         /* Table Fallback View */
-        <div className="data-table-container table-wrapper-relative" style={{ marginBottom: 28 }}>
+        <div className="data-table-container table-wrapper-relative">
           <table className="data-table">
             <thead>
               <tr>

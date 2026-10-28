@@ -254,9 +254,9 @@ export default function EmployeePayslips() {
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "var(--muted)", fontSize: 14 }}>Loading salary statements...</p>
+        <div className="page-loading">
+          <div className="spinner" style={{ margin: "0 auto 12px" }} />
+          <p style={{ margin: 0 }}>Loading payslips…</p>
         </div>
       )}
 

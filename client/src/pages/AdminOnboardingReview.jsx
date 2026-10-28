@@ -9,13 +9,13 @@ import api from "../services/api";
 const STATUS_BADGES = {
   SUBMITTED: { label: "Under Review", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   CHANGES_REQUESTED: { label: "Updates Requested", bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
-  APPROVED: { label: "Approved / Employee Created", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  APPROVED: { label: "Approved", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
   DRAFT: { label: "Draft in Progress", bg: "#f4f4f5", color: "#52525b", border: "#e4e4e7" },
   REJECTED: { label: "Rejected", bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
 };
 
 const FILTER_TABS = [
-  { key: "ALL", label: "All Submissions" },
+  { key: "ALL", label: "All" },
   { key: "SUBMITTED", label: "Under Review" },
   { key: "CHANGES_REQUESTED", label: "Updates Requested" },
   { key: "APPROVED", label: "Approved" },

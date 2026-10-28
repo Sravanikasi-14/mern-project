@@ -212,8 +212,8 @@ export default function Onboarding() {
       </h1>
       <p className="subtitle">
         {isEmployeeFlow
-          ? `Welcome to ${invitation?.companyName || "the organization"}! Set your password and complete your profile.`
-          : "Set up the administrator account for your company."}
+          ? `Set your password for ${invitation?.companyName || "your company"}.`
+          : "Create the administrator account for your company."}
       </p>
 
       {verifying && <p style={{ marginTop: "16px", color: "#64748b" }}>Verifying invitation...</p>}

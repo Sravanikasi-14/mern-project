@@ -24,7 +24,9 @@
 
 .app-shell {
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   background-color: var(--page, #f8faf8);
   display: flex;
   position: relative;
@@ -40,15 +42,18 @@
   flex: 1;
   min-width: 0;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  padding: 0;
+  padding: 0 0 48px;
   background-color: var(--page, #f8faf8);
   scroll-behavior: smooth;
+  scroll-padding-bottom: 48px;
 }
 
 /* ==========================================================================
@@ -62,7 +67,9 @@
   bottom: 0;
   width: var(--sb-width-expanded);
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   background-color: var(--sb-bg);
   border-right: 1px solid var(--sb-border);
   border-left: none;
@@ -72,7 +79,7 @@
   box-shadow: none;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   z-index: 40;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -398,6 +405,7 @@
   gap: 6px;
   border-top: 1px solid var(--sb-border);
   background: #ffffff;
+  margin-top: auto;
 }
 
 .sidebar-container.collapsed .sidebar-footer {
@@ -504,13 +512,17 @@
 @media (max-width: 768px) {
   .app-shell {
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .app-main-content {
+    flex: 1;
+    min-height: 0;
     height: auto;
     max-height: none;
-    overflow-y: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0 0 48px;
   }
 
   .sidebar-container {
@@ -519,6 +531,7 @@
     left: 0;
     bottom: 0;
     height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     transform: translateX(-105%);
     transition: transform 0.3s cubic-bezier(.22, 1, .36, 1);
@@ -534,9 +547,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
     border: none;
     background: #eef2ee;
     color: var(--sb-text);
@@ -557,9 +572,11 @@
   }
 
   .mobile-hamburger-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
     background: transparent;
     border: 1px solid var(--hair);
     display: flex;

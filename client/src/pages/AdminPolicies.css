@@ -40,10 +40,9 @@
 }
 
 .policies-nav-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
   color: var(--muted, #646d67);
   margin: 0;
 }
@@ -198,9 +197,9 @@
 }
 
 .policies-field-label {
-  font-size: 11.5px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: none;
   letter-spacing: 0.03em;
   color: #52525b;
   display: flex;
@@ -404,7 +403,7 @@
 /* Responsive Breakpoints */
 @media (max-width: 1024px) {
   .policies-workspace-container {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
   .policies-nav-panel {
     width: 100%;

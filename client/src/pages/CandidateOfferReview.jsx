@@ -133,7 +133,7 @@ export default function CandidateOfferReview() {
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
         <div style={{ textAlign: "center" }}>
           <div className="spinner" style={{ width: 40, height: 40, margin: "0 auto 16px" }} />
-          <p style={{ color: "#64748b", fontSize: "14px" }}>Loading your formal offer letter...</p>
+          <p style={{ color: "#64748b", fontSize: "14px" }}>Loading offer…</p>
         </div>
       </div>
     );
@@ -164,10 +164,10 @@ export default function CandidateOfferReview() {
     <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "32px 16px" }}>
       <div style={{ maxWidth: "860px", margin: "0 auto" }}>
         {/* Company Header Card */}
-        <div style={{ background: "#ffffff", padding: "24px 32px", borderRadius: "12px", border: "1px solid #e2e8f0", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div style={{ background: "#ffffff", padding: "16px 20px", borderRadius: "12px", border: "1px solid #e2e8f0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <span style={{ fontSize: "11px", fontWeight: "700", letterSpacing: "0.5px", color: "#2563eb", textTransform: "uppercase" }}>Formal Employment Offer</span>
-            <h1 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", margin: "4px 0 0" }}>{offer.company?.name || "Company"}</h1>
+            <h1 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", margin: 0 }}>Offer letter</h1>
+            <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>{offer.company?.name || "Company"}</p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>

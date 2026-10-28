@@ -10,7 +10,7 @@
   max-width: none;
   width: 100%;
   margin: 0;
-  padding: 20px 24px 28px;
+  padding: 16px 20px 20px;
   box-sizing: border-box;
   container-type: inline-size;
   container-name: epv;
@@ -565,11 +565,11 @@
 
 /* Tab Content Workspace */
 .epv-tab-body {
-  padding: 26px 28px;
+  padding: 16px 18px;
 }
 
 .epv-section-block {
-  margin-bottom: 28px;
+  margin-bottom: 16px;
 }
 
 .epv-section-block:last-child {

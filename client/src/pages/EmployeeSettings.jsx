@@ -16,10 +16,10 @@ import {
 import api from "../services/api";
 
 const EMPLOYEE_SETTINGS_TABS = [
-  { id: "security", label: "Account & Security", icon: IconShield },
+  { id: "security", label: "Security", icon: IconShield },
   { id: "notifications", label: "Notifications", icon: IconMail },
-  { id: "preferences", label: "My Preferences", icon: IconSettings },
-  { id: "account", label: "Account Information", icon: IconUser },
+  { id: "preferences", label: "Preferences", icon: IconSettings },
+  { id: "account", label: "Account", icon: IconUser },
 ];
 
 export default function EmployeeSettings() {
@@ -257,10 +257,8 @@ export default function EmployeeSettings() {
           {/* TAB 1: Account & Security */}
           {activeTab === "security" && (
             <div>
-              <div style={{ marginBottom: "20px" }}>
-                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)", margin: 0 }}>
-                  Account & Security
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Security</h2>
               </div>
 
               {/* Password Change Form */}
@@ -444,10 +442,8 @@ export default function EmployeeSettings() {
           {/* TAB 2: Notifications */}
           {activeTab === "notifications" && (
             <div>
-              <div style={{ marginBottom: "20px" }}>
-                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)", margin: 0 }}>
-                  Notification Preferences
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Notifications</h2>
               </div>
 
               <form onSubmit={handleSaveNotifications}>
@@ -524,10 +520,8 @@ export default function EmployeeSettings() {
           {/* TAB 3: My Preferences */}
           {activeTab === "preferences" && (
             <div>
-              <div style={{ marginBottom: "20px" }}>
-                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)", margin: 0 }}>
-                  Portal Preferences
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Preferences</h2>
               </div>
 
               <form onSubmit={handleSavePreferences} className="settings-groups">
@@ -609,10 +603,8 @@ export default function EmployeeSettings() {
           {/* TAB 4: Account Information */}
           {activeTab === "account" && (
             <div>
-              <div style={{ marginBottom: "20px" }}>
-                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--ink, #131a15)", margin: 0 }}>
-                  Account Information
-                </h2>
+              <div className="settings-panel-head">
+                <h2 className="settings-panel-title">Account</h2>
               </div>
 
               {/* Dedicated Profile Shortcut Card */}

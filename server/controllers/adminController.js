@@ -413,33 +413,34 @@ export async function getAdminDashboard(req, res, next) {
       year: targetYear,
     };
 
-    // 11. Salary Expenses over the Year (Jan - Dec)
+    // 11. Salary expenses by processed payroll cycles (not projected CTC)
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const processedPayrollStatuses = ["FINALIZED", "PARTIALLY_PAID", "PAID"];
+    const processedCycles = PayrollCycle
+      ? await PayrollCycle.find({
+          periodYear: targetYear,
+          status: { $in: processedPayrollStatuses },
+        })
+          .select("periodMonth totalNetPayable totalNetSalary status")
+          .lean()
+      : [];
+
+    const cycleTotalsByMonth = new Map();
+    for (const cycle of processedCycles) {
+      const monthNumber = Number(cycle.periodMonth);
+      if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) continue;
+      const amount = Number(cycle.totalNetPayable || cycle.totalNetSalary || 0);
+      cycleTotalsByMonth.set(monthNumber, (cycleTotalsByMonth.get(monthNumber) || 0) + (Number.isFinite(amount) ? amount : 0));
+    }
+
     const salaryExpenses = monthNames.map((name, idx) => {
-      const mNum = idx + 1;
-      const endOfM = new Date(targetYear, mNum, 0, 23, 59, 59, 999);
-      let monthlyTotal = 0;
-
-      for (const emp of activeEmployees) {
-        const empIdStr = String(emp._id);
-        const comp = compensationRecords.find((c) => String(c.employeeId) === empIdStr);
-        if (comp && comp.revisions?.length > 0) {
-          const revs = comp.revisions.filter((r) => new Date(r.effectiveFromDate) <= endOfM);
-          if (revs.length > 0) {
-            revs.sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
-            const val = parseFloat(String(revs[0].monthlyCostToCompany || 0));
-            if (!isNaN(val)) monthlyTotal += val;
-          }
-        } else {
-          const sal = parseFloat(String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0));
-          if (!isNaN(sal)) monthlyTotal += sal;
-        }
-      }
-
+      const monthNumber = idx + 1;
+      const hasCycle = cycleTotalsByMonth.has(monthNumber);
       return {
         month: name,
-        monthNumber: mNum,
-        amount: monthlyTotal,
+        monthNumber,
+        amount: hasCycle ? Number(cycleTotalsByMonth.get(monthNumber) || 0) : 0,
+        hasCycle,
       };
     });
 
