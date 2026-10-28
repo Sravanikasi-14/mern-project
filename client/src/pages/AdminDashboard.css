@@ -1280,4 +1280,6 @@
   .capsule-bar-track { min-height: 48px; }
   .analytics-toolbar { justify-content: flex-start; }
   .funnel-stage-tile { padding: 10px 12px; }
+  .board__sub { display: none; }
+  .module-ribbon { display: none; }
 }

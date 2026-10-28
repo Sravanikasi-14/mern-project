@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import MobileNav from "./MobileNav";
 import { IconClose, IconInfo } from "./Icons";
 import ChatbotWidget from "./ChatbotWidget";
+import { useAuth } from "../context/AuthContext";
 import "./Sidebar.css";
 
 export default function AppLayout({ children }) {
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const roleClass = user?.role === "HR_ADMIN" ? "role-hr" : user?.role === "EMPLOYEE" ? "role-employee" : "";
 
   const handleNotifyModule = (moduleName) => {
     setToastMessage(`${moduleName} module is currently under development.`);
@@ -18,7 +22,7 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-shell has-mobile-tabbar ${roleClass} ${collapsed ? "sidebar-collapsed" : ""}`}>
       {/* Mobile Header Bar */}
       <header className="mobile-header">
         <button
@@ -60,6 +64,8 @@ export default function AppLayout({ children }) {
       <div className="app-main-content">
         {children || <Outlet />}
       </div>
+
+      <MobileNav />
 
       {/* Floating Gemini AI Assistant Chatbot */}
       <ChatbotWidget />

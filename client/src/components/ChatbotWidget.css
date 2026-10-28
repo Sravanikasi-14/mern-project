@@ -7,7 +7,7 @@
   position: fixed;
   bottom: 16px;
   right: 16px;
-  z-index: 1050;
+  z-index: 55;
   font-family: inherit;
   transition: opacity 0.15s ease;
   pointer-events: none;
@@ -498,16 +498,16 @@
   margin-top: 6px;
 }
 
-/* Mobile Responsiveness */
-@media (max-width: 640px) {
+/* Sit above the mobile tab bar; keep clear of gesture insets */
+@media (max-width: 768px) {
   .hrms-chatbot-container {
-    bottom: 12px;
+    bottom: calc(var(--nav-bar-h, 56px) + var(--safe-bottom, 0px) + 12px);
     right: 12px;
   }
 
   .hrms-chatbot-window {
     width: min(380px, calc(100vw - 24px));
-    height: min(520px, calc(100vh - 84px));
+    height: min(520px, calc(100dvh - var(--nav-bar-h, 56px) - 96px));
     bottom: 56px;
     right: 0;
   }

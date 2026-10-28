@@ -745,7 +745,49 @@ export default function AdminAttendanceOverview() {
             )}
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <>
+          <div className="att-mobile-list">
+            {paginatedEmployees.map((emp, idx) => {
+              const absoluteIdx = (attendancePage - 1) * attendancePageSize + idx;
+              const inTime = emp.checkInTime
+                ? new Date(emp.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : "—";
+              return (
+                <button
+                  key={emp.employeeId}
+                  type="button"
+                  className="att-mobile-row"
+                  onClick={() => handleOpenDrawer(emp, absoluteIdx)}
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #1d7347, #0d3a23)",
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {(emp.fullName || "E")[0].toUpperCase()}
+                  </div>
+                  <div className="att-mobile-row-body">
+                    <div className="att-mobile-row-name">{emp.fullName}</div>
+                    <div className="att-mobile-row-meta">
+                      {emp.employeeCode} · {emp.department} · In {inTime}
+                    </div>
+                  </div>
+                  <StatusBadge status={emp.attendanceStatus} />
+                </button>
+              );
+            })}
+          </div>
+          <div className="att-desktop-table" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--hair, #e6ede8)", textAlign: "left", color: "var(--muted, #646d67)" }}>
@@ -878,6 +920,7 @@ export default function AdminAttendanceOverview() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         <Pagination

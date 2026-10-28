@@ -513,6 +513,7 @@
   .app-shell {
     flex-direction: column;
     overflow: hidden;
+    padding-top: var(--safe-top, 0px);
   }
 
   .app-main-content {
@@ -523,6 +524,17 @@
     overflow-x: hidden;
     overflow-y: auto;
     padding: 0 0 48px;
+  }
+
+  .app-shell.has-mobile-tabbar .sidebar-container,
+  .app-shell.has-mobile-tabbar .mobile-header,
+  .app-shell.has-mobile-tabbar .mobile-backdrop {
+    display: none !important;
+  }
+
+  .app-shell.has-mobile-tabbar .app-main-content {
+    padding-bottom: calc(var(--nav-bar-h, 56px) + var(--safe-bottom, 0px) + 12px);
+    scroll-padding-bottom: calc(var(--nav-bar-h, 56px) + var(--safe-bottom, 0px) + 12px);
   }
 
   .sidebar-container {
