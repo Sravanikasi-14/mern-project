@@ -32,6 +32,7 @@ export async function calculatePayrollCycle({
     Attendance,
     LeaveRequest,
     CompanyHrPolicy,
+    OfferLetter,
   } = models;
 
   const month = parseInt(periodMonth, 10);
@@ -131,7 +132,11 @@ export async function calculatePayrollCycle({
   const employeeIds = activeEmployees.map((e) => e._id);
 
   // 4. Batch Fetch Compensation, Leaves, and Attendance for Period
-  const [compensations, leaves, attendances] = await Promise.all([
+  const employeeEmails = activeEmployees
+    .map((e) => String(e.email || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  const [compensations, leaves, attendances, acceptedOffers] = await Promise.all([
     EmployeeCompensation.find({ employeeId: { $in: employeeIds } }).lean(),
     LeaveRequest.find({
       employeeId: { $in: employeeIds },
@@ -143,6 +148,15 @@ export async function calculatePayrollCycle({
       employeeId: { $in: employeeIds },
       date: { $regex: `^${monthPrefix}` },
     }).lean(),
+    OfferLetter && employeeEmails.length > 0
+      ? OfferLetter.find({
+          "candidate.email": { $in: employeeEmails },
+          status: "ACCEPTED",
+          monthlySalary: { $gt: 0 },
+        })
+          .select("candidate.email monthlySalary")
+          .lean()
+      : Promise.resolve([]),
   ]);
 
   // Group by employee
@@ -196,10 +210,20 @@ export async function calculatePayrollCycle({
     if (effectiveRevision) {
       monthlyCtc = parseFloat(effectiveRevision.monthlyCostToCompany?.toString() || 0);
     } else {
-      // Fallback to customFields if present
       const legacySalary = parseFloat(String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0));
       if (!isNaN(legacySalary) && legacySalary > 0) {
         monthlyCtc = legacySalary;
+      }
+    }
+
+    if (!monthlyCtc || isNaN(monthlyCtc) || monthlyCtc <= 0) {
+      const emailKey = String(emp.email || "").trim().toLowerCase();
+      const offer = (acceptedOffers || []).find(
+        (o) => String(o.candidate?.email || "").trim().toLowerCase() === emailKey
+      );
+      const offerSalary = parseFloat(String(offer?.monthlySalary || 0));
+      if (!isNaN(offerSalary) && offerSalary > 0) {
+        monthlyCtc = offerSalary;
       }
     }
 
@@ -208,7 +232,7 @@ export async function calculatePayrollCycle({
         employeeId: emp._id,
         employeeCode: emp.employeeCode || "N/A",
         fullName: emp.fullName,
-        issue: "No compensation revision or monthly CTC configured for employee",
+        issue: "No monthly CTC is configured. Open the employee profile and add compensation before including them in payroll.",
       });
       continue;
     }

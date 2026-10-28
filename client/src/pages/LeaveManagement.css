@@ -6,9 +6,11 @@
 
 /* Page Container */
 .lm-container {
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  width: 100%;
   padding: 20px 24px 40px;
+  box-sizing: border-box;
 }
 
 /* --------------------------------------------------------------------------
@@ -17,8 +19,9 @@
 .lm-summary-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: start;
 }
 
 @media (max-width: 1024px) {
@@ -38,11 +41,12 @@
   background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: var(--r-md, 14px);
-  padding: 20px 22px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 110px;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 0;
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -101,7 +105,7 @@
 }
 
 .lm-sum-card-num {
-  font-size: 30px;
+  font-size: var(--fs-stat, 26px);
   font-weight: 800;
   color: var(--ink, #131a15);
   letter-spacing: -0.02em;
@@ -501,10 +505,15 @@
    -------------------------------------------------------------------------- */
 .lm-calendar-section {
   display: grid;
-  grid-template-columns: 1.8fr 1fr;
+  grid-template-columns: minmax(0, 1.7fr) minmax(240px, 1fr);
   gap: 16px;
   align-items: start;
-  margin-top: 18px;
+  margin: 0 0 16px;
+}
+
+.lm-calendar-section > .lm-schedule-toggle {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 @media (max-width: 1080px) {
@@ -519,6 +528,7 @@
   border-radius: 10px;
   padding: 16px 18px;
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  align-self: start;
 }
 
 .lm-cal-header-bar {
@@ -544,9 +554,10 @@
 }
 
 .lm-cal-nav-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 8px;
   border: 1px solid var(--hair, #e3e7e4);
   background: #ffffff;
   color: var(--ink, #131a15);
@@ -554,12 +565,71 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 18px;
   transition: all 0.15s ease;
 }
 
 .lm-cal-nav-btn:hover {
-  background: var(--panel, #f5f6f5);
+  background: var(--g-100, #e3f2e9);
+  border-color: rgba(39, 134, 90, 0.35);
+}
+
+.lm-cal-nav-btn:active {
+  background: var(--g-200, #c8e6d4);
+}
+
+.lm-records-heading {
+  margin: 4px 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.lm-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.lm-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.lm-reason-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lm-schedule-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.lm-schedule-toggle:hover {
+  background: var(--g-100, #e3f2e9);
 }
 
 /* Calendar Days Grid */
@@ -642,6 +712,7 @@
   border-radius: 10px;
   padding: 16px 18px;
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  align-self: start;
 }
 
 .lm-side-title-row {
@@ -843,64 +914,3 @@
   font-weight: 600;
 }
 
-/* --------------------------------------------------------------------------
-   Integrated Profile Editing Forms (Requirement 3)
-   -------------------------------------------------------------------------- */
-.epv-edit-field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.epv-edit-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--muted, #646d67);
-  letter-spacing: 0.04em;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.epv-readonly-tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted, #646d67);
-  background: var(--panel, #f5f6f5);
-  padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid var(--hair, #e3e7e4);
-  text-transform: uppercase;
-}
-
-.epv-edit-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: 8px;
-  font-size: 13.5px;
-  font-family: inherit;
-  color: var(--ink, #131a15);
-  background: #ffffff;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  box-sizing: border-box;
-}
-
-.epv-edit-input:focus {
-  outline: none;
-  border-color: var(--g-700, #1d7347);
-  box-shadow: 0 0 0 3px rgba(29, 115, 71, 0.12);
-}
-
-.epv-edit-input:disabled {
-  background: var(--panel, #f5f6f5);
-  color: var(--muted, #646d67);
-  cursor: not-allowed;
-}
-
-.epv-action-bar-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}

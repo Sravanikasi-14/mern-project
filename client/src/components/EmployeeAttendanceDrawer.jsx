@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AttendanceTimeline from "./AttendanceTimeline";
 import api from "../services/api";
 import { IconClose } from "./Icons";
+import { getCompanyBusinessDate } from "../utils/dateUtils";
 
 export default function EmployeeAttendanceDrawer({
   employeeId,
@@ -123,7 +124,7 @@ export default function EmployeeAttendanceDrawer({
     const year = selectedDate.getFullYear();
     const month = selectedDate.getMonth();
     const totalDays = new Date(year, month + 1, 0).getDate();
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate();
 
     const recordsMap = new Map();
     for (const r of historyRecords) {
@@ -204,7 +205,7 @@ export default function EmployeeAttendanceDrawer({
     let overtimeHours = 0;
     let absentDays = 0;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate();
 
     for (const rec of monthDaysList) {
       if (rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {

@@ -132,6 +132,8 @@ export default function AdminPayroll() {
   const [payrollSearch, setPayrollSearch] = useState("");
   const [payrollStatusFilter, setPayrollStatusFilter] = useState("ALL");
   const [payrollDeptFilter, setPayrollDeptFilter] = useState("ALL");
+  const [registerPage, setRegisterPage] = useState(1);
+  const [registerPageSize, setRegisterPageSize] = useState(10);
 
   // Modals for Monthly Payroll
   const [showNewCycleModal, setShowNewCycleModal] = useState(false);
@@ -656,6 +658,17 @@ export default function AdminPayroll() {
     });
   }, [cyclePayslips, payrollSearch, payrollStatusFilter, payrollDeptFilter]);
 
+  useEffect(() => {
+    setRegisterPage(1);
+  }, [payrollSearch, payrollStatusFilter, payrollDeptFilter, selectedCycleId]);
+
+  const registerTotalPages = Math.max(1, Math.ceil((filteredPayslips.length || 1) / registerPageSize));
+  const pagedPayslips = useMemo(() => {
+    const safePage = Math.min(registerPage, registerTotalPages);
+    const start = (safePage - 1) * registerPageSize;
+    return filteredPayslips.slice(start, start + registerPageSize);
+  }, [filteredPayslips, registerPage, registerPageSize, registerTotalPages]);
+
   const activeBreakdownPayslip = useMemo(() => {
     if (!filteredPayslips || filteredPayslips.length === 0) return null;
     const found = filteredPayslips.find((p) => p._id === selectedBreakdownPayslip?._id);
@@ -684,56 +697,23 @@ export default function AdminPayroll() {
         }
       />
 
-      {/* Top Module Tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          borderBottom: "1px solid var(--hair)",
-          marginBottom: 14,
-          paddingBottom: 4,
-        }}
-      >
+      <div className="module-tabs" style={{ marginBottom: 16 }}>
         <button
           type="button"
+          className={`module-tab ${activeTab === "payroll_registers" ? "is-active" : ""}`}
           onClick={() => {
             setActiveTab("payroll_registers");
             setSelectedSettlementId(null);
           }}
-          style={{
-            background: activeTab === "payroll_registers" ? "var(--g-800)" : "transparent",
-            color: activeTab === "payroll_registers" ? "#ffffff" : "var(--text-muted)",
-            border: activeTab === "payroll_registers" ? "1px solid var(--g-800)" : "1px solid transparent",
-            borderRadius: 8,
-            padding: "8px 18px",
-            fontSize: 13.5,
-            fontWeight: activeTab === "payroll_registers" ? 600 : 500,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-            boxShadow: activeTab === "payroll_registers" ? "0 2px 4px rgba(21, 90, 55, 0.2)" : "none",
-          }}
         >
-          Payroll Registers & Payslips
+          Payroll Registers
         </button>
         <button
           type="button"
-          onClick={() => {
-            setActiveTab("ff_settlements");
-          }}
-          style={{
-            background: activeTab === "ff_settlements" ? "var(--g-800)" : "transparent",
-            color: activeTab === "ff_settlements" ? "#ffffff" : "var(--text-muted)",
-            border: activeTab === "ff_settlements" ? "1px solid var(--g-800)" : "1px solid transparent",
-            borderRadius: 8,
-            padding: "8px 18px",
-            fontSize: 13.5,
-            fontWeight: activeTab === "ff_settlements" ? 600 : 500,
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-            boxShadow: activeTab === "ff_settlements" ? "0 2px 4px rgba(21, 90, 55, 0.2)" : "none",
-          }}
+          className={`module-tab ${activeTab === "ff_settlements" ? "is-active" : ""}`}
+          onClick={() => setActiveTab("ff_settlements")}
         >
-          Final Settlements (F&F)
+          Final Settlements
         </button>
       </div>
 
@@ -1648,48 +1628,47 @@ export default function AdminPayroll() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}>
                 <IconAlertTriangle size={16} />
-                <span>Validation Notices ({selectedCycle.validationIssues.length} employees skipped from calculation)</span>
+                <span>
+                  {selectedCycle.validationIssues.length} employee
+                  {selectedCycle.validationIssues.length === 1 ? "" : "s"} skipped — monthly CTC is missing
+                </span>
               </div>
               <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
                 {selectedCycle.validationIssues.map((v, i) => (
-                  <li key={i}>
-                    <strong>{v.fullName} ({v.employeeCode}):</strong> {v.issue}
+                  <li key={v.employeeId || i} style={{ marginBottom: 4 }}>
+                    <strong>{v.fullName} ({v.employeeCode}):</strong> {v.issue}{" "}
+                    {v.employeeId && (
+                      <Link to={`/admin/employees/${v.employeeId}/edit`} style={{ fontWeight: 700 }}>
+                        Add compensation
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {/* Compact Inline Payroll Metrics Strip */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 20,
-              background: "var(--card, #ffffff)",
-              border: "1px solid var(--hair, #e6ede8)",
-              borderRadius: 8,
-              padding: "8px 16px",
-              marginBottom: 12,
-              fontSize: 13,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ color: "var(--text-muted)" }}>
-              Net Payable: <strong style={{ color: "var(--g-800, #155a37)" }}>{selectedCycle ? formatCurrency(selectedCycle.totalNetPayable) : "₹0"}</strong>
-            </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              Payslips: <strong style={{ color: "var(--ink)" }}>{cyclePayslips.length}</strong>
-            </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              Pending Disbursals: <strong style={{ color: "#b45309" }}>{cyclePayslips.filter((p) => p.paymentStatus !== "PAID").length}</strong>
-            </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              Total Disbursed: <strong style={{ color: selectedCycle?.totalPaidAmount > 0 ? "var(--g-800)" : "var(--muted)" }}>{selectedCycle ? formatCurrency(selectedCycle.totalPaidAmount || 0) : "₹0"}</strong>
-            </span>
+          <div className="ap-metrics-grid">
+            <div className="ap-metric-card ap-hero">
+              <div className="ap-metric-label">Net payroll</div>
+              <div className="ap-metric-value">{selectedCycle ? formatCurrency(selectedCycle.totalNetPayable) : "₹0"}</div>
+              <div className="ap-metric-sub">{selectedCycle ? `${monthNamesList[selectedCycle.periodMonth - 1]} ${selectedCycle.periodYear}` : "No cycle selected"}</div>
+            </div>
+            <div className="ap-metric-card">
+              <div className="ap-metric-label">Employees in cycle</div>
+              <div className="ap-metric-value">{cyclePayslips.length}</div>
+              <div className="ap-metric-sub">Payslips in this register</div>
+            </div>
+            <div className="ap-metric-card">
+              <div className="ap-metric-label">Processing status</div>
+              <div className="ap-metric-value" style={{ fontSize: 18 }}>{selectedCycle?.status || "—"}</div>
+              <div className="ap-metric-sub">{selectedCycle?.statusLabel || "Select a payroll cycle"}</div>
+            </div>
+            <div className="ap-metric-card">
+              <div className="ap-metric-label">Pending disbursals</div>
+              <div className="ap-metric-value">{cyclePayslips.filter((p) => p.paymentStatus !== "PAID" && p.status !== "PAID").length}</div>
+              <div className="ap-metric-sub">Paid: {formatCurrency(selectedCycle?.totalPaidAmount || 0)}</div>
+            </div>
           </div>
 
           {/* Payroll Control & Filter Toolbar */}
@@ -1850,59 +1829,63 @@ export default function AdminPayroll() {
                   <div>No employee records found in this cycle.</div>
                 </div>
               ) : (
-                filteredPayslips.map((p) => {
-                  const isSelected = activeBreakdownPayslip?._id === p._id;
-                  const isPaid = p.paymentStatus === "PAID" || p.status === "PAID";
-
-                  return (
-                    <div
-                      key={p._id}
-                      className={`ap-card-item ${isSelected ? "selected" : ""}`}
-                      onClick={() => setSelectedBreakdownPayslip(p)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") setSelectedBreakdownPayslip(p);
-                      }}
-                    >
-                      <div className="ap-card-header">
-                        <div>
-                          <div className="ap-card-name">
-                            {p.employeeSnapshot?.fullName || "Employee"}
-                          </div>
-                          <div className="ap-card-sub">
-                            {p.employeeSnapshot?.employeeCode || "—"} • {p.employeeSnapshot?.department || "General"}
-                          </div>
-                        </div>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "2px 8px",
-                            borderRadius: 12,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background: isPaid ? "var(--g-100, #e3f2e9)" : "#eff6ff",
-                            color: isPaid ? "var(--g-800, #155a37)" : "#1d4ed8",
-                          }}
-                        >
-                          {isPaid ? <IconCheck size={11} /> : <IconClock size={11} />}
-                          <span>{isPaid ? "PAID" : p.status || "FINALIZED"}</span>
-                        </span>
-                      </div>
-
-                      <div className="ap-card-footer">
-                        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                          Payable Days: {p.daysBreakdown?.payableDays ?? "—"}d
-                        </span>
-                        <div className="ap-card-amount">
-                          {formatCurrency(p.netPayable)}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table" style={{ width: "100%", fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Gross</th>
+                        <th>Deductions</th>
+                        <th>Net</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedPayslips.map((p) => {
+                        const isSelected = activeBreakdownPayslip?._id === p._id;
+                        const isPaid = p.paymentStatus === "PAID" || p.status === "PAID";
+                        return (
+                          <tr
+                            key={p._id}
+                            className={isSelected ? "selected-row" : ""}
+                            onClick={() => setSelectedBreakdownPayslip(p)}
+                            style={{ cursor: "pointer", background: isSelected ? "var(--g-100, #e3f2e9)" : undefined }}
+                          >
+                            <td>
+                              <div style={{ fontWeight: 650 }}>{p.employeeSnapshot?.fullName || "Employee"}</div>
+                              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                                {p.employeeSnapshot?.employeeCode || "—"} · {p.employeeSnapshot?.department || "General"}
+                              </div>
+                            </td>
+                            <td>{formatCurrency(p.grossEarnings)}</td>
+                            <td>{formatCurrency(p.totalDeductions)}</td>
+                            <td style={{ fontWeight: 700 }}>{formatCurrency(p.netPayable)}</td>
+                            <td>
+                              <span className={`ap-status-pill ${isPaid ? "is-paid" : "is-open"}`}>
+                                {isPaid ? "Paid" : p.status || "Finalized"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {filteredPayslips.length > 0 && (
+                <Pagination
+                  compact
+                  currentPage={Math.min(registerPage, registerTotalPages)}
+                  totalPages={registerTotalPages}
+                  totalItems={filteredPayslips.length}
+                  pageSize={registerPageSize}
+                  onPageChange={setRegisterPage}
+                  onPageSizeChange={(s) => {
+                    setRegisterPageSize(s);
+                    setRegisterPage(1);
+                  }}
+                  itemLabel="payslips"
+                />
               )}
             </div>
 

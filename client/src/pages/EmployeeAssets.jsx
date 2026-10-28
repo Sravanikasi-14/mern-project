@@ -7,6 +7,7 @@ import {
   IconInfo,
   IconFileText,
 } from "../components/Icons";
+import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
 
 export default function EmployeeAssets() {
@@ -18,6 +19,7 @@ export default function EmployeeAssets() {
 
   const [assets, setAssets] = useState([]);
   const [history, setHistory] = useState([]);
+  const historyPager = useClientPagination(history, 10);
 
   const fetchAssets = async (silent = false) => {
     try {
@@ -373,7 +375,7 @@ export default function EmployeeAssets() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((h, i) => (
+                    {historyPager.slice.map((h, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <td style={{ padding: "10px 12px", fontWeight: 600, color: "#09090b" }}>
                           {h.name}
@@ -397,6 +399,15 @@ export default function EmployeeAssets() {
                     ))}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={historyPager.page}
+                  totalPages={historyPager.totalPages}
+                  totalItems={historyPager.total}
+                  pageSize={historyPager.pageSize}
+                  onPageChange={historyPager.setPage}
+                  onPageSizeChange={historyPager.setPageSize}
+                  itemLabel="returned assets"
+                />
               </div>
             </div>
           )}

@@ -5,8 +5,8 @@
    ========================================================================== */
 
 .admin-payroll-container {
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
   padding: 20px 24px 40px;
   box-sizing: border-box;
@@ -119,13 +119,10 @@
 }
 
 .ap-select {
-  padding: 7px 12px;
-  border: 1px solid var(--hair, #e3e7e4);
   border-radius: 8px;
   font-size: 13px;
-  background: #ffffff;
   font-weight: 500;
-  color: var(--ink, #131a15);
+  min-width: 0;
 }
 
 .ap-search-input {
@@ -180,7 +177,7 @@
 /* Master-Detail Layout Workspace */
 .ap-workspace-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 380px) 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
   gap: 20px;
   align-items: start;
 }
@@ -217,6 +214,25 @@
   font-weight: 700;
   color: var(--ink, #131a15);
   margin: 0;
+}
+
+.ap-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.ap-status-pill.is-paid {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+.ap-status-pill.is-open {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .ap-list-count {
@@ -462,7 +478,7 @@
 }
 
 .ap-hero-netpay-amount {
-  font-size: 30px;
+  font-size: var(--fs-stat, 26px);
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;

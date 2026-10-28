@@ -9,6 +9,7 @@ import {
   reviewTaskService,
   getAuthenticatedEmployee,
 } from "../services/workManagementService.js";
+import { getCompanyDayBounds, resolveCompanyTimezone } from "../utils/companyTime.js";
 
 /**
  * Metadata endpoint returning user role context, direct reports (if manager),
@@ -139,6 +140,21 @@ export async function getTasks(req, res, next) {
 
     if (status && Object.values(TASK_STATUSES).includes(status)) {
       conditions.push({ status });
+    }
+
+    const completedScope = String(req.query.completedScope || "").trim().toLowerCase();
+    if (completedScope === "today") {
+      const timezone = resolveCompanyTimezone(req.auth.company);
+      const { start, end } = getCompanyDayBounds(new Date(), timezone);
+      conditions.push({
+        $or: [
+          { status: { $ne: TASK_STATUSES.APPROVED } },
+          {
+            status: TASK_STATUSES.APPROVED,
+            completedAt: { $gte: start, $lt: end },
+          },
+        ],
+      });
     }
     if (priority && Object.values(TASK_PRIORITIES).includes(priority)) {
       conditions.push({ priority });

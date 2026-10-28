@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { IconClose } from "./Icons";
+import api from "../services/api";
+import { getCompanyBrandName } from "../utils/companyBrand";
 
 const HR_NAV_ITEMS = [
   {
@@ -106,12 +109,22 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "work-impact",
-    label: "Work & Impact",
+    label: "Work",
     path: "/admin/work-management",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
+  {
+    id: "impact-points",
+    label: "Impact Points",
+    path: "/admin/impact-points",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2" />
       </svg>
     ),
   },
@@ -219,12 +232,22 @@ const EMPLOYEE_NAV_ITEMS = [
   },
   {
     id: "work-impact",
-    label: "Work & Impact",
+    label: "Tasks",
     path: "/app/tasks",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
+  {
+    id: "impact-points",
+    label: "Impact Points",
+    path: "/app/impact-points",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15 8.5 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 9 8.5 12 2" />
       </svg>
     ),
   },
@@ -251,6 +274,34 @@ export default function Sidebar({
   const { user, company, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const brandName = getCompanyBrandName(company);
+  const [logoSrc, setLogoSrc] = useState(null);
+
+  useEffect(() => {
+    let objectUrl = null;
+    let cancelled = false;
+
+    async function loadLogo() {
+      if (!company?.branding?.logoUrl) {
+        setLogoSrc(null);
+        return;
+      }
+      try {
+        const res = await api.get("/auth/company-logo", { responseType: "blob" });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setLogoSrc(objectUrl);
+      } catch {
+        if (!cancelled) setLogoSrc(null);
+      }
+    }
+
+    loadLogo();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [company?.branding?.logoUrl]);
 
   const navItems = user?.role === "HR_ADMIN" ? HR_NAV_ITEMS : EMPLOYEE_NAV_ITEMS;
 
@@ -290,11 +341,7 @@ export default function Sidebar({
       if (item.id === "work-impact") {
         return (
           current === "/admin/work-management" ||
-          current.startsWith("/admin/work-management/") ||
-          current === "/admin/impact-points" ||
-          current.startsWith("/admin/impact-points/") ||
-          current === "/admin/work-impact" ||
-          current.startsWith("/admin/work-impact/")
+          current.startsWith("/admin/work-management/")
         );
       }
       if (item.path) {
@@ -318,11 +365,7 @@ export default function Sidebar({
     if (item.id === "work-impact") {
       return (
         current === "/app/tasks" ||
-        current.startsWith("/app/tasks/") ||
-        current === "/app/impact-points" ||
-        current.startsWith("/app/impact-points/") ||
-        current === "/app/work-impact" ||
-        current.startsWith("/app/work-impact/")
+        current.startsWith("/app/tasks/")
       );
     }
     if (item.path) {
@@ -361,17 +404,21 @@ export default function Sidebar({
       {/* Brand Identity / Top Header */}
       <div className="sidebar-brand-wrapper">
         <div className="sidebar-brand">
-          <div className="brand-logo-icon" aria-hidden="true">
-            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3.5" y="3.5" width="25" height="25" rx="8.5" />
-              <path d="M16 23.5v-9" />
-              <path d="M16 16c0-4.2 2.9-6.9 7-6.9 0 4.2-2.9 6.9-7 6.9Z" />
-              <path d="M16 19c0-3.3-2.3-5.4-5.6-5.4 0 3.3 2.3 5.4 5.6 5.4Z" />
-            </svg>
+          <div className={`brand-logo-icon ${logoSrc ? "has-image" : ""}`} aria-hidden="true">
+            {logoSrc ? (
+              <img src={logoSrc} alt="" className="brand-logo-img" />
+            ) : (
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3.5" y="3.5" width="25" height="25" rx="8.5" />
+                <path d="M16 23.5v-9" />
+                <path d="M16 16c0-4.2 2.9-6.9 7-6.9 0 4.2-2.9 6.9-7 6.9Z" />
+                <path d="M16 19c0-3.3-2.3-5.4-5.6-5.4 0 3.3 2.3 5.4 5.6 5.4Z" />
+              </svg>
+            )}
           </div>
           {!collapsed && (
-            <div className="brand-text-block">
-              <span className="brand-title">{company?.companyName || "HRMS Portal"}</span>
+            <div className="brand-text-block" title={brandName}>
+              <span className="brand-title">{brandName}</span>
               <span className="brand-subtitle">Enterprise Suite</span>
             </div>
           )}

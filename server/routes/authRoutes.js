@@ -9,6 +9,7 @@ import {
   setupInitialAdmin,
   verifyOnboardingInvitation,
 } from "../controllers/authController.js";
+import { streamCompanyLogo } from "../controllers/settingsController.js";
 import {
   verifyActivationTokenEndpoint,
   completeActivation,
@@ -21,6 +22,7 @@ const router = express.Router();
 router.post("/login", loginLimiter, login);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
+router.get("/company-logo", authenticate, streamCompanyLogo);
 router.put("/profile", authenticate, updateProfile);
 router.post("/change-password", authenticate, changePassword);
 

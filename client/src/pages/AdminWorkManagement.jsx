@@ -9,8 +9,17 @@ import {
   IconAlertCircle,
   IconDocument,
   IconSearch,
+  IconPlus,
 } from "../components/Icons";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import {
+  buildWeekStrip,
+  formatDisplayDate,
+  isCompletedToday,
+  resolveCompanyTimezone,
+  toDateOnlyString,
+} from "../utils/dateUtils";
 import "./WorkManagement.css";
 
 const TASK_TABS = {
@@ -25,6 +34,8 @@ const VIEW_MODES = {
 };
 
 export default function AdminWorkManagement() {
+  const { company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(TASK_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
   const [tasks, setTasks] = useState([]);
@@ -53,12 +64,7 @@ export default function AdminWorkManagement() {
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
-  // Leaderboard state
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
-  const [leaderboardPeriod, setLeaderboardPeriod] = useState("month");
-
-  // Side panel mode: 'none' | 'details' | 'create' | 'recognize'
+  // Side panel mode: 'none' | 'details' | 'create'
   const [sidePanelMode, setSidePanelMode] = useState("none");
   const [selectedTask, setSelectedTask] = useState(null);
 
@@ -82,15 +88,6 @@ export default function AdminWorkManagement() {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const [showReviewForm, setShowReviewForm] = useState(false);
-
-  // Recognition state
-  const [recognizeForm, setRecognizeForm] = useState({
-    recipientId: "",
-    points: 10,
-    reason: "",
-  });
-  const [recognizing, setRecognizing] = useState(false);
-  const [recognizeError, setRecognizeError] = useState("");
 
   // Auto-dismiss floating notifications after 4 seconds
   useEffect(() => {
@@ -160,6 +157,9 @@ export default function AdminWorkManagement() {
       if (priorityFilter !== "ALL") params.priority = priorityFilter;
       if (departmentFilter !== "ALL") params.department = departmentFilter;
       if (search.trim()) params.search = search.trim();
+      if (viewMode === VIEW_MODES.KANBAN && activeTab !== TASK_TABS.REVIEW_QUEUE) {
+        params.completedScope = "today";
+      }
 
       const res = await api.get("/tasks", { params });
       if (res.data?.success) {
@@ -185,37 +185,10 @@ export default function AdminWorkManagement() {
     }
   };
 
-  // Fetch Leaderboard
-  const fetchLeaderboard = async () => {
-    try {
-      setLeaderboardLoading(true);
-      const params = { period: leaderboardPeriod };
-      if (departmentFilter !== "ALL") params.department = departmentFilter;
-
-      const res = await api.get("/impact-points/leaderboard", { params });
-      if (res.data?.success) {
-        const list =
-          res.data?.leaderboard ||
-          res.data?.data?.leaderboard ||
-          (Array.isArray(res.data?.data) ? res.data.data : []);
-        setLeaderboard(Array.isArray(list) ? list : []);
-      }
-    } catch (err) {
-      console.error("Failed to load leaderboard:", err);
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, statusFilter, priorityFilter, departmentFilter, pagination.page, pagination.limit]);
-
-  useEffect(() => {
-    fetchLeaderboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaderboardPeriod, departmentFilter]);
+  }, [activeTab, statusFilter, priorityFilter, departmentFilter, pagination.page, pagination.limit, viewMode]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -272,7 +245,6 @@ export default function AdminWorkManagement() {
           decision: "APPROVE",
           comments: "Approved via Kanban board transition",
         });
-        fetchLeaderboard();
       } else {
         await api.patch(`/tasks/${taskId}`, { status: targetStatus });
       }
@@ -301,7 +273,6 @@ export default function AdminWorkManagement() {
           decision: "APPROVE",
           comments: "Approved via status selector",
         });
-        fetchLeaderboard();
       } else {
         await api.patch(`/tasks/${task._id}`, { status: targetStatus });
       }
@@ -375,37 +346,11 @@ export default function AdminWorkManagement() {
         setReviewComments("");
         setSuccessMsg(res.data.message || "Review submitted successfully!");
         fetchTasks();
-        fetchLeaderboard();
       }
     } catch (err) {
       setReviewError(err.response?.data?.message || "Failed to review task");
     } finally {
       setSubmittingReview(false);
-    }
-  };
-
-  // Award Recognition
-  const handleAwardRecognition = async (e) => {
-    e.preventDefault();
-    if (!recognizeForm.recipientId || !recognizeForm.points) return;
-    try {
-      setRecognizing(true);
-      setRecognizeError("");
-      const res = await api.post("/impact-points/recognize", {
-        recipientId: recognizeForm.recipientId,
-        points: Number(recognizeForm.points),
-        reason: recognizeForm.reason.trim(),
-      });
-      if (res.data?.success) {
-        setSidePanelMode("none");
-        setRecognizeForm({ recipientId: "", points: 10, reason: "" });
-        setSuccessMsg(res.data.message || "Recognition awarded successfully!");
-        fetchLeaderboard();
-      }
-    } catch (err) {
-      setRecognizeError(err.response?.data?.message || "Failed to award recognition");
-    } finally {
-      setRecognizing(false);
     }
   };
 
@@ -421,11 +366,11 @@ export default function AdminWorkManagement() {
 
     return {
       activeTasks: list.filter((t) => t.status !== "APPROVED" && t.status !== "REJECTED").length,
-      completedTasks: list.filter((t) => t.status === "APPROVED").length,
+      completedTasks: list.filter((t) => isCompletedToday(t, timeZone)).length,
       overdueTasks: overdueCount,
       activeProjects: Math.max(activeProjects.size, 1),
     };
-  }, [tasks]);
+  }, [tasks, timeZone]);
 
   // Project Summaries
   const projectSummaries = useMemo(() => {
@@ -465,41 +410,12 @@ export default function AdminWorkManagement() {
     return tasks.filter((t) => (t.projectName?.trim() || "Core Platform") === selectedProject);
   }, [tasks, selectedProject]);
 
-  // Weekly timeline (Mon to Sun)
   const weeklyTimeline = useMemo(() => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const diffToMon = (currentDay === 0 ? -6 : 1) - currentDay;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMon);
-    monday.setHours(0, 0, 0, 0);
-
-    const days = [];
-    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const isToday = d.toDateString() === now.toDateString();
-      const dateStr = d.toISOString().split("T")[0];
-
-      const dayTasks = (tasks || []).filter((t) => {
-        if (!t.deadline) return false;
-        const taskDate = new Date(t.deadline).toISOString().split("T")[0];
-        return taskDate === dateStr;
-      });
-
-      days.push({
-        dayName: dayNames[i],
-        dayNumber: d.getDate(),
-        month: d.toLocaleString("default", { month: "short" }),
-        isToday,
-        dateStr,
-        tasks: dayTasks,
-      });
-    }
-    return days;
-  }, [tasks]);
+    return buildWeekStrip(new Date(), timeZone, 1).map((day) => ({
+      ...day,
+      tasks: (tasks || []).filter((t) => t.deadline && toDateOnlyString(t.deadline, timeZone) === day.dateStr),
+    }));
+  }, [tasks, timeZone]);
 
   // Kanban Columns
   const kanbanColumns = [
@@ -523,9 +439,9 @@ export default function AdminWorkManagement() {
     },
     {
       id: "APPROVED",
-      title: "Completed",
+      title: "Completed today",
       dotClass: "col-approved",
-      tasks: displayedTasks.filter((t) => t.status === "APPROVED"),
+      tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
     },
   ];
 
@@ -556,16 +472,15 @@ export default function AdminWorkManagement() {
     <div className="container-wide split-page-container wm-page-container">
       {/* Compact Top Header */}
       <AppHeader
-        title="Work & Impact"
+        title="Work Management"
         hideLogout={true}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
+          <div className="wm-view-switcher" role="tablist" aria-label="Task view">
             <button
               type="button"
               className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
               onClick={() => setViewMode(VIEW_MODES.KANBAN)}
-              style={{ fontSize: 11.5, padding: "3px 8px" }}
             >
               Board
             </button>
@@ -573,20 +488,10 @@ export default function AdminWorkManagement() {
               type="button"
               className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
               onClick={() => setViewMode(VIEW_MODES.LIST)}
-              style={{ fontSize: 11.5, padding: "3px 8px" }}
             >
               List
             </button>
           </div>
-
-          <button
-            type="button"
-            className="wm-btn-secondary"
-            onClick={() => setSidePanelMode("recognize")}
-            style={{ whiteSpace: "nowrap", height: 32, fontSize: 12, padding: "0 10px" }}
-          >
-            ★ Award Points
-          </button>
 
           <button
             type="button"
@@ -598,7 +503,8 @@ export default function AdminWorkManagement() {
             }}
             style={{ whiteSpace: "nowrap", height: 32, fontSize: 12, padding: "0 12px" }}
           >
-            + Create Task
+            <IconPlus size={16} />
+            Create Task
           </button>
         </div>
       </AppHeader>
@@ -733,7 +639,7 @@ export default function AdminWorkManagement() {
 
               <select
                 className="wm-select"
-                style={{ height: 30, fontSize: 12, padding: "0 28px 0 10px" }}
+                style={{ height: 30, fontSize: 12, minHeight: 30 }}
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
               >
@@ -746,7 +652,7 @@ export default function AdminWorkManagement() {
 
               <select
                 className="wm-select"
-                style={{ height: 30, fontSize: 12, padding: "0 28px 0 10px" }}
+                style={{ height: 30, fontSize: 12, minHeight: 30 }}
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
               >
@@ -850,7 +756,9 @@ export default function AdminWorkManagement() {
                             margin: "2px 0",
                           }}
                         >
-                          Drop here
+                          {col.id === "APPROVED"
+                            ? "No tasks completed today. Older completions remain in List view."
+                            : "Drop here"}
                         </div>
                       ) : (
                         col.tasks.map((task) => {
@@ -1011,7 +919,7 @@ export default function AdminWorkManagement() {
                               {task.priority}
                             </span>
                           </td>
-                          <td>{task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}</td>
+                          <td>{task.deadline ? formatDisplayDate(task.deadline, timeZone) : "—"}</td>
                           <td>
                             <StatusBadge status={task.status} />
                           </td>
@@ -1048,96 +956,6 @@ export default function AdminWorkManagement() {
           )}
         </div>
 
-        {/* Stationary Vertical Impact Points Leaderboard (Right ~25% column) */}
-        <div className="wm-leaderboard-card">
-          <div className="wm-leaderboard-header">
-            <div className="wm-leaderboard-title-row">
-              <h3 className="wm-leaderboard-title">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#155a37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-                Impact Leaderboard
-              </h3>
-            </div>
-
-            <div className="wm-leaderboard-tabs">
-              <button
-                type="button"
-                className={`wm-leaderboard-tab ${leaderboardPeriod === "month" ? "active" : ""}`}
-                onClick={() => setLeaderboardPeriod("month")}
-              >
-                This Month
-              </button>
-              <button
-                type="button"
-                className={`wm-leaderboard-tab ${leaderboardPeriod === "all" ? "active" : ""}`}
-                onClick={() => setLeaderboardPeriod("all")}
-              >
-                All Time
-              </button>
-            </div>
-          </div>
-
-          {/* Simple Compact Ranked List */}
-          <div className="wm-leaderboard-list">
-            {leaderboardLoading ? (
-              <div style={{ padding: 18, textAlign: "center", color: "#94a3b8", fontSize: 11.5 }}>
-                Loading rankings...
-              </div>
-            ) : leaderboard.length === 0 ? (
-              <div style={{ padding: 18, textAlign: "center", color: "#94a3b8", fontSize: 11.5 }}>
-                No rankings recorded yet.
-              </div>
-            ) : (
-              leaderboard.map((item, idx) => {
-                const rankNum = item.rank || idx + 1;
-                const name = item.fullName || item.name || item.employee?.fullName || item.employee?.name || "Colleague";
-                const dept = item.department || item.employee?.job?.department || item.employee?.department || "General";
-                const points = item.balance ?? item.totalPoints ?? item.pointsEarned ?? 0;
-
-                return (
-                  <div key={item.employeeId || item.employee?._id || idx} className="wm-leaderboard-item">
-                    <div className="wm-leaderboard-left">
-                      <span
-                        className={`wm-rank-number ${
-                          rankNum === 1
-                            ? "rank-1"
-                            : rankNum === 2
-                            ? "rank-2"
-                            : rankNum === 3
-                            ? "rank-3"
-                            : "rank-other"
-                        }`}
-                      >
-                        {rankNum}
-                      </span>
-                      <div className="wm-task-avatar">
-                        {(name[0] || "C").toUpperCase()}
-                      </div>
-                      <div className="wm-leaderboard-user">
-                        <div className="wm-leaderboard-name">{name}</div>
-                        <div className="wm-leaderboard-dept">{dept}</div>
-                      </div>
-                    </div>
-                    <div className="wm-leaderboard-score">{points} pts</div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Leaderboard Footer */}
-          <div className="wm-leaderboard-footer">
-            <button
-              type="button"
-              className="wm-btn-primary"
-              style={{ width: "100%", justifyContent: "center", height: 32, fontSize: 12 }}
-              onClick={() => setSidePanelMode("recognize")}
-            >
-              + Award Recognition
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Slide-out Side Panels */}
@@ -1475,86 +1293,6 @@ export default function AdminWorkManagement() {
             </>
           )}
 
-          {/* Award Recognition Mode */}
-          {sidePanelMode === "recognize" && (
-            <>
-              <div className="wm-panel-header">
-                <div>
-                  <h3 className="wm-panel-header-title">Award Points</h3>
-                </div>
-                <button type="button" className="wm-panel-close-btn" onClick={() => setSidePanelMode("none")}>
-                  <IconClose size={16} />
-                </button>
-              </div>
-
-              {recognizeError && (
-                <div className="alert alert-danger" style={{ margin: "12px 20px 0", padding: "8px 12px", fontSize: 12 }}>
-                  <span>{recognizeError}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleAwardRecognition} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                <div className="wm-panel-body">
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Recipient Colleague <span className="req">*</span></span>
-                    </label>
-                    <select
-                      required
-                      className="wm-form-select"
-                      value={recognizeForm.recipientId}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, recipientId: e.target.value })}
-                    >
-                      <option value="">Select recipient...</option>
-                      {(meta?.assignableEmployees || []).map((emp) => (
-                        <option key={emp._id} value={emp._id}>
-                          {emp.fullName || emp.name} ({emp.employeeCode})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Points Amount <span className="req">*</span></span>
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      required
-                      className="wm-form-input"
-                      value={recognizeForm.points}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, points: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Recognition Reason / Kudos <span className="req">*</span></span>
-                    </label>
-                    <textarea
-                      required
-                      rows={3}
-                      className="wm-form-textarea"
-                      placeholder="Describe what impact this colleague demonstrated..."
-                      value={recognizeForm.reason}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, reason: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="wm-panel-footer">
-                  <button type="button" className="wm-btn-secondary" onClick={() => setSidePanelMode("none")}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="wm-btn-primary" disabled={recognizing}>
-                    {recognizing ? "Awarding..." : "Award Points"}
-                  </button>
-                </div>
-              </form>
-            </>
-          )}
         </div>
       )}
     </div>

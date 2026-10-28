@@ -1,4 +1,4 @@
-export function IconClose({ size = 16, className = "", style = {} }) {
+export function IconClose({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -19,7 +19,7 @@ export function IconClose({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconCheck({ size = 16, className = "", style = {} }) {
+export function IconCheck({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -63,7 +63,7 @@ export function IconDocument({ size = 18, className = "", style = {} }) {
   );
 }
 
-export function IconAlertTriangle({ size = 16, className = "", style = {} }) {
+export function IconAlertTriangle({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -85,7 +85,7 @@ export function IconAlertTriangle({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconAlertCircle({ size = 16, className = "", style = {} }) {
+export function IconAlertCircle({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -107,7 +107,7 @@ export function IconAlertCircle({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconInfo({ size = 16, className = "", style = {} }) {
+export function IconInfo({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -129,7 +129,7 @@ export function IconInfo({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconClock({ size = 16, className = "", style = {} }) {
+export function IconClock({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -150,7 +150,7 @@ export function IconClock({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconSearch({ size = 16, className = "", style = {} }) {
+export function IconSearch({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -171,7 +171,7 @@ export function IconSearch({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconUser({ size = 16, className = "", style = {} }) {
+export function IconUser({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -192,7 +192,7 @@ export function IconUser({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconBriefcase({ size = 16, className = "", style = {} }) {
+export function IconBriefcase({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -213,7 +213,7 @@ export function IconBriefcase({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconCurrency({ size = 16, className = "", style = {} }) {
+export function IconCurrency({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -236,7 +236,7 @@ export function IconCurrency({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconScroll({ size = 16, className = "", style = {} }) {
+export function IconScroll({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -258,7 +258,7 @@ export function IconScroll({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconRefresh({ size = 16, className = "", style = {} }) {
+export function IconRefresh({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -280,7 +280,7 @@ export function IconRefresh({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconDownload({ size = 16, className = "", style = {} }) {
+export function IconDownload({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -302,7 +302,7 @@ export function IconDownload({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconChevronUp({ size = 14, className = "", style = {} }) {
+export function IconChevronUp({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -310,7 +310,7 @@ export function IconChevronUp({ size = 14, className = "", style = {} }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -322,7 +322,7 @@ export function IconChevronUp({ size = 14, className = "", style = {} }) {
   );
 }
 
-export function IconChevronDown({ size = 14, className = "", style = {} }) {
+export function IconChevronDown({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -330,7 +330,7 @@ export function IconChevronDown({ size = 14, className = "", style = {} }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -342,7 +342,7 @@ export function IconChevronDown({ size = 14, className = "", style = {} }) {
   );
 }
 
-export function IconArrowLeft({ size = 14, className = "", style = {} }) {
+export function IconArrowLeft({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -350,7 +350,7 @@ export function IconArrowLeft({ size = 14, className = "", style = {} }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -363,7 +363,7 @@ export function IconArrowLeft({ size = 14, className = "", style = {} }) {
   );
 }
 
-export function IconArrowRight({ size = 14, className = "", style = {} }) {
+export function IconArrowRight({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -371,7 +371,7 @@ export function IconArrowRight({ size = 14, className = "", style = {} }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.6"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -380,6 +380,27 @@ export function IconArrowRight({ size = 14, className = "", style = {} }) {
     >
       <line x1="5" y1="12" x2="19" y2="12" />
       <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
+export function IconPlus({ size = 20, className = "", style = {} }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", ...style }}
+      aria-hidden="true"
+    >
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   );
 }
@@ -471,7 +492,7 @@ export function IconMapPin({ size = 24, className = "", style = {} }) {
   );
 }
 
-export function IconCalendar({ size = 16, className = "", style = {} }) {
+export function IconCalendar({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -494,7 +515,7 @@ export function IconCalendar({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconFileText({ size = 16, className = "", style = {} }) {
+export function IconFileText({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -518,7 +539,7 @@ export function IconFileText({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconDollar({ size = 16, className = "", style = {} }) {
+export function IconDollar({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -539,7 +560,7 @@ export function IconDollar({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconShield({ size = 16, className = "", style = {} }) {
+export function IconShield({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -559,7 +580,7 @@ export function IconShield({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconUsers({ size = 16, className = "", style = {} }) {
+export function IconUsers({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -582,7 +603,7 @@ export function IconUsers({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconFolder({ size = 16, className = "", style = {} }) {
+export function IconFolder({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -602,7 +623,7 @@ export function IconFolder({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconMail({ size = 16, className = "", style = {} }) {
+export function IconMail({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -623,7 +644,7 @@ export function IconMail({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconTrendingUp({ size = 16, className = "", style = {} }) {
+export function IconTrendingUp({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}
@@ -644,7 +665,7 @@ export function IconTrendingUp({ size = 16, className = "", style = {} }) {
   );
 }
 
-export function IconSettings({ size = 16, className = "", style = {} }) {
+export function IconSettings({ size = 20, className = "", style = {} }) {
   return (
     <svg
       width={size}

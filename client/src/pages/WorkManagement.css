@@ -8,7 +8,7 @@
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  min-height: calc(100vh - 64px);
+  min-height: 0;
   box-sizing: border-box;
   width: 100%;
 }
@@ -72,11 +72,12 @@
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 6px;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   position: relative;
   overflow: hidden;
-  min-height: 66px;
+  min-height: 0;
 }
 
 .wm-kpi-card:hover {
@@ -210,7 +211,7 @@
   flex: 1 1 auto;
   min-height: 0;
   gap: 20px;
-  align-items: stretch;
+  align-items: start;
   width: 100%;
   transition: grid-template-columns 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -336,19 +337,10 @@
 
 .wm-select {
   height: 38px;
-  padding: 0 32px 0 12px;
-  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 10px center;
-  border: 1px solid var(--hair);
-  border-radius: 8px;
+  min-height: 38px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text);
-  outline: none;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  box-sizing: border-box;
+  border-radius: 8px;
 }
 
 .wm-select:focus {
@@ -796,13 +788,13 @@
 
 /* Empty State Card */
 .wm-empty-state {
-  padding: 48px 24px;
+  padding: 20px 16px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .wm-empty-title {
@@ -824,19 +816,29 @@
    Palette: Forest Green (#0d3a23, #155a37, #1d7347), Off-white (#f8faf8), White (#ffffff)
    ========================================================================== */
 
-/* Unified Grid: 75% Main Workspace + 25% Stationary Leaderboard */
+/* Unified Grid: full-width task workspace */
 .wm-unified-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   width: 100%;
 }
 
-@media (max-width: 1180px) {
-  .wm-unified-grid {
-    grid-template-columns: 1fr;
-  }
+.wm-view-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #e9ebe9;
+  border-radius: 999px;
+}
+
+.wm-view-switcher .wm-tab-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .wm-main-col {
@@ -997,7 +999,7 @@
   border-radius: 10px;
   display: flex;
   flex-direction: column;
-  min-height: 420px;
+  min-height: 0;
   transition: all 0.18s ease;
   position: relative;
 }

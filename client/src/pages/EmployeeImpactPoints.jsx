@@ -7,6 +7,7 @@ import {
   IconAlertCircle,
   IconInfo,
 } from "../components/Icons";
+import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
 import "./WorkManagement.css";
 
@@ -29,6 +30,8 @@ export default function EmployeeImpactPoints() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
+  const leaderboardPager = useClientPagination(leaderboard, 10);
+  const historyPager = useClientPagination(myPoints?.recentTransactions || myPoints?.history || [], 10);
 
   // Recognition state (for managers with direct reports)
   const [meta, setMeta] = useState({
@@ -359,7 +362,7 @@ export default function EmployeeImpactPoints() {
                         </td>
                       </tr>
                     ) : (
-                      recentTransactions.map((tx) => (
+                      historyPager.slice.map((tx) => (
                         <tr key={tx._id}>
                           <td style={{ color: "#64748b", fontSize: 12, whiteSpace: "nowrap" }}>
                             {new Date(tx.createdAt).toLocaleDateString()}
@@ -402,6 +405,15 @@ export default function EmployeeImpactPoints() {
                     )}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={historyPager.page}
+                  totalPages={historyPager.totalPages}
+                  totalItems={historyPager.total}
+                  pageSize={historyPager.pageSize}
+                  onPageChange={historyPager.setPage}
+                  onPageSizeChange={historyPager.setPageSize}
+                  itemLabel="transactions"
+                />
               </div>
             )}
 
@@ -436,7 +448,7 @@ export default function EmployeeImpactPoints() {
                         </td>
                       </tr>
                     ) : (
-                      leaderboard.map((row) => {
+                      leaderboardPager.slice.map((row) => {
                         const isMe = Boolean(
                           myPoints &&
                             (String(row.employeeId) === String(myPoints.employeeId) ||
@@ -485,6 +497,15 @@ export default function EmployeeImpactPoints() {
                     )}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={leaderboardPager.page}
+                  totalPages={leaderboardPager.totalPages}
+                  totalItems={leaderboardPager.total}
+                  pageSize={leaderboardPager.pageSize}
+                  onPageChange={leaderboardPager.setPage}
+                  onPageSizeChange={leaderboardPager.setPageSize}
+                  itemLabel="employees"
+                />
               </div>
             )}
           </div>

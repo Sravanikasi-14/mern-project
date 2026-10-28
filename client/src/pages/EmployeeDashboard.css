@@ -5,17 +5,17 @@
 
 /* Main Container */
 .emp-board-container {
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
-  background: var(--panel, #f5f6f5);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-lg, 26px);
-  padding: 20px 24px 40px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-shadow: var(--shadow);
+  gap: 16px;
+  box-shadow: none;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -141,6 +141,7 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--gap, 16px);
+  align-items: start;
 }
 
 /* Combined Operations Card (Attendance + Leave) */
@@ -148,7 +149,7 @@
   display: grid;
   grid-template-columns: 7fr 5fr;
   gap: 24px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .emp-ops-attendance-col {
@@ -178,8 +179,9 @@
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 104px;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 0;
 }
 
 .emp-subpanel-title {
@@ -414,7 +416,6 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
 }
 
 .emp-att-status-box {

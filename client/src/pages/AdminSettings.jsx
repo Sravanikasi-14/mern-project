@@ -64,6 +64,11 @@ export default function AdminSettings() {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [workingDays, setWorkingDays] = useState("Monday – Friday");
+  const [logoPreview, setLogoPreview] = useState("");
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoError, setLogoError] = useState("");
+  const [logoSaving, setLogoSaving] = useState(false);
+  const [hasSavedLogo, setHasSavedLogo] = useState(false);
 
   // 5. Email & SMTP Delivery State
   const [fromName, setFromName] = useState("");
@@ -109,19 +114,20 @@ export default function AdminSettings() {
         api.get("/settings/email"),
       ]);
 
-      if (compRes.status === "fulfilled" && compRes.value.data?.data) {
-        const c = compRes.value.data.data;
-        setCompanyName(c.companyName || "");
-        setDisplayName(c.displayName || "");
-        setTimezone(c.timezone || "Asia/Kolkata");
-        setCurrency(c.currency || "INR (₹)");
+      if (compRes.status === "fulfilled") {
+        const c = compRes.value.data?.company || compRes.value.data?.data || {};
+        setCompanyName(c.companyName || company?.companyName || "");
+        setDisplayName(c.branding?.displayName || c.displayName || company?.branding?.displayName || "");
+        setTimezone(c.config?.timezone || c.timezone || "Asia/Kolkata");
+        setCurrency(c.config?.currencyCode || c.currency || "INR");
         setContactEmail(c.primaryContact?.email || "");
         setContactPhone(c.primaryContact?.phoneNumber || "");
         setWorkingDays(c.workingDays || "Monday – Friday");
+        setHasSavedLogo(Boolean(c.branding?.logoUrl || company?.branding?.logoUrl));
       }
 
-      if (emailRes.status === "fulfilled" && emailRes.value.data?.data) {
-        const s = emailRes.value.data.data;
+      if (emailRes.status === "fulfilled") {
+        const s = emailRes.value.data?.emailSettings || emailRes.value.data?.data || {};
         setFromName(s.fromName || "");
         setFromEmail(s.fromEmail || "");
         setSmtpHost(s.smtpHost || "smtp.gmail.com");
@@ -141,6 +147,27 @@ export default function AdminSettings() {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    let objectUrl = "";
+    let cancelled = false;
+    async function loadSavedLogo() {
+      if (!hasSavedLogo || logoFile) return;
+      try {
+        const res = await api.get("/auth/company-logo", { responseType: "blob" });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setLogoPreview(objectUrl);
+      } catch {
+        if (!cancelled) setLogoPreview("");
+      }
+    }
+    loadSavedLogo();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [hasSavedLogo, logoFile]);
 
   // Fetch Audit Logs when tab or page changes
   const fetchAuditLogs = async () => {
@@ -267,10 +294,13 @@ export default function AdminSettings() {
         companyName: companyName.trim(),
         displayName: displayName.trim(),
         timezone,
-        currency,
+        currencyCode: currency,
         contactEmail: contactEmail.trim(),
         contactPhone: contactPhone.trim(),
-        workingDays,
+        primaryContact: {
+          email: contactEmail.trim(),
+          phoneNumber: contactPhone.trim(),
+        },
       });
 
       setSuccessMsg(res.data?.message || "Company settings updated successfully.");
@@ -279,6 +309,78 @@ export default function AdminSettings() {
       setError(err.response?.data?.message || "Failed to save company settings.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const readFileAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Could not read the selected file."));
+      reader.readAsDataURL(file);
+    });
+
+  const handleLogoFileChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setLogoError("");
+    if (!file) return;
+
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      setLogoError("Use a PNG, JPEG, or WebP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("Logo must be 2 MB or smaller.");
+      return;
+    }
+
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSaveLogo = async () => {
+    if (!logoFile) return;
+    try {
+      setLogoSaving(true);
+      setLogoError("");
+      const fileData = await readFileAsDataUrl(logoFile);
+      await api.post("/settings/company/logo", {
+        fileName: logoFile.name,
+        fileData,
+        mimeType: logoFile.type,
+      });
+      setLogoFile(null);
+      setHasSavedLogo(true);
+      setSuccessMsg("Company logo saved.");
+      await restoreSession({ silent: true });
+    } catch (err) {
+      setLogoError(err.response?.data?.message || "Failed to save the company logo.");
+    } finally {
+      setLogoSaving(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      setLogoSaving(true);
+      setLogoError("");
+      if (hasSavedLogo) {
+        await api.delete("/settings/company/logo");
+        await restoreSession({ silent: true });
+      }
+      if (logoPreview && logoPreview.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreview);
+      }
+      setLogoPreview("");
+      setLogoFile(null);
+      setHasSavedLogo(false);
+      setSuccessMsg("Company logo removed.");
+    } catch (err) {
+      setLogoError(err.response?.data?.message || "Failed to remove the company logo.");
+    } finally {
+      setLogoSaving(false);
     }
   };
 
@@ -337,7 +439,7 @@ export default function AdminSettings() {
   };
 
   return (
-    <main className="container-wide">
+    <main className="container-wide settings-page">
       <AppHeader
         title="Settings"
       />
@@ -405,102 +507,30 @@ export default function AdminSettings() {
         </div>
       )}
 
-      {/* Main Settings Layout Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "240px 1fr",
-          gap: "20px",
-          alignItems: "start",
-        }}
-      >
-        {/* Navigation Sidebar */}
-        <aside
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: "12px",
-            padding: "8px",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 12px 6px",
-              fontSize: "11px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              color: "var(--muted, #646d67)",
-            }}
-          >
-            Settings
-          </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {SETTINGS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`settings-nav-btn ${isActive ? "is-active" : ""}`}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setError("");
+                  setSuccessMsg("");
+                }}
+              >
+                <Icon size={20} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-          <nav style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-            {SETTINGS_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setError("");
-                    setSuccessMsg("");
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: isActive ? "var(--g-100, #e3f2e9)" : "transparent",
-                    color: isActive ? "var(--g-800, #155a37)" : "var(--ink, #131a15)",
-                    fontWeight: isActive ? 600 : 500,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "all 0.15s ease",
-                    boxShadow: "none",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <Icon size={16} />
-                    <span>{tab.label}</span>
-                  </div>
-                  {tab.badge && (
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        padding: "1px 6px",
-                        borderRadius: "9999px",
-                        background: isActive ? "var(--g-200, #c8e6d4)" : "#f1f5f9",
-                        color: isActive ? "var(--g-800, #155a37)" : "#64748b",
-                      }}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        {/* Content Workspace */}
-        <section
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: "12px",
-            padding: "20px 22px",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
+        <section className="settings-workspace">
           {/* ============================================================== */}
           {/* TAB 1: MY PROFILE                                              */}
           {/* ============================================================== */}
@@ -1088,7 +1118,7 @@ export default function AdminSettings() {
 
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
-                      Display Name
+                      Display Name (sidebar)
                     </label>
                     <input
                       type="text"
@@ -1106,6 +1136,46 @@ export default function AdminSettings() {
                   </div>
                 </div>
 
+                <div className="settings-logo-row">
+                  <div className="settings-logo-preview" aria-hidden="true">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="" className="settings-logo-img" />
+                    ) : (
+                      <span className="settings-logo-fallback">Logo</span>
+                    )}
+                  </div>
+                  <div className="settings-logo-copy">
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                      Company logo
+                    </label>
+                    <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--muted)" }}>
+                      PNG, JPEG, or WebP. Maximum 2 MB. Shown in the sidebar next to the company name.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <label className="btn-secondary btn-sm" style={{ cursor: "pointer", margin: 0 }}>
+                        {logoPreview ? "Replace logo" : "Upload logo"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleLogoFileChange}
+                          hidden
+                        />
+                      </label>
+                      {logoFile && (
+                        <button type="button" className="btn-primary btn-sm" onClick={handleSaveLogo} disabled={logoSaving}>
+                          {logoSaving ? "Saving..." : "Save logo"}
+                        </button>
+                      )}
+                      {(logoPreview || hasSavedLogo) && (
+                        <button type="button" className="btn-secondary btn-sm" onClick={handleRemoveLogo} disabled={logoSaving}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {logoError && <p className="field-error" style={{ marginTop: 8 }}>{logoError}</p>}
+                  </div>
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
@@ -1114,14 +1184,8 @@ export default function AdminSettings() {
                     <select
                       value={timezone}
                       onChange={(e) => setTimezone(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "9px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid var(--hair)",
-                        fontSize: "13.5px",
-                        background: "#ffffff",
-                      }}
+                      className="filter-select"
+                      style={{ width: "100%" }}
                     >
                       <option value="Asia/Kolkata">Asia/Kolkata (IST, UTC+5:30)</option>
                       <option value="UTC">UTC (Coordinated Universal Time)</option>
@@ -1136,22 +1200,16 @@ export default function AdminSettings() {
                       Operational Currency
                     </label>
                     <select
-                      value={currency}
+                      value={["INR", "USD", "EUR", "GBP", "AED"].includes(currency) ? currency : "INR"}
                       onChange={(e) => setCurrency(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "9px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid var(--hair)",
-                        fontSize: "13.5px",
-                        background: "#ffffff",
-                      }}
+                      className="filter-select"
+                      style={{ width: "100%" }}
                     >
-                      <option value="INR (₹)">INR — Indian Rupee (₹)</option>
-                      <option value="USD ($)">USD — US Dollar ($)</option>
-                      <option value="EUR (€)">EUR — Euro (€)</option>
-                      <option value="GBP (£)">GBP — British Pound (£)</option>
-                      <option value="AED (د.إ)">AED — UAE Dirham (د.إ)</option>
+                      <option value="INR">INR — Indian Rupee (₹)</option>
+                      <option value="USD">USD — US Dollar ($)</option>
+                      <option value="EUR">EUR — Euro (€)</option>
+                      <option value="GBP">GBP — British Pound (£)</option>
+                      <option value="AED">AED — UAE Dirham</option>
                     </select>
                   </div>
                 </div>

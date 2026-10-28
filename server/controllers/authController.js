@@ -21,6 +21,11 @@ function publicCompany(company) {
     slug: company.slug,
     status: company.status,
     branding: company.branding,
+    timezone: company.config?.timezone || "Asia/Kolkata",
+    config: {
+      timezone: company.config?.timezone || "Asia/Kolkata",
+      currencyCode: company.config?.currencyCode || "INR",
+    },
   };
 }
 

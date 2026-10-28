@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
-import { IconClose, IconCheck, IconChevronDown } from "../components/Icons";
+import { IconClose, IconCheck } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import "./PeopleManagement.css";
@@ -15,7 +15,8 @@ const AVAILABLE_COLUMNS = [
   { id: "fullName", label: "Full Name" },
   { id: "email", label: "Email" },
   { id: "phoneNumber", label: "Phone" },
-  { id: "jobTitle", label: "Job Title" },
+  { id: "jobTitle", label: "Designation" },
+  { id: "department", label: "Department" },
   { id: "project", label: "Project" },
   { id: "status", label: "Status" },
   { id: "invitation", label: "Invitation" },
@@ -30,8 +31,8 @@ export default function AdminHome() {
   const projectParam = searchParams.get("project");
 
   // Selected project state: null = Projects Overview (Ref 1), string = Project Details (Ref 2)
-  const [selectedProject, setSelectedProject] = useState(projectParam || null);
-  const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
+  const [selectedProject, setSelectedProject] = useState(projectParam || "ALL");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
 
   const [summary, setSummary] = useState(null);
   const [allEmployeesPool, setAllEmployeesPool] = useState([]);
@@ -57,14 +58,15 @@ export default function AdminHome() {
   const [visibleColumns, setVisibleColumns] = useState({
     employeeCode: true,
     fullName: true,
-    email: true,
+    email: false,
     phoneNumber: false,
     jobTitle: true,
-    project: true,
+    department: true,
+    project: false,
     status: true,
-    invitation: true,
-    salary: true,
-    joiningDate: true,
+    invitation: false,
+    salary: false,
+    joiningDate: false,
   });
   const [showColumnPicker, setShowColumnPicker] = useState(false);
 
@@ -101,12 +103,13 @@ export default function AdminHome() {
 
   // Keep URL searchParams synchronized with selectedProject
   const handleSelectProject = (projName) => {
-    setSelectedProject(projName);
+    const next = projName || "ALL";
+    setSelectedProject(next);
     setCurrentPage(1);
     setSearch("");
     setDebouncedSearch("");
-    if (projName) {
-      searchParams.set("project", projName);
+    if (next && next !== "ALL") {
+      searchParams.set("project", next);
     } else {
       searchParams.delete("project");
     }
@@ -221,6 +224,10 @@ export default function AdminHome() {
           queryParams.set("project", selectedProject);
         }
 
+        if (selectedDepartment) {
+          queryParams.set("department", selectedDepartment);
+        }
+
         const employeesRes = await api.get(`/employees?${queryParams.toString()}`);
 
         if (!cancelled) {
@@ -244,7 +251,7 @@ export default function AdminHome() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, selectedProject, sortBy, sortOrder, refreshTrigger]);
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, selectedProject, selectedDepartment, sortBy, sortOrder, refreshTrigger]);
 
   // Derive projects structure from all employees pool
   const projectsData = useMemo(() => {
@@ -503,7 +510,7 @@ export default function AdminHome() {
           VIEW 1: PROJECTS OVERVIEW (REFERENCE 1 LAYOUT)
           Active when selectedProject is null
           ========================================================================= */}
-      {!selectedProject ? (
+      {false ? (
         <>
           <AppHeader
             title="Employees"
@@ -752,38 +759,53 @@ export default function AdminHome() {
            ========================================================================= */
         <>
           <AppHeader
-            title={selectedProject === "ALL" ? "All Employees" : selectedProject}
+            title="Employees"
             actions={
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => handleSelectProject(null)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12" />
-                    <polyline points="12 19 5 12 12 5" />
-                  </svg>
-                  <span>Projects</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => {
-                    setNewEmployee((prev) => ({
-                      ...prev,
-                      projectName: selectedProject === "ALL" ? "" : selectedProject,
-                    }));
-                    setShowAddModal(true);
-                  }}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
-                >
-                  <span>+</span> <span>Add Employee</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setNewEmployee((prev) => ({
+                    ...prev,
+                    projectName: selectedProject === "ALL" ? "" : selectedProject,
+                  }));
+                  setShowAddModal(true);
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Employee
+              </button>
             }
           />
+
+          <div className="dept-chip-row" role="tablist" aria-label="Filter by department">
+            <button
+              type="button"
+              className={`dept-chip ${!selectedDepartment ? "is-selected" : ""}`}
+              onClick={() => {
+                setSelectedDepartment("");
+                setCurrentPage(1);
+              }}
+            >
+              All <strong>{totalEmployeesCount}</strong>
+            </button>
+            {projectsData.deptList.map((dept) => (
+              <button
+                key={dept.name}
+                type="button"
+                className={`dept-chip ${selectedDepartment === dept.name ? "is-selected" : ""}`}
+                onClick={() => {
+                  setSelectedDepartment(dept.name);
+                  setCurrentPage(1);
+                }}
+              >
+                {dept.name} <strong>{dept.count}</strong>
+              </button>
+            ))}
+          </div>
 
           {/* Reference 2 Toolbar: Search, Filters, Sorting, View Toggle */}
           <div className="pm-cards-toolbar">
@@ -855,53 +877,42 @@ export default function AdminHome() {
             </div>
 
             <div className="pm-toolbar-right">
-              {/* View Toggle: Grid (Reference 2 cards) vs List (Table) */}
-              <div className="pm-view-toggle">
-                <button
-                  type="button"
-                  className={`pm-view-toggle-btn ${viewMode === "grid" ? "active" : ""}`}
-                  onClick={() => setViewMode("grid")}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="7" height="7" />
-                    <rect x="14" y="3" width="7" height="7" />
-                    <rect x="14" y="14" width="7" height="7" />
-                    <rect x="3" y="14" width="7" height="7" />
-                  </svg>
-                  <span>Cards</span>
-                </button>
-                <button
-                  type="button"
-                  className={`pm-view-toggle-btn ${viewMode === "table" ? "active" : ""}`}
-                  onClick={() => setViewMode("table")}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="8" y1="6" x2="21" y2="6" />
-                    <line x1="8" y1="12" x2="21" y2="12" />
-                    <line x1="8" y1="18" x2="21" y2="18" />
-                    <line x1="3" y1="6" x2="3.01" y2="6" />
-                    <line x1="3" y1="12" x2="3.01" y2="12" />
-                    <line x1="3" y1="18" x2="3.01" y2="18" />
-                  </svg>
-                  <span>Table</span>
-                </button>
-              </div>
-
-              {/* Page size */}
               <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
+                value={selectedProject}
+                onChange={(e) => handleSelectProject(e.target.value)}
                 className="filter-select"
+                aria-label="Filter by project"
               >
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <option key={size} value={size}>
-                    {size} per page
+                <option value="ALL">All projects</option>
+                {projectsData.projectList.map((proj) => (
+                  <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
+                    {proj.name}
                   </option>
                 ))}
               </select>
+              <div className="column-visibility-container">
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => setShowColumnPicker((open) => !open)}
+                >
+                  Columns
+                </button>
+                {showColumnPicker && (
+                  <div className="column-visibility-popover">
+                    {AVAILABLE_COLUMNS.map((col) => (
+                      <label key={col.id} className="column-checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(visibleColumns[col.id])}
+                          onChange={() => toggleColumn(col.id)}
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -923,7 +934,7 @@ export default function AdminHome() {
           {/* -------------------------------------------------------------------
               REFERENCE 2: RESPONSIVE EMPLOYEE PROFILE CARDS GRID
               ------------------------------------------------------------------- */}
-          {viewMode === "grid" ? (
+          {false ? (
             <>
               {loading && employees.length === 0 ? (
                 <div className="pm-empty-box">
@@ -1052,6 +1063,32 @@ export default function AdminHome() {
           ) : (
             /* Table fallback view */
             <div className="data-table-container table-wrapper-relative">
+              {loading && employees.length === 0 ? (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Code</th>
+                      <th>Department</th>
+                      <th>Designation</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <TableSkeletonRows rows={8} cols={6} />
+                  </tbody>
+                </table>
+              ) : employees.length === 0 ? (
+                <div className="table-empty-state">
+                  <h3>No employees found</h3>
+                  <p>
+                    {debouncedSearch || statusFilter !== "ALL" || selectedDepartment
+                      ? "No employees match the current filters."
+                      : "Add the first employee to start the directory."}
+                  </p>
+                </div>
+              ) : (
               <table className="data-table">
                 <thead>
                   <tr>
@@ -1059,7 +1096,8 @@ export default function AdminHome() {
                     {visibleColumns.fullName && <th>Full Name</th>}
                     {visibleColumns.email && <th>Email</th>}
                     {visibleColumns.phoneNumber && <th>Phone</th>}
-                    {visibleColumns.jobTitle && <th>Job Title</th>}
+                    {visibleColumns.jobTitle && <th>Designation</th>}
+                    {visibleColumns.department && <th>Department</th>}
                     {visibleColumns.project && <th>Project</th>}
                     {visibleColumns.status && <th>Status</th>}
                     {visibleColumns.invitation && <th>Invitation</th>}
@@ -1072,10 +1110,27 @@ export default function AdminHome() {
                   {employees.map((emp) => (
                     <tr key={emp._id}>
                       {visibleColumns.employeeCode && <td><strong>{emp.employeeCode}</strong></td>}
-                      {visibleColumns.fullName && <td>{emp.fullName}</td>}
+                      {visibleColumns.fullName && (
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span className="pm-emp-avatar" style={{ width: 32, height: 32, fontSize: 11 }}>
+                              {getInitials(emp.fullName)}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              style={{ background: "transparent", border: 0, boxShadow: "none", padding: 0, color: "var(--ink)", fontWeight: 650 }}
+                              onClick={() => handleViewDetails(emp._id)}
+                            >
+                              {emp.fullName}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                       {visibleColumns.email && <td>{emp.email}</td>}
                       {visibleColumns.phoneNumber && <td>{emp.phoneNumber || "—"}</td>}
                       {visibleColumns.jobTitle && <td>{emp.job?.jobTitle || "—"}</td>}
+                      {visibleColumns.department && <td>{emp.job?.department || "General"}</td>}
                       {visibleColumns.project && <td>{emp.job?.project?.projectName || "—"}</td>}
                       {visibleColumns.status && <td><StatusBadge status={emp.status} /></td>}
                       {visibleColumns.invitation && (
@@ -1132,6 +1187,7 @@ export default function AdminHome() {
                   ))}
                 </tbody>
               </table>
+              )}
             </div>
           )}
 

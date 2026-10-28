@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { IconDocument } from "../components/Icons";
 import api from "../services/api";
+import "./EmployeeProfileView.css";
 
 export default function EditEmployee() {
   const { id } = useParams();
@@ -765,6 +766,7 @@ export default function EditEmployee() {
                 <div>
                   <button
                     type="button"
+                    className="btn-primary"
                     onClick={handleUploadDocument}
                     disabled={uploadingDoc || !selectedFile}
                     style={{ width: "100%", height: "38px" }}

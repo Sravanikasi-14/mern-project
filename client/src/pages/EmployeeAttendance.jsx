@@ -13,10 +13,12 @@ import {
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
+import { civilDaysInMonth, formatCivilDate, getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import "./Attendance.css";
 
 export default function EmployeeAttendance() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,10 +69,9 @@ export default function EmployeeAttendance() {
       setHistoryLoading(true);
 
       const year = targetDate.getFullYear();
-      const month = targetDate.getMonth();
-      const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-      const lastDay = new Date(year, month + 1, 0).getDate();
-      const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      const month = targetDate.getMonth() + 1;
+      const startDate = formatCivilDate(year, month, 1);
+      const endDate = formatCivilDate(year, month, civilDaysInMonth(year, month));
 
       const res = await api.get("/employees/me/attendance/history", {
         params: { startDate, endDate, limit: 100 },
@@ -238,7 +239,7 @@ export default function EmployeeAttendance() {
     const year = selectedDate.getFullYear();
     const month = selectedDate.getMonth();
     const totalDays = new Date(year, month + 1, 0).getDate();
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate(new Date(), timeZone);
 
     const recordsMap = new Map();
     for (const r of historyRecords) {
@@ -256,8 +257,7 @@ export default function EmployeeAttendance() {
       if (existing) {
         list.push(existing);
       } else {
-        const dObj = new Date(year, month, day);
-        const dayOfWeek = dObj.getDay();
+        const dayOfWeek = new Date(Date.UTC(year, month, day)).getUTCDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
         list.push({
@@ -273,7 +273,7 @@ export default function EmployeeAttendance() {
     }
 
     return list;
-  }, [selectedDate, historyRecords]);
+  }, [selectedDate, historyRecords, timeZone]);
 
   // Filtered list
   const filteredDays = useMemo(() => {
@@ -327,7 +327,7 @@ export default function EmployeeAttendance() {
     let overtimeHours = 0;
     let absentDays = 0;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate(new Date(), timeZone);
 
     for (const rec of monthDaysList) {
       if (rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import StatusBadge from "./StatusBadge";
+import { getCompanyBusinessDate } from "../utils/dateUtils";
 
 /**
  * Reusable horizontal attendance timeline component
@@ -22,17 +23,16 @@ export default function AttendanceTimeline({
   const { dayTitle, daySubtitle, isToday } = useMemo(() => {
     if (!date) return { dayTitle: "--", daySubtitle: "", isToday: false };
     try {
-      const d = new Date(date + "T00:00:00");
-      const todayStr = new Date().toISOString().split("T")[0];
+      const [year, month, day] = date.split("-").map(Number);
+      const utcDate = new Date(Date.UTC(year, month - 1, day));
+      const todayStr = getCompanyBusinessDate();
       const todayCheck = date === todayStr;
-
-      const weekday = d.toLocaleDateString(undefined, { weekday: "long" });
-      const dayNum = d.getDate();
-      const monthShort = d.toLocaleDateString(undefined, { month: "short" });
+      const weekday = utcDate.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+      const monthShort = utcDate.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 
       return {
-        dayTitle: todayCheck ? "Today" : `${weekday}, ${dayNum}`,
-        daySubtitle: `${monthShort} ${d.getFullYear()}`,
+        dayTitle: todayCheck ? "Today" : `${weekday}, ${day}`,
+        daySubtitle: `${monthShort} ${year}`,
         isToday: todayCheck,
       };
     } catch {

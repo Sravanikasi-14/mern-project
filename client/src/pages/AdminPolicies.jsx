@@ -7,6 +7,7 @@ import {
   IconAlertCircle,
   IconInfo,
 } from "../components/Icons";
+import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
 import "./AdminPolicies.css";
 
@@ -1454,6 +1455,9 @@ export default function AdminPolicies() {
     });
   }, [holidays, holidaySearch, holidayYearFilter]);
 
+  const holidayPager = useClientPagination(filteredHolidays, 10);
+  const leaveTypePager = useClientPagination(leaveTypes, 10);
+
   if (loading && !originalPolicy) {
     return (
       <div className="container-wide">
@@ -2060,7 +2064,9 @@ export default function AdminPolicies() {
                     </tr>
                   </thead>
                   <tbody>
-                    {leaveTypes.map((lt, idx) => (
+                    {leaveTypePager.slice.map((lt) => {
+                      const idx = leaveTypes.indexOf(lt);
+                      return (
                       <tr
                         key={lt.code || idx}
                         style={{
@@ -2127,9 +2133,19 @@ export default function AdminPolicies() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={leaveTypePager.page}
+                  totalPages={leaveTypePager.totalPages}
+                  totalItems={leaveTypePager.total}
+                  pageSize={leaveTypePager.pageSize}
+                  onPageChange={leaveTypePager.setPage}
+                  onPageSizeChange={leaveTypePager.setPageSize}
+                  itemLabel="leave types"
+                />
               </div>
 
               <div className="policies-save-bar">
@@ -2368,7 +2384,7 @@ export default function AdminPolicies() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredHolidays.map((h, idx) => {
+                      {holidayPager.slice.map((h, idx) => {
                         const d = h.date ? new Date(h.date) : null;
                         const dayName = d && !isNaN(d.getTime())
                           ? d.toLocaleDateString("en-US", { weekday: "long" })
@@ -2391,10 +2407,10 @@ export default function AdminPolicies() {
                             </td>
                             <td style={{ padding: "12px", textAlign: "right" }}>
                               <div style={{ display: "inline-flex", gap: 6 }}>
-                                <button type="button" className="btn-secondary btn-sm" onClick={() => handleOpenEditHoliday(idx)}>
+                                <button type="button" className="btn-secondary btn-sm" onClick={() => handleOpenEditHoliday(holidays.findIndex((x) => x.date === h.date && x.name === h.name))}>
                                   Edit
                                 </button>
-                                <button type="button" className="btn-secondary btn-sm" style={{ color: "#ef4444" }} onClick={() => handleRequestDeleteHoliday(idx)}>
+                                <button type="button" className="btn-secondary btn-sm" style={{ color: "#ef4444" }} onClick={() => handleRequestDeleteHoliday(holidays.findIndex((x) => x.date === h.date && x.name === h.name))}>
                                   Remove
                                 </button>
                               </div>
@@ -2404,6 +2420,15 @@ export default function AdminPolicies() {
                       })}
                     </tbody>
                   </table>
+                  <Pagination
+                    currentPage={holidayPager.page}
+                    totalPages={holidayPager.totalPages}
+                    totalItems={holidayPager.total}
+                    pageSize={holidayPager.pageSize}
+                    onPageChange={holidayPager.setPage}
+                    onPageSizeChange={holidayPager.setPageSize}
+                    itemLabel="holidays"
+                  />
                 </div>
               )}
 

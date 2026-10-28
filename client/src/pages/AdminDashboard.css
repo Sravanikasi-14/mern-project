@@ -3,19 +3,19 @@
    Visual Reference: https://demo.codeandchill.store/fernly/#team
    ========================================================================== */
 
-/* Main Dashboard Board Container */
+/* Main Dashboard page — full content area, not a nested drawer/panel */
 .board-container {
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
-  background: var(--panel, #f5f6f5);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-lg, 26px);
+  background: transparent;
+  border: none;
+  border-radius: 0;
   padding: 20px 24px 40px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -33,11 +33,11 @@
 }
 
 .board__title {
-  letter-spacing: -0.035em;
-  font-size: clamp(28px, 2.5vw, 36px);
+  letter-spacing: -0.02em;
+  font-size: var(--fs-page, 22px);
   font-weight: 700;
   color: var(--ink, #131a15);
-  line-height: 1.15;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -71,14 +71,13 @@
 
 .dash-filter-select {
   border: none;
-  background: transparent;
+  background-color: transparent;
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--ink, #131a15);
   cursor: pointer;
   outline: none;
-  padding-right: 4px;
 }
 
 /* Month Navigator Group */
@@ -95,8 +94,8 @@
 }
 
 .month-nav-arrow {
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -111,6 +110,43 @@
 
 .month-nav-arrow:hover {
   background: var(--panel, #f5f6f5);
+}
+
+.month-nav-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.dash-workforce-card {
+  grid-column: span 5;
+  align-self: start;
+}
+
+.dash-workforce-card .wf-alloc {
+  gap: 8px;
+}
+
+.dash-workforce-card .wf-alloc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dash-workforce-card .wf-alloc-name,
+.dash-workforce-card .wf-alloc-count {
+  font-size: 13px;
+}
+
+.dash-workforce-card .wf-alloc-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel, #f5f6f5);
+}
+
+.dash-workforce-card .wf-alloc-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--g-700, #1d7347);
 }
 
 .month-nav-label {
@@ -211,10 +247,10 @@
 }
 
 .module-pill-btn svg {
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
   color: var(--g-700, #1d7347);
-  stroke-width: 2px;
+  stroke-width: 2.4px;
 }
 
 .module-pill-btn:hover {
@@ -232,13 +268,14 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--gap, 16px);
+  align-items: start;
 }
 
 /* Base Bento Card */
 .card {
   background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 20px);
+  border-radius: var(--r-md, 12px);
   box-shadow: var(--shadow);
   padding: 22px;
   display: flex;
@@ -312,14 +349,15 @@
    ========================================================================== */
 
 .stat {
-  min-height: 154px;
-  padding: 20px;
+  min-height: 0;
+  padding: 16px 18px;
   text-decoration: none;
   color: inherit;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .stat:hover {
@@ -343,8 +381,8 @@
 }
 
 .stat__arrow {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -362,7 +400,7 @@
 }
 
 .stat__num {
-  font-size: clamp(34px, 3.2vw, 44px);
+  font-size: var(--fs-stat, 26px);
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1;
@@ -926,7 +964,8 @@
    ========================================================================== */
 
 .team-activity-card {
-  grid-column: span 6;
+  grid-column: span 7;
+  align-self: start;
 }
 
 .activity-list {
@@ -1002,7 +1041,7 @@
 
 /* Resources & Staffing Allocation Card (Span 5) */
 .resources-allocation-card {
-  grid-column: span 5;
+  grid-column: span 12;
 }
 
 .resources-allocation-body {
@@ -1150,12 +1189,13 @@
    Responsive Breakpoints
    ========================================================================== */
 
-@media (max-width: 1280px) {
+@media (max-width: 900px) {
   .analytics-card { grid-column: span 12; }
   .pending-actions-card { grid-column: span 12; }
   .recruitment-card { grid-column: span 12; }
   .payroll-card { grid-column: span 12; }
   .team-activity-card { grid-column: span 12; }
+  .dash-workforce-card { grid-column: span 12; }
   .assets-card { grid-column: span 6; }
   .teams-alloc-card { grid-column: span 6; }
 }
@@ -1163,8 +1203,8 @@
 @media (max-width: 768px) {
   .board-container { padding: 16px 14px; }
   .fernly-bento-grid { gap: 12px; }
-  .stat { min-height: 136px; padding: 16px; }
-  .stat__num { font-size: 32px; }
+  .stat { min-height: 0; padding: 14px 16px; }
+  .stat__num { font-size: var(--fs-stat, 26px); }
   .funnel-process-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .assets-card { grid-column: span 12; }
   .teams-alloc-card { grid-column: span 12; }

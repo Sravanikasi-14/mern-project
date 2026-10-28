@@ -8,6 +8,7 @@ import {
   IconInfo,
   IconSearch,
 } from "../components/Icons";
+import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
 import "./WorkManagement.css";
 
@@ -35,7 +36,8 @@ export default function AdminImpactPoints() {
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [sourceFilter, setSourceFilter] = useState("ALL");
   const [searchLedger, setSearchLedger] = useState("");
-  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, pages: 1 });
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
+  const leaderboardPager = useClientPagination(leaderboard, 10);
 
   // Metadata
   const [meta, setMeta] = useState({
@@ -124,11 +126,11 @@ export default function AdminImpactPoints() {
   }, [activeTab, departmentFilter, periodFilter]);
 
   // Fetch Ledger Transactions
-  const fetchLedger = async (page = 1) => {
+  const fetchLedger = async (page = 1, limitOverride) => {
     try {
       setLedgerLoading(true);
       setError("");
-      const params = { page, limit: pagination.limit };
+      const params = { page, limit: limitOverride || pagination.limit };
       if (typeFilter !== "ALL") params.type = typeFilter;
       if (sourceFilter !== "ALL") params.source = sourceFilter;
       if (searchLedger.trim()) params.search = searchLedger.trim();
@@ -505,7 +507,7 @@ export default function AdminImpactPoints() {
                         </td>
                       </tr>
                     ) : (
-                      leaderboard.map((row) => (
+                      leaderboardPager.slice.map((row) => (
                         <tr key={row.employeeId}>
                           <td>
                             <span
@@ -545,6 +547,15 @@ export default function AdminImpactPoints() {
                     )}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={leaderboardPager.page}
+                  totalPages={leaderboardPager.totalPages}
+                  totalItems={leaderboardPager.total}
+                  pageSize={leaderboardPager.pageSize}
+                  onPageChange={leaderboardPager.setPage}
+                  onPageSizeChange={leaderboardPager.setPageSize}
+                  itemLabel="employees"
+                />
               </div>
             )}
 
@@ -656,42 +667,19 @@ export default function AdminImpactPoints() {
               </div>
             )}
 
-            {/* Pagination Controls */}
-            {activeTab === "LEDGER" && pagination.pages > 1 && (
-              <div
-                style={{
-                  padding: "12px 20px",
-                  borderTop: "1px solid #e2e8f0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  backgroundColor: "#f8fafc",
-                  fontSize: 12,
-                  color: "#64748b",
+            {activeTab === "LEDGER" && (
+              <Pagination
+                currentPage={pagination.page}
+                totalPages={pagination.pages}
+                totalItems={pagination.total}
+                pageSize={pagination.limit}
+                onPageChange={(p) => fetchLedger(p)}
+                onPageSizeChange={(s) => {
+                  setPagination((prev) => ({ ...prev, limit: s, page: 1 }));
+                  fetchLedger(1, s);
                 }}
-              >
-                <span>
-                  Page {pagination.page} of {pagination.pages} ({pagination.total} total)
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    disabled={pagination.page <= 1}
-                    onClick={() => fetchLedger(pagination.page - 1)}
-                    className="wm-btn-secondary"
-                    style={{ height: 32, padding: "0 12px", fontSize: 12 }}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    disabled={pagination.page >= pagination.pages}
-                    onClick={() => fetchLedger(pagination.page + 1)}
-                    className="wm-btn-secondary"
-                    style={{ height: 32, padding: "0 12px", fontSize: 12 }}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
+                itemLabel="transactions"
+              />
             )}
           </div>
         </div>

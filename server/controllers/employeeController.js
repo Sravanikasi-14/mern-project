@@ -22,6 +22,7 @@ import {
   withLeaveSubmissionLock,
 } from "../services/leaveService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
+import { getCompanyBusinessDate, resolveCompanyTimezone, weekdayLong } from "../utils/companyTime.js";
 import { generatePayslipPdfBuffer } from "../services/payslipPdfService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
@@ -70,6 +71,7 @@ export async function getEmployees(req, res, next) {
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
     const status = typeof req.query.status === "string" ? req.query.status.trim().toUpperCase() : "";
     const project = typeof req.query.project === "string" ? req.query.project.trim() : "";
+    const department = typeof req.query.department === "string" ? req.query.department.trim() : "";
     const jobTitle = typeof req.query.jobTitle === "string" ? req.query.jobTitle.trim() : "";
 
     const sortByParam = req.query.sortBy;
@@ -93,6 +95,10 @@ export async function getEmployees(req, res, next) {
 
     if (project) {
       query["job.project.projectName"] = new RegExp(escapeRegex(project), "i");
+    }
+
+    if (department) {
+      query["job.department"] = new RegExp(`^${escapeRegex(department)}$`, "i");
     }
 
     if (jobTitle) {
@@ -420,7 +426,7 @@ export async function getEmployeeDashboard(req, res, next) {
       });
     }
 
-    const todayStr = toDateString(new Date());
+    const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company));
     const customFields = employee.customFields || {};
     const attendanceLogs = customFields.attendanceLogs || [];
 
@@ -520,13 +526,17 @@ export async function getEmployeeDashboard(req, res, next) {
 
     // Upcoming company holidays from policy
     const upcomingHolidays = (policy?.holidays || [])
-      .map((h) => ({
-        name: h.name,
-        date: toDateString(h.date),
-        day: new Date(h.date).toLocaleDateString("en-US", { weekday: "long" }),
-        type: h.type || "Gazetted Holiday",
-      }))
+      .map((h) => {
+        const date = toDateString(h.date);
+        return {
+          name: h.name,
+          date,
+          day: weekdayLong(date),
+          type: h.type || "Gazetted Holiday",
+        };
+      })
       .filter((h) => h.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5);
 
     // Personal payslips derived from finalized Payslip records or active EmployeeCompensation
@@ -739,7 +749,7 @@ export async function employeeCheckIn(req, res, next) {
       throw new HttpError(404, "Employee record not found.");
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company));
     const customFields = employee.customFields || {};
     const attendanceLogs = customFields.attendanceLogs || [];
 
@@ -805,7 +815,7 @@ export async function employeeCheckOut(req, res, next) {
       throw new HttpError(404, "Employee record not found.");
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company));
     const customFields = employee.customFields || {};
     const attendanceLogs = customFields.attendanceLogs || [];
 

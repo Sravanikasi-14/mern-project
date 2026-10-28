@@ -1,5 +1,6 @@
 import { USER_ROLES } from "../models/User.js";
 import { getCompanyBusinessDate } from "../services/attendanceService.js";
+import { addCivilDays, parseCivilDate, formatCivilDate, weekdaySunday0 } from "../utils/companyTime.js";
 
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return null;
@@ -28,12 +29,12 @@ function getTimeInTimezone(date, timezone) {
 
 function toDateString(date) {
   if (!date) return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}/.test(date.trim())) {
+    return date.trim().slice(0, 10);
+  }
   const d = new Date(date);
   if (isNaN(d.getTime())) return "";
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return d.toISOString().slice(0, 10);
 }
 
 export async function getAdminOverview(req, res, next) {
@@ -267,8 +268,8 @@ export async function getAdminDashboard(req, res, next) {
 
     // 8. Attendance Calendar for targetYear & targetMonth
     const monthStr = String(targetMonth).padStart(2, "0");
-    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-    const firstDayWeekday = new Date(targetYear, targetMonth - 1, 1).getDay(); // 0 = Sun
+    const daysInMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+    const firstDayWeekday = new Date(Date.UTC(targetYear, targetMonth - 1, 1)).getUTCDay(); // 0 = Sun
     const monthPrefix = `${targetYear}-${monthStr}`;
 
     const monthAttendanceRecords = await Attendance.find({
@@ -313,8 +314,7 @@ export async function getAdminDashboard(req, res, next) {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${targetYear}-${monthStr}-${String(day).padStart(2, "0")}`;
-      const dayDate = new Date(`${dateStr}T12:00:00.000Z`);
-      const dayOfWeek = dayDate.getDay();
+      const dayOfWeek = new Date(Date.UTC(targetYear, targetMonth - 1, day)).getUTCDay();
       const isToday = dateStr === targetDate;
       const isFuture = dateStr > todayStr;
 
@@ -445,13 +445,13 @@ export async function getAdminDashboard(req, res, next) {
 
     // 12. Attendance Overview (Current Week Trend: 7 days ending at targetDate)
     const weeklyOverview = [];
-    const targetDt = new Date(`${targetDate}T12:00:00.000Z`);
+    const targetCivil = parseCivilDate(targetDate);
+    const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(targetDt);
-      d.setDate(d.getDate() - i);
-      const dateStr = toDateString(d);
-      const dayLabel = d.toLocaleDateString("en-US", { weekday: "short", day: "numeric" }); // e.g. "Sat 17"
+      const d = addCivilDays(targetCivil.year, targetCivil.month, targetCivil.day, -i);
+      const dateStr = formatCivilDate(d.year, d.month, d.day);
+      const dayLabel = `${weekdayNames[weekdaySunday0(d.year, d.month, d.day)]} ${d.day}`;
 
       const dayCal = calendarDays.find((cd) => cd.date === dateStr);
       if (dayCal) {
@@ -523,6 +523,15 @@ export async function getAdminDashboard(req, res, next) {
       });
     }
     payrollAllocation.sort((a, b) => b.cost - a.cost);
+
+    const deptHeadcount = new Map();
+    for (const emp of activeEmployees) {
+      const dept = emp.job?.department || "General / Unassigned";
+      deptHeadcount.set(dept, (deptHeadcount.get(dept) || 0) + 1);
+    }
+    const workforceDepartments = Array.from(deptHeadcount.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
 
     // 15. Project Teams
     const projectTypeCountMap = {
@@ -777,6 +786,9 @@ export async function getAdminDashboard(req, res, next) {
         days: weeklyOverview,
       },
       companyAssets,
+      workforce: {
+        departments: workforceDepartments,
+      },
       payrollAllocation: {
         totalMonthly: totalMonthlyPayroll,
         departments: payrollAllocation,

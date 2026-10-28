@@ -124,7 +124,7 @@
   border-radius: 12px;
   padding: 22px 26px;
   box-shadow: var(--shadow-sm);
-  min-height: 540px;
+  min-height: 0;
   box-sizing: border-box;
 }
 

@@ -12,6 +12,14 @@ import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
+import { useAuth } from "../context/AuthContext";
+import MonthCalendar from "../components/MonthCalendar";
+import {
+  formatDisplayDate,
+  getCompanyBusinessDate,
+  parseCivilDate,
+  resolveCompanyTimezone,
+} from "../utils/dateUtils";
 import "./LeaveManagement.css";
 
 const STATUS_FILTERS = [
@@ -22,6 +30,13 @@ const STATUS_FILTERS = [
 ];
 
 export default function EmployeeLeave() {
+  const { company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
+  const todayParts = parseCivilDate(getCompanyBusinessDate(new Date(), timeZone));
+  const [calMonth, setCalMonth] = useState(() => ({
+    year: todayParts.year,
+    month: todayParts.month,
+  }));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
@@ -95,7 +110,7 @@ export default function EmployeeLeave() {
         configError: leaveConfig?.error || null,
       };
     } catch {
-      const today = new Date().toISOString().split("T")[0];
+      const today = getCompanyBusinessDate(new Date(), tz);
       return {
         timezone: tz,
         officeStartTime,
@@ -267,14 +282,7 @@ export default function EmployeeLeave() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString) => formatDisplayDate(dateString, timeZone);
 
   const employeeName = dashboardData?.employee?.fullName || "Employee";
   const firstName = employeeName.split(" ")[0];
@@ -282,7 +290,7 @@ export default function EmployeeLeave() {
   const detailedBalances = leave?.detailed || [];
   const recentRequests = leave?.recentRequests || [];
   const scheduledUpcoming = (leave?.scheduledRanges || []).filter((r) => r.status === "APPROVED" || r.status === "PENDING");
-  const holidays = dashboardData?.companyHolidays || [];
+  const holidays = dashboardData?.holidays || dashboardData?.companyHolidays || [];
 
   // Summary counts
   const totalAvailable = detailedBalances.reduce((sum, b) => sum + (b.available || 0), 0) || (leave?.summary?.remaining ?? 20);
@@ -359,6 +367,55 @@ export default function EmployeeLeave() {
           Rejected: <strong style={{ color: rejectedCount > 0 ? "#b91c1c" : "var(--ink)" }}>{rejectedCount}</strong>
         </span>
       </div>
+
+      <section className="lm-calendar-section" aria-label="My leave schedule">
+        <MonthCalendar
+          year={calMonth.year}
+          month={calMonth.month}
+          timeZone={timeZone}
+          events={(scheduledUpcoming || []).map((item) => ({
+            id: item.id,
+            startDate: item.startDate,
+            endDate: item.endDate,
+            fromDate: item.startDate,
+            toDate: item.endDate,
+            leaveTypeCode: item.leaveType,
+            status: item.status,
+            label: item.status === "PENDING" ? "Pending" : "Approved",
+          }))}
+          heading="My Leave Schedule"
+          onMonthChange={setCalMonth}
+          emptyMessage="No leave scheduled this month."
+        />
+        <div className="lm-side-card">
+          <div className="lm-side-title-row">
+            <h3 className="lm-side-title">Upcoming Absences</h3>
+          </div>
+          <div className="lm-team-leave-list">
+            {scheduledUpcoming.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--muted)", margin: "14px 0" }}>
+                You have no upcoming leave requests.
+              </p>
+            ) : (
+              scheduledUpcoming.slice(0, 6).map((item) => (
+                <div key={item.id} className="lm-team-leave-row">
+                  <div className="lm-team-leave-left">
+                    <div>
+                      <div className="lm-team-leave-name">{item.leaveType || "Leave"}</div>
+                      <div className="lm-team-leave-dates">
+                        {formatDate(item.startDate)} – {formatDate(item.endDate)}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`lm-req-type-pill ${(item.leaveType || "casual").toLowerCase()}`}>
+                    {item.status}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* -----------------------------------------------------------------------
           MAIN SPLIT GRID (Reference 2 Layout)

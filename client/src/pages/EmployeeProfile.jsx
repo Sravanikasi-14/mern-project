@@ -4,7 +4,6 @@ import StatusBadge from "../components/StatusBadge";
 import { IconDocument, IconArrowLeft, IconClose, IconCheck, IconAlertCircle } from "../components/Icons";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
-import "./LeaveManagement.css";
 
 export default function EmployeeProfile() {
   const { id } = useParams();
@@ -308,7 +307,7 @@ export default function EmployeeProfile() {
   if (loading) {
     return (
       <div className="epv-container">
-        <div className="profile-loading-box" style={{ padding: "80px 0", textAlign: "center" }}>
+        <div className="profile-loading-box">
           <div className="profile-spinner" style={{ margin: "0 auto 16px" }} aria-hidden="true" />
           <p style={{ color: "var(--muted)", fontSize: "14px" }}>Loading employee profile...</p>
         </div>

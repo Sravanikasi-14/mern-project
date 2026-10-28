@@ -15,6 +15,8 @@ import {
   IconClock,
 } from "../components/Icons";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import "./Attendance.css";
 
 const FILTER_TYPES = {
@@ -36,14 +38,20 @@ const FILTER_LABELS = {
 export default function AdminAttendanceOverview() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [date, setDate] = useState(() => searchParams.get("date") || new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => searchParams.get("date") || getCompanyBusinessDate(new Date(), timeZone));
   const [department, setDepartment] = useState("ALL");
   const [tableSearch, setTableSearch] = useState("");
   const initialFilter = searchParams.get("filter") === "PRESENT" ? FILTER_TYPES.PRESENT : FILTER_TYPES.TOTAL_STAFF;
   const [activeFilter, setActiveFilter] = useState(initialFilter);
+  const requestedTab = (searchParams.get("tab") || "overview").toLowerCase();
+  const [section, setSection] = useState(
+    requestedTab === "records" || requestedTab === "tracking" ? requestedTab : "overview"
+  );
   const [attendancePage, setAttendancePage] = useState(1);
   const [attendancePageSize, setAttendancePageSize] = useState(25);
 
@@ -355,9 +363,19 @@ export default function AdminAttendanceOverview() {
   return (
     <div className="attendance-page-container">
       {/* Page Header */}
-      <AppHeader
-        title="Attendance"
-      />
+      <AppHeader title="Attendance" />
+
+      <div className="module-tabs" role="tablist" aria-label="Attendance sections">
+        <button type="button" className={`module-tab ${section === "overview" ? "is-active" : ""}`} onClick={() => setSection("overview")}>
+          Overview
+        </button>
+        <button type="button" className={`module-tab ${section === "records" ? "is-active" : ""}`} onClick={() => setSection("records")}>
+          Records
+        </button>
+        <button type="button" className={`module-tab ${section === "tracking" ? "is-active" : ""}`} onClick={() => setSection("tracking")}>
+          Live Tracking
+        </button>
+      </div>
 
       {/* Date & Department Filter Toolbar */}
       <div
@@ -400,17 +418,12 @@ export default function AdminAttendanceOverview() {
             <select
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
+              className="filter-select"
               style={{
-                border: "1px solid var(--hair, #e6ede8)",
-                borderRadius: 6,
-                padding: "0 10px",
                 fontSize: 12.5,
-                outline: "none",
                 fontWeight: 600,
-                background: "#f8faf8",
-                color: "var(--ink)",
-                cursor: "pointer",
                 height: 32,
+                minHeight: 32,
               }}
             >
               {departments.map((dept) => (
@@ -435,6 +448,8 @@ export default function AdminAttendanceOverview() {
         </div>
       </div>
 
+      {(section === "overview" || section === "records") && (
+      <>
       {/* Interactive Compact Attendance Metrics Strip */}
       <div
         style={{
@@ -459,7 +474,10 @@ export default function AdminAttendanceOverview() {
             <button
               key={c.key}
               type="button"
-              onClick={() => setActiveFilter(c.key)}
+              onClick={() => {
+                setActiveFilter(c.key);
+                if (c.key === FILTER_TYPES.LIVE_TRACKING) setSection("tracking");
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -496,11 +514,15 @@ export default function AdminAttendanceOverview() {
         })}
       </div>
 
-      {/* Main Workspace: Interactive Map (Left) + Activity Exceptions Stream (Right) */}
+      </>
+      )}
+
+      {section === "tracking" && (
       <div
+        className="att-tracking-layout"
         style={{
           display: "grid",
-          gridTemplateColumns: "2fr 1fr",
+          gridTemplateColumns: "minmax(0, 1.7fr) minmax(280px, 1fr)",
           gap: 16,
           marginBottom: 20,
           alignItems: "stretch",
@@ -536,11 +558,11 @@ export default function AdminAttendanceOverview() {
             </span>
           </div>
 
-          <div style={{ flex: 1, minHeight: 380, borderRadius: 8, overflow: "hidden", border: "1px solid var(--hair)" }}>
+          <div style={{ flex: 1, minHeight: 520, borderRadius: 8, overflow: "hidden", border: "1px solid var(--hair)" }}>
             <AttendanceMap
               employees={filteredEmployees}
               filterLabel={activeFilter === FILTER_TYPES.TOTAL_STAFF ? "" : FILTER_LABELS[activeFilter]}
-              height={380}
+              height={520}
             />
           </div>
         </div>
@@ -622,8 +644,27 @@ export default function AdminAttendanceOverview() {
           )}
         </div>
       </div>
+      )}
 
-      {/* Section 3: Searchable Employee Attendance Records Table */}
+      {section === "overview" && (
+      <div
+        style={{
+          background: "var(--card, #ffffff)",
+          border: "1px solid var(--hair, #e6ede8)",
+          borderRadius: 10,
+          padding: "16px 18px",
+          marginBottom: 16,
+        }}
+      >
+        <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 650 }}>Today at a glance</h3>
+        <p style={{ margin: 0, color: "var(--muted)", fontSize: 13 }}>
+          {summary.presentCount} present · {summary.checkedInCount} on duty · {summary.liveTrackingCount} transmitting GPS.
+          Open Records for history, or Live Tracking for the map.
+        </p>
+      </div>
+      )}
+
+      {section === "records" && (
       <div
         style={{
           background: "var(--card, #ffffff)",
@@ -649,32 +690,6 @@ export default function AdminAttendanceOverview() {
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
               Employee Attendance Records ({filteredEmployees.length})
             </h3>
-
-            {/* Clean Text-based filter links */}
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginLeft: 8 }}>
-              {Object.keys(FILTER_TYPES).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setActiveFilter(k)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: "4px 0",
-                    borderBottom: activeFilter === k ? "2.5px solid var(--g-700, #1d7347)" : "2.5px solid transparent",
-                    color: activeFilter === k ? "var(--g-800, #155a37)" : "var(--muted)",
-                    fontWeight: activeFilter === k ? 700 : 500,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    boxShadow: "none",
-                    borderRadius: 0,
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  {FILTER_LABELS[k]}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Table Search Input */}
@@ -897,6 +912,7 @@ export default function AdminAttendanceOverview() {
           itemLabel="employees"
         />
       </div>
+      )}
 
       {/* Part 4: HR Employee Attendance Details Drawer (Overlay) */}
       {drawerEmployeeId && (

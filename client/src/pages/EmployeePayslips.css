@@ -448,7 +448,7 @@
 }
 
 .ep-hero-netpay-amount {
-  font-size: 30px;
+  font-size: var(--fs-stat, 26px);
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;

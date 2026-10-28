@@ -1,5 +1,11 @@
+import fs from "node:fs";
 import Company from "../models/Company.js";
 import { emailService } from "../services/emailService.js";
+import {
+  saveCompanyLogoFile,
+  getCompanyLogoAbsolutePath,
+  deleteCompanyLogoFile,
+} from "../services/documentStorage.js";
 import { encryptSecret } from "../utils/secretCrypto.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { HttpError } from "../utils/httpError.js";
@@ -305,7 +311,16 @@ export async function updateCompanySettings(req, res, next) {
       throw new HttpError(404, "Company not found");
     }
 
-    const { companyName, displayName, timezone, currencyCode, primaryContact } = req.body || {};
+    const {
+      companyName,
+      displayName,
+      timezone,
+      currencyCode,
+      currency,
+      primaryContact,
+      contactEmail,
+      contactPhone,
+    } = req.body || {};
 
     if (companyName && typeof companyName === "string" && companyName.trim()) {
       company.companyName = companyName.trim();
@@ -320,23 +335,32 @@ export async function updateCompanySettings(req, res, next) {
     if (typeof timezone === "string" && timezone.trim()) {
       company.config.timezone = timezone.trim();
     }
-    if (typeof currencyCode === "string" && currencyCode.trim()) {
-      company.config.currencyCode = currencyCode.trim().toUpperCase();
+    const nextCurrency = currencyCode || currency;
+    if (typeof nextCurrency === "string" && nextCurrency.trim()) {
+      company.config.currencyCode = nextCurrency.trim().replace(/\s*\(.*$/, "").toUpperCase();
     }
 
-    if (primaryContact && typeof primaryContact === "object") {
+    const contactPayload =
+      primaryContact && typeof primaryContact === "object"
+        ? primaryContact
+        : {
+            email: contactEmail,
+            phoneNumber: contactPhone,
+          };
+
+    if (contactPayload && typeof contactPayload === "object") {
       if (!company.primaryContact) company.primaryContact = {};
-      if (typeof primaryContact.fullName === "string") {
-        company.primaryContact.fullName = primaryContact.fullName.trim();
+      if (typeof contactPayload.fullName === "string") {
+        company.primaryContact.fullName = contactPayload.fullName.trim();
       }
-      if (typeof primaryContact.email === "string" && primaryContact.email.trim()) {
-        const norm = normalizeEmail(primaryContact.email.trim());
+      if (typeof contactPayload.email === "string" && contactPayload.email.trim()) {
+        const norm = normalizeEmail(contactPayload.email.trim());
         if (norm && isValidEmail(norm)) {
           company.primaryContact.email = norm;
         }
       }
-      if (typeof primaryContact.phoneNumber === "string") {
-        company.primaryContact.phoneNumber = primaryContact.phoneNumber.trim();
+      if (typeof contactPayload.phoneNumber === "string") {
+        company.primaryContact.phoneNumber = contactPayload.phoneNumber.trim();
       }
     }
 
@@ -408,6 +432,133 @@ export async function getAuditLogsSettings(req, res, next) {
         totalPages: Math.ceil(total / limit) || 1,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/settings/company/logo
+ * Body: { fileName, fileData, mimeType }
+ */
+export async function uploadCompanyLogo(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const { fileName, fileData, mimeType } = req.body || {};
+    if (!fileName || !fileData) {
+      throw new HttpError(400, "Please choose a logo image to upload.");
+    }
+
+    const saved = await saveCompanyLogoFile({
+      databaseName: req.auth.company.databaseName,
+      fileName,
+      fileData,
+      mimeType,
+    });
+
+    if (!company.branding) company.branding = {};
+    const previousKey = company.branding.logoUrl;
+    company.branding.logoUrl = saved.storageKey;
+    company.branding.logoMimeType = saved.mimeType;
+    company.markModified("branding");
+    await company.save();
+
+    if (previousKey && previousKey !== saved.storageKey) {
+      await deleteCompanyLogoFile({
+        databaseName: req.auth.company.databaseName,
+        storageKey: previousKey,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Company logo saved.",
+      branding: {
+        displayName: company.branding.displayName || "",
+        logoUrl: company.branding.logoUrl,
+        logoMimeType: company.branding.logoMimeType,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /api/settings/company/logo
+ */
+export async function deleteCompanyLogo(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const previousKey = company.branding?.logoUrl;
+    if (previousKey) {
+      await deleteCompanyLogoFile({
+        databaseName: req.auth.company.databaseName,
+        storageKey: previousKey,
+      });
+    }
+
+    if (!company.branding) company.branding = {};
+    company.branding.logoUrl = "";
+    company.branding.logoMimeType = "";
+    company.markModified("branding");
+    await company.save();
+
+    res.json({
+      success: true,
+      message: "Company logo removed.",
+      branding: {
+        displayName: company.branding.displayName || "",
+        logoUrl: "",
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/auth/company-logo  (any authenticated company member)
+ */
+export async function streamCompanyLogo(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const storageKey = company.branding?.logoUrl;
+    if (!storageKey) {
+      throw new HttpError(404, "No company logo has been uploaded.");
+    }
+
+    const filePath = getCompanyLogoAbsolutePath({
+      databaseName: company.databaseName,
+      storageKey,
+    });
+    if (!filePath) {
+      throw new HttpError(404, "Company logo file was not found.");
+    }
+
+    const mime =
+      company.branding?.logoMimeType ||
+      (storageKey.endsWith(".png")
+        ? "image/png"
+        : storageKey.endsWith(".webp")
+          ? "image/webp"
+          : "image/jpeg");
+
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "private, max-age=120");
+    fs.createReadStream(filePath).pipe(res);
   } catch (error) {
     next(error);
   }

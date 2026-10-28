@@ -7,9 +7,13 @@
    ========================================================================== */
 
 .epv-container {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 20px 24px 40px;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 20px 24px 28px;
+  box-sizing: border-box;
+  container-type: inline-size;
+  container-name: epv;
 }
 
 /* --------------------------------------------------------------------------
@@ -87,13 +91,25 @@
   margin-bottom: 16px;
 }
 
-@media (max-width: 1100px) {
+@container epv (max-width: 640px) {
   .epv-top-strip {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 600px) {
+@container epv (max-width: 400px) {
+  .epv-top-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 900px) {
+  .epv-top-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
   .epv-top-strip {
     grid-template-columns: 1fr;
   }
@@ -103,12 +119,13 @@
   background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: var(--r-md, 14px);
-  padding: 14px 18px;
+  padding: 14px 16px;
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 90px;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 0;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -183,12 +200,58 @@
    -------------------------------------------------------------------------- */
 .epv-split-grid {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
 
-@media (max-width: 1040px) {
+@container epv (max-width: 560px) {
+  .epv-split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .epv-person-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    text-align: left;
+    align-items: start;
+    justify-items: start;
+    gap: 8px 16px;
+  }
+
+  .epv-avatar-wrapper {
+    grid-row: 1 / span 3;
+    margin-bottom: 0;
+  }
+
+  .epv-person-badges {
+    justify-content: flex-start;
+    margin-bottom: 0;
+  }
+
+  .epv-left-meta-list,
+  .epv-person-actions {
+    grid-column: 1 / -1;
+  }
+
+  .epv-person-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .epv-btn-full {
+    width: auto;
+    flex: 1 1 160px;
+  }
+}
+
+@media (min-width: 900px) {
+  .epv-split-grid {
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
   .epv-split-grid {
     grid-template-columns: 1fr;
   }
@@ -227,7 +290,7 @@
   border-radius: 50%;
   background: linear-gradient(135deg, var(--g-100, #e3f2e9), #cbe7d6);
   color: var(--g-950, #0d3a23);
-  font-size: 34px;
+  font-size: var(--fs-stat, 26px);
   font-weight: 800;
   display: flex;
   align-items: center;
@@ -685,4 +748,287 @@
   font-weight: 800;
   color: var(--ink, #131a15);
   margin-top: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Integrated profile editing forms (HR + Employee self-service)
+   -------------------------------------------------------------------------- */
+.epv-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.epv-edit-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.epv-edit-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.epv-readonly-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--hair, #e3e7e4);
+  text-transform: uppercase;
+}
+
+.epv-edit-input,
+.epv-edit-field-group input,
+.epv-edit-field-group select,
+.epv-edit-field-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink, #131a15);
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+  min-height: 40px;
+}
+
+.epv-edit-input:focus,
+.epv-edit-field-group input:focus,
+.epv-edit-field-group select:focus,
+.epv-edit-field-group textarea:focus {
+  outline: none;
+  border-color: var(--g-700, #1d7347);
+  box-shadow: 0 0 0 3px rgba(29, 115, 71, 0.12);
+}
+
+.epv-edit-input:disabled,
+.epv-edit-field-group input:disabled,
+.epv-edit-field-group select:disabled {
+  background: var(--panel, #f5f6f5);
+  color: var(--muted, #646d67);
+  cursor: not-allowed;
+}
+
+.epv-action-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.epv-upload-panel {
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+
+.epv-upload-panel h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: var(--ink, #131a15);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   HR Edit Employee page (design-system restoration)
+   -------------------------------------------------------------------------- */
+.profile-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+.breadcrumb-link {
+  color: var(--muted, #646d67);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.breadcrumb-link:hover {
+  color: var(--g-800, #155a37);
+}
+
+.breadcrumb-separator {
+  opacity: 0.45;
+}
+
+.breadcrumb-current {
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.profile-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.edit-form-header-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 12px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+}
+
+.meta-tag {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  border: 1px solid rgba(21, 90, 55, 0.18);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.profile-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 12px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  overflow: hidden;
+}
+
+.profile-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--hair, #e3e7e4);
+  background: var(--panel, #f5f6f5);
+}
+
+.profile-card-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.card-header-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-header-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.profile-card-body {
+  padding: 18px;
+}
+
+.edit-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+@media (max-width: 900px) {
+  .edit-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .edit-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink, #131a15);
+  min-width: 0;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea,
+.profile-card-body input:not([type="checkbox"]):not([type="radio"]),
+.profile-card-body select,
+.profile-card-body textarea {
+  width: 100%;
+  padding: 8px 12px;
+  min-height: 40px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--ink, #131a15);
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus,
+.profile-card-body input:focus,
+.profile-card-body select:focus,
+.profile-card-body textarea:focus {
+  outline: none;
+  border-color: var(--g-700, #1d7347);
+  box-shadow: 0 0 0 3px rgba(29, 115, 71, 0.12);
+}
+
+.form-group input:disabled,
+.profile-card-body input:disabled {
+  background: var(--panel, #f5f6f5);
+  color: var(--muted, #646d67);
+  cursor: not-allowed;
+}
+
+.form-group input.has-error {
+  border-color: #ef4444;
+  background: #fff5f5;
+}
+
+.edit-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
 }

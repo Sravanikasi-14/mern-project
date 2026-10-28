@@ -1,20 +1,10 @@
+import { useId } from "react";
 import { IconArrowLeft, IconArrowRight } from "./Icons";
+export { useClientPagination } from "./useClientPagination.js";
 
 /**
  * Reusable Enterprise Pagination Component
  * Aligned with the green-and-white theme.
- *
- * @param {Object} props
- * @param {number} props.currentPage - Current page number (1-based)
- * @param {number} props.totalPages - Total number of pages
- * @param {number} props.totalItems - Total count of records
- * @param {number} props.pageSize - Number of items per page
- * @param {number[]} [props.pageSizeOptions] - Configurable page sizes (e.g. [10, 25, 50, 100])
- * @param {function} props.onPageChange - Callback when page changes (newPage: number)
- * @param {function} [props.onPageSizeChange] - Callback when page size changes (newSize: number)
- * @param {string} [props.itemLabel] - Label for items (default: "records")
- * @param {boolean} [props.compact] - Compact mode for tight panels
- * @param {string} [props.className] - Additional class name
  */
 export default function Pagination({
   currentPage = 1,
@@ -28,6 +18,7 @@ export default function Pagination({
   compact = false,
   className = "",
 }) {
+  const selectId = useId();
   const safeCurrentPage = Math.max(1, Math.min(currentPage, totalPages || 1));
   const startItem = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
   const endItem = Math.min(safeCurrentPage * pageSize, totalItems);
@@ -47,7 +38,6 @@ export default function Pagination({
     }
   };
 
-  // Generate page numbers to display with intelligent truncation
   const getPageNumbers = () => {
     if (totalPages <= 7) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -81,7 +71,6 @@ export default function Pagination({
       role="navigation"
       aria-label="Pagination Navigation"
     >
-      {/* Left: Range and Record Counter */}
       <div className="app-pagination-info">
         {totalItems > 0 ? (
           <span>
@@ -93,15 +82,14 @@ export default function Pagination({
         )}
       </div>
 
-      {/* Center/Right: Page Size Selector & Navigation Controls */}
       <div className="app-pagination-controls">
         {onPageSizeChange && pageSizeOptions && pageSizeOptions.length > 0 && (
           <div className="app-pagination-size-wrap">
-            <label htmlFor="pagination-page-size-select" className="app-pagination-size-label">
+            <label htmlFor={selectId} className="app-pagination-size-label">
               Rows:
             </label>
             <select
-              id="pagination-page-size-select"
+              id={selectId}
               className="app-pagination-size-select"
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -125,7 +113,7 @@ export default function Pagination({
             aria-label="Previous page"
             title="Previous page"
           >
-            <IconArrowLeft size={14} />
+            <IconArrowLeft size={20} />
             <span className="app-pagination-btn-text">Prev</span>
           </button>
 
@@ -171,7 +159,7 @@ export default function Pagination({
             title="Next page"
           >
             <span className="app-pagination-btn-text">Next</span>
-            <IconArrowRight size={14} />
+            <IconArrowRight size={20} />
           </button>
         </div>
       </div>

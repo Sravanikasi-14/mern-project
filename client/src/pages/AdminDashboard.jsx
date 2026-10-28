@@ -2,7 +2,12 @@ import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import WorkforceAllocation from "../components/WorkforceAllocation";
+import { IconArrowLeft, IconArrowRight } from "../components/Icons";
+import { getCompanyBrandName } from "../utils/companyBrand";
+import { getCompanyBusinessDate, parseCivilDate, resolveCompanyTimezone, weekdaySunday0 } from "../utils/dateUtils";
 import "./AdminDashboard.css";
+import "../pages/PeopleManagement.css";
 
 function formatShortCurrency(amount, symbol = "₹") {
   if (amount == null || isNaN(amount)) return `${symbol}0`;
@@ -111,7 +116,7 @@ export default function AdminDashboard() {
       }
 
       // Fallback: aggregate individual endpoints if single route isn't available
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(company));
       const [empSummaryRes, attendanceRes, leavesRes, offersRes, cyclesRes] = await Promise.allSettled([
         api.get("/employees/summary"),
         api.get("/admin/attendance/overview", {
@@ -284,7 +289,6 @@ export default function AdminDashboard() {
   const payrollCycle = data?.payrollCycleSummary || {};
   const recentLeaves = data?.recentLeaves || [];
   const upcomingHolidays = data?.upcomingHolidays || [];
-  const companyAssets = data?.companyAssets || { employeesWithAssetsPct: 0, employeesWithAssets: 0, totalEmployees: 0 };
   const projectTeams = data?.projectTeams || {};
   const salaryExpenses = useMemo(() => {
     if (Array.isArray(data?.salaryExpenses)) {
@@ -332,7 +336,8 @@ export default function AdminDashboard() {
     const maxVal = Math.max(1, totalEmployees);
 
     return sliceDays.map((d) => {
-      const dayIdx = d.dayOfWeek != null ? d.dayOfWeek : new Date(d.date).getDay();
+      const parts = parseCivilDate(d.date);
+      const dayIdx = d.dayOfWeek != null ? d.dayOfWeek : (parts ? weekdaySunday0(parts.year, parts.month, parts.day) : 0);
       const pct = maxVal > 0 ? Math.min(100, Math.round(((d.presentCount || 0) / maxVal) * 100)) : 0;
       const heightVal = Math.max(0.18, pct / 100);
 
@@ -357,7 +362,7 @@ export default function AdminDashboard() {
   }, [salaryExpenses]);
 
   return (
-    <div className="board-container">
+    <div className="board-container admin-dashboard-page">
       {/* ====================================================================
           1. Board Head: Greeting, Controls, Sync Button
           ==================================================================== */}
@@ -365,7 +370,7 @@ export default function AdminDashboard() {
         <div>
           <h1 className="board__title">{getGreeting()}, {user?.name || "Eleanor"}</h1>
           <p className="board__sub">
-            {meta.companyName || company?.companyName || "Organization"}
+            {getCompanyBrandName({ ...(company || {}), companyName: meta.companyName || company?.companyName })}
           </p>
         </div>
 
@@ -397,7 +402,7 @@ export default function AdminDashboard() {
               title="Previous Month"
               aria-label="Previous Month"
             >
-              ‹
+              <IconArrowLeft size={20} />
             </button>
             <span className="month-nav-label">
               {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear}
@@ -409,13 +414,13 @@ export default function AdminDashboard() {
               title="Next Month"
               aria-label="Next Month"
             >
-              ›
+              <IconArrowRight size={20} />
             </button>
           </div>
 
           {/* Primary Action Button */}
           <Link to="/admin" className="btn--primary-fern">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -433,8 +438,8 @@ export default function AdminDashboard() {
           >
             <svg
               viewBox="0 0 24 24"
-              width="16"
-              height="16"
+              width="20"
+              height="20"
               fill="none"
               stroke="currentColor"
               strokeWidth="2.2"
@@ -462,7 +467,7 @@ export default function AdminDashboard() {
           <div className="stat__head">
             <h2 className="stat__title">Total Workforce</h2>
             <span className="stat__arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
           <p className="stat__num">{totalEmployees}</p>
@@ -477,7 +482,7 @@ export default function AdminDashboard() {
           <div className="stat__head">
             <h2 className="stat__title">Present Today</h2>
             <span className="stat__arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
           <p className="stat__num">{summary.todayPresent ?? 0}</p>
@@ -492,7 +497,7 @@ export default function AdminDashboard() {
           <div className="stat__head">
             <h2 className="stat__title">On Leave & Exceptions</h2>
             <span className="stat__arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
           <p className="stat__num">{(summary.onLeave ?? 0) + (summary.todayLate ?? 0)}</p>
@@ -506,7 +511,7 @@ export default function AdminDashboard() {
           <div className="stat__head">
             <h2 className="stat__title">Pending HR Actions</h2>
             <span className="stat__arrow" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
           <p className="stat__num">{totalPendingActions}</p>
@@ -806,7 +811,27 @@ export default function AdminDashboard() {
             - Left (Span 7): Recent Workforce Activity
             - Right (Span 5): Resources & Staffing Allocation (Combined Assets & Teams)
             ==================================================================== */}
-        <section className="card team-activity-card" style={{ gridColumn: "span 7" }}>
+        <section className="card dash-workforce-card">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Workforce Allocation</h2>
+              <p className="card__sub">Headcount by department</p>
+            </div>
+            <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
+              <span>Directory</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+          <WorkforceAllocation
+            hideTitle
+            compact
+            loading={loading}
+            total={totalEmployees}
+            departments={Array.isArray(data?.workforce?.departments) ? data.workforce.departments : []}
+          />
+        </section>
+
+        <section className="card team-activity-card">
           <div className="card__head">
             <div>
               <h2 className="card__title">Recent Activity</h2>
@@ -857,73 +882,6 @@ export default function AdminDashboard() {
                 );
               })
             )}
-          </div>
-        </section>
-
-        {/* Combined Resources & Staffing (Span 5) */}
-        <section className="card resources-allocation-card" style={{ gridColumn: "span 5" }}>
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Resources & Staffing</h2>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Link to="/admin/assets" className="card-shortcut-link" title="Company Assets">
-                <span>Assets</span>
-                <span aria-hidden="true">→</span>
-              </Link>
-              <Link to="/admin/work-management" className="card-shortcut-link" title="Project Allocation">
-                <span>Teams</span>
-                <span aria-hidden="true">→</span>
-              </Link>
-            </div>
-          </div>
-
-          <div className="resources-allocation-body">
-            {/* Equipment Summary Sub-panel */}
-            <div className="resource-sub-block">
-              <div className="resource-sub-head">
-                <span className="resource-sub-title">Assigned Hardware</span>
-                <span className="resource-sub-badge">{companyAssets.employeesWithAssetsPct || 0}% Equipped</span>
-              </div>
-              <div className="asset-meter-track">
-                <div
-                  className="asset-meter-fill"
-                  style={{ width: `${companyAssets.employeesWithAssetsPct || 0}%` }}
-                />
-              </div>
-              <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
-                {companyAssets.employeesWithAssets || 0} of {companyAssets.totalEmployees || totalEmployees} staff active with company equipment
-              </p>
-            </div>
-
-            {/* Project Distribution Sub-panel */}
-            <div className="resource-sub-block" style={{ marginTop: 14 }}>
-              <span className="resource-sub-title" style={{ marginBottom: 8, display: "block" }}>
-                Project Allocation
-              </span>
-              <div className="teams-alloc-grid">
-                <div className="team-alloc-chip">
-                  <span className="team-alloc-dot" style={{ background: "var(--g-800)" }} />
-                  <span className="team-alloc-name">Mandate</span>
-                  <span className="team-alloc-num">{projectTeams.mandate?.count ?? projectTeams.MANDATE ?? 0}</span>
-                </div>
-                <div className="team-alloc-chip">
-                  <span className="team-alloc-dot" style={{ background: "var(--g-600)" }} />
-                  <span className="team-alloc-name">Retail</span>
-                  <span className="team-alloc-num">{projectTeams.retail?.count ?? projectTeams.RETAIL ?? 0}</span>
-                </div>
-                <div className="team-alloc-chip">
-                  <span className="team-alloc-dot" style={{ background: "#2563eb" }} />
-                  <span className="team-alloc-name">Internal Ops</span>
-                  <span className="team-alloc-num">{projectTeams.internal?.count ?? projectTeams.INTERNAL ?? (projectTeams.topStaffed?.[0]?.members ?? 0)}</span>
-                </div>
-                <div className="team-alloc-chip">
-                  <span className="team-alloc-dot" style={{ background: "var(--amber)" }} />
-                  <span className="team-alloc-name">Bench</span>
-                  <span className="team-alloc-num">{projectTeams.bench?.count ?? projectTeams.BENCH ?? 0}</span>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 

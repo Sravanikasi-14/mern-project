@@ -13,6 +13,13 @@ import {
 } from "../components/Icons";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import {
+  buildWeekStrip,
+  formatDisplayDate,
+  isCompletedToday,
+  resolveCompanyTimezone,
+  toDateOnlyString,
+} from "../utils/dateUtils";
 import "./WorkManagement.css";
 
 const EMPLOYEE_TABS = {
@@ -30,7 +37,8 @@ const VIEW_MODES = {
 };
 
 export default function EmployeeTasks() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(EMPLOYEE_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
   const [tasks, setTasks] = useState([]);
@@ -54,16 +62,11 @@ export default function EmployeeTasks() {
   });
   const [myPoints, setMyPoints] = useState(null);
 
-  // Leaderboard state
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
-  const [leaderboardPeriod, setLeaderboardPeriod] = useState("month");
-
   // Drag and Drop state
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
-  // Side Panel state: 'none' | 'details' | 'submit' | 'recognize'
+  // Side Panel state: 'none' | 'details' | 'submit'
   const [sidePanelMode, setSidePanelMode] = useState("none");
   const [selectedTask, setSelectedTask] = useState(null);
 
@@ -77,15 +80,6 @@ export default function EmployeeTasks() {
     files: [],
   });
   const [uploadingFile, setUploadingFile] = useState(false);
-
-  // Peer Recognition state
-  const [recognizeForm, setRecognizeForm] = useState({
-    recipientId: "",
-    points: 10,
-    reason: "",
-  });
-  const [recognizing, setRecognizing] = useState(false);
-  const [recognizeError, setRecognizeError] = useState("");
 
   // Initial Data Fetch
   useEffect(() => {
@@ -148,6 +142,9 @@ export default function EmployeeTasks() {
 
       if (priorityFilter !== "ALL") params.priority = priorityFilter;
       if (search.trim()) params.search = search.trim();
+      if (viewMode === VIEW_MODES.KANBAN && activeTab !== EMPLOYEE_TABS.TEAM_QUEUE) {
+        params.completedScope = "today";
+      }
 
       const res = await api.get("/tasks", { params });
       if (res.data?.success) {
@@ -173,35 +170,10 @@ export default function EmployeeTasks() {
     }
   };
 
-  // Fetch Leaderboard
-  const fetchLeaderboard = async () => {
-    try {
-      setLeaderboardLoading(true);
-      const params = { period: leaderboardPeriod };
-      const res = await api.get("/impact-points/leaderboard", { params });
-      if (res.data?.success) {
-        const list =
-          res.data?.leaderboard ||
-          res.data?.data?.leaderboard ||
-          (Array.isArray(res.data?.data) ? res.data.data : []);
-        setLeaderboard(Array.isArray(list) ? list : []);
-      }
-    } catch (err) {
-      console.error("Failed to load leaderboard:", err);
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, priorityFilter, pagination.page, pagination.limit]);
-
-  useEffect(() => {
-    fetchLeaderboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaderboardPeriod]);
+  }, [activeTab, priorityFilter, pagination.page, pagination.limit, viewMode]);
 
   // Auto-dismiss toasts after 4.5 seconds
   useEffect(() => {
@@ -413,31 +385,6 @@ export default function EmployeeTasks() {
     }
   };
 
-  // Peer Recognition
-  const handleAwardRecognition = async (e) => {
-    e.preventDefault();
-    if (!recognizeForm.recipientId || !recognizeForm.points) return;
-    try {
-      setRecognizing(true);
-      setRecognizeError("");
-      const res = await api.post("/impact-points/recognize", {
-        recipientId: recognizeForm.recipientId,
-        points: Number(recognizeForm.points),
-        reason: recognizeForm.reason.trim(),
-      });
-      if (res.data?.success) {
-        setSidePanelMode("none");
-        setRecognizeForm({ recipientId: "", points: 10, reason: "" });
-        setSuccessMsg(res.data.message || "Recognition awarded successfully!");
-        fetchLeaderboard();
-      }
-    } catch (err) {
-      setRecognizeError(err.response?.data?.message || "Failed to award recognition");
-    } finally {
-      setRecognizing(false);
-    }
-  };
-
   // Metrics (Personal summary inspired by Stitch screen & Pryme reference)
   const metrics = useMemo(() => {
     const list = tasks || [];
@@ -482,41 +429,12 @@ export default function EmployeeTasks() {
     return tasks.filter((t) => (t.projectName?.trim() || "General") === selectedProject);
   }, [tasks, selectedProject]);
 
-  // Weekly timeline (Mon to Sun)
   const weeklyTimeline = useMemo(() => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const diffToMon = (currentDay === 0 ? -6 : 1) - currentDay;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMon);
-    monday.setHours(0, 0, 0, 0);
-
-    const days = [];
-    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const isToday = d.toDateString() === now.toDateString();
-      const dateStr = d.toISOString().split("T")[0];
-
-      const dayTasks = (tasks || []).filter((t) => {
-        if (!t.deadline) return false;
-        const taskDate = new Date(t.deadline).toISOString().split("T")[0];
-        return taskDate === dateStr;
-      });
-
-      days.push({
-        dayName: dayNames[i],
-        dayNumber: d.getDate(),
-        month: d.toLocaleString("default", { month: "short" }),
-        isToday,
-        dateStr,
-        tasks: dayTasks,
-      });
-    }
-    return days;
-  }, [tasks]);
+    return buildWeekStrip(new Date(), timeZone, 1).map((day) => ({
+      ...day,
+      tasks: (tasks || []).filter((t) => t.deadline && toDateOnlyString(t.deadline, timeZone) === day.dateStr),
+    }));
+  }, [tasks, timeZone]);
 
   // Kanban Columns
   const kanbanColumns = [
@@ -540,9 +458,9 @@ export default function EmployeeTasks() {
     },
     {
       id: "APPROVED",
-      title: "Completed",
+      title: "Completed today",
       dotClass: "col-approved",
-      tasks: displayedTasks.filter((t) => t.status === "APPROVED"),
+      tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
     },
   ];
 
@@ -570,16 +488,15 @@ export default function EmployeeTasks() {
     <div className="container-wide split-page-container wm-page-container">
       {/* Compact Top Header */}
       <AppHeader
-        title="Work & Impact"
+        title="My Tasks"
         hideLogout={true}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
+          <div className="wm-view-switcher" role="tablist" aria-label="Task view">
             <button
               type="button"
               className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
               onClick={() => setViewMode(VIEW_MODES.KANBAN)}
-              style={{ fontSize: 11.5, padding: "3px 8px" }}
             >
               Board
             </button>
@@ -587,20 +504,10 @@ export default function EmployeeTasks() {
               type="button"
               className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
               onClick={() => setViewMode(VIEW_MODES.LIST)}
-              style={{ fontSize: 11.5, padding: "3px 8px" }}
             >
               List
             </button>
           </div>
-
-          <button
-            type="button"
-            className="wm-btn-secondary"
-            onClick={() => setSidePanelMode("recognize")}
-            style={{ whiteSpace: "nowrap", height: 32, fontSize: 12, padding: "0 10px" }}
-          >
-            ★ Give Kudos
-          </button>
         </div>
       </AppHeader>
 
@@ -709,7 +616,7 @@ export default function EmployeeTasks() {
 
               <select
                 className="wm-select"
-                style={{ height: 30, fontSize: 12, padding: "0 28px 0 10px" }}
+                style={{ height: 30, fontSize: 12, minHeight: 30 }}
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
               >
@@ -811,7 +718,9 @@ export default function EmployeeTasks() {
                             margin: "4px 0",
                           }}
                         >
-                          No tasks in this stage
+                          {col.id === "APPROVED"
+                            ? "No tasks completed today. Older completions remain in List view."
+                            : "No tasks in this stage"}
                         </div>
                       ) : (
                         col.tasks.map((task) => {
@@ -986,7 +895,7 @@ export default function EmployeeTasks() {
                               {task.priority}
                             </span>
                           </td>
-                          <td>{task.deadline ? new Date(task.deadline).toLocaleDateString() : "—"}</td>
+                          <td>{task.deadline ? formatDisplayDate(task.deadline, timeZone) : "—"}</td>
                           <td>
                             <StatusBadge status={task.status} />
                           </td>
@@ -1023,107 +932,6 @@ export default function EmployeeTasks() {
           )}
         </div>
 
-        {/* Stationary Vertical Impact Points Leaderboard (Right ~25% column) */}
-        <div className="wm-leaderboard-card">
-          <div className="wm-leaderboard-header">
-            <div className="wm-leaderboard-title-row">
-              <h3 className="wm-leaderboard-title">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#155a37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-                Leaderboard
-              </h3>
-            </div>
-
-            <div className="wm-leaderboard-tabs">
-              <button
-                type="button"
-                className={`wm-leaderboard-tab ${leaderboardPeriod === "month" ? "active" : ""}`}
-                onClick={() => setLeaderboardPeriod("month")}
-              >
-                This Month
-              </button>
-              <button
-                type="button"
-                className={`wm-leaderboard-tab ${leaderboardPeriod === "all" ? "active" : ""}`}
-                onClick={() => setLeaderboardPeriod("all")}
-              >
-                All Time
-              </button>
-            </div>
-          </div>
-
-          {/* Simple Compact Ranked List - Highlights Current Employee */}
-          <div className="wm-leaderboard-list">
-            {leaderboardLoading ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                Loading rankings...
-              </div>
-            ) : leaderboard.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                No rankings recorded yet.
-              </div>
-            ) : (
-              leaderboard.map((item, idx) => {
-                const rankNum = item.rank || idx + 1;
-                const name = item.fullName || item.name || item.employee?.fullName || item.employee?.name || "Colleague";
-                const dept = item.department || item.employee?.job?.department || item.employee?.department || "General";
-                const points = item.balance ?? item.totalPoints ?? item.pointsEarned ?? 0;
-                const isCurrentUser =
-                  (item.employeeId && (String(item.employeeId) === String(user?.employeeId) || String(item.employeeId) === String(meta?.actorEmployeeId))) ||
-                  item.employee?._id === user?.employeeId ||
-                  item.employee?.email === user?.email ||
-                  (user?.name && name.toLowerCase() === user.name.toLowerCase());
-
-                return (
-                  <div
-                    key={item.employeeId || item.employee?._id || idx}
-                    className={`wm-leaderboard-item ${isCurrentUser ? "is-current-user" : ""}`}
-                  >
-                    <div className="wm-leaderboard-left">
-                      <span
-                        className={`wm-rank-number ${
-                          rankNum === 1
-                            ? "rank-1"
-                            : rankNum === 2
-                            ? "rank-2"
-                            : rankNum === 3
-                            ? "rank-3"
-                            : "rank-other"
-                        }`}
-                      >
-                        {rankNum}
-                      </span>
-                      <div className="wm-task-avatar">
-                        {(name[0] || "C").toUpperCase()}
-                      </div>
-                      <div className="wm-leaderboard-user">
-                        <div className="wm-leaderboard-name">
-                          <span>{name}</span>
-                          {isCurrentUser && <span className="wm-you-badge">You</span>}
-                        </div>
-                        <div className="wm-leaderboard-dept">{dept}</div>
-                      </div>
-                    </div>
-                    <div className="wm-leaderboard-score">{points} pts</div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Leaderboard Footer: Quick Kudos button */}
-          <div className="wm-leaderboard-footer">
-            <button
-              type="button"
-              className="wm-btn-primary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => setSidePanelMode("recognize")}
-            >
-              + Nominate / Give Kudos
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Slide-out Side Panels (Details, Submit, Recognize) */}
@@ -1371,86 +1179,6 @@ export default function EmployeeTasks() {
             </>
           )}
 
-          {/* Give Kudos Mode */}
-          {sidePanelMode === "recognize" && (
-            <>
-              <div className="wm-panel-header">
-                <div>
-                  <h3 className="wm-panel-header-title">Give Kudos</h3>
-                </div>
-                <button type="button" className="wm-panel-close-btn" onClick={() => setSidePanelMode("none")}>
-                  <IconClose size={16} />
-                </button>
-              </div>
-
-              {recognizeError && (
-                <div className="alert alert-danger" style={{ margin: "12px 20px 0", padding: "8px 12px", fontSize: 12 }}>
-                  <span>{recognizeError}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleAwardRecognition} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                <div className="wm-panel-body">
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Recipient Colleague <span className="req">*</span></span>
-                    </label>
-                    <select
-                      required
-                      className="wm-form-select"
-                      value={recognizeForm.recipientId}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, recipientId: e.target.value })}
-                    >
-                      <option value="">Select colleague...</option>
-                      {(meta?.assignableEmployees || []).map((emp) => (
-                        <option key={emp._id} value={emp._id}>
-                          {emp.fullName || emp.name} ({emp.employeeCode})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Points to Award <span className="req">*</span></span>
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      required
-                      className="wm-form-input"
-                      value={recognizeForm.points}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, points: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="wm-form-group">
-                    <label className="wm-form-label">
-                      <span>Kudos Reason / Appreciation <span className="req">*</span></span>
-                    </label>
-                    <textarea
-                      required
-                      rows={3}
-                      className="wm-form-textarea"
-                      placeholder="Share what this team member accomplished..."
-                      value={recognizeForm.reason}
-                      onChange={(e) => setRecognizeForm({ ...recognizeForm, reason: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="wm-panel-footer">
-                  <button type="button" className="wm-btn-secondary" onClick={() => setSidePanelMode("none")}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="wm-btn-primary" disabled={recognizing}>
-                    {recognizing ? "Sending..." : "Send Kudos"}
-                  </button>
-                </div>
-              </form>
-            </>
-          )}
         </div>
       )}
     </div>

@@ -277,7 +277,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
   if (loading) {
     return (
       <div className="epv-container">
-        <div className="profile-loading-box" style={{ padding: "80px 0", textAlign: "center" }}>
+        <div className="profile-loading-box">
           <div className="profile-spinner" style={{ margin: "0 auto 16px" }} aria-hidden="true" />
           <p style={{ color: "var(--muted)", fontSize: "14px" }}>Loading your employee profile...</p>
         </div>
@@ -614,47 +614,51 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
               {saveSuccess && <div className="success-alert" style={{ marginBottom: "20px" }}>{saveSuccess}</div>}
               {saveError && <div className="error" style={{ marginBottom: "20px" }}>{saveError}</div>}
 
-              <form onSubmit={handleProfileSubmit} className="auth-form" noValidate>
+              <form onSubmit={handleProfileSubmit} className="epv-edit-form" noValidate>
                 <div className="epv-section-block">
                   <div className="epv-section-head">
                     <h3 className="epv-section-title">Personal & Contact Information</h3>
                     <span className="epv-section-sub">Fields you are permitted to update directly</span>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                    <label>
-                      Preferred Name
+                  <div className="epv-field-grid-2">
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Preferred Name</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.preferredName}
                         onChange={(e) => handleInputChange("preferredName", e.target.value)}
                         placeholder="e.g. Maya"
                       />
-                    </label>
-                    <label>
-                      Personal Email
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Personal Email</label>
                       <input
+                        className="epv-edit-input"
                         type="email"
                         value={formData.personalEmail}
                         onChange={(e) => handleInputChange("personalEmail", e.target.value)}
                         placeholder="maya.personal@gmail.com"
                       />
-                    </label>
-                    <label>
-                      Personal Phone
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Personal Phone</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.personalPhone}
                         onChange={(e) => handleInputChange("personalPhone", e.target.value)}
                         placeholder="+91 98765 43210"
                       />
-                    </label>
-                    <label>
-                      Date of Birth
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Date of Birth</label>
                       <input
+                        className="epv-edit-input"
                         type="date"
                         value={formData.dateOfBirth}
                         onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
                       />
-                    </label>
+                    </div>
                   </div>
                 </div>
 
@@ -662,31 +666,34 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   <div className="epv-section-head">
                     <h3 className="epv-section-title">Residential Address</h3>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      Street Address
+                  <div className="epv-field-grid-2">
+                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
+                      <label className="epv-edit-label">Street Address</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.residentialStreet}
                         onChange={(e) => handleInputChange("residentialStreet", e.target.value)}
                         placeholder="Flat / Building, Street"
                       />
-                    </label>
-                    <label>
-                      City
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">City</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.residentialCity}
                         onChange={(e) => handleInputChange("residentialCity", e.target.value)}
                         placeholder="Bangalore"
                       />
-                    </label>
-                    <label>
-                      State / Postal Code
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">State / Postal Code</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.residentialPostalCode}
                         onChange={(e) => handleInputChange("residentialPostalCode", e.target.value)}
                         placeholder="560001"
                       />
-                    </label>
+                    </div>
                   </div>
                 </div>
 
@@ -694,59 +701,65 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                   <div className="epv-section-head">
                     <h3 className="epv-section-title">Emergency Contact & Bank Details</h3>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                    <label>
-                      Emergency Contact Name
+                  <div className="epv-field-grid-2">
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Emergency Contact Name</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.emergencyName}
                         onChange={(e) => handleInputChange("emergencyName", e.target.value)}
                         placeholder="Contact Person Name"
                       />
-                    </label>
-                    <label>
-                      Emergency Contact Phone
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Emergency Contact Phone</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.emergencyPhone}
                         onChange={(e) => handleInputChange("emergencyPhone", e.target.value)}
                         placeholder="+91 99999 88888"
                       />
-                    </label>
-                    <label>
-                      Bank Name
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Bank Name</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.bankName}
                         onChange={(e) => handleInputChange("bankName", e.target.value)}
                         placeholder="e.g. HDFC Bank"
                       />
-                    </label>
-                    <label>
-                      Account Number
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Account Number</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.accountNumber}
                         onChange={(e) => handleInputChange("accountNumber", e.target.value)}
                         placeholder="Bank Account Number"
                       />
-                    </label>
-                    <label>
-                      IFSC Code
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">IFSC Code</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.ifscCode}
                         onChange={(e) => handleInputChange("ifscCode", e.target.value.toUpperCase())}
                         placeholder="HDFC0001234"
                       />
-                    </label>
-                    <label>
-                      PAN Number
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">PAN Number</label>
                       <input
+                        className="epv-edit-input"
                         value={formData.panNumber}
                         onChange={(e) => handleInputChange("panNumber", e.target.value.toUpperCase())}
                         placeholder="ABCDE1234F"
                       />
-                    </label>
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "24px" }}>
+                <div className="epv-person-actions" style={{ flexDirection: "row", justifyContent: "flex-end" }}>
                   <button type="submit" disabled={savingProfile} className="btn-primary">
                     {savingProfile ? "Saving Changes..." : "Save Changes"}
                   </button>
@@ -761,28 +774,16 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
               {docSuccess && <div className="success-alert" style={{ marginBottom: "20px" }}>{docSuccess}</div>}
               {docError && <div className="error" style={{ marginBottom: "20px" }}>{docError}</div>}
 
-              {/* Upload Document Form */}
-              <div
-                style={{
-                  background: "var(--panel)",
-                  border: "1px solid var(--hair)",
-                  borderRadius: "12px",
-                  padding: "20px 24px",
-                  marginBottom: "28px",
-                }}
-              >
-                <h3 style={{ margin: "0 0 14px", fontSize: "15px", color: "var(--ink)", fontWeight: "700" }}>
-                  Upload New Document
-                </h3>
-                <form onSubmit={handleUploadDocument} noValidate>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
-                    <label>
-                      Category *
+              <div className="epv-upload-panel">
+                <h3>Upload New Document</h3>
+                <form onSubmit={handleUploadDocument} className="epv-edit-form" noValidate>
+                  <div className="epv-field-grid-2" style={{ marginBottom: 14 }}>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Category *</label>
                       <select
                         value={uploadCategory}
                         onChange={(e) => setUploadCategory(e.target.value)}
-                        className="filter-select"
-                        style={{ width: "100%" }}
+                        className="epv-edit-input"
                       >
                         <option value="ID_PROOF">ID Proof (PAN, Aadhaar, Passport)</option>
                         <option value="ADDRESS_PROOF">Address Proof</option>
@@ -790,30 +791,28 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         <option value="CERTIFICATION">Professional Certification</option>
                         <option value="OTHER">Other Official Document</option>
                       </select>
-                    </label>
-                    <label>
-                      Document Title *
+                    </div>
+                    <div className="epv-edit-field-group">
+                      <label className="epv-edit-label">Document Title *</label>
                       <input
+                        className="epv-edit-input"
                         value={uploadTitle}
                         onChange={(e) => setUploadTitle(e.target.value)}
                         placeholder="e.g. Updated Aadhaar Card"
                         required
                       />
-                    </label>
-                  </div>
-
-                  <div style={{ marginBottom: "16px" }}>
-                    <label>
-                      Select File (PDF, PNG, JPG — max 10MB) *
+                    </div>
+                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
+                      <label className="epv-edit-label">Select File (PDF, PNG, JPG — max 10MB) *</label>
                       <input
                         id="emp-self-file-input"
+                        className="epv-edit-input"
                         type="file"
                         onChange={handleFileChange}
                         accept=".pdf,.png,.jpg,.jpeg"
                         required
-                        style={{ background: "#ffffff", padding: "8px" }}
                       />
-                    </label>
+                    </div>
                   </div>
 
                   <button

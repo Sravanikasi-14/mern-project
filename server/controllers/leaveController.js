@@ -8,6 +8,7 @@ import {
   toDateString,
 } from "../services/leaveService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
+import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/companyTime.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -39,7 +40,7 @@ export async function getLeaveSummary(req, res, next) {
   try {
     const { LeaveRequest } = req.auth.models;
 
-    const todayDate = parseDateOnly(new Date());
+    const todayDate = parseDateOnly(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company)));
 
     const [pending, approved, rejected, onLeaveTodayIds] = await Promise.all([
       LeaveRequest.countDocuments({ status: "PENDING" }),
@@ -128,7 +129,7 @@ export async function getLeaveRequests(req, res, next) {
       query.employeeId = { $in: employeeIds };
     }
 
-    const todayDate = parseDateOnly(new Date());
+    const todayDate = parseDateOnly(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company)));
 
     const [total, requests, pendingCount, approvedCount, rejectedCount, onLeaveTodayIds] =
       await Promise.all([

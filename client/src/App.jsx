@@ -229,7 +229,7 @@ function App() {
             element={
               <ProtectedRoute roles={["HR_ADMIN"]}>
                 <AppLayout>
-                  <AdminWorkManagement />
+                  <AdminImpactPoints />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -319,7 +319,7 @@ function App() {
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
-                  <EmployeeTasks />
+                  <EmployeeImpactPoints />
                 </AppLayout>
               </ProtectedRoute>
             }

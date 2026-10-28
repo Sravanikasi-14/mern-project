@@ -2,10 +2,21 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
-import { IconClose, IconCheck, IconRefresh, IconArrowLeft, IconArrowRight } from "../components/Icons";
+import { IconClose, IconCheck, IconRefresh } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
+import { useAuth } from "../context/AuthContext";
+import MonthCalendar from "../components/MonthCalendar";
+import {
+  civilDaysInMonth,
+  formatCivilDate,
+  formatDisplayDate,
+  getCompanyBusinessDate,
+  monthTitle,
+  parseCivilDate,
+  resolveCompanyTimezone,
+} from "../utils/dateUtils";
 import "./LeaveManagement.css";
 
 const STATUS_OPTIONS = [
@@ -15,9 +26,11 @@ const STATUS_OPTIONS = [
   { value: "REJECTED", label: "Rejected" },
 ];
 
-const PAGE_SIZE_OPTIONS = [6, 12, 24, 48];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function AdminLeaveManagement() {
+  const { company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
   const [loading, setLoading] = useState(true);
@@ -33,11 +46,19 @@ export default function AdminLeaveManagement() {
     onLeaveToday: 0,
   });
 
-  // Calendar View State
-  const [calDate, setCalDate] = useState(() => new Date());
+  const todayParts = parseCivilDate(getCompanyBusinessDate(new Date(), timeZone));
+  const [calMonth, setCalMonth] = useState(() => ({
+    year: todayParts.year,
+    month: todayParts.month,
+  }));
+  const [scheduleRequests, setScheduleRequests] = useState([]);
 
   // View mode: "cards" | "table" (default cards as per Reference 1)
-  const [viewMode, setViewMode] = useState("cards");
+  const [viewMode, setViewMode] = useState("table");
+  const initialLeaveTab = (searchParams.get("tab") || (initialStatus === "PENDING" ? "requests" : "overview")).toLowerCase();
+  const [leaveSection, setLeaveSection] = useState(
+    ["overview", "requests", "records"].includes(initialLeaveTab) ? initialLeaveTab : "overview"
+  );
 
   // Filters & Pagination state
   const [search, setSearch] = useState("");
@@ -49,10 +70,10 @@ export default function AdminLeaveManagement() {
   const [fromDateFilter, setFromDateFilter] = useState("");
   const [toDateFilter, setToDateFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(12);
+  const [limit, setLimit] = useState(10);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 12,
+    limit: 10,
     total: 0,
     totalPages: 1,
   });
@@ -306,14 +327,7 @@ export default function AdminLeaveManagement() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateString) => formatDisplayDate(dateString, timeZone);
 
   const getInitials = (name) => {
     if (!name) return "E";
@@ -322,127 +336,175 @@ export default function AdminLeaveManagement() {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Calendar calculations: days of current selected month
-  const calendarData = useMemo(() => {
-    const year = calDate.getFullYear();
-    const month = calDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    // Monday-based week index (0 = Mon, 6 = Sun)
-    let startDayIdx = firstDay.getDay() - 1;
-    if (startDayIdx === -1) startDayIdx = 6;
-
-    const days = [];
-    // Days from previous month
-    const prevMonthLastDay = new Date(year, month, 0).getDate();
-    for (let i = startDayIdx - 1; i >= 0; i--) {
-      days.push({
-        dayNum: prevMonthLastDay - i,
-        dateStr: `${year}-${String(month).padStart(2, "0")}-${String(prevMonthLastDay - i).padStart(2, "0")}`,
-        isOtherMonth: true,
-      });
-    }
-
-    // Days of current month
-    const totalDays = lastDay.getDate();
-    const today = new Date().toISOString().split("T")[0];
-
-    for (let d = 1; d <= totalDays; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      days.push({
-        dayNum: d,
-        dateStr,
-        isOtherMonth: false,
-        isToday: dateStr === today,
-      });
-    }
-
-    // Pad end of calendar to complete grid
-    const remaining = (7 - (days.length % 7)) % 7;
-    for (let r = 1; r <= remaining; r++) {
-      days.push({
-        dayNum: r,
-        dateStr: `${year}-${String(month + 2).padStart(2, "0")}-${String(r).padStart(2, "0")}`,
-        isOtherMonth: true,
-      });
-    }
-
-    // Filter approved leaves that intersect with days
-    const approvedRequests = requests.filter((r) => r.status === "APPROVED");
-
-    return {
-      monthName: calDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-      days,
-      approvedRequests,
+  useEffect(() => {
+    let cancelled = false;
+    const loadSchedule = async () => {
+      try {
+        const start = formatCivilDate(calMonth.year, calMonth.month, 1);
+        const end = formatCivilDate(calMonth.year, calMonth.month, civilDaysInMonth(calMonth.year, calMonth.month));
+        const response = await api.get("/leave-requests", {
+          params: { status: "APPROVED", fromDate: start, toDate: end, limit: 200, page: 1 },
+        });
+        if (!cancelled && response.data?.success) {
+          setScheduleRequests(response.data.leaveRequests || []);
+        }
+      } catch {
+        if (!cancelled) setScheduleRequests([]);
+      }
     };
-  }, [calDate, requests]);
+    loadSchedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [calMonth.year, calMonth.month, actionSuccess]);
 
-  const handlePrevMonth = () => {
-    setCalDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-  };
+  const todayStr = getCompanyBusinessDate(new Date(), timeZone);
 
-  const handleNextMonth = () => {
-    setCalDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-  };
+  const calendarEvents = useMemo(
+    () =>
+      (scheduleRequests || []).map((request) => ({
+        ...request,
+        id: request._id,
+        fromDate: request.fromDate,
+        toDate: request.toDate,
+        startDate: request.fromDate,
+        endDate: request.toDate,
+        employeeName: request.employeeName,
+        leaveTypeCode: request.leaveTypeCode,
+        status: request.status,
+      })),
+    [scheduleRequests]
+  );
+
+  const upcomingAbsences = useMemo(
+    () =>
+      calendarEvents
+        .filter((request) => (request.toDate || request.endDate) >= todayStr)
+        .sort((a, b) => String(a.fromDate).localeCompare(String(b.fromDate)))
+        .slice(0, 6),
+    [calendarEvents, todayStr]
+  );
 
   return (
     <div className="lm-container">
-      <AppHeader title="Leave Requests" />
+      <AppHeader title="Leave" />
+
+      <div className="module-tabs" role="tablist" aria-label="Leave sections">
+        <button
+          type="button"
+          className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
+          onClick={() => {
+            setLeaveSection("overview");
+            setPage(1);
+          }}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          className={`module-tab ${leaveSection === "requests" ? "is-active" : ""}`}
+          onClick={() => {
+            setLeaveSection("requests");
+            setStatusFilter("PENDING");
+            setPage(1);
+          }}
+        >
+          Requests
+        </button>
+        <button
+          type="button"
+          className={`module-tab ${leaveSection === "records" ? "is-active" : ""}`}
+          onClick={() => {
+            setLeaveSection("records");
+            if (statusFilter === "PENDING") setStatusFilter("ALL");
+            setPage(1);
+          }}
+        >
+          Records
+        </button>
+      </div>
 
       {/* Global Alerts */}
       {actionSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{actionSuccess}</div>}
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      {/* Compact Inline Leave Statistics Strip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 8,
-          padding: "8px 16px",
-          marginBottom: 12,
-          fontSize: 13,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Pending Approvals: <strong style={{ color: summary.pending > 0 ? "#b06d0a" : "var(--ink)" }}>{summary.pending}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Approved: <strong style={{ color: "var(--g-800, #155a37)" }}>{summary.approved}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Rejected: <strong style={{ color: "#b91c1c" }}>{summary.rejected}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          On Leave Today: <strong style={{ color: "var(--g-800, #155a37)" }}>{summary.onLeaveToday || 0}</strong>
-        </span>
-      </div>
+      {leaveSection === "overview" && (
+        <div className="lm-summary-row">
+          <div className="lm-sum-card">
+            <div className="lm-sum-card-title">Pending approvals</div>
+            <div className="lm-sum-card-num" style={{ color: summary.pending > 0 ? "var(--amber, #b06d0a)" : "inherit" }}>{summary.pending}</div>
+          </div>
+          <div className="lm-sum-card">
+            <div className="lm-sum-card-title">Approved</div>
+            <div className="lm-sum-card-num">{summary.approved}</div>
+          </div>
+          <div className="lm-sum-card">
+            <div className="lm-sum-card-title">Rejected</div>
+            <div className="lm-sum-card-num">{summary.rejected}</div>
+          </div>
+          <div className="lm-sum-card">
+            <div className="lm-sum-card-title">On leave today</div>
+            <div className="lm-sum-card-num">{summary.onLeaveToday || 0}</div>
+          </div>
+        </div>
+      )}
 
-      {/* Consolidated Single Leave Toolbar */}
-      <div
-        className="lm-toolbar"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 10,
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 10,
-          padding: "8px 14px",
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {leaveSection === "overview" && (
+      <section className="lm-calendar-section" aria-label="Monthly Leave Schedule">
+        <MonthCalendar
+          year={calMonth.year}
+          month={calMonth.month}
+          timeZone={timeZone}
+          events={calendarEvents}
+          heading={`Approved Leave Schedule — ${monthTitle(calMonth.year, calMonth.month)}`}
+          onMonthChange={setCalMonth}
+        />
+
+        <div className="lm-side-card">
+          <div className="lm-side-title-row">
+            <h3 className="lm-side-title">Upcoming Team Absences</h3>
+            <span style={{ fontSize: "12px", color: "var(--g-800)", fontWeight: "600" }}>
+              {upcomingAbsences.length} upcoming
+            </span>
+          </div>
+
+          <div className="lm-team-leave-list">
+            {upcomingAbsences.length === 0 ? (
+              <p style={{ fontSize: "13px", color: "var(--muted)", margin: "14px 0" }}>
+                No approved leaves remaining this month.
+              </p>
+            ) : (
+              upcomingAbsences.map((r) => {
+                const name = r.employeeName || "Team Member";
+                const type = r.leaveTypeCode || "Casual";
+                return (
+                  <div key={r._id} className="lm-team-leave-row">
+                    <div className="lm-team-leave-left">
+                      <div className="lm-req-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
+                        {getInitials(name)}
+                      </div>
+                      <div>
+                        <div className="lm-team-leave-name" title={name}>{name}</div>
+                        <div className="lm-team-leave-dates">
+                          {formatDate(r.fromDate)} – {formatDate(r.toDate)}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`lm-req-type-pill ${type.toLowerCase()}`}>
+                      {type}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
+      )}
+
+      <div className="lm-records-heading">Leave records</div>
+      <div className="lm-toolbar">
+        <div className="lm-toolbar-left">
           {/* Status Filter Tabs */}
           <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
             {STATUS_OPTIONS.map((opt) => (
@@ -481,13 +543,13 @@ export default function AdminLeaveManagement() {
               className="search-input"
               style={{ width: "100%", paddingLeft: "30px", height: 32, fontSize: 12.5 }}
             />
-            <svg
-              width="13"
-              height="13"
+              <svg
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.5"
+              strokeWidth="2.4"
               strokeLinecap="round"
               strokeLinejoin="round"
               style={{ position: "absolute", left: "9px", top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}
@@ -505,7 +567,7 @@ export default function AdminLeaveManagement() {
               setPage(1);
             }}
             className="filter-select"
-            style={{ height: 32, fontSize: 12.5, padding: "0 8px" }}
+            style={{ height: 32, fontSize: 12.5 }}
           >
             {filterLeaveTypes.map((t) => (
               <option key={t.value} value={t.value}>
@@ -548,7 +610,7 @@ export default function AdminLeaveManagement() {
               onClick={() => setViewMode("cards")}
               style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
                 <rect x="3" y="3" width="7" height="7" />
                 <rect x="14" y="3" width="7" height="7" />
                 <rect x="14" y="14" width="7" height="7" />
@@ -562,7 +624,7 @@ export default function AdminLeaveManagement() {
               onClick={() => setViewMode("table")}
               style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
                 <line x1="8" y1="6" x2="21" y2="6" />
                 <line x1="8" y1="12" x2="21" y2="12" />
                 <line x1="8" y1="18" x2="21" y2="18" />
@@ -574,30 +636,14 @@ export default function AdminLeaveManagement() {
             </button>
           </div>
 
-          <select
-            value={limit}
-            onChange={(e) => {
-              setLimit(Number(e.target.value));
-              setPage(1);
-            }}
-            className="filter-select"
-            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size} / page
-              </option>
-            ))}
-          </select>
-
           <button
             type="button"
             className="btn-secondary"
             onClick={() => fetchLeaveData()}
             title="Refresh leave requests"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 12px", fontSize: 13 }}
           >
-            <IconRefresh size={13} />
+            <IconRefresh size={18} />
             <span>Refresh</span>
           </button>
         </div>
@@ -809,7 +855,7 @@ export default function AdminLeaveManagement() {
                   </td>
                   <td><strong>{req.calculatedDays || req.durationDays || 1}</strong></td>
                   <td><StatusBadge status={req.status} /></td>
-                  <td style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <td className="lm-reason-cell" title={req.reason || ""}>
                     {req.reason || "—"}
                   </td>
                   <td>{formatDate(req.createdAt)}</td>
@@ -866,125 +912,6 @@ export default function AdminLeaveManagement() {
           className="my-3"
         />
       )}
-
-      {/* -----------------------------------------------------------------------
-          REFERENCE 1: LEAVE CALENDAR AND SCHEDULE VISUALIZATION
-          ----------------------------------------------------------------------- */}
-      <section className="lm-calendar-section" aria-label="Monthly Leave Schedule">
-        {/* Calendar Card */}
-        <div className="lm-calendar-card">
-          <div className="lm-cal-header-bar">
-            <h3 className="lm-cal-title">
-              Approved Leave Schedule — {calendarData.monthName}
-            </h3>
-            <div className="lm-cal-nav">
-              <button
-                type="button"
-                className="lm-cal-nav-btn"
-                onClick={handlePrevMonth}
-                aria-label="Previous month"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                className="lm-cal-nav-btn"
-                onClick={handleNextMonth}
-                aria-label="Next month"
-              >
-                ›
-              </button>
-            </div>
-          </div>
-
-          <div className="lm-cal-grid">
-            <div className="lm-cal-weekday">Mon</div>
-            <div className="lm-cal-weekday">Tue</div>
-            <div className="lm-cal-weekday">Wed</div>
-            <div className="lm-cal-weekday">Thu</div>
-            <div className="lm-cal-weekday">Fri</div>
-            <div className="lm-cal-weekday">Sat</div>
-            <div className="lm-cal-weekday">Sun</div>
-
-            {calendarData.days.map((day, idx) => {
-              // Find matching approved leaves for this day
-              const dayLeaves = calendarData.approvedRequests.filter((r) => {
-                const s = r.startDate?.split("T")[0];
-                const e = r.endDate?.split("T")[0];
-                return s && e && day.dateStr >= s && day.dateStr <= e;
-              });
-
-              return (
-                <div
-                  key={idx}
-                  className={`lm-cal-day ${day.isOtherMonth ? "other-month" : ""} ${day.isToday ? "today" : ""}`}
-                >
-                  <span className="lm-cal-day-num">{day.dayNum}</span>
-                  {dayLeaves.slice(0, 2).map((l, lIdx) => {
-                    const empShort = (l.employeeId?.fullName || "Leave").split(" ")[0];
-                    const tCode = (l.leaveTypeCode || "CASUAL").toLowerCase();
-                    return (
-                      <div
-                        key={lIdx}
-                        className={`lm-cal-leave-pill ${tCode}`}
-                        title={`${l.employeeId?.fullName || "Employee"}: ${l.leaveTypeCode} Leave`}
-                      >
-                        {empShort} · {l.leaveTypeCode?.slice(0, 3)}
-                      </div>
-                    );
-                  })}
-                  {dayLeaves.length > 2 && (
-                    <div style={{ fontSize: "9px", color: "var(--muted)", marginTop: 2 }}>
-                      +{dayLeaves.length - 2} more
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Side Card: Currently / Scheduled on Leave */}
-        <div className="lm-side-card">
-          <div className="lm-side-title-row">
-            <h3 className="lm-side-title">Upcoming Team Absences</h3>
-            <span style={{ fontSize: "12px", color: "var(--g-800)", fontWeight: "600" }}>
-              {calendarData.approvedRequests.length} Scheduled
-            </span>
-          </div>
-
-          <div className="lm-team-leave-list">
-            {calendarData.approvedRequests.length === 0 ? (
-              <p style={{ fontSize: "13px", color: "var(--muted)", margin: "14px 0" }}>
-                No approved leaves scheduled for this month.
-              </p>
-            ) : (
-              calendarData.approvedRequests.slice(0, 5).map((r) => {
-                const name = r.employeeId?.fullName || "Team Member";
-                const type = r.leaveTypeCode || "Casual";
-                return (
-                  <div key={r._id} className="lm-team-leave-row">
-                    <div className="lm-team-leave-left">
-                      <div className="lm-req-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
-                        {getInitials(name)}
-                      </div>
-                      <div>
-                        <div className="lm-team-leave-name" title={name}>{name}</div>
-                        <div className="lm-team-leave-dates">
-                          {formatDate(r.startDate)} - {formatDate(r.endDate)}
-                        </div>
-                      </div>
-                    </div>
-                    <span className={`lm-req-type-pill ${type.toLowerCase()}`}>
-                      {type}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </section>
 
       {/* -----------------------------------------------------------------------
           CONFIRM DECISION MODAL (Quick Decision or Full Decision)

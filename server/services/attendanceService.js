@@ -1,5 +1,7 @@
 import { HttpError } from "../utils/httpError.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
+import { getCompanyBusinessDate } from "../utils/companyTime.js";
+export { getCompanyBusinessDate };
 
 /**
  * Validates browser geolocation coordinates and metadata.
@@ -43,23 +45,6 @@ export function validateLocationCoordinates(location) {
     capturedAt: location.capturedAt ? new Date(location.capturedAt) : new Date(),
     address: typeof location.address === "string" ? location.address.trim().slice(0, 255) : "",
   };
-}
-
-/**
- * Formats a date into YYYY-MM-DD according to company timezone.
- */
-export function getCompanyBusinessDate(date = new Date(), timezone = "Asia/Kolkata") {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    return formatter.format(date);
-  } catch {
-    return date.toISOString().split("T")[0];
-  }
 }
 
 /**

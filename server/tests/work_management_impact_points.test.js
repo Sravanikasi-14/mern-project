@@ -10,6 +10,7 @@ import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES } from "../models/User.js";
 import { getAuthCookieName } from "../utils/authCookie.js";
 import { hashPassword } from "../utils/password.js";
+import { getCompanyDayBounds } from "../utils/companyTime.js";
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-chars";
@@ -558,6 +559,43 @@ describe("Work Management and Impact Points System Suite", () => {
       .set("Cookie", managerCookieA);
     assert.equal(resMgr.status, 200);
     assert.ok(resMgr.body.tasks.length >= 1);
+
+    const todayBoard = await request(app)
+      .get("/api/tasks?completedScope=today&limit=100")
+      .set("Cookie", hrCookieA);
+    assert.equal(todayBoard.status, 200);
+    assert.ok(
+      todayBoard.body.tasks.some((t) => t.status === "APPROVED" && String(t._id) === String(createdTaskId)),
+      "today's completed task should appear on the today board"
+    );
+
+    const modelsA = await getCompanyModels(companyA);
+    const { start } = getCompanyDayBounds(new Date(), "Asia/Kolkata");
+    await modelsA.Task.updateOne(
+      { _id: createdTaskId },
+      { $set: { completedAt: new Date(start.getTime() - 60 * 1000) } }
+    );
+
+    const todayAfterBackdate = await request(app)
+      .get("/api/tasks?completedScope=today&limit=100")
+      .set("Cookie", hrCookieA);
+    assert.equal(
+      todayAfterBackdate.body.tasks.filter(
+        (t) => t.status === "APPROVED" && String(t._id) === String(createdTaskId)
+      ).length,
+      0,
+      "older completed tasks must not appear in today's Completed column"
+    );
+
+    const history = await request(app)
+      .get("/api/tasks?status=APPROVED&limit=100")
+      .set("Cookie", hrCookieA);
+    assert.ok(
+      history.body.tasks.some((t) => String(t._id) === String(createdTaskId)),
+      "historical completed tasks remain available without completedScope=today"
+    );
+
+    await modelsA.Task.updateOne({ _id: createdTaskId }, { $set: { completedAt: new Date() } });
   });
 
   it("17. HR Admin awards points: authoritative ledger balance, activity history, and leaderboard rankings update dynamically", async () => {

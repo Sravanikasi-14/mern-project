@@ -162,7 +162,7 @@ export default function EmployeeSettings() {
   };
 
   return (
-    <main className="container-wide">
+    <main className="container-wide settings-page">
       <AppHeader
         title="Settings"
       />
@@ -230,86 +230,30 @@ export default function EmployeeSettings() {
         </div>
       )}
 
-      {/* Main Settings Layout Grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "240px 1fr",
-          gap: "20px",
-          alignItems: "start",
-        }}
-      >
-        {/* Navigation Sidebar */}
-        <aside
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: "12px",
-            padding: "8px",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 12px 6px",
-              fontSize: "11px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              color: "var(--muted, #646d67)",
-            }}
-          >
-            Account Settings
-          </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Account settings">
+          {EMPLOYEE_SETTINGS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={`settings-nav-btn ${isActive ? "is-active" : ""}`}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setError("");
+                  setSuccessMsg("");
+                }}
+              >
+                <Icon size={20} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-          <nav style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-            {EMPLOYEE_SETTINGS_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setError("");
-                    setSuccessMsg("");
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    width: "100%",
-                    padding: "9px 12px",
-                    border: "none",
-                    borderRadius: "8px",
-                    background: isActive ? "var(--g-100, #e3f2e9)" : "transparent",
-                    color: isActive ? "var(--g-900, #0d3a23)" : "var(--ink, #131a15)",
-                    fontSize: "13.5px",
-                    fontWeight: isActive ? 600 : 500,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "background 0.15s ease",
-                  }}
-                >
-                  <Icon size={16} />
-                  <span style={{ flex: 1 }}>{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        {/* Main Content Workspace Panel */}
-        <div
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: "12px",
-            padding: "20px 22px",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
+        <div className="settings-workspace">
           {/* TAB 1: Account & Security */}
           {activeTab === "security" && (
             <div>
@@ -320,7 +264,7 @@ export default function EmployeeSettings() {
               </div>
 
               {/* Password Change Form */}
-              <form onSubmit={handleChangePassword} style={{ maxWidth: "560px" }}>
+              <form onSubmit={handleChangePassword} className="settings-groups">
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
                     Current Password
@@ -506,7 +450,7 @@ export default function EmployeeSettings() {
                 </h2>
               </div>
 
-              <form onSubmit={handleSaveNotifications} style={{ maxWidth: "600px" }}>
+              <form onSubmit={handleSaveNotifications}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
                   <label
                     style={{
@@ -586,7 +530,7 @@ export default function EmployeeSettings() {
                 </h2>
               </div>
 
-              <form onSubmit={handleSavePreferences} style={{ maxWidth: "600px" }}>
+              <form onSubmit={handleSavePreferences} className="settings-groups">
                 <div style={{ marginBottom: "24px" }}>
                   <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--ink)", marginBottom: "8px" }}>
                     Table & List Density

@@ -40,6 +40,7 @@ const companySchema = new mongoose.Schema(
     branding: {
       displayName: { type: String, default: "" },
       logoUrl: { type: String, default: "" },
+      logoMimeType: { type: String, default: "" },
       primaryColor: { type: String, default: "#4338ca" },
     },
     config: {
