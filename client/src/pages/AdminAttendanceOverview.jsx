@@ -646,7 +646,7 @@ export default function AdminAttendanceOverview() {
       </div>
       )}
 
-      {section === "records" && (
+      {(section === "overview" || section === "records") && (
       <div
         style={{
           background: "var(--card, #ffffff)",
