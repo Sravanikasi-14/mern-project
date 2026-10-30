@@ -1,18 +1,29 @@
 import { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import {
-  IconClose,
-  IconClock,
-  IconCheck,
   IconAlertCircle,
-  IconCalendar,
-  IconArrowRight,
-  IconDollar,
-} from "../components/Icons";
+  IconCalendarPlus,
+  IconClose,
+  IconLogIn,
+  IconLogOut,
+  IconMapPin,
+  IconMonitor,
+  IconRefresh,
+  IconSettings,
+  IconUser,
+} from "../components/EmployeeIcon";
 import { useAuth } from "../context/AuthContext";
+import { useDashboardQuery, useMyTasksQuery } from "../hooks/useEmployeeQueries";
+import { invalidateAttendance, invalidateEmployeeWork, invalidateLeave } from "../lib/queryKeys";
 import api from "../services/api";
+import StatusBadge from "../components/StatusBadge";
 import "./EmployeeDashboard.css";
+import MobileExpandable from "../components/mobile/MobileExpandable";
+import MobileEmptyState from "../components/mobile/MobileEmptyState";
+import MobileSkeleton from "../components/mobile/MobileSkeleton";
 
 function formatFullINR(amount, symbol = "₹") {
   if (amount == null || isNaN(amount)) return `${symbol}0`;
@@ -25,6 +36,17 @@ function getGreeting() {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function homeTaskDeadline(deadline, status) {
+  if (!deadline) return { text: "No deadline", overdue: false };
+  const due = new Date(deadline);
+  if (Number.isNaN(due.getTime())) return { text: "No deadline", overdue: false };
+  const label = due.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  if (due < new Date() && status !== "APPROVED") {
+    return { text: `Overdue · ${label}`, overdue: true };
+  }
+  return { text: `Due ${label}`, overdue: false };
 }
 
 function formatDisplayDate(dateStr) {
@@ -52,10 +74,32 @@ function formatDisplayDate(dateStr) {
 export default function EmployeeDashboard() {
   const { user, company } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [dashboardData, setDashboardData] = useState(null);
+  const dashboardQuery = useDashboardQuery();
+  const dashboardData = dashboardQuery.data ?? null;
+  const loading = dashboardQuery.isLoading && !dashboardData;
+  const error = dashboardQuery.error
+    ? (!dashboardQuery.error.response ||
+      dashboardQuery.error.code === "ERR_NETWORK" ||
+      dashboardQuery.error.response?.status >= 500
+        ? "Unable to connect to the server. Please check your connection and try again."
+        : dashboardQuery.error.response?.data?.message || "Failed to load employee dashboard data.")
+    : "";
+
+  const [isMobileHome, setIsMobileHome] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches
+  );
+  const homeTasksQuery = useMyTasksQuery(
+    { scope: "my_tasks", page: 1, limit: 8 },
+    { enabled: isMobileHome }
+  );
+  const homeTasks = useMemo(() => {
+    const list = homeTasksQuery.data?.tasks || [];
+    return list.filter((task) => task.status !== "APPROVED").slice(0, 5);
+  }, [homeTasksQuery.data]);
+  const homeTasksLoading = homeTasksQuery.isLoading && !homeTasksQuery.data;
+
   const [punching, setPunching] = useState(false);
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
@@ -70,29 +114,18 @@ export default function EmployeeDashboard() {
     endDate: "",
     reason: "",
   });
-
-  const fetchDashboard = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const response = await api.get("/employees/me/dashboard");
-      setDashboardData(response.data);
-    } catch (err) {
-      if (!silent) {
-        if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-          setError("Unable to connect to the server. Please check your connection and try again.");
-        } else {
-          setError(err.response?.data?.message || "Failed to load employee dashboard data.");
-        }
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
+  const [startingHomeTaskId, setStartingHomeTaskId] = useState(null);
 
   useEffect(() => {
-    fetchDashboard();
+    if (typeof window === "undefined") return undefined;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const sync = () => setIsMobileHome(mq.matches);
+    sync();
+    mq.addEventListener?.("change", sync);
+    return () => mq.removeEventListener?.("change", sync);
+  }, []);
 
+  useEffect(() => {
     // Cross-portal real-time synchronization via Server-Sent Events
     const baseURL = api.defaults.baseURL || "/api";
     const eventsUrl = `${baseURL.replace(/\/$/, "")}/leave-requests/events`;
@@ -108,7 +141,7 @@ export default function EmployeeDashboard() {
             payload.type === "LEAVE_SUBMITTED" ||
             payload.type === "LEAVE_TYPE_CHANGED"
           ) {
-            fetchDashboard(true);
+            queryClient.invalidateQueries({ queryKey: ["employee", "dashboard"] });
           }
         } catch {
           // ignore non-json
@@ -118,21 +151,26 @@ export default function EmployeeDashboard() {
       // EventSource fallback
     }
 
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === "visible") {
-        fetchDashboard(true);
-      }
-    };
-
-    window.addEventListener("focus", handleVisibilityOrFocus);
-    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
-
     return () => {
       if (eventSource) eventSource.close();
-      window.removeEventListener("focus", handleVisibilityOrFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
     };
-  }, []);
+  }, [queryClient]);
+
+  const handleStartHomeTask = async (task) => {
+    try {
+      setStartingHomeTaskId(task._id);
+      setActionError("");
+      const res = await api.post(`/tasks/${task._id}/start`);
+      if (res.data?.success) {
+        setActionSuccess(`Started “${task.title}”.`);
+        await invalidateEmployeeWork(queryClient);
+      }
+    } catch (err) {
+      setActionError(err.response?.data?.message || "Could not start this task.");
+    } finally {
+      setStartingHomeTaskId(null);
+    }
+  };
 
   // Calculate same-day leave cutoff eligibility
   const calculateLeaveEligibility = () => {
@@ -287,7 +325,7 @@ export default function EmployeeDashboard() {
       setActionSuccess(res.data?.message || "Leave request submitted successfully!");
       setShowLeaveModal(false);
       setLeaveForm({ leaveType: "CASUAL", startDate: "", endDate: "", reason: "" });
-      await fetchDashboard(true);
+      await invalidateLeave(queryClient);
     } catch (err) {
       setLeaveModalError(err.response?.data?.message || "Failed to submit leave request.");
     } finally {
@@ -323,7 +361,7 @@ export default function EmployeeDashboard() {
 
       const res = await api.post(`/employees/me/attendance/${actionType}`, payload);
       setActionSuccess(res.data?.message || `Successfully punched ${actionType === "check-in" ? "in" : "out"}!`);
-      await fetchDashboard(true);
+      await invalidateAttendance(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || `Failed to punch ${actionType === "check-in" ? "in" : "out"}.`);
     } finally {
@@ -336,6 +374,8 @@ export default function EmployeeDashboard() {
   const leave = dashboardData?.leave;
   const holidays = dashboardData?.holidays || [];
   const payslips = dashboardData?.payslips || [];
+  const persistedPayslips = payslips.filter((p) => p.isPersisted === true);
+  const hasPayEstimate = payslips.some((p) => p.isPersisted === false);
   const assets = dashboardData?.assets || [];
 
   const todayStatus = attendance?.today?.status || "NOT_CHECKED_IN";
@@ -346,7 +386,7 @@ export default function EmployeeDashboard() {
     ? new Date(attendance.today.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
-  const latestPayslip = payslips[0] || null;
+  const latestPayslip = persistedPayslips[0] || null;
 
   const attendanceRate = attendance?.summary?.attendanceRate ?? 100;
   const daysPresent = attendance?.summary?.daysPresent ?? 0;
@@ -426,29 +466,20 @@ export default function EmployeeDashboard() {
         </div>
 
         <div className="emp-head__actions">
+          <SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />
           {/* Apply for Leave Action */}
           <button
             type="button"
             className="btn--emp-primary"
             onClick={handleOpenLeaveModal}
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-              <line x1="12" y1="14" x2="12" y2="18" />
-              <line x1="10" y1="16" x2="14" y2="16" />
-            </svg>
+            <IconCalendarPlus size={16} />
             <span>Apply for Leave</span>
           </button>
 
           {/* Profile Shortcut */}
           <Link to="/app/profile" className="btn--emp-secondary">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
+            <IconUser size={16} />
             <span>My Profile</span>
           </Link>
 
@@ -456,32 +487,18 @@ export default function EmployeeDashboard() {
           <button
             type="button"
             className="btn--ghost-sync"
-            onClick={() => fetchDashboard()}
+            onClick={() => dashboardQuery.refetch()}
             title="Refresh dashboard metrics"
-            disabled={loading}
+            disabled={dashboardQuery.isFetching}
             aria-label="Refresh dashboard"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={loading ? "spin-icon" : ""}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <polyline points="1 20 1 14 7 14" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
+            <IconRefresh size={16} className={dashboardQuery.isFetching ? "spin-icon" : ""} />
           </button>
         </div>
       </div>
 
       {/* Loading Skeleton / State */}
-      {loading && !dashboardData && (
+      {loading && (
         <div className="page-loading">
           <div className="spinner" style={{ margin: "0 auto 12px" }} />
           <p style={{ margin: 0 }}>Loading dashboard…</p>
@@ -489,16 +506,16 @@ export default function EmployeeDashboard() {
       )}
 
       {/* Error State */}
-      {!loading && error && (
+      {!loading && error && !dashboardData && (
         <div className="error" style={{ padding: 24, textAlign: "center", borderRadius: 16 }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" className="btn--emp-primary" onClick={() => fetchDashboard()}>
+          <button type="button" className="btn--emp-primary" onClick={() => dashboardQuery.refetch()}>
             Retry Loading Dashboard
           </button>
         </div>
       )}
 
-      {!loading && !error && (
+      {!loading && dashboardData && (
         <div className="emp-bento-grid">
           {/* ====================================================================
               SECTION 1: COMBINED ATTENDANCE & LEAVE OPERATIONS (SPAN 12)
@@ -580,11 +597,15 @@ export default function EmployeeDashboard() {
                         disabled={punching || todayStatus === "CHECKED_IN" || todayStatus === "ON_LEAVE"}
                         onClick={() => handlePunch("check-in")}
                       >
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                        <span>{punching ? "Processing..." : "Punch In"}</span>
+                        <IconLogIn size={16} />
+                        <span>
+                          {punching ? "Processing..." : (
+                            <>
+                              <span className="m-title-full">Punch In</span>
+                              <span className="m-title-short">Punch in</span>
+                            </>
+                          )}
+                        </span>
                       </button>
 
                       <button
@@ -593,22 +614,18 @@ export default function EmployeeDashboard() {
                         disabled={punching || todayStatus !== "CHECKED_IN"}
                         onClick={() => handlePunch("check-out")}
                       >
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                          <polyline points="16 17 21 12 16 7" />
-                          <line x1="21" y1="12" x2="9" y2="12" />
-                        </svg>
-                        <span>Punch Out</span>
+                        <IconLogOut size={16} />
+                        <span>
+                          <span className="m-title-full">Punch Out</span>
+                          <span className="m-title-short">Punch out</span>
+                        </span>
                       </button>
                     </div>
                   </div>
 
                   <div className="emp-att-footer-row">
                     <span className="emp-att-geo-badge">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
-                        <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" />
-                        <circle cx="12" cy="10" r="3" />
-                      </svg>
+                      <IconMapPin size={14} />
                       <span>Location verified</span>
                     </span>
 
@@ -658,6 +675,13 @@ export default function EmployeeDashboard() {
                   </div>
                 )}
 
+                <button
+                  type="button"
+                  className="btn--emp-primary m-inline-apply"
+                  onClick={handleOpenLeaveModal}
+                >
+                  Apply for leave
+                </button>
                 <div className="emp-leave-cutoff-note" style={{ marginTop: 10 }}>
                   <span>
                     Same-day cutoff: <b>{leaveEligibility.cutoffTime}</b> ({leaveEligibility.timezone}). Earliest: <b>{leaveEligibility.earliestEligibleDate}</b>.
@@ -671,6 +695,7 @@ export default function EmployeeDashboard() {
               SECTION 2: PAY & EMPLOYEE BENEFITS (SPAN 6)
               Combines latest payslip statement and assigned company equipment
               ==================================================================== */}
+          <MobileExpandable title="Pay and assets">
           <section className="emp-card" style={{ gridColumn: "span 6" }}>
             <div className="emp-card__head">
               <div>
@@ -710,6 +735,8 @@ export default function EmployeeDashboard() {
                       {latestPayslip.status || "Paid"}
                     </span>
                   </div>
+                ) : hasPayEstimate ? (
+                  <p className="emp-empty-subtext">Pay estimate only. Finalized payslips appear here after payroll is processed.</p>
                 ) : (
                   <p className="emp-empty-subtext">No payslip yet.</p>
                 )}
@@ -722,11 +749,7 @@ export default function EmployeeDashboard() {
                   <div className="emp-asset-mini-list">
                     {assets.slice(0, 2).map((a, idx) => (
                       <div key={a.id || idx} className="emp-asset-mini-item">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="2" y="3" width="20" height="14" rx="2" />
-                          <line x1="8" y1="21" x2="16" y2="21" />
-                          <line x1="12" y1="17" x2="12" y2="21" />
-                        </svg>
+                        <IconMonitor size={14} />
                         <span className="emp-asset-mini-name">{a.name}</span>
                         <span className="emp-asset-mini-tag">{a.assetTag || a.serial || "Assigned"}</span>
                       </div>
@@ -738,6 +761,7 @@ export default function EmployeeDashboard() {
               </div>
             </div>
           </section>
+          </MobileExpandable>
 
           {/* ====================================================================
               SECTION 3: MY WORK & EMPLOYMENT INFORMATION (SPAN 6)
@@ -762,7 +786,7 @@ export default function EmployeeDashboard() {
 
             <div className="emp-dual-subsections">
               {/* Sub-panel 1: Project Allocation */}
-              <div className="emp-subpanel">
+              <div className="emp-subpanel m-desktop-only">
                 <span className="emp-subpanel-title">Project</span>
                 <div className="emp-project-mini-box">
                   <span className="emp-project-title">{employee?.project?.projectName || "Enterprise Operations"}</span>
@@ -776,8 +800,9 @@ export default function EmployeeDashboard() {
               <div className="emp-subpanel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span className="emp-subpanel-title">Tasks</span>
-                  <Link to="/app/tasks" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--g-700)", textDecoration: "none" }}>
-                    Queue →
+                  <Link to="/app/tasks" className="emp-card__link">
+                    <span className="m-title-full">Queue →</span>
+                    <span className="m-title-short">View all</span>
                   </Link>
                 </div>
                 <div className="emp-task-action-box">
@@ -785,8 +810,51 @@ export default function EmployeeDashboard() {
                     <span className="emp-task-headline">Active Tasks</span>
                   </div>
                   <Link to="/app/tasks" className="emp-task-cta">
-                    Review
+                    <span className="m-title-full">Review</span>
+                    <span className="m-title-short">Open tasks</span>
                   </Link>
+                </div>
+                <div className="m-task-preview">
+                  {homeTasksLoading ? (
+                    <MobileSkeleton rows={3} />
+                  ) : homeTasks.length === 0 ? (
+                    <MobileEmptyState
+                      message="No open tasks right now."
+                      actionLabel="Open tasks"
+                      onAction={() => navigate("/app/tasks")}
+                    />
+                  ) : (
+                    homeTasks.map((task) => {
+                      const due = homeTaskDeadline(task.deadline, task.status);
+                      return (
+                        <div key={task._id} className="m-task-row">
+                          <div className="m-task-row-main">
+                            <span className="m-summary-title">{task.title}</span>
+                            <span className="m-summary-sub">{due.text}</span>
+                          </div>
+                          <StatusBadge status={task.status} />
+                          {task.status === "ASSIGNED" ? (
+                            <button
+                              type="button"
+                              className="btn-primary m-task-row-btn"
+                              disabled={startingHomeTaskId === task._id}
+                              onClick={() => handleStartHomeTask(task)}
+                            >
+                              {startingHomeTaskId === task._id ? "Starting..." : "Start task"}
+                            </button>
+                          ) : task.status === "IN_PROGRESS" ? (
+                            <Link to="/app/tasks" className="btn-primary m-task-row-btn">
+                              Submit work
+                            </Link>
+                          ) : (
+                            <Link to="/app/tasks" className="btn-secondary m-task-row-btn">
+                              View details
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -796,6 +864,7 @@ export default function EmployeeDashboard() {
               SECTION 4: UPCOMING SCHEDULE & SELF-SERVICE (SPAN 12)
               Combines upcoming holidays and self-service quick links
               ==================================================================== */}
+          <MobileExpandable title="Holidays and shortcuts">
           <section className="emp-card emp-schedule-strip-card" style={{ gridColumn: "span 12" }}>
             <div className="emp-schedule-strip-grid">
               {/* Left: Holidays list */}
@@ -823,17 +892,18 @@ export default function EmployeeDashboard() {
                 <span className="emp-schedule-links-title">Quick Links</span>
                 <div className="emp-quick-links-group">
                   <Link to="/app/profile" className="emp-quick-link-pill">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>
+                    <IconUser size={13} />
                     <span>Profile</span>
                   </Link>
                   <Link to="/app/settings" className="emp-quick-link-pill">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <IconSettings size={13} />
                     <span>Settings</span>
                   </Link>
                 </div>
               </div>
             </div>
           </section>
+          </MobileExpandable>
         </div>
       )}
 

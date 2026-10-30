@@ -1,8 +1,11 @@
 import { Suspense, lazy } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
 import AppLayout from "./components/AppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import SessionBoot from "./components/SessionBoot";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { queryClient } from "./lib/queryClient";
 import "./index.css";
 
 const AdminHome = lazy(() => import("./pages/AdminHome"));
@@ -52,20 +55,7 @@ function RouteFallback() {
 function IndexRedirect() {
   const { isAuthenticated, user, loading } = useAuth();
   if (loading) {
-    return (
-      <div
-        className="auth-restore-screen"
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#f4f4f5",
-        }}
-      >
-        <div className="spinner" />
-      </div>
-    );
+    return <SessionBoot />;
   }
   if (isAuthenticated && user) {
     return <Navigate to={user.role === "HR_ADMIN" ? "/admin/dashboard" : "/app/dashboard"} replace />;
@@ -75,6 +65,7 @@ function IndexRedirect() {
 
 function App() {
   return (
+    <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
@@ -360,6 +351,7 @@ function App() {
         </Suspense>
       </BrowserRouter>
     </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

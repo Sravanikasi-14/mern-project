@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
 import { IconClose, IconInfo } from "./Icons";
+import { EmployeeIcon } from "./EmployeeIcon";
 import ChatbotWidget from "./ChatbotWidget";
 import { useAuth } from "../context/AuthContext";
 import "./Sidebar.css";
@@ -31,11 +32,15 @@ export default function AppLayout({ children }) {
           onClick={() => setMobileOpen(true)}
           aria-label="Open Navigation Menu"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+          {user?.role === "EMPLOYEE" ? (
+            <EmployeeIcon name="menu" size={22} strokeWidth={2} />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          )}
         </button>
         <div className="mobile-brand-title">
           <span>HRMS</span>

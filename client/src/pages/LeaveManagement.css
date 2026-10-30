@@ -282,6 +282,78 @@
   .lm-requests-grid {
     grid-template-columns: 1fr;
   }
+
+  .lm-toolbar,
+  .lm-toolbar-left,
+  .lm-toolbar-right {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .lm-toolbar-left > div {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .lm-toolbar-left > div:nth-child(2),
+  .lm-toolbar-left > select,
+  .lm-toolbar-left > input[type="date"],
+  .lm-toolbar-right,
+  .lm-view-toggle,
+  .pm-view-toggle {
+    display: none !important;
+  }
+
+  .lm-toolbar-left button {
+    min-height: 44px;
+  }
+
+  .lm-req-card:hover {
+    transform: none;
+  }
+
+  .lm-btn-details {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .lm-action-btn-group {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .lm-btn-approve,
+  .lm-btn-reject {
+    flex: 1;
+    width: auto;
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
+    padding: 8px 12px;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .lm-req-reason-box,
+  .lm-req-reviewer-row {
+    display: none;
+  }
+
+  .el-balance-table th,
+  .el-balance-table td {
+    padding: 10px 8px;
+    font-size: 14px;
+  }
+
+  .el-balance-table th:nth-child(2),
+  .el-balance-table th:nth-child(3),
+  .el-balance-table td:nth-child(2),
+  .el-balance-table td:nth-child(3) {
+    display: none;
+  }
 }
 
 /* Individual Leave Request Card (Reference 1) */

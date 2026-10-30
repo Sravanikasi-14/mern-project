@@ -1,15 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
   IconCheck,
   IconClose,
   IconAlertCircle,
   IconInfo,
-} from "../components/Icons";
+} from "../components/EmployeeIcon";
 import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
+import {
+  useImpactLeaderboardQuery,
+  useImpactMeQuery,
+  useTasksMetaQuery,
+} from "../hooks/useEmployeeQueries";
+import { invalidateImpact } from "../lib/queryKeys";
 import "./WorkManagement.css";
+import MobileExpandable from "../components/mobile/MobileExpandable";
 
 const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
@@ -19,28 +28,44 @@ const PERIOD_OPTIONS = [
 ];
 
 export default function EmployeeImpactPoints() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("MY_HISTORY"); // 'MY_HISTORY' | 'LEADERBOARD'
-  const [myPoints, setMyPoints] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   // Leaderboard state
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
-  const leaderboardPager = useClientPagination(leaderboard, 10);
-  const historyPager = useClientPagination(myPoints?.recentTransactions || myPoints?.history || [], 10);
 
-  // Recognition state (for managers with direct reports)
-  const [meta, setMeta] = useState({
+  const metaQuery = useTasksMetaQuery();
+  const impactQuery = useImpactMeQuery();
+  const leaderboardQuery = useImpactLeaderboardQuery(
+    { period: periodFilter, department: departmentFilter },
+    { enabled: activeTab === "LEADERBOARD" }
+  );
+
+  const meta = metaQuery.data || {
     userRole: "",
     isManager: false,
     directReportsCount: 0,
     assignableEmployees: [],
     departments: [],
-  });
+  };
+  const myPoints = impactQuery.data ?? null;
+  const loading = impactQuery.isLoading && !impactQuery.data;
+  const leaderboard = leaderboardQuery.data || [];
+  const leaderboardLoading = leaderboardQuery.isLoading && !leaderboardQuery.data;
+  const queryError =
+    impactQuery.error?.response?.data?.message ||
+    (impactQuery.error ? "Failed to load impact points profile" : "") ||
+    leaderboardQuery.error?.response?.data?.message ||
+    (leaderboardQuery.error ? "Failed to load leaderboard" : "");
+  const error = actionError || queryError;
+
+  const leaderboardPager = useClientPagination(leaderboard, 10);
+  const historyPager = useClientPagination(myPoints?.recentTransactions || myPoints?.history || [], 10);
+
+  // Recognition state (for managers with direct reports)
   const [sidePanelMode, setSidePanelMode] = useState("none"); // 'none' | 'recognize'
   const [recognizeForm, setRecognizeForm] = useState({
     recipientId: "",
@@ -49,79 +74,6 @@ export default function EmployeeImpactPoints() {
   });
   const [recognizing, setRecognizing] = useState(false);
   const [recognizeError, setRecognizeError] = useState("");
-
-  // Fetch Meta and My Points
-  useEffect(() => {
-    let cancelled = false;
-    async function loadInitialData() {
-      try {
-        setLoading(true);
-        const [metaRes, myRes] = await Promise.all([
-          api.get("/tasks/meta"),
-          api.get("/impact-points/me"),
-        ]);
-
-        if (!cancelled) {
-          if (metaRes.data?.success) {
-            const metaData = metaRes.data?.data || metaRes.data || {};
-            setMeta({
-              userRole: metaData.userRole || "",
-              isManager: Boolean(metaData.isManager),
-              directReportsCount: metaData.directReportsCount || 0,
-              assignableEmployees: Array.isArray(metaData.assignableEmployees)
-                ? metaData.assignableEmployees
-                : [],
-              departments: Array.isArray(metaData.departments) ? metaData.departments : [],
-            });
-          }
-          if (myRes.data?.success) {
-            const summaryData = myRes.data?.summary || myRes.data?.data || myRes.data || null;
-            setMyPoints(summaryData);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.response?.data?.message || "Failed to load impact points profile");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    loadInitialData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Fetch Leaderboard
-  const fetchLeaderboard = async () => {
-    try {
-      setLeaderboardLoading(true);
-      const params = {};
-      if (departmentFilter !== "ALL") params.department = departmentFilter;
-      if (periodFilter !== "all") params.period = periodFilter;
-
-      const res = await api.get("/impact-points/leaderboard", { params });
-      if (res.data?.success) {
-        const list =
-          res.data?.leaderboard ||
-          res.data?.data?.leaderboard ||
-          (Array.isArray(res.data?.data) ? res.data.data : []);
-        setLeaderboard(Array.isArray(list) ? list : []);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load leaderboard");
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === "LEADERBOARD") {
-      fetchLeaderboard();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, departmentFilter, periodFilter]);
 
   // Handle Recognition Submit
   const handleRecognizeSubmit = async (e) => {
@@ -147,13 +99,7 @@ export default function EmployeeImpactPoints() {
         );
         setRecognizeForm({ recipientId: "", points: 10, reason: "" });
         setSidePanelMode("none");
-
-        // Refresh leaderboard and my points
-        fetchLeaderboard();
-        const myRes = await api.get("/impact-points/me");
-        if (myRes.data?.success) {
-          setMyPoints(myRes.data?.summary || myRes.data?.data || myRes.data);
-        }
+        await invalidateImpact(queryClient);
       }
     } catch (err) {
       setRecognizeError(err.response?.data?.message || "Failed to submit recognition");
@@ -176,15 +122,23 @@ export default function EmployeeImpactPoints() {
         title="Impact Points"
         hideLogout={true}
       >
-        {meta.isManager && (
-          <button
-            className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
-            onClick={() => setSidePanelMode(sidePanelMode === "recognize" ? "none" : "recognize")}
-            style={{ whiteSpace: "nowrap" }}
-          >
-            {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SoftRefresh
+            active={
+              (impactQuery.isFetching && !!impactQuery.data) ||
+              (leaderboardQuery.isFetching && !!leaderboardQuery.data)
+            }
+          />
+          {meta.isManager && (
+            <button
+              className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
+              onClick={() => setSidePanelMode(sidePanelMode === "recognize" ? "none" : "recognize")}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
+            </button>
+          )}
+        </div>
       </AppHeader>
 
       {/* Notifications */}
@@ -194,7 +148,7 @@ export default function EmployeeImpactPoints() {
             <div className="alert alert-danger" style={{ marginBottom: 16 }}>
               <IconAlertCircle size={18} />
               <span>{error}</span>
-              <button className="btn-icon" onClick={() => setError("")} style={{ marginLeft: "auto" }}>
+              <button className="btn-icon" onClick={() => setActionError("")} style={{ marginLeft: "auto" }}>
                 <IconClose size={14} />
               </button>
             </div>
@@ -213,36 +167,30 @@ export default function EmployeeImpactPoints() {
       )}
 
       {/* Compact Inline Impact Statistics Strip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 8,
-          padding: "8px 16px",
-          marginBottom: 12,
-          fontSize: 13,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="m-impact-strip">
         <span style={{ color: "var(--text-muted, #646d67)" }}>
           Current Balance: <strong style={{ color: "#2563eb" }}>{balance} pts</strong>
         </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
+        <span className="m-impact-dot" style={{ color: "#d4d4d8" }}>•</span>
+        <span className="m-impact-extra" style={{ color: "var(--text-muted, #646d67)" }}>
           Lifetime Earned: <strong style={{ color: "#059669" }}>+{pointsEarned} pts</strong>
         </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
+        <span className="m-impact-extra m-impact-dot" style={{ color: "#d4d4d8" }}>•</span>
+        <span className="m-impact-extra" style={{ color: "var(--text-muted, #646d67)" }}>
           Redeemed: <strong style={{ color: "#dc2626" }}>-{pointsDeducted} pts</strong>
         </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
+        <span className="m-impact-extra m-impact-dot" style={{ color: "#d4d4d8" }}>•</span>
         <span style={{ color: "var(--text-muted, #646d67)" }}>
           Standing: <strong style={{ color: "var(--g-800, #155a37)" }}>{companyRank ? `#${companyRank} Company` : "Unranked"}</strong>
         </span>
       </div>
+      <MobileExpandable title="Points detail">
+        <div className="m-impact-detail">
+          <p>Lifetime earned: <strong>+{pointsEarned} pts</strong></p>
+          <p>Redeemed: <strong>-{pointsDeducted} pts</strong></p>
+          {departmentRank ? <p>Department rank: <strong>#{departmentRank}</strong></p> : null}
+        </div>
+      </MobileExpandable>
 
       {/* Main Responsive Grid Layout (Resizes dynamically when recognition panel opens) */}
       <div
@@ -282,6 +230,7 @@ export default function EmployeeImpactPoints() {
 
             {/* Filter Bar (for Leaderboard) */}
             {activeTab === "LEADERBOARD" && (
+              <MobileExpandable title="Leaderboard filters">
               <div className="wm-filter-row">
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Department:</span>
@@ -326,6 +275,7 @@ export default function EmployeeImpactPoints() {
                   </div>
                 </div>
               </div>
+              </MobileExpandable>
             )}
           </div>
 

@@ -149,6 +149,24 @@ describe("company-user authentication", () => {
     acmeEmployeeCookie = cookieFrom(response);
   });
 
+  it("prefers a new Authorization bearer token over a leftover auth cookie", async () => {
+    const employeeLogin = await request(app).post("/api/auth/login").send({
+      companyCode: "acme",
+      email: "employee@acme.test",
+      password: PASSWORD,
+    });
+    assert.equal(employeeLogin.status, 200);
+
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("Cookie", acmeHrCookie)
+      .set("Authorization", `Bearer ${employeeLogin.body.token}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.user.email, "employee@acme.test");
+    assert.equal(response.body.user.role, USER_ROLES.EMPLOYEE);
+  });
+
   it("rejects an incorrect password without revealing the account", async () => {
     const response = await request(app).post("/api/auth/login").send({
       slug: "acme",

@@ -1271,6 +1271,48 @@
   .teams-alloc-card { grid-column: span 6; }
 }
 
+@media (max-width: 768px) {
+  .board-container {
+    padding: 12px 16px 12px;
+    gap: 12px;
+  }
+
+  .board__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .board__sub {
+    display: none;
+  }
+
+  .board__actions {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .board__actions .btn--primary-fern {
+    display: none;
+  }
+
+  .dash-filter-pill,
+  .month-picker-pill {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .month-nav-arrow {
+    width: 44px;
+    height: 44px;
+  }
+
+  .stat-kpi { grid-column: span 6; }
+  .pending-actions-card { grid-column: span 12; }
+  .stat__note { display: none; }
+  .stat__arrow { display: none; }
+}
+
 @media (max-width: 640px) {
   .fernly-bento-grid { gap: 12px; }
   .stat { min-height: 0; padding: 14px 16px; }

@@ -1,0 +1,40 @@
+.emp-icon {
+  display: block;
+  flex-shrink: 0;
+  color: inherit;
+  vertical-align: middle;
+  pointer-events: none;
+}
+
+button .emp-icon,
+a .emp-icon,
+.emp-quick-link-pill .emp-icon,
+.emp-asset-mini-item .emp-icon,
+.emp-att-geo-badge .emp-icon,
+.el-upcoming-type .emp-icon,
+.epv-kpi-lbl .emp-icon,
+.epv-header-actions .emp-icon,
+.epv-doc-download-btn .emp-icon,
+.wm-timeline-title .emp-icon,
+.att-search-box .emp-icon,
+.att-month-nav-btn .emp-icon,
+.att-metric-icon .emp-icon,
+.settings-nav-btn .emp-icon,
+.fernly-icon-btn .emp-icon,
+.fernly-logout-btn .emp-icon,
+.mobile-hamburger-btn .emp-icon,
+.mobile-tabbar-btn .emp-icon,
+.mobile-more-icon .emp-icon,
+.mobile-more-logout .emp-icon,
+.nav-icon-container .emp-icon {
+  display: block;
+}
+
+.emp-icon.spin-icon {
+  animation: emp-icon-spin 0.9s linear infinite;
+}
+
+@keyframes emp-icon-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

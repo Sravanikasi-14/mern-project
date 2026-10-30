@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
   IconCheck,
@@ -10,7 +12,14 @@ import {
 } from "../components/Icons";
 import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
+import {
+  useAdminImpactLeaderboardQuery,
+  useAdminImpactTransactionsQuery,
+} from "../hooks/useAdminQueries";
+import { useTasksMetaQuery } from "../hooks/useEmployeeQueries";
+import { invalidateImpact } from "../lib/queryKeys";
 import "./WorkManagement.css";
+import MobileExpandable from "../components/mobile/MobileExpandable";
 
 const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
@@ -20,33 +29,22 @@ const PERIOD_OPTIONS = [
 ];
 
 export default function AdminImpactPoints() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("LEADERBOARD"); // 'LEADERBOARD' | 'LEDGER'
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Leaderboard state
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  // Leaderboard filters
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
 
-  // Ledger state
-  const [transactions, setTransactions] = useState([]);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
+  // Ledger filters
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [sourceFilter, setSourceFilter] = useState("ALL");
   const [searchLedger, setSearchLedger] = useState("");
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
-  const leaderboardPager = useClientPagination(leaderboard, 10);
-
-  // Metadata
-  const [meta, setMeta] = useState({
-    userRole: "",
-    isManager: false,
-    directReportsCount: 0,
-    assignableEmployees: [],
-    departments: [],
-  });
+  const [appliedLedgerSearch, setAppliedLedgerSearch] = useState("");
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerLimit, setLedgerLimit] = useState(10);
 
   // In-layout Right Side Panel Mode: 'none' | 'recognize' | 'reverse'
   const [sidePanelMode, setSidePanelMode] = useState("none");
@@ -66,104 +64,65 @@ export default function AdminImpactPoints() {
   const [recognizing, setRecognizing] = useState(false);
   const [recognizeError, setRecognizeError] = useState("");
 
-  // Fetch Metadata
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchMeta() {
-      try {
-        const res = await api.get("/tasks/meta");
-        if (!cancelled && res.data?.success) {
-          const metaData = res.data?.data || res.data || {};
-          setMeta({
-            userRole: metaData.userRole || "",
-            isManager: Boolean(metaData.isManager),
-            directReportsCount: metaData.directReportsCount || 0,
-            assignableEmployees: Array.isArray(metaData.assignableEmployees)
-              ? metaData.assignableEmployees
-              : [],
-            departments: Array.isArray(metaData.departments) ? metaData.departments : [],
-          });
-        }
-      } catch (err) {
-        console.error("Failed to load metadata:", err);
-      }
-    }
-    fetchMeta();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Fetch Leaderboard
-  const fetchLeaderboard = async () => {
-    try {
-      setLeaderboardLoading(true);
-      setError("");
-      const params = {};
-      if (departmentFilter !== "ALL") params.department = departmentFilter;
-      if (periodFilter !== "all") params.period = periodFilter;
-
-      const res = await api.get("/impact-points/leaderboard", { params });
-      if (res.data?.success) {
-        const list =
-          res.data?.leaderboard ||
-          res.data?.data?.leaderboard ||
-          (Array.isArray(res.data?.data) ? res.data.data : []);
-        setLeaderboard(Array.isArray(list) ? list : []);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load leaderboard");
-    } finally {
-      setLeaderboardLoading(false);
-    }
+  const metaQuery = useTasksMetaQuery();
+  const meta = metaQuery.data || {
+    userRole: "",
+    isManager: false,
+    directReportsCount: 0,
+    assignableEmployees: [],
+    departments: [],
   };
 
-  useEffect(() => {
-    if (activeTab === "LEADERBOARD") {
-      fetchLeaderboard();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, departmentFilter, periodFilter]);
+  const leaderboardQuery = useAdminImpactLeaderboardQuery(
+    { period: periodFilter, department: departmentFilter },
+    { enabled: activeTab === "LEADERBOARD" }
+  );
+  const ledgerQuery = useAdminImpactTransactionsQuery(
+    {
+      page: ledgerPage,
+      limit: ledgerLimit,
+      type: typeFilter,
+      source: sourceFilter,
+      search: appliedLedgerSearch,
+    },
+    { enabled: activeTab === "LEDGER" }
+  );
 
-  // Fetch Ledger Transactions
-  const fetchLedger = async (page = 1, limitOverride) => {
-    try {
-      setLedgerLoading(true);
-      setError("");
-      const params = { page, limit: limitOverride || pagination.limit };
-      if (typeFilter !== "ALL") params.type = typeFilter;
-      if (sourceFilter !== "ALL") params.source = sourceFilter;
-      if (searchLedger.trim()) params.search = searchLedger.trim();
+  const leaderboard = Array.isArray(leaderboardQuery.data) ? leaderboardQuery.data : [];
+  const leaderboardLoading = leaderboardQuery.isLoading && leaderboard.length === 0;
+  const leaderboardPager = useClientPagination(leaderboard, 10);
 
-      const res = await api.get("/impact-points/transactions", { params });
-      if (res.data?.success) {
-        const txList = res.data?.transactions || res.data?.data?.transactions || [];
-        const pag = res.data?.pagination || res.data?.data?.pagination || {
-          page: 1,
-          limit: 20,
-          total: txList.length,
-          pages: 1,
-        };
-        setTransactions(Array.isArray(txList) ? txList : []);
-        setPagination(pag);
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load transactions");
-    } finally {
-      setLedgerLoading(false);
-    }
+  const transactions = Array.isArray(ledgerQuery.data?.transactions)
+    ? ledgerQuery.data.transactions
+    : [];
+  const pagination = ledgerQuery.data?.pagination || {
+    page: ledgerPage,
+    limit: ledgerLimit,
+    total: transactions.length,
+    pages: 1,
   };
+  const ledgerLoading = ledgerQuery.isLoading && transactions.length === 0;
 
   useEffect(() => {
-    if (activeTab === "LEDGER") {
-      fetchLedger(1);
+    const err = activeTab === "LEADERBOARD" ? leaderboardQuery.error : ledgerQuery.error;
+    if (err) {
+      setError(
+        err.response?.data?.message ||
+          (activeTab === "LEADERBOARD" ? "Failed to load leaderboard" : "Failed to load transactions")
+      );
+    } else {
+      setError("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, typeFilter, sourceFilter]);
+  }, [activeTab, leaderboardQuery.error, ledgerQuery.error]);
+
+  useEffect(() => {
+    setLedgerPage(1);
+  }, [typeFilter, sourceFilter]);
 
   const handleSearchLedgerSubmit = (e) => {
     e.preventDefault();
-    fetchLedger(1);
+    setLedgerPage(1);
+    setAppliedLedgerSearch(searchLedger);
   };
 
   // Aggregate stats from leaderboard
@@ -208,8 +167,8 @@ export default function AdminImpactPoints() {
         );
         setRecognizeForm({ recipientId: "", points: 10, reason: "" });
         setSidePanelMode("none");
-        fetchLeaderboard();
-        fetchLedger(1);
+        setLedgerPage(1);
+        await invalidateImpact(queryClient);
       }
     } catch (err) {
       setRecognizeError(err.response?.data?.message || "Failed to submit recognition");
@@ -238,8 +197,7 @@ export default function AdminImpactPoints() {
         setSelectedTx(null);
         setReversalReason("");
         setSidePanelMode("none");
-        fetchLedger(pagination.page);
-        fetchLeaderboard();
+        await invalidateImpact(queryClient);
       }
     } catch (err) {
       setReversalError(err.response?.data?.message || "Failed to reverse transaction");
@@ -272,13 +230,21 @@ export default function AdminImpactPoints() {
         title="Impact Points"
         hideLogout={true}
       >
-        <button
-          className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
-          onClick={toggleRecognizePanel}
-          style={{ whiteSpace: "nowrap" }}
-        >
-          {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SoftRefresh
+            active={Boolean(
+              (activeTab === "LEADERBOARD" && leaderboardQuery.isFetching && leaderboard.length > 0) ||
+                (activeTab === "LEDGER" && ledgerQuery.isFetching && transactions.length > 0)
+            )}
+          />
+          <button
+            className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
+            onClick={toggleRecognizePanel}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
+          </button>
+        </div>
       </AppHeader>
 
       {/* Notifications */}
@@ -377,6 +343,7 @@ export default function AdminImpactPoints() {
 
             {/* Tab-Specific Filters */}
             {activeTab === "LEADERBOARD" && (
+              <MobileExpandable title="Leaderboard filters">
               <div className="wm-filter-row">
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Department:</span>
@@ -422,6 +389,7 @@ export default function AdminImpactPoints() {
                   </div>
                 </div>
               </div>
+              </MobileExpandable>
             )}
 
             {activeTab === "LEDGER" && (
@@ -439,6 +407,7 @@ export default function AdminImpactPoints() {
                   />
                 </form>
 
+                <MobileExpandable title="Ledger filters">
                 <div className="wm-filter-group">
                   <select
                     className="wm-select"
@@ -462,6 +431,7 @@ export default function AdminImpactPoints() {
                     <option value="MANUAL_HR">Manual HR</option>
                   </select>
                 </div>
+                </MobileExpandable>
               </div>
             )}
           </div>
@@ -669,14 +639,14 @@ export default function AdminImpactPoints() {
 
             {activeTab === "LEDGER" && (
               <Pagination
-                currentPage={pagination.page}
-                totalPages={pagination.pages}
-                totalItems={pagination.total}
-                pageSize={pagination.limit}
-                onPageChange={(p) => fetchLedger(p)}
+                currentPage={pagination.page || ledgerPage}
+                totalPages={pagination.pages || 1}
+                totalItems={pagination.total || transactions.length}
+                pageSize={pagination.limit || ledgerLimit}
+                onPageChange={(p) => setLedgerPage(p)}
                 onPageSizeChange={(s) => {
-                  setPagination((prev) => ({ ...prev, limit: s, page: 1 }));
-                  fetchLedger(1, s);
+                  setLedgerLimit(s);
+                  setLedgerPage(1);
                 }}
                 itemLabel="transactions"
               />

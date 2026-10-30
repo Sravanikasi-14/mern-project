@@ -157,11 +157,12 @@ describe("Dedicated Employee Portal Dashboard API", () => {
     assert.ok(Array.isArray(res.body.holidays));
     assert.ok(res.body.holidays.length > 0);
 
-    // Payslips
+    // Payslips (compensation previews are flagged, not finalized payroll)
     assert.ok(Array.isArray(res.body.payslips));
     assert.ok(res.body.payslips.length > 0);
     assert.equal(res.body.payslips[0].grossSalary, 120000);
     assert.equal(res.body.payslips[0].netPay, 112800);
+    assert.equal(res.body.payslips[0].isPersisted, false);
 
     // Assets
     assert.ok(Array.isArray(res.body.assets));
@@ -292,5 +293,40 @@ describe("Dedicated Employee Portal Dashboard API", () => {
       .get("/api/employees")
       .set("Cookie", hrCookie);
     assert.equal(resList.status, 200);
+  });
+
+  it("10. Employee can upload and download a document via /me/documents/:docId/download", async () => {
+    const samplePdf = Buffer.from("%PDF-1.4 dashboard self-service document").toString("base64");
+    const uploadRes = await request(app)
+      .post("/api/employees/me/documents")
+      .set("Cookie", employeeCookie)
+      .send({
+        documentType: "OTHER",
+        title: "Self service ID",
+        fileName: "id-proof.pdf",
+        mimeType: "application/pdf",
+        fileData: samplePdf,
+      });
+
+    assert.equal(uploadRes.status, 201);
+    const docId = uploadRes.body.document._id;
+    assert.ok(docId);
+
+    const selfDownload = await request(app)
+      .get(`/api/employees/me/documents/${docId}/download`)
+      .set("Cookie", employeeCookie);
+
+    assert.equal(selfDownload.status, 200);
+    const content = selfDownload.text || selfDownload.body?.toString() || "";
+    assert.ok(content.includes("%PDF-1.4 dashboard self-service document"));
+
+    const idDownload = await request(app)
+      .get(`/api/employees/${employeeRecord._id}/documents/${docId}/download`)
+      .set("Cookie", employeeCookie);
+    assert.equal(idDownload.status, 200);
+
+    const unauthDownload = await request(app)
+      .get(`/api/employees/me/documents/${docId}/download`);
+    assert.equal(unauthDownload.status, 401);
   });
 });

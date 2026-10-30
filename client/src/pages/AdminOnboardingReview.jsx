@@ -406,7 +406,7 @@ export default function AdminOnboardingReview() {
         {loading && <div className="table-progress-bar" />}
         {loading && submissions.length === 0 ? (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: "700px" }}>
+            <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: "700px" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
                   <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Candidate</th>
@@ -445,7 +445,7 @@ export default function AdminOnboardingReview() {
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: "700px" }}>
+            <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: "700px" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
                   <th style={{ padding: "12px 16px", color: "#475569", fontWeight: "600" }}>Candidate</th>

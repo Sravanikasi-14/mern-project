@@ -1,11 +1,23 @@
 import { useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { IconAlertCircle, IconAlertTriangle } from "../components/Icons";
+import SessionBoot from "../components/SessionBoot";
 import { useAuth } from "../context/AuthContext";
 import { classifyLoginError } from "../services/api";
 
 function homeForRole(role) {
   return role === "HR_ADMIN" ? "/admin/dashboard" : "/app";
+}
+
+function destinationForLogin(returnUrl, role) {
+  const home = homeForRole(role);
+  if (!returnUrl || returnUrl === "/login" || returnUrl.startsWith("/login")) {
+    return home;
+  }
+  if (role === "HR_ADMIN") {
+    return returnUrl.startsWith("/admin") ? returnUrl : home;
+  }
+  return returnUrl.startsWith("/app") ? returnUrl : home;
 }
 
 export default function Login() {
@@ -26,18 +38,9 @@ export default function Login() {
   );
 
   if (loading) {
-    return (
-      <main className="container" style={{ textAlign: "center", padding: "32px 24px" }}>
-        <div className="spinner" style={{ margin: "0 auto 12px" }} />
-        <h2 style={{ margin: 0, fontSize: 16, color: "#09090b" }}>Signing in</h2>
-      </main>
-    );
+    return <SessionBoot />;
   }
 
-  if (isAuthenticated && user) {
-    const destination = homeForRole(user.role);
-    return <Navigate to={destination} replace />;
-  }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -90,10 +93,7 @@ export default function Login() {
           ? `${from.pathname}${from.search || ""}${from.hash || ""}`
           : null;
 
-      const destination =
-        returnUrl && returnUrl !== "/login" && !returnUrl.startsWith("/login")
-          ? returnUrl
-          : homeForRole(session.user.role);
+      const destination = destinationForLogin(returnUrl, session.user.role);
 
       navigate(destination, { replace: true });
     } catch (err) {
@@ -124,6 +124,20 @@ export default function Login() {
           <span>{error}</span>
         </div>
       )}
+
+      {isAuthenticated && user ? (
+        <div role="status" className="warning-alert">
+          <span>Signed in as {user.email}. Continue to your portal or sign in below with a different account.</span>
+          <button
+            type="button"
+            className="btn-secondary"
+            style={{ marginTop: 10 }}
+            onClick={() => navigate(homeForRole(user.role), { replace: true })}
+          >
+            Continue
+          </button>
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="auth-form" noValidate>
         <label>

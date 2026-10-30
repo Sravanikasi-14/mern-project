@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearUserQueries } from "../lib/queryClient";
 
 function resolveApiBaseUrl() {
   const envUrl = import.meta?.env?.VITE_API_URL;
@@ -41,11 +42,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: preserves original status, response data, and error codes
-// without replacing all errors with a generic exception or breaking response rejection.
+// Response interceptor: clear user-scoped cache on hard auth failures.
+// Does not treat cached data as authorization — only wipes stale user data.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error?.response?.status;
+    const url = String(error?.config?.url || "");
+    const isAuthMe = url.includes("/auth/me");
+    const isLogin = url.includes("/auth/login");
+    if (status === 401 && !isLogin) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("hrms_token");
+      }
+      clearUserQueries();
+      // /auth/me failures are handled by AuthContext restoreSession
+      if (!isAuthMe && typeof window !== "undefined") {
+        // Soft signal for listeners; AuthProvider still owns routing
+        window.dispatchEvent(new CustomEvent("hrms:session-expired"));
+      }
+    }
     return Promise.reject(error);
   }
 );

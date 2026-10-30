@@ -1,6 +1,8 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
+import SoftRefresh from "../components/SoftRefresh";
 import Pagination from "../components/Pagination";
 import { IconClose, IconCheck, IconRefresh } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
@@ -8,6 +10,11 @@ import api from "../services/api";
 import AppHeader from "../components/AppHeader";
 import { useAuth } from "../context/AuthContext";
 import MonthCalendar from "../components/MonthCalendar";
+import {
+  useLeaveRequestsQuery,
+  useActiveLeavePoliciesQuery,
+} from "../hooks/useAdminQueries";
+import { invalidateLeave } from "../lib/queryKeys";
 import {
   civilDaysInMonth,
   formatCivilDate,
@@ -18,6 +25,7 @@ import {
   resolveCompanyTimezone,
 } from "../utils/dateUtils";
 import "./LeaveManagement.css";
+import MobileFilterBar from "../components/mobile/MobileFilterBar";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
@@ -30,21 +38,13 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function AdminLeaveManagement() {
   const { company } = useAuth();
+  const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
-
-  const [requests, setRequests] = useState([]);
-  const [summary, setSummary] = useState({
-    pending: 0,
-    approved: 0,
-    rejected: 0,
-    onLeaveToday: 0,
-  });
 
   const todayParts = parseCivilDate(getCompanyBusinessDate(new Date(), timeZone));
   const [calMonth, setCalMonth] = useState(() => ({
@@ -71,12 +71,6 @@ export default function AdminLeaveManagement() {
   const [toDateFilter, setToDateFilter] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 1,
-  });
 
   // Details & Decision Modal State
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -89,12 +83,6 @@ export default function AdminLeaveManagement() {
 
   // Change Leave Type State (HR action on APPROVED requests)
   const [availableLeaveTypes, setAvailableLeaveTypes] = useState([]);
-  const [filterLeaveTypes, setFilterLeaveTypes] = useState([
-    { value: "ALL", label: "All Types" },
-    { value: "CASUAL", label: "Casual" },
-    { value: "SICK", label: "Sick" },
-    { value: "EARNED", label: "Earned" },
-  ]);
   const [showChangeTypeForm, setShowChangeTypeForm] = useState(false);
   const [selectedNewType, setSelectedNewType] = useState("");
   const [changeTypeReason, setChangeTypeReason] = useState("");
@@ -102,22 +90,6 @@ export default function AdminLeaveManagement() {
   const [submittingChangeType, setSubmittingChangeType] = useState(false);
   const [changeTypeError, setChangeTypeError] = useState("");
   const [changeTypeSuccess, setChangeTypeSuccess] = useState("");
-
-  useEffect(() => {
-    api
-      .get("/policies/active")
-      .then((res) => {
-        const types = res.data?.policy?.leaveTypes || [];
-        if (types.length > 0) {
-          setFilterLeaveTypes([
-            { value: "ALL", label: "All Types" },
-            ...types.map((t) => ({ value: t.code, label: t.name || t.code })),
-          ]);
-          setAvailableLeaveTypes(types);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -128,54 +100,67 @@ export default function AdminLeaveManagement() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Fetch Leave Requests and Summary
-  const fetchLeaveData = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-
-      const params = {
-        page,
-        limit,
-        status: statusFilter !== "ALL" ? statusFilter : undefined,
-        leaveType: typeFilter !== "ALL" ? typeFilter : undefined,
-        search: debouncedSearch || undefined,
-        fromDate: fromDateFilter || undefined,
-        toDate: toDateFilter || undefined,
-      };
-
-      const response = await api.get("/leave-requests", { params });
-
-      if (response.data?.success) {
-        setRequests(response.data.leaveRequests || []);
-        if (response.data.pagination) {
-          setPagination(response.data.pagination);
-        }
-        if (response.data.summary) {
-          setSummary(response.data.summary);
-        }
-      }
-    } catch (err) {
-      if (!silent) {
-        if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-          setError("Unable to connect to the server. Please check your connection and try again.");
-        } else {
-          setError(err.response?.data?.message || "Failed to load leave requests.");
-        }
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const fetchLeaveDataRef = useRef(fetchLeaveData);
-  useEffect(() => {
-    fetchLeaveDataRef.current = fetchLeaveData;
+  const policiesQuery = useActiveLeavePoliciesQuery();
+  const leaveQuery = useLeaveRequestsQuery({
+    page,
+    limit,
+    status: statusFilter,
+    leaveType: typeFilter,
+    search: debouncedSearch,
+    fromDate: fromDateFilter,
+    toDate: toDateFilter,
   });
 
+  const requests = leaveQuery.data?.leaveRequests || [];
+  const pagination = leaveQuery.data?.pagination || {
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+  };
+  const summary = leaveQuery.data?.summary || {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    onLeaveToday: 0,
+  };
+  const loading = leaveQuery.isLoading && requests.length === 0;
+
+  const filterLeaveTypes = useMemo(() => {
+    const types = policiesQuery.data || [];
+    if (types.length === 0) {
+      return [
+        { value: "ALL", label: "All Types" },
+        { value: "CASUAL", label: "Casual" },
+        { value: "SICK", label: "Sick" },
+        { value: "EARNED", label: "Earned" },
+      ];
+    }
+    return [
+      { value: "ALL", label: "All Types" },
+      ...types.map((t) => ({ value: t.code, label: t.name || t.code })),
+    ];
+  }, [policiesQuery.data]);
+
   useEffect(() => {
-    fetchLeaveData();
-  }, [page, limit, statusFilter, typeFilter, debouncedSearch, fromDateFilter, toDateFilter]);
+    const types = policiesQuery.data || [];
+    if (types.length > 0 && availableLeaveTypes.length === 0) {
+      setAvailableLeaveTypes(types);
+    }
+  }, [policiesQuery.data, availableLeaveTypes.length]);
+
+  useEffect(() => {
+    if (leaveQuery.error) {
+      const err = leaveQuery.error;
+      if (!err.response || err.code === "ERR_NETWORK" || err.response?.status >= 500) {
+        setError("Unable to connect to the server. Please check your connection and try again.");
+      } else {
+        setError(err.response?.data?.message || "Failed to load leave requests.");
+      }
+    } else if (leaveQuery.isSuccess) {
+      setError("");
+    }
+  }, [leaveQuery.error, leaveQuery.isSuccess]);
 
   // Live Cross-Portal Synchronization via SSE
   useEffect(() => {
@@ -193,34 +178,16 @@ export default function AdminLeaveManagement() {
             payload.type === "LEAVE_DECIDED" ||
             payload.type === "LEAVE_TYPE_CHANGED"
           ) {
-            if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
+            invalidateLeave(queryClient);
           }
         } catch {}
       };
     } catch {}
 
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === "visible") {
-        if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
-    window.addEventListener("focus", handleVisibilityOrFocus);
-
-    const intervalId = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        if (fetchLeaveDataRef.current) fetchLeaveDataRef.current(true);
-      }
-    }, 15000);
-
     return () => {
       if (eventSource) eventSource.close();
-      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
-      window.removeEventListener("focus", handleVisibilityOrFocus);
-      clearInterval(intervalId);
     };
-  }, []);
+  }, [queryClient]);
 
   // Quick Action Handler (Approve / Reject directly or via modal)
   const handleQuickDecisionPrompt = (reqItem, action) => {
@@ -277,7 +244,7 @@ export default function AdminLeaveManagement() {
       setSelectedRequest(null);
       setConfirmAction(null);
       setDecisionRemarks("");
-      await fetchLeaveData();
+      await invalidateLeave(queryClient);
       setTimeout(() => setActionSuccess(""), 4000);
     } catch (err) {
       setDecisionError(
@@ -317,7 +284,7 @@ export default function AdminLeaveManagement() {
         const msg = res.data.message || "Leave type changed successfully.";
         setChangeTypeSuccess(msg);
         setActionSuccess(msg);
-        await fetchLeaveData(true);
+        await invalidateLeave(queryClient);
         setTimeout(() => setChangeTypeSuccess(""), 3500);
       }
     } catch (err) {
@@ -387,7 +354,10 @@ export default function AdminLeaveManagement() {
 
   return (
     <div className="lm-container">
-      <AppHeader title="Leave" />
+      <AppHeader
+        title="Leave"
+        actions={<SoftRefresh active={Boolean(leaveQuery.isFetching && requests.length > 0)} />}
+      />
 
       <div className="module-tabs" role="tablist" aria-label="Leave sections">
         <button
@@ -502,7 +472,61 @@ export default function AdminLeaveManagement() {
       </section>
       )}
 
-      <div className="lm-records-heading">Leave records</div>
+      <div className="lm-records-heading"><span className="m-title-full">Leave records</span><span className="m-title-short">Time off</span></div>
+      <MobileFilterBar
+        search={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        searchPlaceholder="Search by name"
+        filterCount={(typeFilter !== "ALL" ? 1 : 0) + (fromDateFilter ? 1 : 0) + (toDateFilter ? 1 : 0)}
+        onReset={() => {
+          setTypeFilter("ALL");
+          setFromDateFilter("");
+          setToDateFilter("");
+          setPage(1);
+        }}
+      >
+        <label>
+          Leave type
+          <select
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+          >
+            {filterLeaveTypes.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          From
+          <input
+            type="date"
+            value={fromDateFilter}
+            onChange={(e) => {
+              setFromDateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+          />
+        </label>
+        <label>
+          To
+          <input
+            type="date"
+            value={toDateFilter}
+            onChange={(e) => {
+              setToDateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+          />
+        </label>
+      </MobileFilterBar>
       <div className="lm-toolbar">
         <div className="lm-toolbar-left">
           {/* Status Filter Tabs */}
@@ -639,7 +663,7 @@ export default function AdminLeaveManagement() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => fetchLeaveData()}
+            onClick={() => leaveQuery.refetch()}
             title="Refresh leave requests"
             style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 12px", fontSize: 13 }}
           >
@@ -652,8 +676,8 @@ export default function AdminLeaveManagement() {
       {/* -----------------------------------------------------------------------
           REFERENCE 1: LEAVE REQUESTS AND APPROVALS SECTION
           ----------------------------------------------------------------------- */}
-      {viewMode === "cards" ? (
-        <>
+      <>
+        <div className={viewMode === "cards" ? "lm-cards-view" : "lm-cards-view lm-cards-view--mobile-only"}>
           {loading && requests.length === 0 ? (
             <div className="pm-empty-box">
               <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
@@ -763,6 +787,7 @@ export default function AdminLeaveManagement() {
                               aria-label="Approve leave request"
                             >
                               <IconCheck size={16} />
+                              <span className="m-title-short">Approve</span>
                             </button>
                             <button
                               type="button"
@@ -772,6 +797,7 @@ export default function AdminLeaveManagement() {
                               aria-label="Reject leave request"
                             >
                               <IconClose size={16} />
+                              <span className="m-title-short">Reject</span>
                             </button>
                           </div>
                           <button
@@ -819,9 +845,8 @@ export default function AdminLeaveManagement() {
               })}
             </div>
           )}
-        </>
-      ) : (
-        /* Table Fallback View */
+        </div>
+        <div className={viewMode === "table" ? "lm-table-view" : "lm-table-view lm-table-view--hidden"}>
         <div className="data-table-container table-wrapper-relative">
           <table className="data-table">
             <thead>
@@ -893,7 +918,8 @@ export default function AdminLeaveManagement() {
             </tbody>
           </table>
         </div>
-      )}
+        </div>
+      </>
 
       {/* Pagination Bar */}
       {pagination.total > 0 && (

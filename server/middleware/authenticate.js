@@ -10,7 +10,9 @@ export async function authenticate(req, res, next) {
     const headerToken = authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : null;
-    const token = req.cookies?.[getAuthCookieName()] || headerToken;
+    // Prefer the explicit Authorization header so a newly issued login token is
+    // not shadowed by a leftover httpOnly cookie from a previous account.
+    const token = headerToken || req.cookies?.[getAuthCookieName()];
 
     if (!token) {
       throw new HttpError(401, "Authentication required");

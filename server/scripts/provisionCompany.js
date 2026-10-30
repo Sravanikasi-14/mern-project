@@ -84,21 +84,28 @@ async function run() {
   if (password && password.length >= 8) {
     const { User } = await getCompanyModels(company);
     const passwordHash = await hashPassword(password);
-    await User.findOneAndUpdate(
-      { email: contactEmail },
-      {
+    const existing = await User.findOne({ email: contactEmail });
+    if (existing) {
+      existing.passwordHash = passwordHash;
+      existing.isActive = true;
+      await existing.save();
+      console.log("✅ Updated password for existing account");
+      console.log(`   Email: ${contactEmail}`);
+      console.log(`   Role: ${existing.role} (unchanged)`);
+      console.log("   Status: Active");
+    } else {
+      await User.create({
         email: contactEmail,
         passwordHash,
         role: USER_ROLES.HR_ADMIN,
         isActive: true,
         schemaVersion: 1,
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-    console.log("✅ Initial HR Admin Account Created Directly");
-    console.log(`   Email: ${contactEmail}`);
-    console.log(`   Role: ${USER_ROLES.HR_ADMIN}`);
-    console.log("   Status: Active");
+      });
+      console.log("✅ Initial HR Admin Account Created Directly");
+      console.log(`   Email: ${contactEmail}`);
+      console.log(`   Role: ${USER_ROLES.HR_ADMIN}`);
+      console.log("   Status: Active");
+    }
     console.log("👉 You can now log in at: " + `${clientUrl}/login`);
     console.log(`   Company Code: ${company.slug}`);
     console.log(`   Email: ${contactEmail}`);

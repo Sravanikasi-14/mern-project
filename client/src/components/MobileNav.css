@@ -162,5 +162,9 @@
     font-weight: 650;
     cursor: pointer;
     box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
   }
 }

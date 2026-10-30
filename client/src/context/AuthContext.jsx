@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
+import { clearUserQueries } from "../lib/queryClient";
 
 const AuthContext = createContext(null);
 
@@ -8,6 +9,7 @@ export function AuthProvider({ children }) {
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionError, setSessionError] = useState(null);
+  const restoring = useRef(false);
 
   const applySession = (payload) => {
     setUser(payload?.user ?? null);
@@ -18,6 +20,10 @@ export function AuthProvider({ children }) {
   };
 
   const restoreSession = async ({ silent = false } = {}) => {
+    if (restoring.current && silent) {
+      return { success: false, skipped: true };
+    }
+    restoring.current = true;
     if (!silent) {
       setLoading(true);
       setSessionError(null);
@@ -32,11 +38,10 @@ export function AuthProvider({ children }) {
     } catch (err) {
       const status = err?.response?.status;
       if (status === 401) {
-        // Clear unauthenticated local state
         localStorage.removeItem("hrms_token");
+        clearUserQueries();
         applySession(null);
       } else if (status === 403) {
-        // Inactive account or company
         setSessionError({
           status: 403,
           type: "forbidden",
@@ -45,7 +50,6 @@ export function AuthProvider({ children }) {
             "Your account or company workspace is currently inactive. Please contact your administrator.",
         });
       } else if (!err?.response && err?.request) {
-        // Network failure / server offline - do not wipe token on temporary connection loss
         if (!silent) {
           setSessionError({
             status: 0,
@@ -55,7 +59,6 @@ export function AuthProvider({ children }) {
           });
         }
       } else if (status >= 500) {
-        // 5xx Server Error - do not wipe token on temporary server error
         if (!silent) {
           setSessionError({
             status,
@@ -66,10 +69,12 @@ export function AuthProvider({ children }) {
         }
       } else {
         localStorage.removeItem("hrms_token");
+        clearUserQueries();
         applySession(null);
       }
       return { success: false, error: err };
     } finally {
+      restoring.current = false;
       if (!silent) {
         setLoading(false);
       }
@@ -77,32 +82,25 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
     restoreSession();
 
-    const handlePopState = () => {
-      // Re-evaluate session on browser Back/Forward navigation
-      const token = localStorage.getItem("hrms_token");
-      if (token) {
-        restoreSession({ silent: true });
-      }
-    };
-
     const handlePageShow = (event) => {
-      // Re-verify if restored from bfcache (Back/Forward cache)
       if (event.persisted) {
         restoreSession({ silent: true });
       }
     };
 
-    window.addEventListener("popstate", handlePopState);
+    const handleSessionExpired = () => {
+      applySession(null);
+      setSessionError(null);
+    };
+
     window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("hrms:session-expired", handleSessionExpired);
 
     return () => {
-      cancelled = true;
-      window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("hrms:session-expired", handleSessionExpired);
     };
   }, []);
 
@@ -114,6 +112,7 @@ export function AuthProvider({ children }) {
       email,
       password,
     });
+    clearUserQueries();
     setSessionError(null);
     applySession(response.data);
     return response.data;
@@ -121,6 +120,7 @@ export function AuthProvider({ children }) {
 
   const setupInitialAdmin = async (setupData) => {
     const response = await api.post("/auth/setup-initial-admin", setupData);
+    clearUserQueries();
     setSessionError(null);
     applySession(response.data);
     return response.data;
@@ -137,6 +137,7 @@ export function AuthProvider({ children }) {
       serverRevoked = false;
     } finally {
       localStorage.removeItem("hrms_token");
+      clearUserQueries();
       applySession(null);
       setSessionError(null);
     }
@@ -169,4 +170,3 @@ export function useAuth() {
   }
   return context;
 }
-

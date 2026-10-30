@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import {
   IconClose,
   IconClock,
@@ -7,129 +8,36 @@ import {
   IconAlertCircle,
   IconDownload,
   IconFileText,
-  IconSearch,
-} from "../components/Icons";
+} from "../components/EmployeeIcon";
 import api from "../services/api";
+import { usePayslipsQuery, useSettlementQuery } from "../hooks/useEmployeeQueries";
 import Pagination from "../components/Pagination";
 import "./EmployeePayslips.css";
 
 export default function EmployeePayslips() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
   const [downloadingId, setDownloadingId] = useState(null);
 
-  const [payslips, setPayslips] = useState([]);
+  const payslipsQuery = usePayslipsQuery();
+  const settlementQuery = useSettlementQuery();
+  const payslips = payslipsQuery.data || [];
+  const mySettlement = settlementQuery.data ?? null;
+  const loading = payslipsQuery.isLoading && !payslipsQuery.data;
+  const error = payslipsQuery.error?.response?.data?.message ||
+    (payslipsQuery.error && !payslipsQuery.data ? "Failed to load payslips." : "");
+
   const [selectedPayslipId, setSelectedPayslipId] = useState(null);
   const [selectedYear, setSelectedYear] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
-
-  const [mySettlement, setMySettlement] = useState(null);
   const [showSettlementModal, setShowSettlementModal] = useState(false);
 
-  const fetchPayslips = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-
-      const [payrollRes, settlementRes] = await Promise.allSettled([
-        api.get("/payroll/employee/payslips"),
-        api.get("/settlements/my-settlement"),
-      ]);
-
-      let items = [];
-
-      // Primary source: Dedicated finalized payslips collection
-      if (payrollRes.status === "fulfilled" && payrollRes.value.data?.payslips) {
-        items = payrollRes.value.data.payslips.map((p) => {
-          const monthNames = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-          ];
-          const mName = monthNames[p.periodMonth - 1] || `Month ${p.periodMonth}`;
-          const startDateStr = p.periodStartDate ? new Date(p.periodStartDate).toLocaleDateString("en-IN") : "";
-          const endDateStr = p.periodEndDate ? new Date(p.periodEndDate).toLocaleDateString("en-IN") : "";
-
-          return {
-            id: p._id?.toString() || p.id,
-            payslipNumber: p.payslipNumber || `PS-${p.periodYear}-${String(p.periodMonth).padStart(2, "0")}`,
-            month: mName,
-            year: p.periodYear,
-            periodMonth: p.periodMonth,
-            period: startDateStr && endDateStr ? `${startDateStr} – ${endDateStr}` : `${mName} ${p.periodYear}`,
-            grossSalary: p.grossEarnings || 0,
-            deductions: p.totalDeductions || 0,
-            netPay: p.netPayable || 0,
-            status: p.paymentStatus === "PAID" ? "PAID" : p.status || "FINALIZED",
-            paymentStatus: p.paymentStatus || "UNPAID",
-            disbursedDate: p.payments?.[0]?.paymentDate
-              ? new Date(p.payments[0].paymentDate).toLocaleDateString("en-IN")
-              : p.finalizedAt
-              ? new Date(p.finalizedAt).toLocaleDateString("en-IN")
-              : null,
-            isPersisted: true,
-            isFinalizedPayroll: true,
-            daysBreakdown: p.daysBreakdown,
-            earnings: p.earnings || [],
-            employeeDeductions: p.employeeDeductions || [],
-            employerContributions: p.employerContributions || [],
-            payments: p.payments || [],
-            employeeSnapshot: p.employeeSnapshot,
-          };
-        });
-      }
-
-      // Fallback: Dashboard payslips (for preview/legacy)
-      if (items.length === 0) {
-        try {
-          const dashboardRes = await api.get("/employees/me/dashboard");
-          if (dashboardRes.data?.payslips) {
-            const rawDashboardPayslips = dashboardRes.data.payslips;
-            items = rawDashboardPayslips.map((ps) => ({
-              ...ps,
-              periodMonth: typeof ps.month === "string" ? getMonthNumber(ps.month) : ps.periodMonth || 1,
-              isPersisted: ps.isPersisted !== false,
-              isFinalizedPayroll: ps.isPersisted === true,
-            }));
-          }
-        } catch {
-          // ignore fallback error
-        }
-      }
-
-      setPayslips(items);
-      if (items.length > 0 && !selectedPayslipId) {
-        setSelectedPayslipId(items[0].id);
-      }
-
-      if (settlementRes.status === "fulfilled" && settlementRes.value.data?.settlement) {
-        setMySettlement(settlementRes.value.data.settlement);
-      } else {
-        setMySettlement(null);
-      }
-    } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.message || "Failed to load payslips.");
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  function getMonthNumber(name) {
-    const months = [
-      "january", "february", "march", "april", "may", "june",
-      "july", "august", "september", "october", "november", "december"
-    ];
-    const idx = months.indexOf(String(name).toLowerCase().trim());
-    return idx >= 0 ? idx + 1 : 1;
-  }
-
   useEffect(() => {
-    fetchPayslips();
-  }, []);
+    if (payslips.length > 0 && !selectedPayslipId) {
+      setSelectedPayslipId(payslips[0].id);
+    }
+  }, [payslips, selectedPayslipId]);
 
   const handleDownloadPayslip = async (payslipId) => {
     try {
@@ -225,7 +133,14 @@ export default function EmployeePayslips() {
 
   return (
     <div className="container-wide employee-payslips-container">
-      <AppHeader title="Payslips" />
+      <AppHeader title="Payslips">
+        <SoftRefresh
+          active={
+            (payslipsQuery.isFetching && !!payslipsQuery.data) ||
+            (settlementQuery.isFetching && settlementQuery.data !== undefined)
+          }
+        />
+      </AppHeader>
 
       {/* Alerts */}
       {actionSuccess && (
@@ -264,7 +179,7 @@ export default function EmployeePayslips() {
       {!loading && error && (
         <div className="error" style={{ padding: 24, textAlign: "center", marginBottom: 20 }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => fetchPayslips()}>Retry</button>
+          <button type="button" onClick={() => payslipsQuery.refetch()}>Retry</button>
         </div>
       )}
 
@@ -508,7 +423,6 @@ export default function EmployeePayslips() {
 
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <button
-                        type="button"
                         className="btn-primary"
                         onClick={() => handleDownloadPayslip(activePayslip.id)}
                         disabled={downloadingId === activePayslip.id}

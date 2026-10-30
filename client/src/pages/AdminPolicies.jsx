@@ -2052,7 +2052,7 @@ export default function AdminPolicies() {
               </div>
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
+                <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #e4e4e7", color: "#71717a" }}>
                       <th style={{ padding: "10px 12px", fontWeight: 600 }}>Code</th>
@@ -2372,7 +2372,7 @@ export default function AdminPolicies() {
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
+                  <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid #e4e4e7", color: "#71717a" }}>
                         <th style={{ padding: "10px 12px", fontWeight: 600 }}>Date</th>
@@ -3948,7 +3948,7 @@ export default function AdminPolicies() {
               </div>
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
+                <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13.5 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #e4e4e7", color: "#71717a" }}>
                       <th style={{ padding: "10px 12px", fontWeight: 600 }}>Effective Date</th>

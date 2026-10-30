@@ -1,15 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
-import { IconDocument } from "../components/Icons";
+import SoftRefresh from "../components/SoftRefresh";
+import {
+  IconDocument,
+  IconPencil,
+  IconClock,
+  IconFolder,
+  IconCheckCircle,
+  IconDownload,
+} from "../components/EmployeeIcon";
 import { useAuth } from "../context/AuthContext";
+import { useProfileQuery } from "../hooks/useEmployeeQueries";
+import { invalidateProfile } from "../lib/queryKeys";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
 
 export default function EmployeeHome({ defaultTab = "overview" }) {
   const { user } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const profileQuery = useProfileQuery();
+  const profile = profileQuery.data?.employee ?? null;
+  const loading = profileQuery.isLoading && !profileQuery.data;
+  const error = profileQuery.error
+    ? (!profileQuery.error.response ||
+      profileQuery.error.code === "ERR_NETWORK" ||
+      profileQuery.error.response?.status >= 500
+        ? "Unable to connect. Please try again in a moment."
+        : profileQuery.error.response?.data?.message || "Couldn't load profile. Please try again.")
+    : "";
 
   const [activeTab, setActiveTab] = useState(defaultTab); // "overview" | "edit_profile" | "documents"
 
@@ -55,50 +74,36 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
   const [docError, setDocError] = useState("");
   const [docSuccess, setDocSuccess] = useState("");
   const [downloadingDocId, setDownloadingDocId] = useState(null);
-
-  const fetchMyProfile = async () => {
-    try {
-      const response = await api.get("/employees/me");
-      if (response.data?.employee) {
-        const emp = response.data.employee;
-        setProfile(emp);
-        setDocuments(emp.documents || []);
-        setFormData({
-          preferredName: emp.preferredName || "",
-          personalEmail: emp.personalEmail || "",
-          phoneNumber: emp.phoneNumber || "",
-          personalPhone: emp.personalPhone || "",
-          dateOfBirth: emp.dateOfBirth ? emp.dateOfBirth.split("T")[0] : "",
-          gender: emp.gender || "",
-          residentialStreet: emp.residentialAddress?.street || "",
-          residentialCity: emp.residentialAddress?.city || emp.city || "",
-          residentialState: emp.residentialAddress?.state || "",
-          residentialPostalCode: emp.residentialAddress?.postalCode || "",
-          emergencyName: emp.emergencyContact?.name || "",
-          emergencyRel: emp.emergencyContact?.relationship || "",
-          emergencyPhone: emp.emergencyContact?.phone || "",
-          accountHolderName: emp.bankDetails?.accountHolderName || emp.fullName || "",
-          bankName: emp.bankDetails?.bankName || "",
-          accountNumber: emp.bankDetails?.accountNumber || "",
-          ifscCode: emp.bankDetails?.ifscCode || "",
-          accountType: emp.bankDetails?.accountType || "SAVINGS",
-          panNumber: emp.taxDetails?.panNumber || "",
-        });
-      }
-    } catch (err) {
-      if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
-        setError("Unable to connect. Please try again in a moment.");
-      } else {
-        setError(err.response?.data?.message || "Couldn't load profile. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const formHydratedRef = useRef(false);
 
   useEffect(() => {
-    fetchMyProfile();
-  }, []);
+    const emp = profileQuery.data?.employee;
+    if (!emp) return;
+    setDocuments(profileQuery.data?.documents || emp.documents || []);
+    if (formHydratedRef.current) return;
+    formHydratedRef.current = true;
+    setFormData({
+      preferredName: emp.preferredName || "",
+      personalEmail: emp.personalEmail || "",
+      phoneNumber: emp.phoneNumber || "",
+      personalPhone: emp.personalPhone || "",
+      dateOfBirth: emp.dateOfBirth ? emp.dateOfBirth.split("T")[0] : "",
+      gender: emp.gender || "",
+      residentialStreet: emp.residentialAddress?.street || "",
+      residentialCity: emp.residentialAddress?.city || emp.city || "",
+      residentialState: emp.residentialAddress?.state || "",
+      residentialPostalCode: emp.residentialAddress?.postalCode || "",
+      emergencyName: emp.emergencyContact?.name || "",
+      emergencyRel: emp.emergencyContact?.relationship || "",
+      emergencyPhone: emp.emergencyContact?.phone || "",
+      accountHolderName: emp.bankDetails?.accountHolderName || emp.fullName || "",
+      bankName: emp.bankDetails?.bankName || "",
+      accountNumber: emp.bankDetails?.accountNumber || "",
+      ifscCode: emp.bankDetails?.ifscCode || "",
+      accountType: emp.bankDetails?.accountType || "SAVINGS",
+      panNumber: emp.taxDetails?.panNumber || "",
+    });
+  }, [profileQuery.data]);
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -144,10 +149,8 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
         },
       };
 
-      const res = await api.patch("/employees/me", payload);
-      if (res.data?.employee) {
-        setProfile((prev) => ({ ...prev, ...res.data.employee }));
-      }
+      await api.patch("/employees/me", payload);
+      await invalidateProfile(queryClient);
       setSaveSuccess("Your personal profile has been updated successfully.");
     } catch (err) {
       setSaveError(
@@ -242,6 +245,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
         setSelectedFile(null);
         const fileInput = document.getElementById("emp-self-file-input");
         if (fileInput) fileInput.value = "";
+        await invalidateProfile(queryClient);
       }
     } catch (err) {
       setDocError(err.response?.data?.message || "Failed to upload document.");
@@ -294,7 +298,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
           <button
             type="button"
             className="btn-primary"
-            onClick={fetchMyProfile}
+            onClick={() => profileQuery.refetch()}
             style={{ marginTop: "16px" }}
           >
             Retry
@@ -335,16 +339,14 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
           </div>
 
           <div className="epv-header-actions">
+            <SoftRefresh active={profileQuery.isFetching && !!profile} />
             <button
               type="button"
               className={activeTab === "edit_profile" ? "btn-primary" : "btn-secondary"}
               onClick={() => setActiveTab("edit_profile")}
               style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+              <IconPencil size={15} />
               <span>Edit Contact Info</span>
             </button>
           </div>
@@ -358,10 +360,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
         {/* KPI 1: Tenure */}
         <div className="epv-kpi-card dark-card">
           <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <IconClock size={14} />
             <span>Tenure</span>
           </div>
           <div className="epv-kpi-num-row">
@@ -374,9 +373,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
         {/* KPI 2: Active Project */}
         <div className="epv-kpi-card">
           <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
+            <IconFolder size={14} />
             <span>Current Project</span>
           </div>
           <div className="epv-kpi-num-row">
@@ -389,10 +386,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
         {/* KPI 3: Attendance Rate */}
         <div className="epv-kpi-card">
           <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <IconCheckCircle size={14} />
             <span>Attendance Score</span>
           </div>
           <div className="epv-kpi-num-row">
@@ -858,11 +852,7 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
                         disabled={downloadingDocId === doc._id}
                         onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
+                        <IconDownload size={14} />
                         <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
                       </button>
                     </div>

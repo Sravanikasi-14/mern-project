@@ -731,7 +731,7 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .att-summary-row {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -1,4 +1,5 @@
 @import "./pages/WorkManagement.css";
+@import "./components/mobile/mobile.css";
 
 :root {
   --page: #f8faf8;
@@ -62,7 +63,7 @@ body,
 }
 
 html {
-  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -1879,25 +1880,58 @@ button.settings-nav-btn.is-active {
   color: var(--g-800, #155a37);
 }
 
+.pm-emp-cards-mobile,
+.lm-cards-view--mobile-only {
+  display: none;
+}
+
+.lm-table-view--hidden {
+  display: none;
+}
+
 @media (max-width: 768px) {
   :root {
     --fs-page: 20px;
     --hit: 44px;
   }
 
+  html,
+  body,
+  #root {
+    max-width: 100%;
+  }
+
+  .app-header .btn-primary,
+  .fernly-topbar-actions .btn-primary {
+    height: 44px !important;
+    min-height: 44px;
+    font-size: 14px !important;
+  }
+
   .btn-primary,
   .btn-secondary,
+  button[type="submit"]:not(.btn-secondary):not(.wm-btn-primary):not(.wm-btn-secondary):not(.settings-nav-btn):not(.icon-btn):not(.fernly-icon-btn),
   .settings-nav-btn,
   .module-tab,
   .seg-btn,
-  .search-input,
-  select.filter-select,
-  select.dash-filter-select,
   .btn--emp-primary,
   .btn--emp-secondary,
   .btn--punch-in,
-  .btn--punch-out {
+  .btn--punch-out,
+  .btn-sm,
+  .row-actions .btn-sm,
+  .row-actions .icon-btn,
+  .pm-card-btn-edit,
+  .pm-card-btn-view,
+  .lm-btn-details {
     min-height: 44px;
+  }
+
+  .search-input,
+  select.filter-select,
+  select.dash-filter-select {
+    min-height: 48px;
+    width: 100%;
   }
 
   .modal-overlay {
@@ -1909,6 +1943,7 @@ button.settings-nav-btn.is-active {
     max-width: 100%;
     width: 100%;
     max-height: calc(100dvh - var(--safe-top, 0px) - 8px);
+    overflow-y: auto;
     padding: 20px 16px calc(20px + var(--safe-bottom, 0px));
     border-radius: 16px 16px 0 0;
   }
@@ -1920,12 +1955,14 @@ button.settings-nav-btn.is-active {
     border-radius: 0;
     border: none;
     box-shadow: none;
-    padding: calc(24px + var(--safe-top, 0px)) 20px calc(24px + var(--safe-bottom, 0px));
+    padding: calc(24px + var(--safe-top, 0px)) 16px calc(24px + var(--safe-bottom, 0px));
   }
 
   .fernly-topbar {
+    flex-wrap: wrap;
     align-items: center;
-    margin-bottom: 10px;
+    gap: 8px;
+    margin-bottom: 16px;
   }
 
   .fernly-topbar-title {
@@ -1933,9 +1970,16 @@ button.settings-nav-btn.is-active {
   }
 
   .fernly-topbar-sub {
-    white-space: normal;
+    display: none;
   }
 
+  .fernly-topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .fernly-profile-chip,
   .fernly-profile-info,
   .fernly-logout-btn {
     display: none;
@@ -1946,12 +1990,117 @@ button.settings-nav-btn.is-active {
     height: 44px;
   }
 
-  .data-table th,
-  .data-table td,
-  .wm-table th,
-  .wm-table td {
-    padding: 10px 12px;
-    font-size: 12.5px;
+  .column-visibility-container,
+  .pm-view-toggle {
+    display: none !important;
+  }
+
+  .pm-emp-cards-mobile,
+  .lm-cards-view,
+  .lm-cards-view--mobile-only {
+    display: block;
+  }
+
+  .pm-emp-card {
+    background: var(--card, #ffffff);
+    border: 1px solid var(--hair, #e6ede8);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .pm-emp-table-desktop,
+  .lm-table-view {
+    display: none !important;
+  }
+
+  .data-table-container,
+  .table-wrapper-relative,
+  .ol-table-wrap,
+  .ol-table-card {
+    overflow: visible;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .data-table-container table,
+  .table-wrapper-relative table,
+  table.data-table,
+  table.ol-table,
+  table.wm-table {
+    min-width: 0 !important;
+    width: 100%;
+    display: block;
+  }
+
+  table.data-table thead,
+  table.ol-table thead,
+  table.wm-table thead {
+    display: none;
+  }
+
+  table.data-table tbody,
+  table.ol-table tbody,
+  table.wm-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  table.data-table tr,
+  table.ol-table tr,
+  table.wm-table tr {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--card, #ffffff);
+    border: 1px solid var(--hair, #e6ede8);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  table.data-table td,
+  table.ol-table td,
+  table.wm-table td {
+    display: block;
+    width: 100%;
+    border: none;
+    padding: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  table.data-table td:first-child,
+  table.ol-table td:first-child,
+  table.wm-table td:first-child {
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+
+  table.data-table td:last-child,
+  table.ol-table td:last-child,
+  table.wm-table td:last-child {
+    margin-top: 4px;
+  }
+
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .row-actions .btn-sm,
+  .row-actions button {
+    flex: 1 1 auto;
+    min-height: 44px;
   }
 
   .att-desktop-table {
@@ -2001,16 +2150,119 @@ button.settings-nav-btn.is-active {
   select,
   textarea {
     font-size: 16px;
-    min-height: 44px;
+    min-height: 48px;
   }
 
   .att-tracking-layout {
     grid-template-columns: 1fr !important;
+  }
+
+  .detail-grid,
+  .auth-row,
+  .policies-form-grid-3,
+  .policies-form-grid-2,
+  .edit-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .pm-toolbar-left,
+  .pm-cards-toolbar,
+  .pm-toolbar-right {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .pm-toolbar-left > div {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .pm-toolbar-left > select:nth-of-type(2),
+  .pm-toolbar-left > .btn-secondary,
+  .pm-toolbar-right {
+    display: none;
+  }
+
+  .dept-chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-bottom: 12px;
+  }
+
+  .dept-chip-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dept-chip {
+    flex-shrink: 0;
+    height: 44px;
+    min-height: 44px;
   }
 }
 
 @media (min-width: 769px) {
   .att-mobile-list {
     display: none;
+  }
+}
+
+/* Session restore — minimal boot indicator */
+.session-boot {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  justify-items: center;
+  background: var(--page);
+}
+
+.session-boot-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--g-100);
+  color: var(--g-800);
+}
+
+.session-boot-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.session-boot-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--g-100);
+  border-top-color: var(--g-700);
+  border-radius: 50%;
+  animation: session-boot-spin 0.7s linear infinite;
+}
+
+.soft-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.soft-refresh-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--g-100);
+  border-top-color: var(--g-700);
+  animation: session-boot-spin 0.7s linear infinite;
+}
+
+@keyframes session-boot-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

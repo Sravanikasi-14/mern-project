@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceMap from "../components/AttendanceMap";
 import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
@@ -14,8 +14,8 @@ import {
   IconCheck,
   IconClock,
 } from "../components/Icons";
-import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useAttendanceOverviewQuery } from "../hooks/useAdminQueries";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import "./Attendance.css";
 
@@ -41,7 +41,6 @@ export default function AdminAttendanceOverview() {
   const { company } = useAuth();
   const timeZone = resolveCompanyTimezone(company);
 
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [date, setDate] = useState(() => searchParams.get("date") || getCompanyBusinessDate(new Date(), timeZone));
   const [department, setDepartment] = useState("ALL");
@@ -59,113 +58,41 @@ export default function AdminAttendanceOverview() {
   const [drawerEmployeeId, setDrawerEmployeeId] = useState(null);
   const [drawerIndex, setDrawerIndex] = useState(-1);
 
-  const [overviewData, setOverviewData] = useState({
-    date: "",
-    summary: {
-      totalEmployees: 0,
-      presentCount: 0,
-      checkedInCount: 0,
-      checkedOutCount: 0,
-      notCheckedInCount: 0,
-      liveTrackingCount: 0,
-      withLocationCount: 0,
-    },
-    employees: [],
-  });
-
-  const isFetchingRef = useRef(false);
-  const requestIdRef = useRef(0);
-  const abortControllerRef = useRef(null);
-  const isMountedRef = useRef(true);
-
-  const fetchOverview = useCallback(
-    async (silent = false) => {
-      if (silent && isFetchingRef.current) {
-        return;
-      }
-
-      const currentReqId = ++requestIdRef.current;
-
-      if (!silent && abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      isFetchingRef.current = true;
-
-      try {
-        if (!silent) setLoading(true);
-        setError("");
-        const params = { date };
-        if (department !== "ALL") {
-          params.department = department;
-        }
-
-        const res = await api.get("/admin/attendance/overview", {
-          params,
-          signal: controller.signal,
-        });
-
-        if (isMountedRef.current && currentReqId === requestIdRef.current && res.data?.success) {
-          setOverviewData(res.data);
-        }
-      } catch (err) {
-        if (axios.isCancel(err) || err.name === "CanceledError" || err.name === "AbortError") {
-          return;
-        }
-        if (!silent && isMountedRef.current && currentReqId === requestIdRef.current) {
-          setError(err.response?.data?.message || "Failed to load attendance overview.");
-        }
-      } finally {
-        isFetchingRef.current = false;
-        if (!silent && isMountedRef.current && currentReqId === requestIdRef.current) {
-          setLoading(false);
-        }
-      }
-    },
-    [date, department]
+  const attendanceQuery = useAttendanceOverviewQuery(
+    { date, department },
+    {
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    }
   );
 
+  const overviewData = attendanceQuery.data?.success
+    ? attendanceQuery.data
+    : attendanceQuery.data || {
+        date: "",
+        summary: {
+          totalEmployees: 0,
+          presentCount: 0,
+          checkedInCount: 0,
+          checkedOutCount: 0,
+          notCheckedInCount: 0,
+          liveTrackingCount: 0,
+          withLocationCount: 0,
+        },
+        employees: [],
+      };
+
+  const loading = attendanceQuery.isLoading && !(overviewData.employees || []).length;
+
   useEffect(() => {
-    isMountedRef.current = true;
-    let pollInterval = null;
-
-    const startPolling = () => {
-      if (pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(() => {
-        if (document.visibilityState === "visible") {
-          fetchOverview(true);
-        }
-      }, 15000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchOverview(true);
-        startPolling();
-      } else {
-        if (pollInterval) {
-          clearInterval(pollInterval);
-          pollInterval = null;
-        }
-      }
-    };
-
-    fetchOverview(false);
-    startPolling();
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      isMountedRef.current = false;
-      if (pollInterval) clearInterval(pollInterval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [fetchOverview]);
+    if (attendanceQuery.error) {
+      setError(
+        attendanceQuery.error.response?.data?.message || "Failed to load attendance overview."
+      );
+    } else if (attendanceQuery.isSuccess) {
+      setError("");
+    }
+  }, [attendanceQuery.error, attendanceQuery.isSuccess]);
 
   const departments = [
     "ALL",
@@ -363,7 +290,14 @@ export default function AdminAttendanceOverview() {
   return (
     <div className="attendance-page-container">
       {/* Page Header */}
-      <AppHeader title="Attendance" />
+      <AppHeader
+        title="Attendance"
+        actions={
+          <SoftRefresh
+            active={Boolean(attendanceQuery.isFetching && (overviewData.employees || []).length > 0)}
+          />
+        }
+      />
 
       <div className="module-tabs" role="tablist" aria-label="Attendance sections">
         <button type="button" className={`module-tab ${section === "overview" ? "is-active" : ""}`} onClick={() => setSection("overview")}>
@@ -439,7 +373,7 @@ export default function AdminAttendanceOverview() {
           <button
             type="button"
             className="btn-secondary btn-sm"
-            onClick={() => fetchOverview(false)}
+            onClick={() => attendanceQuery.refetch()}
             title="Refresh attendance records"
             style={{ height: 32, padding: "0 10px", fontSize: 12.5 }}
           >

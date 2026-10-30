@@ -377,6 +377,16 @@ describe("HRMS Employee Management Enhancements", () => {
     assert.ok(content.includes("%PDF-1.4 sample test document"));
   });
 
+  it("13b. Employee can download their own document via /me/documents/:docId/download", async () => {
+    const downloadRes = await request(app)
+      .get(`/api/employees/me/documents/${createdDocId}/download`)
+      .set("Cookie", employeeCookieA);
+
+    assert.equal(downloadRes.status, 200);
+    const content = downloadRes.text || downloadRes.body?.toString() || "";
+    assert.ok(content.includes("%PDF-1.4 sample test document"));
+  });
+
   it("14. Tenant isolation: HR of company B cannot access or download documents of company A", async () => {
     const badDownloadRes = await request(app)
       .get(`/api/employees/${createdEmployeeId}/documents/${createdDocId}/download`)

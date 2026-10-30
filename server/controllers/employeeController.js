@@ -1980,13 +1980,22 @@ export async function downloadDocument(req, res, next) {
   try {
     const { Employee, AuditLog } = req.auth.models;
     const { id, docId } = req.params;
+    const isSelf = !id || id === "me" || req.path.includes("/me/");
 
-    const employee = await Employee.findById(id);
+    let employee;
+    if (isSelf) {
+      employee = await Employee.findOne({
+        $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
+      });
+    } else {
+      employee = await Employee.findById(id);
+    }
+
     if (!employee) {
       throw new HttpError(404, "Employee not found");
     }
 
-    // Authorization check
+    // Authorization check: employees may only download their own documents.
     if (req.auth.user.role === USER_ROLES.EMPLOYEE) {
       if (!employee.userId || employee.userId.toString() !== req.auth.user._id.toString()) {
         throw new HttpError(403, "Access denied. You cannot access documents belonging to another employee.");

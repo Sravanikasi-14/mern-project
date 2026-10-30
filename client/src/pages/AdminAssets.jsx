@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import {
   IconClose,
   IconSearch,
@@ -12,6 +14,8 @@ import {
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import api from "../services/api";
+import { useAdminAssetsQuery } from "../hooks/useAdminQueries";
+import { invalidateAssets } from "../lib/queryKeys";
 
 const CATEGORIES = [
   { value: "ALL", label: "All Categories" },
@@ -45,21 +49,10 @@ const CONDITIONS = [
 ];
 
 export default function AdminAssets() {
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
-
-  const [assets, setAssets] = useState([]);
-  const [summary, setSummary] = useState({
-    total: 0,
-    available: 0,
-    assigned: 0,
-    underMaintenance: 0,
-    retired: 0,
-    lost: 0,
-    requiringAttention: 0,
-  });
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -79,6 +72,38 @@ export default function AdminAssets() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, categoryFilter, statusFilter, conditionFilter]);
+
+  const assetsQuery = useAdminAssetsQuery({
+    page: 1,
+    limit: 500,
+    status: statusFilter !== "ALL" ? statusFilter : "",
+    search: debouncedSearch,
+    category: categoryFilter !== "ALL" ? categoryFilter : "",
+    condition: conditionFilter !== "ALL" ? conditionFilter : "",
+  });
+
+  const assets = assetsQuery.data?.assets || [];
+  const summary = assetsQuery.data?.summary || {
+    total: 0,
+    available: 0,
+    assigned: 0,
+    underMaintenance: 0,
+    retired: 0,
+    lost: 0,
+    requiringAttention: 0,
+  };
+  const loading = assetsQuery.isLoading && assets.length === 0;
+
+  useEffect(() => {
+    if (assetsQuery.error) {
+      setError(
+        assetsQuery.error.response?.data?.message ||
+          "Failed to load company asset inventory."
+      );
+    } else if (assetsQuery.isSuccess) {
+      setError("");
+    }
+  }, [assetsQuery.error, assetsQuery.isSuccess]);
 
   const totalAssets = assets.length;
   const totalPages = Math.ceil((totalAssets || 1) / pageSize);
@@ -137,30 +162,6 @@ export default function AdminAssets() {
     notes: "",
   });
 
-  const fetchAssets = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const params = {};
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      if (categoryFilter !== "ALL") params.category = categoryFilter;
-      if (statusFilter !== "ALL") params.status = statusFilter;
-      if (conditionFilter !== "ALL") params.condition = conditionFilter;
-
-      const res = await api.get("/assets", { params });
-      setAssets(res.data?.assets || []);
-      if (res.data?.summary) {
-        setSummary(res.data.summary);
-      }
-    } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.message || "Failed to load company asset inventory.");
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
   const fetchEmployees = async () => {
     try {
       setLoadingEmployees(true);
@@ -183,13 +184,9 @@ export default function AdminAssets() {
     }
   };
 
-  useEffect(() => {
-    fetchAssets();
-  }, [categoryFilter, statusFilter, conditionFilter, debouncedSearch]);
-
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchAssets();
+    setDebouncedSearch(search.trim());
   };
 
   // Add / Edit asset modal open
@@ -252,7 +249,7 @@ export default function AdminAssets() {
       }
 
       setShowAddEditModal(false);
-      await fetchAssets(true);
+      await invalidateAssets(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to save asset.");
     } finally {
@@ -288,7 +285,7 @@ export default function AdminAssets() {
       const res = await api.post(`/assets/${assigningAsset._id}/assign`, assignForm);
       setActionSuccess(res.data?.message || "Asset assigned successfully.");
       setShowAssignModal(false);
-      await fetchAssets(true);
+      await invalidateAssets(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to assign asset.");
     } finally {
@@ -317,7 +314,7 @@ export default function AdminAssets() {
       const res = await api.post(`/assets/${returningAsset._id}/return`, returnForm);
       setActionSuccess(res.data?.message || "Asset return recorded successfully.");
       setShowReturnModal(false);
-      await fetchAssets(true);
+      await invalidateAssets(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to record asset return.");
     } finally {
@@ -370,7 +367,10 @@ export default function AdminAssets() {
 
   return (
     <div className="container-wide">
-      <AppHeader title="Assets" />
+      <AppHeader
+        title="Assets"
+        actions={<SoftRefresh active={Boolean(assetsQuery.isFetching && assets.length > 0)} />}
+      />
 
       {/* Action Alerts */}
       {actionSuccess && (
@@ -532,7 +532,7 @@ export default function AdminAssets() {
         {!loading && error && (
           <div className="table-error-banner">
             <span>{error}</span>
-            <button type="button" className="btn-sm-retry" onClick={() => fetchAssets()}>
+            <button type="button" className="btn-sm-retry" onClick={() => assetsQuery.refetch()}>
               Retry
             </button>
           </div>
@@ -540,8 +540,8 @@ export default function AdminAssets() {
 
         {/* Asset Table */}
         <div className="table-wrapper-relative" style={{ overflowX: "auto" }}>
-          {loading && assets.length > 0 && <div className="table-progress-bar" />}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          {assetsQuery.isFetching && assets.length > 0 && <div className="table-progress-bar" />}
+          <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
                 <th style={{ padding: "12px 14px" }}>Asset ID & Name</th>
@@ -553,7 +553,7 @@ export default function AdminAssets() {
                 <th style={{ padding: "12px 14px", textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
-            <tbody className={loading && assets.length > 0 ? "table-refreshing-dim" : ""}>
+            <tbody className={assetsQuery.isFetching && assets.length > 0 ? "table-refreshing-dim" : ""}>
               {loading && assets.length === 0 ? (
                 <TableSkeletonRows colCount={7} rowCount={6} />
               ) : assets.length === 0 ? (

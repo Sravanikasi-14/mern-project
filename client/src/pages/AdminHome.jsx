@@ -1,12 +1,21 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
 import { IconClose, IconCheck } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
+import {
+  useEmployeesSummaryQuery,
+  useEmployeesPoolQuery,
+  useEmployeesQuery,
+} from "../hooks/useAdminQueries";
+import { invalidateEmployees } from "../lib/queryKeys";
 import "./PeopleManagement.css";
+import MobileFilterBar from "../components/mobile/MobileFilterBar";
 
 const PAGE_SIZE_OPTIONS = [8, 12, 24, 48, 100];
 
@@ -26,6 +35,7 @@ const AVAILABLE_COLUMNS = [
 
 export default function AdminHome() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const onboardOfferId = searchParams.get("onboardOfferId");
   const projectParam = searchParams.get("project");
@@ -33,16 +43,6 @@ export default function AdminHome() {
   // Selected project state: null = Projects Overview (Ref 1), string = Project Details (Ref 2)
   const [selectedProject, setSelectedProject] = useState(projectParam || "ALL");
   const [selectedDepartment, setSelectedDepartment] = useState("");
-
-  const [summary, setSummary] = useState(null);
-  const [allEmployeesPool, setAllEmployeesPool] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 12,
-    totalEmployees: 0,
-    totalPages: 1,
-  });
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -70,8 +70,6 @@ export default function AdminHome() {
   });
   const [showColumnPicker, setShowColumnPicker] = useState(false);
 
-  const [loading, setLoading] = useState(true);
-  const [loadingPool, setLoadingPool] = useState(true);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -84,8 +82,6 @@ export default function AdminHome() {
   const [createdInvitationInfo, setCreatedInvitationInfo] = useState(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [resendingId, setResendingId] = useState(null);
-
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [newEmployee, setNewEmployee] = useState({
     fullName: "",
@@ -172,86 +168,41 @@ export default function AdminHome() {
     return () => clearTimeout(handler);
   }, [search]);
 
-  // Load summary and all employees pool for project aggregation
+  const summaryQuery = useEmployeesSummaryQuery();
+  const poolQuery = useEmployeesPoolQuery();
+  const employeesQuery = useEmployeesQuery({
+    page: currentPage,
+    limit: pageSize,
+    sortBy,
+    sortOrder,
+    search: debouncedSearch,
+    status: statusFilter,
+    project: selectedProject,
+    department: selectedDepartment,
+  });
+
+  const summary = summaryQuery.data?.summary || summaryQuery.data || null;
+  const allEmployeesPool = poolQuery.data || [];
+  const employees = employeesQuery.data?.employees || [];
+  const pagination = employeesQuery.data?.pagination || {
+    page: currentPage,
+    limit: pageSize,
+    totalEmployees: 0,
+    totalPages: 1,
+  };
+  const loading = employeesQuery.isLoading && employees.length === 0;
+  const loadingPool = poolQuery.isLoading && allEmployeesPool.length === 0;
+  const listFetching = employeesQuery.isFetching && employees.length > 0;
+
   useEffect(() => {
-    let cancelled = false;
-    const fetchPoolAndSummary = async () => {
-      try {
-        setLoadingPool(true);
-        const [sumRes, poolRes] = await Promise.all([
-          api.get("/employees/summary").catch(() => null),
-          api.get("/employees?limit=300").catch(() => null),
-        ]);
-        if (!cancelled) {
-          if (sumRes?.data) setSummary(sumRes.data);
-          if (poolRes?.data?.employees) {
-            setAllEmployeesPool(poolRes.data.employees);
-          }
-        }
-      } finally {
-        if (!cancelled) setLoadingPool(false);
-      }
-    };
-    fetchPoolAndSummary();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshTrigger]);
-
-  // Load paginated and filtered employee list
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchEmployees = async () => {
-      try {
-        setLoading(true);
-        const queryParams = new URLSearchParams({
-          page: String(currentPage),
-          limit: String(pageSize),
-          sortBy: sortBy,
-          sortOrder: sortOrder,
-        });
-
-        if (debouncedSearch.trim()) {
-          queryParams.set("search", debouncedSearch.trim());
-        }
-
-        if (statusFilter !== "ALL") {
-          queryParams.set("status", statusFilter);
-        }
-
-        if (selectedProject && selectedProject !== "ALL") {
-          queryParams.set("project", selectedProject);
-        }
-
-        if (selectedDepartment) {
-          queryParams.set("department", selectedDepartment);
-        }
-
-        const employeesRes = await api.get(`/employees?${queryParams.toString()}`);
-
-        if (!cancelled) {
-          setEmployees(employeesRes.data.employees || []);
-          setPagination(employeesRes.data.pagination);
-          setError("");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.response?.data?.message || "Failed to load employee records.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchEmployees();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPage, pageSize, debouncedSearch, statusFilter, selectedProject, selectedDepartment, sortBy, sortOrder, refreshTrigger]);
+    if (employeesQuery.error) {
+      setError(
+        employeesQuery.error.response?.data?.message || "Failed to load employee records."
+      );
+    } else if (employeesQuery.isSuccess) {
+      setError("");
+    }
+  }, [employeesQuery.error, employeesQuery.isSuccess]);
 
   // Derive projects structure from all employees pool
   const projectsData = useMemo(() => {
@@ -397,7 +348,7 @@ export default function AdminHome() {
         employee: response.data?.employee,
         invitation: response.data?.invitation,
       });
-      setRefreshTrigger((prev) => prev + 1);
+      invalidateEmployees(queryClient);
     } catch (err) {
       if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
         setAddError("We're unable to connect right now. Please try again in a moment.");
@@ -425,7 +376,7 @@ export default function AdminHome() {
         navigator.clipboard?.writeText(res.data.invitation.inviteLink);
         setSuccessMsg("Invitation resent! Link copied to clipboard.");
       }
-      setRefreshTrigger((prev) => prev + 1);
+      invalidateEmployees(queryClient);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to resend onboarding invitation.");
@@ -759,25 +710,28 @@ export default function AdminHome() {
            ========================================================================= */
         <>
           <AppHeader
-            title="Employees"
+            title={<><span className="m-title-full">Employees</span><span className="m-title-short">People</span></>}
             actions={
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => {
-                  setNewEmployee((prev) => ({
-                    ...prev,
-                    projectName: selectedProject === "ALL" ? "" : selectedProject,
-                  }));
-                  setShowAddModal(true);
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Employee
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <SoftRefresh active={listFetching} />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setNewEmployee((prev) => ({
+                      ...prev,
+                      projectName: selectedProject === "ALL" ? "" : selectedProject,
+                    }));
+                    setShowAddModal(true);
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Add Employee
+                </button>
+              </div>
             }
           />
 
@@ -806,6 +760,67 @@ export default function AdminHome() {
               </button>
             ))}
           </div>
+
+          <MobileFilterBar
+            search={search}
+            onSearchChange={(e) => setSearch(e.target.value)}
+            searchPlaceholder="Search by name or role"
+            filterCount={(statusFilter !== "ALL" ? 1 : 0) + (selectedProject && selectedProject !== "ALL" ? 1 : 0)}
+            onReset={() => {
+              setStatusFilter("ALL");
+              setSortBy("createdAt");
+              setSortOrder("desc");
+              setSelectedProject("ALL");
+              setCurrentPage(1);
+            }}
+          >
+            <label>
+              Status
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="ALL">All statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+            </label>
+            <label>
+              Sort by
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="createdAt">Date added</option>
+                <option value="fullName">Name</option>
+                <option value="joiningDate">Start date</option>
+                <option value="employeeCode">Employee code</option>
+              </select>
+            </label>
+            <label>
+              Project
+              <select
+                value={selectedProject}
+                onChange={(e) => handleSelectProject(e.target.value)}
+                className="filter-select"
+              >
+                <option value="ALL">All projects</option>
+                {projectsData.projectList.map((proj) => (
+                  <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
+                    {proj.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </MobileFilterBar>
 
           {/* Reference 2 Toolbar: Search, Filters, Sorting, View Toggle */}
           <div className="pm-cards-toolbar">
@@ -924,7 +939,11 @@ export default function AdminHome() {
               <button
                 type="button"
                 className="btn-sm-retry"
-                onClick={() => setRefreshTrigger((prev) => prev + 1)}
+                onClick={() => {
+                  summaryQuery.refetch();
+                  poolQuery.refetch();
+                  employeesQuery.refetch();
+                }}
               >
                 Retry
               </button>
@@ -934,8 +953,8 @@ export default function AdminHome() {
           {/* -------------------------------------------------------------------
               REFERENCE 2: RESPONSIVE EMPLOYEE PROFILE CARDS GRID
               ------------------------------------------------------------------- */}
-          {false ? (
-            <>
+          <>
+            <div className="pm-emp-cards-mobile">
               {loading && employees.length === 0 ? (
                 <div className="pm-empty-box">
                   <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
@@ -970,7 +989,20 @@ export default function AdminHome() {
                   {employees.map((emp) => {
                     const isActive = emp.status === "ACTIVE";
                     return (
-                      <div key={emp._id} className="pm-emp-card">
+                      <div
+                        key={emp._id}
+                        className="pm-emp-card"
+                        role="link"
+                        tabIndex={0}
+                        onClick={() => handleViewDetails(emp._id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleViewDetails(emp._id);
+                          }
+                        }}
+                      >
+                        <span className="m-card-chevron m-chevron" aria-hidden="true" />
                         {/* Top Indicator & Status Badge */}
                         <div className="pm-emp-card-top">
                           <span
@@ -1042,16 +1074,23 @@ export default function AdminHome() {
                           <button
                             type="button"
                             className="pm-card-btn-edit"
-                            onClick={() => handleOpenEdit(emp)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenEdit(emp);
+                            }}
                           >
                             Edit
                           </button>
                           <button
                             type="button"
                             className="pm-card-btn-view"
-                            onClick={() => handleViewDetails(emp._id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleViewDetails(emp._id);
+                            }}
                           >
-                            View
+                            <span className="m-title-full">View</span>
+                            <span className="m-title-short">View details</span>
                           </button>
                         </div>
                       </div>
@@ -1059,9 +1098,8 @@ export default function AdminHome() {
                   })}
                 </div>
               )}
-            </>
-          ) : (
-            /* Table fallback view */
+            </div>
+            <div className="pm-emp-table-desktop">
             <div className="data-table-container table-wrapper-relative">
               {loading && employees.length === 0 ? (
                 <table className="data-table">
@@ -1189,7 +1227,8 @@ export default function AdminHome() {
               </table>
               )}
             </div>
-          )}
+            </div>
+          </>
 
           {/* Bottom Pagination */}
           {pagination.totalEmployees > 0 && (

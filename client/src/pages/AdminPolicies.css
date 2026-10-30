@@ -412,3 +412,14 @@
   }
 }
 
+@media (max-width: 768px) {
+  .policies-form-grid-3,
+  .policies-form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .policies-nav-panel {
+    max-height: none;
+  }
+}
+

@@ -1,58 +1,35 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import {
   IconClose,
   IconCheck,
   IconClock,
   IconInfo,
   IconFileText,
-} from "../components/Icons";
+} from "../components/EmployeeIcon";
 import Pagination, { useClientPagination } from "../components/Pagination";
+import { useAssetsQuery } from "../hooks/useEmployeeQueries";
+import { invalidateAssets, qk } from "../lib/queryKeys";
 import api from "../services/api";
 
 export default function EmployeeAssets() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const assetsQuery = useAssetsQuery();
+  const assets = assetsQuery.data?.assets || [];
+  const history = assetsQuery.data?.history || [];
+  const loading = assetsQuery.isLoading && !assetsQuery.data;
+  const error =
+    !assetsQuery.data && assetsQuery.error
+      ? assetsQuery.error.response?.data?.message || "Failed to load assigned assets."
+      : "";
+
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
   const [acknowledgingId, setAcknowledgingId] = useState(null);
 
-  const [assets, setAssets] = useState([]);
-  const [history, setHistory] = useState([]);
   const historyPager = useClientPagination(history, 10);
-
-  const fetchAssets = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-
-      let items = [];
-      let pastItems = [];
-
-      try {
-        const res = await api.get("/assets/my-assets");
-        items = res.data?.assets || [];
-        pastItems = res.data?.history || [];
-      } catch (err) {
-        // Fallback to employee dashboard endpoint if dedicated endpoint encounters issue
-        const dashRes = await api.get("/employees/me/dashboard");
-        items = dashRes.data?.assets || [];
-      }
-
-      setAssets(items);
-      setHistory(pastItems);
-    } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.message || "Failed to load assigned assets.");
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAssets();
-  }, []);
 
   const handleAcknowledge = async (assetId, assetName) => {
     try {
@@ -63,25 +40,29 @@ export default function EmployeeAssets() {
       const res = await api.post(`/assets/my-assets/${assetId}/acknowledge`);
       setActionSuccess(res.data?.message || `Receipt of ${assetName} acknowledged successfully.`);
 
-      // Instant local state update
-      setAssets((prev) =>
-        prev.map((a) => {
-          if (a._id === assetId || a.id === assetId) {
-            return {
-              ...a,
-              currentAssignment: a.currentAssignment
-                ? {
-                    ...a.currentAssignment,
-                    acknowledgementStatus: "ACKNOWLEDGED",
-                    acknowledgedAt: new Date().toISOString(),
-                  }
-                : undefined,
-              acknowledgementStatus: "ACKNOWLEDGED",
-            };
-          }
-          return a;
-        })
-      );
+      queryClient.setQueryData(qk.assets(), (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          assets: (prev.assets || []).map((a) => {
+            if (a._id === assetId || a.id === assetId) {
+              return {
+                ...a,
+                currentAssignment: a.currentAssignment
+                  ? {
+                      ...a.currentAssignment,
+                      acknowledgementStatus: "ACKNOWLEDGED",
+                      acknowledgedAt: new Date().toISOString(),
+                    }
+                  : undefined,
+                acknowledgementStatus: "ACKNOWLEDGED",
+              };
+            }
+            return a;
+          }),
+        };
+      });
+      await invalidateAssets(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to acknowledge asset receipt.");
     } finally {
@@ -91,7 +72,9 @@ export default function EmployeeAssets() {
 
   return (
     <div className="container-wide">
-      <AppHeader title="Assets" />
+      <AppHeader title="Assets">
+        <SoftRefresh active={assetsQuery.isFetching && !!assetsQuery.data} />
+      </AppHeader>
 
       {/* Action Alerts */}
       {actionSuccess && (
@@ -139,7 +122,7 @@ export default function EmployeeAssets() {
       {!loading && error && (
         <div className="error" style={{ padding: 24, textAlign: "center" }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" className="btn-sm btn-secondary" onClick={() => fetchAssets()}>Retry</button>
+          <button type="button" className="btn-sm btn-secondary" onClick={() => assetsQuery.refetch()}>Retry</button>
         </div>
       )}
 
@@ -364,7 +347,7 @@ export default function EmployeeAssets() {
               </h3>
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
                       <th style={{ padding: "10px 12px" }}>Asset ID & Name</th>

@@ -1,6 +1,9 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../services/api";
+import { useNotificationsQuery } from "../hooks/useEmployeeQueries";
+import { invalidateNotifications, qk } from "../lib/queryKeys";
 
 function formatTimeAgo(dateStr) {
   if (!dateStr) return "";
@@ -25,44 +28,29 @@ function formatTimeAgo(dateStr) {
 
 export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const panelRef = useRef(null);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const fetchNotifications = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const res = await api.get("/notifications");
-      if (res.data?.success) {
-        const list = res.data.notifications || [];
-        const unread = res.data.unreadCount || 0;
-        setNotifications(list);
-        setUnreadCount(unread);
-        if (onCountChange) {
-          onCountChange(unread);
-        }
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load notifications");
-    } finally {
-      setLoading(false);
+  const notificationsQuery = useNotificationsQuery();
+  const notifications = notificationsQuery.data?.notifications || [];
+  const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
+  const loading = notificationsQuery.isLoading && !notificationsQuery.data;
+  const error = notificationsQuery.error?.response?.data?.message ||
+    (notificationsQuery.error && !notificationsQuery.data ? "Failed to load notifications" : "");
+
+  useEffect(() => {
+    if (onCountChange) {
+      onCountChange(unreadCount);
     }
-  };
+  }, [unreadCount, onCountChange]);
 
-  // Fetch when opened or periodically
+  // Refetch when panel opens
   useEffect(() => {
     if (isOpen) {
-      fetchNotifications();
+      notificationsQuery.refetch();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-
-  // Initial fetch for count
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
 
   // Handle escape key and click outside
   useEffect(() => {
@@ -98,13 +86,16 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
     if (!notif.isRead) {
       try {
         await api.patch(`/notifications/${notif.id}/read`);
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n))
-        );
-        setUnreadCount((prev) => {
-          const next = Math.max(0, prev - 1);
-          if (onCountChange) onCountChange(next);
-          return next;
+        queryClient.setQueryData(qk.notifications(), (old) => {
+          if (!old) return old;
+          const nextUnread = Math.max(0, (old.unreadCount || 0) - 1);
+          return {
+            ...old,
+            notifications: (old.notifications || []).map((n) =>
+              n.id === notif.id ? { ...n, isRead: true } : n
+            ),
+            unreadCount: nextUnread,
+          };
         });
       } catch {
         // ignore read error
@@ -121,9 +112,15 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
   const handleMarkAllRead = async () => {
     try {
       await api.post("/notifications/mark-all-read");
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-      if (onCountChange) onCountChange(0);
+      queryClient.setQueryData(qk.notifications(), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          notifications: (old.notifications || []).map((n) => ({ ...n, isRead: true })),
+          unreadCount: 0,
+        };
+      });
+      await invalidateNotifications(queryClient);
     } catch (err) {
       console.error("Failed to mark all as read:", err.message);
     }
@@ -182,7 +179,7 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
             <button
               type="button"
               className="notif-retry-btn"
-              onClick={fetchNotifications}
+              onClick={() => notificationsQuery.refetch()}
             >
               Retry
             </button>

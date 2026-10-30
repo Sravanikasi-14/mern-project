@@ -351,8 +351,55 @@ export async function getEmployeeAttendanceStatus({
   };
 }
 
+function civilDateKey(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return "";
+  return trimmed.slice(0, 10);
+}
+
+function dateInRange(dateKey, startDate, endDate) {
+  if (!dateKey) return false;
+  const startKey = civilDateKey(startDate) || startDate;
+  const endKey = civilDateKey(endDate) || endDate;
+  if (startKey && dateKey < startKey) return false;
+  if (endKey && dateKey > endKey) return false;
+  return true;
+}
+
+function formatCollectionAttendance(record) {
+  return {
+    _id: record._id,
+    date: record.date,
+    status: record.status,
+    checkIn: record.checkIn,
+    checkOut: record.checkOut,
+    workingHours: record.workingHours || "--",
+    durationMinutes: record.durationMinutes || 0,
+    checkInLocation: record.checkInLocation || null,
+    checkOutLocation: record.checkOutLocation || null,
+    notes: record.notes || "",
+  };
+}
+
+function formatLegacyAttendanceLog(log) {
+  const date = civilDateKey(log?.date);
+  return {
+    _id: log._id || date,
+    date,
+    status: log.status || "PRESENT",
+    checkIn: log.checkIn,
+    checkOut: log.checkOut,
+    workingHours: log.workingHours || "--",
+    checkInLocation: log.checkInLocation || null,
+    checkOutLocation: log.checkOutLocation || null,
+  };
+}
+
 /**
  * Retrieves paginated attendance history for an employee with date filtering.
+ * Prefers Attendance collection rows and fills missing dates from legacy
+ * customFields.attendanceLogs without duplicating the same civil date.
  */
 export async function getEmployeeAttendanceHistory({
   models,
@@ -364,71 +411,52 @@ export async function getEmployeeAttendanceHistory({
 }) {
   const { Attendance } = models;
 
+  const startKey = civilDateKey(startDate) || (typeof startDate === "string" ? startDate : "");
+  const endKey = civilDateKey(endDate) || (typeof endDate === "string" ? endDate : "");
+
   const filter = { employeeId: employee._id };
-  if (startDate && endDate) {
-    filter.date = { $gte: startDate, $lte: endDate };
-  } else if (startDate) {
-    filter.date = { $gte: startDate };
-  } else if (endDate) {
-    filter.date = { $lte: endDate };
+  if (startKey && endKey) {
+    filter.date = { $gte: startKey, $lte: endKey };
+  } else if (startKey) {
+    filter.date = { $gte: startKey };
+  } else if (endKey) {
+    filter.date = { $lte: endKey };
   }
 
   const parsedPage = Math.max(1, parseInt(page, 10) || 1);
   const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (parsedPage - 1) * parsedLimit;
 
-  const [records, total] = await Promise.all([
-    Attendance.find(filter)
-      .sort({ date: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(parsedLimit)
-      .lean(),
-    Attendance.countDocuments(filter),
-  ]);
+  const records = Attendance
+    ? await Attendance.find(filter).sort({ date: -1, createdAt: -1 }).lean()
+    : [];
 
-  // If no records in Attendance collection yet, fallback to employee.customFields.attendanceLogs
-  if (records.length === 0 && total === 0 && (!startDate && !endDate)) {
-    const customLogs = employee.customFields?.attendanceLogs || [];
-    const formatted = customLogs
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(skip, skip + parsedLimit)
-      .map((log) => ({
-        _id: log.date,
-        date: log.date,
-        status: log.status || "PRESENT",
-        checkIn: log.checkIn,
-        checkOut: log.checkOut,
-        workingHours: log.workingHours || "--",
-        checkInLocation: log.checkInLocation || null,
-        checkOutLocation: log.checkOutLocation || null,
-      }));
-
-    return {
-      records: formatted,
-      pagination: {
-        total: customLogs.length,
-        page: parsedPage,
-        limit: parsedLimit,
-        totalPages: Math.ceil(customLogs.length / parsedLimit) || 1,
-      },
-    };
+  const byDate = new Map();
+  for (const record of records) {
+    const key = civilDateKey(record.date);
+    if (!key || byDate.has(key)) continue;
+    byDate.set(key, formatCollectionAttendance(record));
   }
 
-  const formattedRecords = records.map((r) => ({
-    _id: r._id,
-    date: r.date,
-    status: r.status,
-    checkIn: r.checkIn,
-    checkOut: r.checkOut,
-    workingHours: r.workingHours || "--",
-    durationMinutes: r.durationMinutes || 0,
-    checkInLocation: r.checkInLocation || null,
-    checkOutLocation: r.checkOutLocation || null,
-    notes: r.notes || "",
-  }));
+  const customLogs = employee.customFields?.attendanceLogs || [];
+  for (const log of customLogs) {
+    const key = civilDateKey(log.date);
+    if (!dateInRange(key, startKey, endKey)) continue;
+    if (byDate.has(key)) continue;
+    byDate.set(key, formatLegacyAttendanceLog(log));
+  }
+
+  const merged = [...byDate.values()].sort((a, b) => {
+    if (a.date < b.date) return 1;
+    if (a.date > b.date) return -1;
+    return 0;
+  });
+
+  const total = merged.length;
+  const pageSlice = merged.slice(skip, skip + parsedLimit);
 
   return {
-    records: formattedRecords,
+    records: pageSlice,
     pagination: {
       total,
       page: parsedPage,

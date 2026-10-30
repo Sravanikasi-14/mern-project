@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import "./MobileNav.css";
 
 function Ico({ children }) {
@@ -205,7 +206,7 @@ export default function MobileNav() {
               onClick={() => go(item.path)}
               aria-current={active ? "page" : undefined}
             >
-              {ICONS[item.icon]}
+              {isHr ? ICONS[item.icon] : <EmployeeIcon name={item.icon} size={22} strokeWidth={active ? 2.15 : 1.75} />}
               <span>{item.label}</span>
             </button>
           );
@@ -217,7 +218,7 @@ export default function MobileNav() {
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
         >
-          {ICONS.more}
+          {isHr ? ICONS.more : <EmployeeIcon name="more" size={22} strokeWidth={moreActive || moreOpen ? 2.15 : 1.75} />}
           <span>More</span>
         </button>
       </nav>
@@ -238,7 +239,9 @@ export default function MobileNav() {
                       className={`mobile-more-item${active ? " is-active" : ""}`}
                       onClick={() => go(item.path)}
                     >
-                      <span className="mobile-more-icon">{ICONS[item.icon]}</span>
+                      <span className="mobile-more-icon">
+                        {isHr ? ICONS[item.icon] : <EmployeeIcon name={item.icon} size={20} strokeWidth={active ? 2.15 : 1.75} />}
+                      </span>
                       <span>{item.label}</span>
                     </button>
                   </li>
@@ -246,6 +249,7 @@ export default function MobileNav() {
               })}
             </ul>
             <button type="button" className="mobile-more-logout" onClick={handleLogout}>
+              {!isHr && <IconLogOut size={16} />}
               Log out
             </button>
           </div>

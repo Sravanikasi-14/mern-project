@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
@@ -7,12 +9,17 @@ import {
   IconCheck,
   IconClose,
   IconAlertCircle,
-  IconInfo,
-  IconDocument,
   IconSearch,
-} from "../components/Icons";
+  IconCalendar,
+} from "../components/EmployeeIcon";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import {
+  useImpactMeQuery,
+  useMyTasksQuery,
+  useTasksMetaQuery,
+} from "../hooks/useEmployeeQueries";
+import { invalidateEmployeeWork } from "../lib/queryKeys";
 import {
   buildWeekStrip,
   formatDisplayDate,
@@ -38,29 +45,65 @@ const VIEW_MODES = {
 
 export default function EmployeeTasks() {
   const { user, company } = useAuth();
+  const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(EMPLOYEE_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   // Filters
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [searchApplied, setSearchApplied] = useState("");
   const [selectedProject, setSelectedProject] = useState("ALL");
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
 
-  // Metadata & Personal Points
-  const [meta, setMeta] = useState({
+  const metaQuery = useTasksMetaQuery();
+  const impactQuery = useImpactMeQuery();
+  const meta = metaQuery.data || {
     userRole: "",
     isManager: false,
     directReportsCount: 0,
     assignableEmployees: [],
     departments: [],
-  });
-  const [myPoints, setMyPoints] = useState(null);
+  };
+  const myPoints = impactQuery.data ?? null;
+
+  const taskParams = useMemo(() => {
+    const params = {
+      page,
+      limit,
+      priority: priorityFilter,
+      search: searchApplied,
+      scope: "my_tasks",
+      status: "",
+      completedScope: "",
+    };
+    if (activeTab === EMPLOYEE_TABS.TEAM_QUEUE) {
+      params.scope = "team_tasks";
+      params.status = "SUBMITTED";
+    } else if (activeTab !== EMPLOYEE_TABS.ALL) {
+      params.status = activeTab;
+    }
+    if (viewMode === VIEW_MODES.KANBAN && activeTab !== EMPLOYEE_TABS.TEAM_QUEUE) {
+      params.completedScope = "today";
+    }
+    return params;
+  }, [activeTab, priorityFilter, searchApplied, page, limit, viewMode]);
+
+  const tasksQuery = useMyTasksQuery(taskParams);
+  const tasks = tasksQuery.data?.tasks || [];
+  const pagination = {
+    page,
+    limit,
+    total: tasksQuery.data?.pagination?.total ?? tasks.length,
+    pages: tasksQuery.data?.pagination?.pages ?? 1,
+  };
+  const loading = tasksQuery.isLoading && !tasksQuery.data;
+  const queryError = tasksQuery.error?.response?.data?.message || (tasksQuery.error ? "Failed to load tasks" : "");
+  const error = actionError || queryError;
 
   // Drag and Drop state
   const [draggedTaskId, setDraggedTaskId] = useState(null);
@@ -81,121 +124,46 @@ export default function EmployeeTasks() {
   });
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // Initial Data Fetch
   useEffect(() => {
-    let cancelled = false;
-    async function loadInitialData() {
-      try {
-        const [metaRes, myRes] = await Promise.all([
-          api.get("/tasks/meta"),
-          api.get("/impact-points/me"),
-        ]);
-
-        if (!cancelled) {
-          if (metaRes.data?.success) {
-            const metaData = metaRes.data?.data || metaRes.data || {};
-            setMeta({
-              userRole: metaData.userRole || "",
-              isManager: Boolean(metaData.isManager),
-              directReportsCount: metaData.directReportsCount || 0,
-              assignableEmployees: Array.isArray(metaData.assignableEmployees)
-                ? metaData.assignableEmployees
-                : [],
-              departments: Array.isArray(metaData.departments) ? metaData.departments : [],
-            });
-          }
-          if (myRes.data?.success) {
-            const summaryData = myRes.data?.summary || myRes.data?.data || myRes.data || null;
-            setMyPoints(summaryData);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load initial metadata/points:", err);
-      }
-    }
-    loadInitialData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Fetch Tasks
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const params = {
-        page: pagination.page,
-        limit: pagination.limit,
-      };
-
-      if (activeTab === EMPLOYEE_TABS.TEAM_QUEUE) {
-        params.scope = "team_tasks";
-        params.status = "SUBMITTED";
-      } else {
-        params.scope = "my_tasks";
-        if (activeTab !== EMPLOYEE_TABS.ALL) {
-          params.status = activeTab;
-        }
-      }
-
-      if (priorityFilter !== "ALL") params.priority = priorityFilter;
-      if (search.trim()) params.search = search.trim();
-      if (viewMode === VIEW_MODES.KANBAN && activeTab !== EMPLOYEE_TABS.TEAM_QUEUE) {
-        params.completedScope = "today";
-      }
-
-      const res = await api.get("/tasks", { params });
-      if (res.data?.success) {
-        const taskList = res.data?.tasks || res.data?.data?.tasks || [];
-        const pag = res.data?.pagination || res.data?.data?.pagination || {
-          page: 1,
-          limit: 50,
-          total: taskList.length,
-          pages: 1,
-        };
-        setTasks(Array.isArray(taskList) ? taskList : []);
-        setPagination(pag);
-
-        if (selectedTask) {
-          const updated = taskList.find((t) => t._id === selectedTask._id);
-          if (updated) setSelectedTask(updated);
-        }
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load tasks");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTasks();
+    if (!selectedTask || !tasksQuery.data?.tasks) return;
+    const updated = tasksQuery.data.tasks.find((t) => t._id === selectedTask._id);
+    if (updated) setSelectedTask(updated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, priorityFilter, pagination.page, pagination.limit, viewMode]);
+  }, [tasksQuery.data]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, priorityFilter, viewMode]);
 
   // Auto-dismiss toasts after 4.5 seconds
   useEffect(() => {
     if (error || successMsg) {
       const timer = setTimeout(() => {
-        setError("");
+        setActionError("");
         setSuccessMsg("");
       }, 4500);
       return () => clearTimeout(timer);
     }
   }, [error, successMsg]);
 
+  const patchTasksCache = (updater) => {
+    queryClient.setQueriesData({ queryKey: ["employee", "tasks"] }, (old) => {
+      if (!old?.tasks) return old;
+      return { ...old, tasks: updater(old.tasks) };
+    });
+  };
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchTasks();
+    setPage(1);
+    setSearchApplied(search);
   };
 
   // Start Task
   const handleStartTask = async (task) => {
     try {
       setStartingTaskId(task._id);
-      setError("");
+      setActionError("");
       const res = await api.post(`/tasks/${task._id}/start`);
       if (res.data?.success) {
         const updatedTask = res.data.task || res.data.data || {
@@ -204,12 +172,12 @@ export default function EmployeeTasks() {
           startDate: new Date().toISOString(),
         };
         setSuccessMsg(`Task "${task.title}" is now In Progress.`);
-        setTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+        patchTasksCache((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
         if (selectedTask?._id === task._id) setSelectedTask(updatedTask);
-        fetchTasks();
+        await invalidateEmployeeWork(queryClient);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to start task");
+      setActionError(err.response?.data?.message || "Failed to start task");
     } finally {
       setStartingTaskId(null);
     }
@@ -251,12 +219,12 @@ export default function EmployeeTasks() {
 
     // Check Employee Role authorization for status transitions
     if (targetStatus === "APPROVED") {
-      setError("Task approval requires manager or HR verification.");
+      setActionError("Task approval requires manager or HR verification.");
       return;
     }
 
     if (targetStatus === "ASSIGNED") {
-      setError("Only the assigning manager or an HR Admin can reassign tasks.");
+      setActionError("Only the assigning manager or an HR Admin can reassign tasks.");
       return;
     }
 
@@ -277,7 +245,7 @@ export default function EmployeeTasks() {
         return;
       }
       if (task.status === "SUBMITTED") {
-        setError("Deliverables already submitted. Awaiting manager review.");
+        setActionError("Deliverables already submitted. Awaiting manager review.");
         return;
       }
     }
@@ -316,6 +284,7 @@ export default function EmployeeTasks() {
           ...prev,
           files: [...prev.files, fileInfo],
         }));
+        await invalidateEmployeeWork(queryClient);
       }
     } catch (err) {
       setSubmitError(err.response?.data?.message || "File upload failed");
@@ -372,11 +341,11 @@ export default function EmployeeTasks() {
           submittedAt: new Date().toISOString(),
         };
         setSelectedTask(updatedTask);
-        setTasks((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
+        patchTasksCache((prev) => prev.map((t) => (t._id === updatedTask._id ? updatedTask : t)));
         setSuccessMsg(`Task "${selectedTask.title}" submitted successfully for verification.`);
         setSubmitForm({ notes: "", links: [""], files: [] });
         setSidePanelMode("none");
-        fetchTasks();
+        await invalidateEmployeeWork(queryClient);
       }
     } catch (err) {
       setSubmitError(err.response?.data?.message || "Failed to submit deliverables");
@@ -492,6 +461,7 @@ export default function EmployeeTasks() {
         hideLogout={true}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SoftRefresh active={tasksQuery.isFetching && !!tasksQuery.data} />
           <div className="wm-view-switcher" role="tablist" aria-label="Task view">
             <button
               type="button"
@@ -518,7 +488,7 @@ export default function EmployeeTasks() {
             <div className="wm-toast-item error">
               <IconAlertCircle size={16} />
               <span>{error}</span>
-              <button className="wm-toast-close" onClick={() => setError("")}>
+              <button className="wm-toast-close" onClick={() => setActionError("")}>
                 <IconClose size={14} />
               </button>
             </div>
@@ -633,12 +603,7 @@ export default function EmployeeTasks() {
           <div className="wm-timeline-card">
             <div className="wm-timeline-header">
               <h4 className="wm-timeline-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#155a37" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
+                <IconCalendar size={15} />
                 This week
               </h4>
             </div>
@@ -790,7 +755,12 @@ export default function EmployeeTasks() {
                                     onClick={() => handleStartTask(task)}
                                     disabled={startingTaskId === task._id}
                                   >
-                                    {startingTaskId === task._id ? "Starting..." : "Start Task →"}
+                                    {startingTaskId === task._id ? "Starting..." : (
+                                      <>
+                                        <span className="m-title-full">Start Task →</span>
+                                        <span className="m-title-short">Start task</span>
+                                      </>
+                                    )}
                                   </button>
                                 )}
 
@@ -804,7 +774,8 @@ export default function EmployeeTasks() {
                                       setSidePanelMode("submit");
                                     }}
                                   >
-                                    Submit Work →
+                                    <span className="m-title-full">Submit Work →</span>
+                                    <span className="m-title-short">Submit work</span>
                                   </button>
                                 )}
 
@@ -924,8 +895,11 @@ export default function EmployeeTasks() {
                 totalItems={pagination.total}
                 pageSize={pagination.limit}
                 pageSizeOptions={[10, 25, 50, 100]}
-                onPageChange={(p) => setPagination((prev) => ({ ...prev, page: p }))}
-                onPageSizeChange={(s) => setPagination((prev) => ({ ...prev, limit: s, page: 1 }))}
+                onPageChange={(p) => setPage(p)}
+                onPageSizeChange={(s) => {
+                  setLimit(s);
+                  setPage(1);
+                }}
                 itemLabel="tasks"
               />
             </div>

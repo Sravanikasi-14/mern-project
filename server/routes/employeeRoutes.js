@@ -54,6 +54,7 @@ router.post("/me/leave-requests", authenticate, applyLeave);
 router.get("/me/payslips/:payslipId/download", authenticate, downloadPayslip);
 router.patch("/me", authenticate, updateMyProfile);
 router.post("/me/documents", authenticate, uploadEmployeeDocument);
+router.get("/me/documents/:docId/download", authenticate, downloadDocument);
 
 // Document download with strict role/employee ownership authorization
 router.get("/:id/documents/:docId/download", authenticate, downloadDocument);

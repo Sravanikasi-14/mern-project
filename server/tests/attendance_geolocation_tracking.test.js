@@ -355,6 +355,60 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     assert.ok(res.body.records[0].checkInLocation);
   });
 
+  it("9b. Dated history returns legacy customFields.attendanceLogs when Attendance has no matching rows", async () => {
+    const modelsA = await getCompanyModels(companyA);
+    const legacyDate = "2026-01-15";
+    await modelsA.Employee.updateOne(
+      { _id: employeeRecordA2._id },
+      {
+        $set: {
+          "customFields.attendanceLogs": [
+            {
+              date: legacyDate,
+              checkIn: "2026-01-15T04:00:00.000Z",
+              checkOut: "2026-01-15T12:30:00.000Z",
+              status: "PRESENT",
+              workingHours: "8h 30m",
+            },
+          ],
+        },
+      }
+    );
+
+    const res = await request(app)
+      .get("/api/employees/me/attendance/history")
+      .query({ startDate: "2026-01-01", endDate: "2026-01-31" })
+      .set("Cookie", employeeCookieA2);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.records.length, 1);
+    assert.equal(res.body.records[0].date, legacyDate);
+    assert.equal(res.body.records[0].workingHours, "8h 30m");
+  });
+
+  it("9c. Dated history does not duplicate a day present in both Attendance and legacy logs", async () => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const res = await request(app)
+      .get("/api/employees/me/attendance/history")
+      .query({ startDate: todayStr, endDate: todayStr })
+      .set("Cookie", employeeCookieA);
+
+    assert.equal(res.status, 200);
+    const sameDay = (res.body.records || []).filter((row) => row.date === todayStr);
+    assert.equal(sameDay.length, 1);
+  });
+
+  it("9d. Dated history excludes legacy logs outside the requested range", async () => {
+    const res = await request(app)
+      .get("/api/employees/me/attendance/history")
+      .query({ startDate: "2026-02-01", endDate: "2026-02-28" })
+      .set("Cookie", employeeCookieA2);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.records.length, 0);
+  });
+
   it("10. Live Tracking lifecycle: start session, update coordinates, throttle, and stop", async () => {
     // 10a. Start tracking session
     const startRes = await request(app)

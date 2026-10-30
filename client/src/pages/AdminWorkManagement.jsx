@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
@@ -13,6 +15,9 @@ import {
 } from "../components/Icons";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useAdminTasksQuery } from "../hooks/useAdminQueries";
+import { useTasksMetaQuery } from "../hooks/useEmployeeQueries";
+import { invalidateEmployeeWork } from "../lib/queryKeys";
 import {
   buildWeekStrip,
   formatDisplayDate,
@@ -35,30 +40,23 @@ const VIEW_MODES = {
 
 export default function AdminWorkManagement() {
   const { company } = useAuth();
+  const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(TASK_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [localTasks, setLocalTasks] = useState(null);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   // Filters
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [selectedProject, setSelectedProject] = useState("ALL");
-  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 });
-
-  // Metadata
-  const [meta, setMeta] = useState({
-    userRole: "",
-    isManager: false,
-    directReportsCount: 0,
-    assignableEmployees: [],
-    departments: [],
-  });
+  const [page, setPage] = useState(1);
+  const [pageLimit, setPageLimit] = useState(50);
 
   // Drag and Drop state
   const [draggedTaskId, setDraggedTaskId] = useState(null);
@@ -104,95 +102,92 @@ export default function AdminWorkManagement() {
     }
   }, [successMsg]);
 
-  // Load Metadata
-  useEffect(() => {
-    let cancelled = false;
-    const fetchMeta = async () => {
-      try {
-        const res = await api.get("/tasks/meta");
-        if (!cancelled && res.data?.success) {
-          const metaData = res.data?.data || res.data || {};
-          setMeta({
-            userRole: metaData.userRole || "",
-            isManager: Boolean(metaData.isManager),
-            directReportsCount: metaData.directReportsCount || 0,
-            assignableEmployees: Array.isArray(metaData.assignableEmployees)
-              ? metaData.assignableEmployees
-              : [],
-            departments: Array.isArray(metaData.departments) ? metaData.departments : [],
-          });
-        }
-      } catch {
-        // Non-blocking
-      }
-    };
-    fetchMeta();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Fetch tasks
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const params = {
-        page: pagination.page,
-        limit: pagination.limit,
-      };
-
-      if (activeTab === TASK_TABS.REVIEW_QUEUE) {
-        params.status = "SUBMITTED";
-      } else if (statusFilter !== "ALL") {
-        params.status = statusFilter;
-      }
-
-      if (activeTab === TASK_TABS.TEAM) {
-        params.scope = "team_tasks";
-      } else if (meta.userRole === "HR_ADMIN") {
-        params.scope = "all";
-      }
-
-      if (priorityFilter !== "ALL") params.priority = priorityFilter;
-      if (departmentFilter !== "ALL") params.department = departmentFilter;
-      if (search.trim()) params.search = search.trim();
-      if (viewMode === VIEW_MODES.KANBAN && activeTab !== TASK_TABS.REVIEW_QUEUE) {
-        params.completedScope = "today";
-      }
-
-      const res = await api.get("/tasks", { params });
-      if (res.data?.success) {
-        const taskList = res.data?.tasks || res.data?.data?.tasks || [];
-        const pag = res.data?.pagination || res.data?.data?.pagination || {
-          total: taskList.length,
-          page: 1,
-          limit: 50,
-          pages: 1,
-        };
-        setTasks(Array.isArray(taskList) ? taskList : []);
-        setPagination(pag);
-
-        if (selectedTask) {
-          const updated = taskList.find((t) => t._id === selectedTask._id);
-          if (updated) setSelectedTask(updated);
-        }
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load tasks");
-    } finally {
-      setLoading(false);
-    }
+  const metaQuery = useTasksMetaQuery();
+  const meta = metaQuery.data || {
+    userRole: "",
+    isManager: false,
+    directReportsCount: 0,
+    assignableEmployees: [],
+    departments: [],
   };
 
+  const taskQueryParams = useMemo(() => {
+    const params = {
+      page,
+      limit: pageLimit,
+      priority: priorityFilter,
+      department: departmentFilter,
+      search: appliedSearch,
+    };
+
+    if (activeTab === TASK_TABS.REVIEW_QUEUE) {
+      params.status = "SUBMITTED";
+    } else if (statusFilter !== "ALL") {
+      params.status = statusFilter;
+    } else {
+      params.status = "";
+    }
+
+    if (activeTab === TASK_TABS.TEAM) {
+      params.scope = "team_tasks";
+    } else if (meta.userRole === "HR_ADMIN") {
+      params.scope = "all";
+    } else {
+      params.scope = "";
+    }
+
+    if (viewMode === VIEW_MODES.KANBAN && activeTab !== TASK_TABS.REVIEW_QUEUE) {
+      params.completedScope = "today";
+    } else {
+      params.completedScope = "";
+    }
+
+    return params;
+  }, [
+    page,
+    pageLimit,
+    activeTab,
+    statusFilter,
+    priorityFilter,
+    departmentFilter,
+    appliedSearch,
+    viewMode,
+    meta.userRole,
+  ]);
+
+  const tasksQuery = useAdminTasksQuery(taskQueryParams);
+  const queryTasks = tasksQuery.data?.tasks || [];
+  const tasks = localTasks ?? queryTasks;
+  const pagination = tasksQuery.data?.pagination || {
+    total: queryTasks.length,
+    page,
+    limit: pageLimit,
+    pages: 1,
+  };
+  const loading = tasksQuery.isLoading && queryTasks.length === 0;
+
   useEffect(() => {
-    fetchTasks();
+    setLocalTasks(null);
+  }, [tasksQuery.dataUpdatedAt]);
+
+  useEffect(() => {
+    if (selectedTask && queryTasks.length > 0) {
+      const updated = queryTasks.find((t) => t._id === selectedTask._id);
+      if (updated) setSelectedTask(updated);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, statusFilter, priorityFilter, departmentFilter, pagination.page, pagination.limit, viewMode]);
+  }, [queryTasks]);
+
+  useEffect(() => {
+    if (tasksQuery.error) {
+      setError(tasksQuery.error.response?.data?.message || "Failed to load tasks");
+    }
+  }, [tasksQuery.error]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchTasks();
+    setPage(1);
+    setAppliedSearch(search.trim());
   };
 
   // Drag and Drop handlers
@@ -231,9 +226,7 @@ export default function AdminWorkManagement() {
 
     // Optimistic UI update
     const prevTasks = [...tasks];
-    setTasks((current) =>
-      current.map((t) => (t._id === taskId ? { ...t, status: targetStatus } : t))
-    );
+    setLocalTasks(tasks.map((t) => (t._id === taskId ? { ...t, status: targetStatus } : t)));
 
     try {
       if (targetStatus === "IN_PROGRESS" && task.status === "ASSIGNED") {
@@ -249,9 +242,9 @@ export default function AdminWorkManagement() {
         await api.patch(`/tasks/${taskId}`, { status: targetStatus });
       }
       setSuccessMsg(`Task "${task.title}" moved to ${targetStatus.replace("_", " ")}`);
-      fetchTasks();
+      await invalidateEmployeeWork(queryClient);
     } catch (err) {
-      setTasks(prevTasks);
+      setLocalTasks(prevTasks);
       setError(err.response?.data?.message || `Failed to update task to ${targetStatus}`);
     }
   };
@@ -260,9 +253,7 @@ export default function AdminWorkManagement() {
   const handleStatusChange = async (task, targetStatus) => {
     if (task.status === targetStatus) return;
     const prevTasks = [...tasks];
-    setTasks((current) =>
-      current.map((t) => (t._id === task._id ? { ...t, status: targetStatus } : t))
-    );
+    setLocalTasks(tasks.map((t) => (t._id === task._id ? { ...t, status: targetStatus } : t)));
     try {
       if (targetStatus === "IN_PROGRESS" && task.status === "ASSIGNED") {
         await api.post(`/tasks/${task._id}/start`);
@@ -277,9 +268,9 @@ export default function AdminWorkManagement() {
         await api.patch(`/tasks/${task._id}`, { status: targetStatus });
       }
       setSuccessMsg(`Task "${task.title}" updated to ${targetStatus.replace("_", " ")}`);
-      fetchTasks();
+      await invalidateEmployeeWork(queryClient);
     } catch (err) {
-      setTasks(prevTasks);
+      setLocalTasks(prevTasks);
       setError(err.response?.data?.message || `Failed to update task status`);
     }
   };
@@ -318,7 +309,7 @@ export default function AdminWorkManagement() {
           acceptanceCriteria: "",
         });
         setSuccessMsg("Task created and assigned successfully!");
-        fetchTasks();
+        await invalidateEmployeeWork(queryClient);
       }
     } catch (err) {
       setCreateError(err.response?.data?.message || "Failed to create task");
@@ -345,7 +336,7 @@ export default function AdminWorkManagement() {
         setShowReviewForm(false);
         setReviewComments("");
         setSuccessMsg(res.data.message || "Review submitted successfully!");
-        fetchTasks();
+        await invalidateEmployeeWork(queryClient);
       }
     } catch (err) {
       setReviewError(err.response?.data?.message || "Failed to review task");
@@ -477,6 +468,7 @@ export default function AdminWorkManagement() {
         hideLogout={true}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <SoftRefresh active={Boolean(tasksQuery.isFetching && queryTasks.length > 0)} />
           <div className="wm-view-switcher" role="tablist" aria-label="Task view">
             <button
               type="button"
@@ -948,8 +940,11 @@ export default function AdminWorkManagement() {
                 totalItems={pagination.total}
                 pageSize={pagination.limit}
                 pageSizeOptions={[10, 25, 50, 100]}
-                onPageChange={(p) => setPagination((prev) => ({ ...prev, page: p }))}
-                onPageSizeChange={(s) => setPagination((prev) => ({ ...prev, limit: s, page: 1 }))}
+                onPageChange={(p) => setPage(p)}
+                onPageSizeChange={(s) => {
+                  setPageLimit(s);
+                  setPage(1);
+                }}
                 itemLabel="tasks"
               />
             </div>

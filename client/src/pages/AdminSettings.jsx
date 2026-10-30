@@ -86,6 +86,7 @@ export default function AdminSettings() {
   // 6. Audit Logs State
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
   const [auditSearch, setAuditSearch] = useState("");
   const [auditPage, setAuditPage] = useState(1);
   const [auditPageSize, setAuditPageSize] = useState(10);
@@ -173,16 +174,21 @@ export default function AdminSettings() {
   const fetchAuditLogs = async () => {
     try {
       setAuditLoading(true);
+      setAuditError("");
       const res = await api.get(
         `/settings/audit-logs?page=${auditPage}&limit=${auditPageSize}${
           auditSearch ? `&search=${encodeURIComponent(auditSearch)}` : ""
         }`
       );
-      setAuditLogs(res.data?.data || []);
+      const logs = res.data?.logs;
+      if (!Array.isArray(logs)) {
+        setAuditError("Audit logs could not be read from the server response.");
+        return;
+      }
+      setAuditLogs(logs);
       setAuditTotal(res.data?.pagination?.total || 0);
-    } catch {
-      setAuditLogs([]);
-      setAuditTotal(0);
+    } catch (err) {
+      setAuditError(err.response?.data?.message || "Failed to load audit logs.");
     } finally {
       setAuditLoading(false);
     }
@@ -1538,7 +1544,7 @@ export default function AdminSettings() {
 
               {/* Table */}
               <div style={{ overflowX: "auto", border: "1px solid var(--hair)", borderRadius: "8px" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
+                <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
                   <thead>
                     <tr style={{ background: "#f8faf8", borderBottom: "1px solid var(--hair)", textAlign: "left" }}>
                       <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
@@ -1565,6 +1571,12 @@ export default function AdminSettings() {
                           Loading audit records...
                         </td>
                       </tr>
+                    ) : auditError ? (
+                      <tr>
+                        <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "#991b1b" }}>
+                          {auditError}
+                        </td>
+                      </tr>
                     ) : auditLogs.length === 0 ? (
                       <tr>
                         <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
@@ -1573,21 +1585,27 @@ export default function AdminSettings() {
                       </tr>
                     ) : (
                       auditLogs.map((log) => (
-                        <tr key={log._id} style={{ borderBottom: "1px solid var(--hair)" }}>
+                        <tr key={log.id || log._id} style={{ borderBottom: "1px solid var(--hair)" }}>
                           <td style={{ padding: "10px 12px", whiteSpace: "nowrap", color: "var(--muted)" }}>
-                            {log.createdAt ? new Date(log.createdAt).toLocaleString() : "—"}
+                            {log.timestamp || log.createdAt
+                              ? new Date(log.timestamp || log.createdAt).toLocaleString()
+                              : "—"}
                           </td>
                           <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--ink)" }}>
                             {log.action}
                           </td>
                           <td style={{ padding: "10px 12px", color: "var(--ink)" }}>
-                            {log.userEmail || "System"}
+                            {log.actorEmail || log.userEmail || "System"}
                           </td>
                           <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--muted)" }}>
                             {log.ipAddress || "—"}
                           </td>
                           <td style={{ padding: "10px 12px", color: "var(--muted)" }}>
-                            {log.details ? (typeof log.details === "object" ? JSON.stringify(log.details) : String(log.details)) : "—"}
+                            {log.details
+                              ? (typeof log.details === "object" ? JSON.stringify(log.details) : String(log.details))
+                              : log.targetType
+                                ? `${log.targetType}${log.targetId ? ` · ${log.targetId}` : ""}`
+                                : "—"}
                           </td>
                         </tr>
                       ))

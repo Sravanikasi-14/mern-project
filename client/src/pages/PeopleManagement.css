@@ -1059,3 +1059,59 @@
 .row-actions .btn-sm {
   min-height: 36px;
 }
+
+@media (max-width: 768px) {
+  .pm-cards-toolbar {
+    display: none;
+  }
+
+  .pm-emp-contact-box,
+  .pm-emp-meta-grid,
+  .pm-emp-card-actions,
+  .pm-emp-dot-indicator {
+    display: none;
+  }
+
+  .pm-emp-card {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 36px 12px 16px;
+    cursor: pointer;
+  }
+
+  .pm-emp-card-top {
+    order: 2;
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  .pm-emp-avatar-row {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .pm-emp-card .m-card-chevron {
+    display: block;
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    margin-top: -5px;
+  }
+
+  .pm-emp-card:hover {
+    transform: none;
+  }
+
+  .pm-card-btn-edit,
+  .pm-card-btn-view {
+    min-height: 44px;
+  }
+
+  .pm-top-stats {
+    display: none;
+  }
+}

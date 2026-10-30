@@ -1,5 +1,7 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceTimeline from "../components/AttendanceTimeline";
 import AttendanceSummaryMetrics from "../components/AttendanceSummaryMetrics";
@@ -9,23 +11,30 @@ import {
   IconCheck,
   IconAlertCircle,
   IconClock,
-} from "../components/Icons";
+  IconChevronLeft,
+  IconChevronRight,
+  IconSearch,
+} from "../components/EmployeeIcon";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import {
+  useAttendanceHistoryQuery,
+  useDashboardQuery,
+  useTrackingStatusQuery,
+} from "../hooks/useEmployeeQueries";
+import { invalidateAttendance } from "../lib/queryKeys";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
 import { civilDaysInMonth, formatCivilDate, getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import "./Attendance.css";
 
 export default function EmployeeAttendance() {
   const { user, company } = useAuth();
+  const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
 
-  const [dashboardData, setDashboardData] = useState(null);
   const [checkingAttendance, setCheckingAttendance] = useState(false);
 
   // Geolocation & Attendance Capture State
@@ -45,69 +54,44 @@ export default function EmployeeAttendance() {
   const [attPage, setAttPage] = useState(1);
   const [attPageSize, setAttPageSize] = useState(10);
 
-  // Attendance History State
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyRecords, setHistoryRecords] = useState([]);
-
-  const fetchAttendanceData = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      setError("");
-      const res = await api.get("/employees/me/dashboard");
-      setDashboardData(res.data);
-    } catch (err) {
-      if (!silent) {
-        setError(err.response?.data?.message || "Failed to load attendance information.");
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
-
-  const fetchAttendanceHistory = useCallback(async (targetDate = selectedDate) => {
-    try {
-      setHistoryLoading(true);
-
-      const year = targetDate.getFullYear();
-      const month = targetDate.getMonth() + 1;
-      const startDate = formatCivilDate(year, month, 1);
-      const endDate = formatCivilDate(year, month, civilDaysInMonth(year, month));
-
-      const res = await api.get("/employees/me/attendance/history", {
-        params: { startDate, endDate, limit: 100 },
-      });
-
-      if (res.data?.success) {
-        setHistoryRecords(res.data.records || []);
-      }
-    } catch {
-      // ignore history load error
-    } finally {
-      setHistoryLoading(false);
-    }
+  const historyRange = useMemo(() => {
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth() + 1;
+    return {
+      startDate: formatCivilDate(year, month, 1),
+      endDate: formatCivilDate(year, month, civilDaysInMonth(year, month)),
+    };
   }, [selectedDate]);
 
+  const dashboardQuery = useDashboardQuery();
+  const historyQuery = useAttendanceHistoryQuery(historyRange.startDate, historyRange.endDate);
+  const trackingQuery = useTrackingStatusQuery();
+
+  const dashboardData = dashboardQuery.data ?? null;
+  const historyRecords = historyQuery.data || [];
+  const historyLoading = historyQuery.isLoading && !historyQuery.data;
+  const isSoftRefreshing =
+    (dashboardQuery.isFetching && !!dashboardData) ||
+    (historyQuery.isFetching && !!historyQuery.data);
+
   useEffect(() => {
-    fetchAttendanceData();
-    fetchAttendanceHistory(selectedDate);
+    const data = trackingQuery.data;
+    if (data?.isTrackingActive && data?.session) {
+      setIsLiveTracking(true);
+      setTrackingSession(data.session);
+    } else if (data && !data.isTrackingActive) {
+      setIsLiveTracking(false);
+      setTrackingSession(null);
+    }
+  }, [trackingQuery.data]);
 
-    // Check live tracking status
-    api
-      .get("/employees/me/tracking/status")
-      .then((res) => {
-        if (res.data?.isTrackingActive && res.data?.session) {
-          setIsLiveTracking(true);
-          setTrackingSession(res.data.session);
-        }
-      })
-      .catch(() => {});
-
+  useEffect(() => {
     return () => {
       if (unwatchRef.current) {
         unwatchRef.current();
       }
     };
-  }, [fetchAttendanceHistory, selectedDate]);
+  }, []);
 
   const handlePrevMonth = () => {
     setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -144,8 +128,7 @@ export default function EmployeeAttendance() {
 
       const response = await api.post("/employees/me/attendance/punch-in", { location: loc });
       setActionSuccess(response.data?.message || "Punched in successfully!");
-      await fetchAttendanceData(true);
-      await fetchAttendanceHistory(selectedDate);
+      await invalidateAttendance(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch in. Please try again.");
     } finally {
@@ -176,8 +159,7 @@ export default function EmployeeAttendance() {
 
       const response = await api.post("/employees/me/attendance/punch-out", { location: loc });
       setActionSuccess(response.data?.message || "Punched out successfully!");
-      await fetchAttendanceData(true);
-      await fetchAttendanceHistory(selectedDate);
+      await invalidateAttendance(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch out. Please try again.");
     } finally {
@@ -192,6 +174,7 @@ export default function EmployeeAttendance() {
       if (res.data?.success) {
         setIsLiveTracking(true);
         setTrackingSession(res.data.session);
+        await invalidateAttendance(queryClient);
 
         if (unwatchRef.current) {
           unwatchRef.current();
@@ -229,6 +212,7 @@ export default function EmployeeAttendance() {
       if (!silent) {
         await api.post("/employees/me/tracking/stop");
       }
+      await invalidateAttendance(queryClient);
     } catch {
       // ignore stop error
     }
@@ -386,9 +370,9 @@ export default function EmployeeAttendance() {
   return (
     <div className="attendance-page-container">
       {/* App Header */}
-      <AppHeader
-        title="Attendance"
-      />
+      <AppHeader title="Attendance">
+        <SoftRefresh active={isSoftRefreshing} />
+      </AppHeader>
 
       {/* Action feedback banners */}
       {actionSuccess && (
@@ -587,9 +571,7 @@ export default function EmployeeAttendance() {
             aria-label="Previous month"
             title="Previous month"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <IconChevronLeft size={14} strokeWidth={2.15} />
           </button>
           <span className="att-month-title">{monthYearLabel}</span>
           <button
@@ -599,18 +581,13 @@ export default function EmployeeAttendance() {
             aria-label="Next month"
             title="Next month"
           >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <IconChevronRight size={14} strokeWidth={2.15} />
           </button>
         </div>
 
         <div className="att-controls-right">
           <div className="att-search-box">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m16.5 16.5 4 4" />
-            </svg>
+            <IconSearch size={14} />
             <input
               type="text"
               placeholder="Search date..."

@@ -1483,7 +1483,7 @@ export default function AdminPayroll() {
                 {loadingList && <div className="table-progress-bar" />}
                 {loadingList && settlements.length === 0 ? (
                   <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                    <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                       <thead>
                         <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
                           <th style={{ padding: "12px 16px" }}>Employee</th>
@@ -1512,7 +1512,7 @@ export default function AdminPayroll() {
                 ) : (
                   <>
                     <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                      <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                         <thead>
                           <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
                             <th style={{ padding: "12px 16px" }}>Employee</th>

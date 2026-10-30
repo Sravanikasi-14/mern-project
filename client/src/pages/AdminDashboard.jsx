@@ -1,11 +1,16 @@
 import { useEffect, useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import api from "../services/api";
 import WorkforceAllocation from "../components/WorkforceAllocation";
+import SoftRefresh from "../components/SoftRefresh";
 import { IconArrowLeft, IconArrowRight } from "../components/Icons";
+import MobileExpandable from "../components/mobile/MobileExpandable";
 import { getCompanyBrandName } from "../utils/companyBrand";
-import { getCompanyBusinessDate, parseCivilDate, resolveCompanyTimezone, weekdaySunday0 } from "../utils/dateUtils";
+import { parseCivilDate, weekdaySunday0 } from "../utils/dateUtils";
+import {
+  useAdminDashboardQuery,
+  buildAdminDashboardFallback,
+} from "../hooks/useAdminQueries";
 import "./AdminDashboard.css";
 import "../pages/PeopleManagement.css";
 
@@ -70,16 +75,12 @@ const PASTEL_AVATAR_COLORS = [
 
 export default function AdminDashboard() {
   const { user, company } = useAuth();
-  const navigate = useNavigate();
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [data, setData] = useState(null);
 
   // Month & Year Filter states
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedDept, setSelectedDept] = useState("ALL");
+  const [fallbackData, setFallbackData] = useState(null);
 
   // Attendance Analytics Range ("TODAY" | "7D" | "30D")
   const [attendanceRange, setAttendanceRange] = useState("7D");
@@ -90,166 +91,36 @@ export default function AdminDashboard() {
     "July", "August", "September", "October", "November", "December"
   ];
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Dedicated aggregated dashboard endpoint
-      try {
-        const res = await api.get("/admin/dashboard", {
-          params: {
-            month: selectedMonth,
-            year: selectedYear,
-            department: selectedDept,
-          },
-        });
-        if (res.data && res.data.success) {
-          setData(res.data);
-          setLoading(false);
-          return;
-        }
-      } catch (dashErr) {
-        if (dashErr.response?.status !== 404) {
-          throw dashErr;
-        }
-      }
-
-      // Fallback: aggregate individual endpoints if single route isn't available
-      const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(company));
-      const [empSummaryRes, attendanceRes, leavesRes, offersRes, cyclesRes] = await Promise.allSettled([
-        api.get("/employees/summary"),
-        api.get("/admin/attendance/overview", {
-          params: { date: todayStr, department: selectedDept },
-        }),
-        api.get("/leave-requests"),
-        api.get("/offer-letters/summary"),
-        api.get("/payroll/cycles"),
-      ]);
-
-      const empSummary = empSummaryRes.status === "fulfilled" ? empSummaryRes.value.data?.summary || {} : {};
-      const totalEmp = empSummary.activeEmployees ?? empSummary.totalEmployees ?? 0;
-      const attData = attendanceRes.status === "fulfilled" ? attendanceRes.value.data || {} : {};
-      const attSummary = attData.summary || {};
-      const leavesList = leavesRes.status === "fulfilled" ? leavesRes.value.data?.leaves || [] : [];
-      const offersData = offersRes.status === "fulfilled" ? offersRes.value.data || {} : {};
-      const cyclesList = cyclesRes.status === "fulfilled" ? cyclesRes.value.data?.cycles || [] : [];
-
-      const currentCycle = cyclesList.find(
-        (c) => c.periodMonth === selectedMonth && c.periodYear === selectedYear
-      ) || cyclesList[0] || null;
-
-      const present = attSummary.presentCount ?? 0;
-      const onLeave = leavesList.filter(
-        (l) => l.status === "APPROVED" && l.fromDate?.split("T")[0] <= todayStr && l.toDate?.split("T")[0] >= todayStr
-      ).length;
-      const absent = Math.max(0, totalEmp - present - onLeave);
-      const late = attSummary.lateCount ?? 0;
-
-      // 7-day fallback trend
-      const fallbackDays = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        fallbackDays.push({
-          date: d.toISOString().split("T")[0],
-          dayOfWeek: d.getDay(),
-          isWeekend: d.getDay() === 0 || d.getDay() === 6,
-          isToday: i === 0,
-          presentCount: i === 0 ? present : Math.max(0, Math.round(totalEmp * 0.85)),
-          absentCount: i === 0 ? absent : Math.max(0, Math.round(totalEmp * 0.1)),
-          lateCount: i === 0 ? late : Math.max(0, Math.round(totalEmp * 0.05)),
-          leaveCount: i === 0 ? onLeave : 0,
-        });
-      }
-
-      setData({
-        meta: {
-          companyName: company?.companyName || "Organization",
-          todayDate: todayStr,
-          selectedDate: todayStr,
-          selectedMonth,
-          selectedYear,
-          currencySymbol: "₹",
-          departments: [],
-          officeStartTime: "09:30 AM",
-        },
-        summary: {
-          activeEmployees: totalEmp,
-          todayPresent: present,
-          todayAbsent: absent,
-          todayLate: late,
-          onLeave,
-          monthlyPayroll: empSummary.totalMonthlySalary || 0,
-          payrollStatus: currentCycle?.status || "Draft",
-        },
-        payrollCycleSummary: currentCycle
-          ? {
-              status: currentCycle.status,
-              statusLabel: currentCycle.status.charAt(0) + currentCycle.status.slice(1).toLowerCase(),
-              periodMonth: currentCycle.periodMonth,
-              periodYear: currentCycle.periodYear,
-              totalNetSalary: currentCycle.totalNetSalary || 0,
-              employeeCount: currentCycle.employeeCount || 0,
-              pendingAction: currentCycle.status === "FINALIZED" ? "Record salary disbursements" : "Review payroll calculations",
-            }
-          : {
-              status: "DRAFT",
-              statusLabel: "Draft",
-              periodMonth: selectedMonth,
-              periodYear: selectedYear,
-              totalNetSalary: 0,
-              employeeCount: 0,
-              pendingAction: "Initialize monthly payroll register",
-            },
-        recruitmentFunnel: {
-          offersGenerated: offersData.totalOffers || 0,
-          accepted: offersData.acceptedCount || 0,
-          acceptedPct: offersData.totalOffers > 0 ? Math.round(((offersData.acceptedCount || 0) / offersData.totalOffers) * 100) : 0,
-          pending: offersData.pendingCount || 0,
-          pendingPct: offersData.totalOffers > 0 ? Math.round(((offersData.pendingCount || 0) / offersData.totalOffers) * 100) : 0,
-          declined: offersData.rejectedCount || 0,
-          declinedPct: offersData.totalOffers > 0 ? Math.round(((offersData.rejectedCount || 0) / offersData.totalOffers) * 100) : 0,
-          acceptanceRate: offersData.totalOffers > 0 ? ((offersData.acceptedCount || 0) / offersData.totalOffers * 100).toFixed(1) : "0.0",
-        },
-        attendanceCalendar: {
-          month: selectedMonth,
-          year: selectedYear,
-          days: fallbackDays,
-        },
-        recentLeaves: leavesList.slice(0, 5).map((l) => ({
-          id: l._id,
-          employeeName: l.employeeId?.fullName || "Team Member",
-          department: l.employeeId?.job?.department || "General",
-          leaveType: l.leaveTypeCode || "Leave",
-          daysCount: l.daysCount || 1,
-          status: l.status || "PENDING",
-        })),
-        recentOffers: [],
-        upcomingHolidays: [],
-        salaryExpenses: [],
-        companyAssets: {
-          totalEmployees: totalEmp,
-          employeesWithAssets: Math.round(totalEmp * 0.75),
-          employeesWithAssetsPct: 75,
-        },
-        projectTeams: {
-          MANDATE: Math.round(totalEmp * 0.5),
-          RETAIL: Math.round(totalEmp * 0.2),
-          INTERNAL: Math.round(totalEmp * 0.2),
-          BENCH: Math.max(0, totalEmp - Math.round(totalEmp * 0.9)),
-        },
-      });
-      setLoading(false);
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || "Failed to load dashboard metrics");
-      setLoading(false);
-    }
-  };
+  const dashboardQuery = useAdminDashboardQuery({
+    month: selectedMonth,
+    year: selectedYear,
+    department: selectedDept,
+  });
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [selectedMonth, selectedYear, selectedDept]);
+    let cancelled = false;
+    if (dashboardQuery.data?.source === "fallback") {
+      buildAdminDashboardFallback({
+        company,
+        selectedMonth,
+        selectedYear,
+        selectedDept,
+      }).then((d) => {
+        if (!cancelled) setFallbackData(d);
+      });
+    } else {
+      setFallbackData(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardQuery.data, company, selectedMonth, selectedYear, selectedDept]);
+
+  const data =
+    dashboardQuery.data?.source === "aggregated"
+      ? dashboardQuery.data.data
+      : fallbackData;
+  const loading = !data && (dashboardQuery.isLoading || dashboardQuery.isFetching || dashboardQuery.data?.source === "fallback");
 
   const handlePrevMonth = () => {
     if (selectedMonth === 1) {
@@ -421,13 +292,15 @@ export default function AdminDashboard() {
             <span>Add Employee</span>
           </Link>
 
+          <SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />
+
           {/* Sync / Refresh Button */}
           <button
             type="button"
             className="btn--ghost-sync"
-            onClick={fetchDashboardData}
+            onClick={() => dashboardQuery.refetch()}
             title="Sync live dashboard metrics"
-            disabled={loading}
+            disabled={dashboardQuery.isFetching}
             aria-label="Refresh dashboard"
           >
             <svg
@@ -439,7 +312,7 @@ export default function AdminDashboard() {
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className={loading ? "spin-icon" : ""}
+              className={dashboardQuery.isFetching ? "spin-icon" : ""}
             >
               <polyline points="23 4 23 10 17 10" />
               <polyline points="1 20 1 14 7 14" />
@@ -459,7 +332,7 @@ export default function AdminDashboard() {
         {/* Card 1: Total Workforce (Hero Deep Green Gradient) */}
         <Link to="/admin" className="card stat stat--hero stat-kpi">
           <div className="stat__head">
-            <h2 className="stat__title">Total Workforce</h2>
+            <h2 className="stat__title"><span className="m-title-full">Total Workforce</span><span className="m-title-short">Team</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
@@ -473,7 +346,7 @@ export default function AdminDashboard() {
         {/* Card 2: Present Today */}
         <Link to="/admin/attendance?filter=PRESENT" className="card stat stat-kpi">
           <div className="stat__head">
-            <h2 className="stat__title">Present Today</h2>
+            <h2 className="stat__title"><span className="m-title-full">Present Today</span><span className="m-title-short">Present</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
@@ -488,7 +361,7 @@ export default function AdminDashboard() {
         {/* Card 3: Absent / Late / On Leave */}
         <Link to="/admin/leave" className="card stat stat-kpi">
           <div className="stat__head">
-            <h2 className="stat__title">On Leave & Exceptions</h2>
+            <h2 className="stat__title"><span className="m-title-full">On Leave & Exceptions</span><span className="m-title-short">Time off</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
@@ -502,7 +375,7 @@ export default function AdminDashboard() {
         {/* Card 4: Pending HR Actions */}
         <Link to="/admin/leave?status=PENDING" className="card stat stat-kpi">
           <div className="stat__head">
-            <h2 className="stat__title">Pending HR Actions</h2>
+            <h2 className="stat__title"><span className="m-title-full">Pending HR Actions</span><span className="m-title-short">To review</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
@@ -518,6 +391,7 @@ export default function AdminDashboard() {
             - Left (Span 8): Attendance & Work Hours Analytics (Capsule Bar Chart)
             - Right (Span 4): Pending HR Actions List
             ==================================================================== */}
+        <MobileExpandable title="Insights and reports">
         <div className="dash-stack dash-stack--primary">
         <section className="card analytics-card">
           <div className="card__head">
@@ -705,14 +579,16 @@ export default function AdminDashboard() {
           />
         </section>
         </div>
+        </MobileExpandable>
 
         <div className="dash-stack dash-stack--secondary">
         <section className="card pending-actions-card">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Action Center</h2>
+              <h2 className="card__title"><span className="m-title-full">Action Center</span><span className="m-title-short">Needs you</span></h2>
             </div>
             <span className="pending-count-chip">{totalPendingActions} pending</span>
+            <Link to="/admin/leave" className="m-view-all">View all</Link>
           </div>
 
           <div className="pending-task-list">
@@ -768,6 +644,7 @@ export default function AdminDashboard() {
           </div>
         </section>
 
+        <MobileExpandable title="Payroll history">
         <section className="card payroll-card">
           <div className="card__head">
             <div>
@@ -816,8 +693,10 @@ export default function AdminDashboard() {
             <p className="payroll-history-empty">No processed payroll history for {selectedYear}.</p>
           )}
         </section>
+        </MobileExpandable>
         </div>
 
+        <MobileExpandable title="Recent activity and holidays">
         <section className="card team-activity-card">
           <div className="card__head">
             <div>
@@ -902,6 +781,7 @@ export default function AdminDashboard() {
             )}
           </div>
         </section>
+        </MobileExpandable>
       </div>
     </div>
   );

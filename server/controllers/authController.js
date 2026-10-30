@@ -153,7 +153,7 @@ export async function logout(req, res) {
   const headerToken = authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")
     ? authHeader.slice(7).trim()
     : null;
-  const token = req.cookies?.[getAuthCookieName()] || headerToken;
+  const token = headerToken || req.cookies?.[getAuthCookieName()];
   if (token) {
     try {
       const payload = verifyAuthToken(token);

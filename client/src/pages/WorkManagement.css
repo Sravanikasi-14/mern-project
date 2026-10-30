@@ -60,7 +60,7 @@
 
 @media (max-width: 640px) {
   .wm-kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -986,6 +986,37 @@
 @media (max-width: 900px) {
   .wm-kanban-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .wm-view-switcher {
+    display: none;
+  }
+
+  .wm-task-card-desc {
+    display: none;
+  }
+
+  .wm-kanban-board {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .wm-kanban-col,
+  .wm-kanban-tasks {
+    overflow: visible;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .wm-card-btn-action {
+    min-height: 44px;
+  }
+
+  .wm-filter-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
