@@ -259,6 +259,8 @@ export function createEmployeeSchema() {
   employeeSchema.index({ createdAt: -1 });
   employeeSchema.index({ status: 1, createdAt: -1 });
   employeeSchema.index({ "job.reportingManagerId": 1 });
+  employeeSchema.index({ "job.department": 1, status: 1 });
+  employeeSchema.index({ "job.project.projectName": 1, status: 1 });
   employeeSchema.index({ fullName: 1 });
   employeeSchema.index(
     { userId: 1 },

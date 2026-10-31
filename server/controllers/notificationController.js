@@ -135,8 +135,8 @@ export async function getNotifications(req, res, next) {
 
       if (Task) {
         const myTasks = await Task.find({
-          assignedTo: user.employeeId,
-          status: { $ne: "COMPLETED" },
+          assigneeId: user.employeeId,
+          status: { $nin: ["APPROVED", "REJECTED"] },
         })
           .sort({ updatedAt: -1 })
           .limit(5)

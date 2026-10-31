@@ -49,7 +49,10 @@ export function useEmployeesPoolQuery(options = {}) {
   return useQuery({
     queryKey: qk.employeesPool(),
     queryFn: async () => {
-      const res = await api.get("/employees", { params: { limit: 300 } });
+      // Lean pool for project/dept cards — skip per-row compensation hydration.
+      const res = await api.get("/employees", {
+        params: { limit: 300, includeCompensation: false, sortBy: "fullName", sortOrder: "asc" },
+      });
       return res.data?.employees || [];
     },
     staleTime: STALE.employees,

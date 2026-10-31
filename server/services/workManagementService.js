@@ -789,50 +789,27 @@ export async function getLeaderboardService({
     }
   }
 
+  // Prefer denormalized employeeSnapshot — avoids per-transaction $lookup into employees.
   const pipeline = [
     { $match: matchStage },
     {
-      $lookup: {
-        from: "employees",
-        localField: "employeeId",
-        foreignField: "_id",
-        as: "employeeDoc",
-      },
-    },
-    {
-      $addFields: {
-        employee: { $arrayElemAt: ["$employeeDoc", 0] },
-      },
-    },
-    {
       $addFields: {
         resolvedFullName: {
-          $ifNull: ["$employee.fullName", "$employeeSnapshot.fullName"],
+          $ifNull: ["$employeeSnapshot.fullName", "Employee"],
         },
         resolvedEmployeeCode: {
-          $ifNull: ["$employee.employeeCode", "$employeeSnapshot.employeeCode"],
+          $ifNull: ["$employeeSnapshot.employeeCode", ""],
         },
         resolvedDepartment: {
           $cond: [
             {
               $and: [
-                { $ne: ["$employee.job.department", ""] },
-                { $ne: ["$employee.job.department", null] },
+                { $ne: ["$employeeSnapshot.department", ""] },
+                { $ne: ["$employeeSnapshot.department", null] },
               ],
             },
-            "$employee.job.department",
-            {
-              $cond: [
-                {
-                  $and: [
-                    { $ne: ["$employeeSnapshot.department", ""] },
-                    { $ne: ["$employeeSnapshot.department", null] },
-                  ],
-                },
-                "$employeeSnapshot.department",
-                "General",
-              ],
-            },
+            "$employeeSnapshot.department",
+            "General",
           ],
         },
       },
@@ -845,7 +822,6 @@ export async function getLeaderboardService({
         $or: [
           { resolvedDepartment: department },
           { "employeeSnapshot.department": department },
-          { "employee.job.department": department },
         ],
       },
     });
@@ -987,15 +963,36 @@ export async function getEmployeePointsSummaryService({ models, employeeId }) {
 
   const pointsThisMonth = monthAgg[0]?.pointsThisMonth || 0;
 
-  // 3. Overall rank in company
-  const companyLeaderboard = await getLeaderboardService({ models, department: "ALL", limit: 200 });
-  const rankInCompany = companyLeaderboard.find((entry) => String(entry.employeeId) === String(employee._id))?.rank || "-";
+  // 3–4. Ranks via lightweight balance grouping (no $lookup leaderboards)
+  const balanceRows = await ImpactPointTransaction.aggregate([
+    { $match: { isReversed: false } },
+    {
+      $group: {
+        _id: "$employeeId",
+        balance: { $sum: "$points" },
+        department: { $first: "$employeeSnapshot.department" },
+      },
+    },
+  ]);
+  const myBalance =
+    balanceRows.find((row) => String(row._id) === String(employee._id))?.balance ?? balance;
+  const rankInCompany =
+    balanceRows.length === 0
+      ? "-"
+      : balanceRows.filter((row) => row.balance > myBalance).length + 1;
 
-  // 4. Department rank
   let rankInDepartment = "-";
   if (employee.job?.department) {
-    const deptLeaderboard = await getLeaderboardService({ models, department: employee.job.department, limit: 100 });
-    rankInDepartment = deptLeaderboard.find((entry) => String(entry.employeeId) === String(employee._id))?.rank || "-";
+    const dept = employee.job.department;
+    const deptRows = balanceRows.filter(
+      (row) =>
+        String(row._id) === String(employee._id) ||
+        String(row.department || "").toLowerCase() === String(dept).toLowerCase()
+    );
+    rankInDepartment =
+      deptRows.length === 0
+        ? "-"
+        : deptRows.filter((row) => row.balance > myBalance).length + 1;
   }
 
   // 5. Recent transactions

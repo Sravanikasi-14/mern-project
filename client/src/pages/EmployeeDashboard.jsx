@@ -20,6 +20,7 @@ import { useDashboardQuery, useMyTasksQuery } from "../hooks/useEmployeeQueries"
 import { invalidateAttendance, invalidateEmployeeWork, invalidateLeave } from "../lib/queryKeys";
 import api from "../services/api";
 import StatusBadge from "../components/StatusBadge";
+import DateRangePicker from "../components/DateRangePicker";
 import "./EmployeeDashboard.css";
 import MobileExpandable from "../components/mobile/MobileExpandable";
 import MobileEmptyState from "../components/mobile/MobileEmptyState";
@@ -978,46 +979,21 @@ export default function EmployeeDashboard() {
 
                 return (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <div className="emp-form-group">
-                        <label className="emp-form-label">
-                          Start Date
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          min={leaveEligibility.earliestEligibleDate}
-                          value={leaveForm.startDate}
-                          onChange={(e) => {
-                            const newStart = e.target.value;
-                            setLeaveForm((prev) => ({
-                              ...prev,
-                              startDate: newStart,
-                              endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
-                            }));
-                          }}
-                          className="emp-form-input"
-                          style={{
-                            borderColor: dateConflict ? "#ef4444" : undefined,
-                          }}
-                        />
-                      </div>
-                      <div className="emp-form-group">
-                        <label className="emp-form-label">
-                          End Date
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
-                          value={leaveForm.endDate}
-                          onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                          className="emp-form-input"
-                          style={{
-                            borderColor: dateConflict ? "#ef4444" : undefined,
-                          }}
-                        />
-                      </div>
+                    <div className="emp-form-group" style={dateConflict ? { outline: "1px solid #ef4444", borderRadius: 10, padding: 4 } : undefined}>
+                      <DateRangePicker
+                        label="Leave dates"
+                        placeholder="Select leave date range"
+                        startDate={leaveForm.startDate}
+                        endDate={leaveForm.endDate}
+                        minDate={leaveEligibility.earliestEligibleDate}
+                        onChange={({ startDate, endDate }) => {
+                          setLeaveForm((prev) => ({
+                            ...prev,
+                            startDate: startDate || "",
+                            endDate: endDate || startDate || "",
+                          }));
+                        }}
+                      />
                     </div>
 
                     {dateConflict && (

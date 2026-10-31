@@ -109,6 +109,7 @@ export function createAttendanceSchema() {
   // Guarantee single record per employee per business date
   attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
   attendanceSchema.index({ date: 1, status: 1 });
+  attendanceSchema.index({ date: 1, employeeId: 1 });
   attendanceSchema.index({ employeeId: 1, createdAt: -1 });
 
   return attendanceSchema;

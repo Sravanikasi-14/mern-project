@@ -445,6 +445,55 @@
   gap: 4px;
 }
 
+.ol-actions--compact {
+  gap: 6px;
+}
+
+.ol-menu {
+  position: relative;
+}
+
+.ol-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--hair, #e6ede8);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(19, 26, 21, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ol-menu-panel button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  cursor: pointer;
+}
+
+.ol-menu-panel button:hover:not(:disabled) {
+  background: var(--g-100, #e3f2e9);
+}
+
+.ol-menu-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ol-menu-panel button.is-danger {
+  color: #b91c1c;
+}
+
 .ol-empty {
   padding: 28px 16px;
   text-align: center;

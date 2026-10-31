@@ -109,6 +109,9 @@ export function createImpactPointTransactionSchema() {
   transactionSchema.index({ employeeId: 1, points: 1 });
   transactionSchema.index({ "employeeSnapshot.department": 1, points: 1 });
   transactionSchema.index({ taskId: 1 });
+  transactionSchema.index({ actorUserId: 1, source: 1, createdAt: -1 });
+  transactionSchema.index({ isReversed: 1, createdAt: -1 });
+  transactionSchema.index({ isReversed: 1, employeeId: 1 });
 
   return transactionSchema;
 }

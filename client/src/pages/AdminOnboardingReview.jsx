@@ -545,7 +545,7 @@ export default function AdminOnboardingReview() {
         )}
       </div>
 
-      {/* Review Details Drawer */}
+      {/* Review Details — centered modal */}
       {selectedSubmission && (
         <div
           style={{
@@ -554,26 +554,41 @@ export default function AdminOnboardingReview() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(15, 23, 42, 0.5)",
+            background: "rgba(15, 23, 42, 0.45)",
             display: "flex",
-            justifyContent: "flex-end",
+            alignItems: "center",
+            justifyContent: "center",
             zIndex: 1000,
+            padding: 20,
+            backdropFilter: "blur(2px)",
           }}
           onClick={() => {
             if (!approving && !requestingCorrections && !rejecting) {
               setSelectedSubmission(null);
             }
           }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !approving && !requestingCorrections && !rejecting) {
+              setSelectedSubmission(null);
+            }
+          }}
+          role="presentation"
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Candidate onboarding submission"
             style={{
-              width: "660px",
-              maxWidth: "100vw",
-              background: "#ffffff",
-              height: "100vh",
+              width: "100%",
+              maxWidth: 760,
+              background: "var(--card, #ffffff)",
+              maxHeight: "min(90vh, 90dvh)",
               display: "flex",
               flexDirection: "column",
-              boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.12)",
+              borderRadius: "var(--r-md, 12px)",
+              border: "1px solid var(--hair, #e6ede8)",
+              boxShadow: "0 20px 48px rgba(19, 26, 21, 0.16)",
+              overflow: "hidden",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -615,7 +630,7 @@ export default function AdminOnboardingReview() {
                 <button
                   type="button"
                   onClick={() => setSelectedSubmission(null)}
-                  aria-label="Close drawer"
+                  aria-label="Close"
                   style={{
                     background: "transparent",
                     border: "none",

@@ -74,8 +74,8 @@ export default function AdminAssets() {
   }, [debouncedSearch, categoryFilter, statusFilter, conditionFilter]);
 
   const assetsQuery = useAdminAssetsQuery({
-    page: 1,
-    limit: 500,
+    page,
+    limit: pageSize,
     status: statusFilter !== "ALL" ? statusFilter : "",
     search: debouncedSearch,
     category: categoryFilter !== "ALL" ? categoryFilter : "",
@@ -93,6 +93,12 @@ export default function AdminAssets() {
     requiringAttention: 0,
   };
   const loading = assetsQuery.isLoading && assets.length === 0;
+  const pagination = assetsQuery.data?.pagination || {
+    page,
+    limit: pageSize,
+    total: 0,
+    totalPages: 1,
+  };
 
   useEffect(() => {
     if (assetsQuery.error) {
@@ -105,12 +111,9 @@ export default function AdminAssets() {
     }
   }, [assetsQuery.error, assetsQuery.isSuccess]);
 
-  const totalAssets = assets.length;
-  const totalPages = Math.ceil((totalAssets || 1) / pageSize);
-  const paginatedAssets = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return assets.slice(start, start + pageSize);
-  }, [assets, page, pageSize]);
+  const totalAssets = pagination.total || 0;
+  const totalPages = pagination.totalPages || 1;
+  const paginatedAssets = assets;
 
   // Employees for assignment dropdown
   const [employees, setEmployees] = useState([]);

@@ -1,123 +1,172 @@
 /* HR Policies Enterprise Workspace Styling */
 
-.policies-workspace-container {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 16px;
-  align-items: flex-start;
-  margin-top: 14px;
+/* Card overview */
+.policies-overview {
+  margin-top: 18px;
 }
 
-/* Left Category Navigation Panel */
-.policies-nav-panel {
-  width: 100%;
-  flex-shrink: 0;
+.policies-overview-intro {
+  margin-bottom: 18px;
+}
+
+.policies-overview-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+}
+
+.policies-overview-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted, #646d67);
+  max-width: 52ch;
+}
+
+.policies-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.policies-overview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+  padding: 20px 18px;
   background: #ffffff;
   border: 1px solid var(--hair, #e6ede8);
   border-radius: 12px;
-  padding: 8px;
   box-shadow: var(--shadow-sm);
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 100px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #d4d4d8 transparent;
-}
-
-.policies-nav-panel::-webkit-scrollbar {
-  width: 5px;
-}
-
-.policies-nav-panel::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 4px;
-}
-
-.policies-nav-header {
-  padding: 8px 10px 6px;
-  margin-bottom: 4px;
-}
-
-.policies-nav-title {
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0;
-  color: var(--muted, #646d67);
-  margin: 0;
-}
-
-.policies-category-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.policies-category-item-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  color: var(--ink, #131a15);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
   cursor: pointer;
-  transition: all 0.15s ease-in-out;
-  justify-content: flex-start;
-  box-shadow: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  color: inherit;
+  width: 100%;
+  min-height: 148px;
 }
 
-.policies-category-item-btn:hover {
-  background: #f8faf8;
-  color: var(--g-800, #155a37);
+.policies-overview-card:hover {
+  border-color: rgba(39, 134, 90, 0.35);
+  box-shadow: 0 8px 20px rgba(21, 90, 55, 0.08);
+  transform: translateY(-1px);
 }
 
-.policies-category-item-btn.active {
-  background: var(--g-100, #e3f2e9);
-  color: var(--g-800, #155a37);
-  font-weight: 600;
+.policies-overview-card:focus-visible {
+  outline: 2px solid var(--g-600, #27865a);
+  outline-offset: 2px;
 }
 
-.policies-category-icon-wrap {
-  width: 22px;
-  height: 22px;
-  color: var(--muted, #646d67);
+.policies-overview-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
   flex-shrink: 0;
-  transition: all 0.15s ease;
 }
 
-.policies-category-item-btn:hover .policies-category-icon-wrap {
-  color: var(--g-800, #155a37);
+.policies-overview-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
-.policies-category-item-btn.active .policies-category-icon-wrap {
-  color: var(--g-800, #155a37);
+.policies-overview-card-title {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.01em;
 }
 
-.policies-category-name {
+.policies-overview-card-desc {
+  margin: 0;
   font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.45;
+  color: var(--muted, #646d67);
 }
 
-/* Right Main Configuration Workspace: Single Unified Workspace Surface */
+.policies-workspace-container {
+  display: block;
+  margin-top: 14px;
+}
+
+.policies-editor-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f2f0;
+}
+
+.policies-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--g-800, #155a37);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.policies-back-btn:hover {
+  color: var(--g-900, #0f3f27);
+}
+
+.policies-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.policies-editor-heading-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  flex-shrink: 0;
+}
+
+.policies-editor-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+}
+
+.policies-editor-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted, #646d67);
+}
+
+/* Consolidated policy editor surface */
 .policies-content-workspace {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 28px;
   background: #ffffff;
   border: 1px solid var(--hair, #e6ede8);
   border-radius: 12px;
@@ -133,6 +182,11 @@
   border-radius: 0;
   padding: 0;
   box-shadow: none;
+}
+
+.policies-section-card + .policies-section-card {
+  padding-top: 8px;
+  border-top: 1px solid #f0f2f0;
 }
 
 .policies-card-header {
@@ -401,14 +455,9 @@
 }
 
 /* Responsive Breakpoints */
-@media (max-width: 1024px) {
-  .policies-workspace-container {
-    grid-template-columns: 1fr;
-  }
-  .policies-nav-panel {
-    width: 100%;
-    position: static;
-    max-height: 280px;
+@media (max-width: 1100px) {
+  .policies-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -418,8 +467,12 @@
     grid-template-columns: 1fr;
   }
 
-  .policies-nav-panel {
-    max-height: none;
+  .policies-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .policies-content-workspace {
+    padding: 16px;
   }
 }
 

@@ -1,0 +1,11 @@
+{
+  "appId": "com.hrms.app",
+  "appName": "HRMS",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

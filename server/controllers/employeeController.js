@@ -77,6 +77,8 @@ export async function getEmployees(req, res, next) {
     const sortByParam = req.query.sortBy;
     const sortField = ALLOWED_SORT_FIELDS[sortByParam] || "createdAt";
     const sortDirection = req.query.sortOrder === "asc" ? 1 : -1;
+    const includeCompensation =
+      String(req.query.includeCompensation || "true").toLowerCase() !== "false";
 
     const query = {};
 
@@ -116,11 +118,11 @@ export async function getEmployees(req, res, next) {
         .lean(),
     ]);
 
-    // Retrieve salary info for HR_ADMIN
+    // Retrieve salary info for HR_ADMIN (skip for lean workforce/pool fetches)
     const employeeIds = employees.map((emp) => emp._id);
     const compensationMap = new Map();
 
-    if (EmployeeCompensation && employeeIds.length > 0) {
+    if (includeCompensation && EmployeeCompensation && employeeIds.length > 0) {
       const compensations = await EmployeeCompensation.find(
         { employeeId: { $in: employeeIds } },
         "employeeId revisions.effectiveFromDate revisions.monthlyCostToCompany"
@@ -144,7 +146,9 @@ export async function getEmployees(req, res, next) {
 
     const enrichedEmployees = employees.map((emp) => ({
       ...emp,
-      currentMonthlySalary: compensationMap.get(String(emp._id)) ?? null,
+      currentMonthlySalary: includeCompensation
+        ? compensationMap.get(String(emp._id)) ?? null
+        : undefined,
     }));
 
     res.json({

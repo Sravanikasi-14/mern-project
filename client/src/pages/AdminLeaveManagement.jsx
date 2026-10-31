@@ -10,10 +10,13 @@ import api from "../services/api";
 import AppHeader from "../components/AppHeader";
 import { useAuth } from "../context/AuthContext";
 import MonthCalendar from "../components/MonthCalendar";
+import DateRangePicker from "../components/DateRangePicker";
+import ColumnChooser from "../components/ColumnChooser";
 import {
   useLeaveRequestsQuery,
   useActiveLeavePoliciesQuery,
 } from "../hooks/useAdminQueries";
+import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import { invalidateLeave } from "../lib/queryKeys";
 import {
   civilDaysInMonth,
@@ -27,11 +30,23 @@ import {
 import "./LeaveManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
 
+const LEAVE_TABLE_COLUMNS = [
+  { id: "employee", label: "Employee", essential: true },
+  { id: "leaveType", label: "Leave Type", essential: true },
+  { id: "dates", label: "Dates", essential: true },
+  { id: "days", label: "Days", defaultVisible: true },
+  { id: "status", label: "Status", essential: true },
+  { id: "reason", label: "Reason", defaultVisible: true },
+  { id: "appliedOn", label: "Applied On", defaultVisible: false },
+  { id: "actions", label: "Actions", essential: true },
+];
+
 const STATUS_OPTIONS = [
-  { value: "ALL", label: "All Status" },
+  { value: "ALL", label: "All" },
   { value: "PENDING", label: "Pending" },
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
+  { value: "CANCELLED", label: "Cancelled" },
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -53,12 +68,13 @@ export default function AdminLeaveManagement() {
   }));
   const [scheduleRequests, setScheduleRequests] = useState([]);
 
-  // View mode: "cards" | "table" (default cards as per Reference 1)
-  const [viewMode, setViewMode] = useState("table");
-  const initialLeaveTab = (searchParams.get("tab") || (initialStatus === "PENDING" ? "requests" : "overview")).toLowerCase();
-  const [leaveSection, setLeaveSection] = useState(
-    ["overview", "requests", "records"].includes(initialLeaveTab) ? initialLeaveTab : "overview"
-  );
+  const initialLeaveTab = (searchParams.get("tab") || (initialStatus === "PENDING" ? "leave" : "overview")).toLowerCase();
+  const [leaveSection, setLeaveSection] = useState(() => {
+    if (initialLeaveTab === "requests" || initialLeaveTab === "records" || initialLeaveTab === "leave") {
+      return "leave";
+    }
+    return "overview";
+  });
 
   // Filters & Pagination state
   const [search, setSearch] = useState("");
@@ -71,6 +87,7 @@ export default function AdminLeaveManagement() {
   const [toDateFilter, setToDateFilter] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
+  const leaveCols = useColumnPreferences("hr-leave-workspace", LEAVE_TABLE_COLUMNS);
 
   // Details & Decision Modal State
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -304,6 +321,7 @@ export default function AdminLeaveManagement() {
   };
 
   useEffect(() => {
+    if (leaveSection !== "overview") return undefined;
     let cancelled = false;
     const loadSchedule = async () => {
       try {
@@ -323,7 +341,7 @@ export default function AdminLeaveManagement() {
     return () => {
       cancelled = true;
     };
-  }, [calMonth.year, calMonth.month, actionSuccess]);
+  }, [leaveSection, calMonth.year, calMonth.month, actionSuccess]);
 
   const todayStr = getCompanyBusinessDate(new Date(), timeZone);
 
@@ -365,6 +383,11 @@ export default function AdminLeaveManagement() {
           className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
           onClick={() => {
             setLeaveSection("overview");
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set("tab", "overview");
+              return next;
+            });
             setPage(1);
           }}
         >
@@ -372,25 +395,18 @@ export default function AdminLeaveManagement() {
         </button>
         <button
           type="button"
-          className={`module-tab ${leaveSection === "requests" ? "is-active" : ""}`}
+          className={`module-tab ${leaveSection === "leave" ? "is-active" : ""}`}
           onClick={() => {
-            setLeaveSection("requests");
-            setStatusFilter("PENDING");
+            setLeaveSection("leave");
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set("tab", "leave");
+              return next;
+            });
             setPage(1);
           }}
         >
-          Requests
-        </button>
-        <button
-          type="button"
-          className={`module-tab ${leaveSection === "records" ? "is-active" : ""}`}
-          onClick={() => {
-            setLeaveSection("records");
-            if (statusFilter === "PENDING") setStatusFilter("ALL");
-            setPage(1);
-          }}
-        >
-          Records
+          Leave workspace
         </button>
       </div>
 
@@ -400,18 +416,45 @@ export default function AdminLeaveManagement() {
 
       {leaveSection === "overview" && (
         <div className="lm-summary-row">
-          <div className="lm-sum-card">
+          <button
+            type="button"
+            className="lm-sum-card"
+            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
+            onClick={() => {
+              setLeaveSection("leave");
+              setStatusFilter("PENDING");
+              setPage(1);
+            }}
+          >
             <div className="lm-sum-card-title">Pending approvals</div>
             <div className="lm-sum-card-num" style={{ color: summary.pending > 0 ? "var(--amber, #b06d0a)" : "inherit" }}>{summary.pending}</div>
-          </div>
-          <div className="lm-sum-card">
+          </button>
+          <button
+            type="button"
+            className="lm-sum-card"
+            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
+            onClick={() => {
+              setLeaveSection("leave");
+              setStatusFilter("APPROVED");
+              setPage(1);
+            }}
+          >
             <div className="lm-sum-card-title">Approved</div>
             <div className="lm-sum-card-num">{summary.approved}</div>
-          </div>
-          <div className="lm-sum-card">
+          </button>
+          <button
+            type="button"
+            className="lm-sum-card"
+            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
+            onClick={() => {
+              setLeaveSection("leave");
+              setStatusFilter("REJECTED");
+              setPage(1);
+            }}
+          >
             <div className="lm-sum-card-title">Rejected</div>
             <div className="lm-sum-card-num">{summary.rejected}</div>
-          </div>
+          </button>
           <div className="lm-sum-card">
             <div className="lm-sum-card-title">On leave today</div>
             <div className="lm-sum-card-num">{summary.onLeaveToday || 0}</div>
@@ -472,7 +515,15 @@ export default function AdminLeaveManagement() {
       </section>
       )}
 
-      <div className="lm-records-heading"><span className="m-title-full">Leave records</span><span className="m-title-short">Time off</span></div>
+      {leaveSection === "leave" && (
+      <>
+      <div className="lm-records-heading">
+        <span className="m-title-full">Leave workspace</span>
+        <span className="m-title-short">Leave</span>
+      </div>
+      <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--muted)" }}>
+        Search, filter, and approve leave in one place. Pending rows show approve/reject actions.
+      </p>
       <MobileFilterBar
         search={search}
         onSearchChange={(e) => setSearch(e.target.value)}
@@ -502,34 +553,19 @@ export default function AdminLeaveManagement() {
             ))}
           </select>
         </label>
-        <label>
-          From
-          <input
-            type="date"
-            value={fromDateFilter}
-            onChange={(e) => {
-              setFromDateFilter(e.target.value);
-              setPage(1);
-            }}
-            className="filter-select"
-          />
-        </label>
-        <label>
-          To
-          <input
-            type="date"
-            value={toDateFilter}
-            onChange={(e) => {
-              setToDateFilter(e.target.value);
-              setPage(1);
-            }}
-            className="filter-select"
-          />
-        </label>
+        <DateRangePicker
+          label="Date range"
+          startDate={fromDateFilter}
+          endDate={toDateFilter}
+          onChange={({ startDate, endDate }) => {
+            setFromDateFilter(startDate || "");
+            setToDateFilter(endDate || "");
+            setPage(1);
+          }}
+        />
       </MobileFilterBar>
       <div className="lm-toolbar">
         <div className="lm-toolbar-left">
-          {/* Status Filter Tabs */}
           <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
             {STATUS_OPTIONS.map((opt) => (
               <button
@@ -556,8 +592,6 @@ export default function AdminLeaveManagement() {
               </button>
             ))}
           </div>
-
-          {/* Search Input */}
           <div style={{ position: "relative", minWidth: 200 }}>
             <input
               type="search"
@@ -567,23 +601,7 @@ export default function AdminLeaveManagement() {
               className="search-input"
               style={{ width: "100%", paddingLeft: "30px", height: 32, fontSize: 12.5 }}
             />
-              <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ position: "absolute", left: "9px", top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
           </div>
-
-          {/* Leave Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => {
@@ -599,67 +617,25 @@ export default function AdminLeaveManagement() {
               </option>
             ))}
           </select>
-
-          {/* Date range filters */}
-          <input
-            type="date"
-            value={fromDateFilter}
-            onChange={(e) => {
-              setFromDateFilter(e.target.value);
+          <DateRangePicker
+            label=""
+            placeholder="Date range"
+            startDate={fromDateFilter}
+            endDate={toDateFilter}
+            onChange={({ startDate, endDate }) => {
+              setFromDateFilter(startDate || "");
+              setToDateFilter(endDate || "");
               setPage(1);
             }}
-            className="filter-select"
-            title="From Date"
-            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
-          />
-          <input
-            type="date"
-            value={toDateFilter}
-            onChange={(e) => {
-              setToDateFilter(e.target.value);
-              setPage(1);
-            }}
-            className="filter-select"
-            title="To Date"
-            style={{ height: 32, fontSize: 12, padding: "0 6px" }}
           />
         </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* View Mode Toggle: Cards vs Table */}
-          <div className="pm-view-toggle" style={{ height: 32 }}>
-            <button
-              type="button"
-              className={`pm-view-toggle-btn ${viewMode === "cards" ? "active" : ""}`}
-              onClick={() => setViewMode("cards")}
-              style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
-              <span>Cards</span>
-            </button>
-            <button
-              type="button"
-              className={`pm-view-toggle-btn ${viewMode === "table" ? "active" : ""}`}
-              onClick={() => setViewMode("table")}
-              style={{ padding: "0 8px", height: "100%", fontSize: 12 }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-              </svg>
-              <span>Table</span>
-            </button>
-          </div>
-
+          <ColumnChooser
+            columns={leaveCols.columns}
+            visible={leaveCols.visible}
+            onToggle={leaveCols.toggle}
+            onReset={leaveCols.reset}
+          />
           <button
             type="button"
             className="btn-secondary"
@@ -673,253 +649,91 @@ export default function AdminLeaveManagement() {
         </div>
       </div>
 
-      {/* -----------------------------------------------------------------------
-          REFERENCE 1: LEAVE REQUESTS AND APPROVALS SECTION
-          ----------------------------------------------------------------------- */}
-      <>
-        <div className={viewMode === "cards" ? "lm-cards-view" : "lm-cards-view lm-cards-view--mobile-only"}>
-          {loading && requests.length === 0 ? (
-            <div className="pm-empty-box">
-              <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
-              <p>Loading leave requests...</p>
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="pm-empty-box">
-              <h4>No leave requests found</h4>
-              <p>
-                {debouncedSearch || statusFilter !== "ALL"
-                  ? "No requests match your search or filter criteria."
-                  : "No leave requests yet."}
-              </p>
-              {(debouncedSearch || statusFilter !== "ALL") && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ marginTop: "12px" }}
-                  onClick={() => {
-                    setSearch("");
-                    setDebouncedSearch("");
-                    setStatusFilter("ALL");
-                    setTypeFilter("ALL");
-                    setFromDateFilter("");
-                    setToDateFilter("");
-                    setPage(1);
-                  }}
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="lm-requests-grid">
-              {requests.map((req) => {
-                const empName = req.employeeId?.fullName || "Employee";
-                const role = req.employeeId?.job?.jobTitle || "Team Member";
-                const isPending = req.status === "PENDING";
-                const isApproved = req.status === "APPROVED";
-                const typeCode = (req.leaveTypeCode || "CASUAL").toLowerCase();
-
-                return (
-                  <div key={req._id} className="lm-req-card">
-                    {/* Header */}
-                    <div className="lm-req-card-header">
-                      <div className="lm-req-employee-info">
-                        <div className="lm-req-avatar">
-                          {getInitials(empName)}
-                        </div>
-                        <div className="lm-req-emp-details">
-                          <h3 className="lm-req-emp-name" title={empName}>
-                            {empName}
-                          </h3>
-                          <span className="lm-req-emp-role" title={role}>
-                            {role}
-                          </span>
-                        </div>
-                      </div>
-
-                      <StatusBadge status={req.status} />
-                    </div>
-
-                    {/* Body */}
-                    <div className="lm-req-body">
-                      <div className="lm-req-meta-row">
-                        <span className={`lm-req-type-pill ${typeCode}`}>
-                          {req.leaveTypeCode || "CASUAL"}
-                        </span>
-                        <span className="lm-req-duration">
-                          {req.calculatedDays || req.durationDays || 1} Day(s)
-                        </span>
-                      </div>
-
-                      <div className="lm-req-dates-line">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                          <line x1="16" y1="2" x2="16" y2="6" />
-                          <line x1="8" y1="2" x2="8" y2="6" />
-                          <line x1="3" y1="10" x2="21" y2="10" />
-                        </svg>
-                        <span>
-                          {formatDate(req.startDate)} to {formatDate(req.endDate)}
-                        </span>
-                      </div>
-
-                      <div className="lm-req-reason-box" title={req.reason}>
-                        "{req.reason || "No reason provided."}"
-                      </div>
-
-                      {req.reviewedBy && (
-                        <div className="lm-req-reviewer-row">
-                          <span>Decision by: <strong>{req.reviewedBy.fullName || "HR Admin"}</strong></span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Footer Actions (Reference 1 style) */}
-                    <div className="lm-req-card-actions">
-                      {isPending ? (
-                        <>
-                          <div className="lm-action-btn-group">
-                            <button
-                              type="button"
-                              className="lm-btn-approve"
-                              onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}
-                              title="Approve leave request"
-                              aria-label="Approve leave request"
-                            >
-                              <IconCheck size={16} />
-                              <span className="m-title-short">Approve</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="lm-btn-reject"
-                              onClick={() => handleQuickDecisionPrompt(req, "REJECT")}
-                              title="Reject leave request"
-                              aria-label="Reject leave request"
-                            >
-                              <IconClose size={16} />
-                              <span className="m-title-short">Reject</span>
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            className="lm-btn-details"
-                            onClick={() => handleOpenDetails(req)}
-                          >
-                            Details
-                          </button>
-                        </>
-                      ) : isApproved ? (
-                        <>
-                          <button
-                            type="button"
-                            className="btn-secondary btn-sm"
-                            onClick={() => {
-                              handleOpenDetails(req);
-                              setShowChangeTypeForm(true);
-                            }}
-                            style={{ fontSize: "12px", padding: "4px 8px" }}
-                          >
-                            Change Type
-                          </button>
-                          <button
-                            type="button"
-                            className="lm-btn-details"
-                            onClick={() => handleOpenDetails(req)}
-                          >
-                            View Record
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="lm-btn-details"
-                          onClick={() => handleOpenDetails(req)}
-                          style={{ width: "100%", textAlign: "center" }}
-                        >
-                          View Reason & Record
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div className={viewMode === "table" ? "lm-table-view" : "lm-table-view lm-table-view--hidden"}>
+        {loading && requests.length === 0 ? (
+          <div className="pm-empty-box">
+            <div className="profile-spinner" style={{ margin: "0 auto 12px" }} />
+            <p>Loading leave requests...</p>
+          </div>
+        ) : requests.length === 0 ? (
+          <div className="pm-empty-box">
+            <h4>No leave requests found</h4>
+            <p>
+              {debouncedSearch || statusFilter !== "ALL"
+                ? "No requests match your search or filter criteria."
+                : "No leave requests yet."}
+            </p>
+          </div>
+        ) : (
+        <div className="lm-table-view">
         <div className="data-table-container table-wrapper-relative">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Employee</th>
-                <th>Leave Type</th>
-                <th>Dates</th>
-                <th>Days</th>
-                <th>Status</th>
-                <th>Reason</th>
-                <th>Applied On</th>
-                <th>Actions</th>
+                {leaveCols.isVisible("employee") && <th>Employee</th>}
+                {leaveCols.isVisible("leaveType") && <th>Leave Type</th>}
+                {leaveCols.isVisible("dates") && <th>Dates</th>}
+                {leaveCols.isVisible("days") && <th>Days</th>}
+                {leaveCols.isVisible("status") && <th>Status</th>}
+                {leaveCols.isVisible("reason") && <th>Reason</th>}
+                {leaveCols.isVisible("appliedOn") && <th>Applied On</th>}
+                {leaveCols.isVisible("actions") && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
               {requests.map((req) => (
                 <tr key={req._id}>
-                  <td>
-                    <strong>{req.employeeId?.fullName || "—"}</strong>
-                    <div style={{ fontSize: "11.5px", color: "var(--muted)" }}>
-                      {req.employeeId?.job?.jobTitle || "—"}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`lm-req-type-pill ${(req.leaveTypeCode || "CASUAL").toLowerCase()}`}>
-                      {req.leaveTypeCode || "CASUAL"}
-                    </span>
-                  </td>
-                  <td>
-                    {formatDate(req.startDate)} to {formatDate(req.endDate)}
-                  </td>
-                  <td><strong>{req.calculatedDays || req.durationDays || 1}</strong></td>
-                  <td><StatusBadge status={req.status} /></td>
-                  <td className="lm-reason-cell" title={req.reason || ""}>
-                    {req.reason || "—"}
-                  </td>
-                  <td>{formatDate(req.createdAt)}</td>
-                  <td>
-                    <div className="row-actions">
-                      {req.status === "PENDING" && (
-                        <>
-                          <button
-                            type="button"
-                            className="btn-primary btn-sm"
-                            onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-secondary btn-sm"
-                            onClick={() => handleQuickDecisionPrompt(req, "REJECT")}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() => handleOpenDetails(req)}
-                      >
-                        Details
-                      </button>
-                    </div>
-                  </td>
+                  {leaveCols.isVisible("employee") && (
+                    <td>
+                      <strong>{req.employeeId?.fullName || "—"}</strong>
+                      <div style={{ fontSize: "11.5px", color: "var(--muted)" }}>
+                        {req.employeeId?.job?.jobTitle || "—"}
+                      </div>
+                    </td>
+                  )}
+                  {leaveCols.isVisible("leaveType") && (
+                    <td>
+                      <span className={"lm-req-type-pill " + (req.leaveTypeCode || "CASUAL").toLowerCase()}>
+                        {req.leaveTypeCode || "CASUAL"}
+                      </span>
+                    </td>
+                  )}
+                  {leaveCols.isVisible("dates") && (
+                    <td>{formatDate(req.startDate)} to {formatDate(req.endDate)}</td>
+                  )}
+                  {leaveCols.isVisible("days") && (
+                    <td>{req.calculatedDays || req.durationDays || 1}</td>
+                  )}
+                  {leaveCols.isVisible("status") && (
+                    <td><StatusBadge status={req.status} /></td>
+                  )}
+                  {leaveCols.isVisible("reason") && (
+                    <td style={{ maxWidth: 180 }}>
+                      <span title={req.reason} style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {req.reason || "—"}
+                      </span>
+                    </td>
+                  )}
+                  {leaveCols.isVisible("appliedOn") && <td>{formatDate(req.createdAt)}</td>}
+                  {leaveCols.isVisible("actions") && (
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {req.status === "PENDING" && (
+                          <>
+                            <button type="button" className="btn-primary btn-sm" onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}>Approve</button>
+                            <button type="button" className="btn-secondary btn-sm" onClick={() => handleQuickDecisionPrompt(req, "REJECT")}>Reject</button>
+                          </>
+                        )}
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => handleOpenDetails(req)}>Details</button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         </div>
-      </>
+        )}
 
       {/* Pagination Bar */}
       {pagination.total > 0 && (
@@ -937,6 +751,8 @@ export default function AdminLeaveManagement() {
           itemLabel="leave applications"
           className="my-3"
         />
+      )}
+      </>
       )}
 
       {/* -----------------------------------------------------------------------

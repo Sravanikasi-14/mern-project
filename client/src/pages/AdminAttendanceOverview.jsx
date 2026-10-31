@@ -61,7 +61,8 @@ export default function AdminAttendanceOverview() {
   const attendanceQuery = useAttendanceOverviewQuery(
     { date, department },
     {
-      refetchInterval: 30_000,
+      // Live tracking needs refresh, but 30s fought staleTime and hammered the full roster.
+      refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     }
   );

@@ -146,7 +146,10 @@ export async function calculatePayrollCycle({
     }).lean(),
     Attendance.find({
       employeeId: { $in: employeeIds },
-      date: { $regex: `^${monthPrefix}` },
+      date: {
+        $gte: `${monthPrefix}-01`,
+        $lte: `${monthPrefix}-31`,
+      },
     }).lean(),
     OfferLetter && employeeEmails.length > 0
       ? OfferLetter.find({

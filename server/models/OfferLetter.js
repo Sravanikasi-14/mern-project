@@ -205,7 +205,9 @@ export function createOfferLetterSchema() {
 
   // Indexes for query performance
   offerLetterSchema.index({ status: 1, createdAt: -1 });
+  offerLetterSchema.index({ status: 1, updatedAt: -1 });
   offerLetterSchema.index({ createdAt: -1 });
+  offerLetterSchema.index({ updatedAt: -1 });
   offerLetterSchema.index({ "candidate.email": 1 });
   offerLetterSchema.index({ "candidate.fullName": 1 });
   offerLetterSchema.index(

@@ -14,6 +14,7 @@ import { useAuth } from "../context/AuthContext";
 import { useDashboardQuery } from "../hooks/useEmployeeQueries";
 import { invalidateLeave } from "../lib/queryKeys";
 import MonthCalendar from "../components/MonthCalendar";
+import DateRangePicker from "../components/DateRangePicker";
 import {
   formatDisplayDate,
   getCompanyBusinessDate,
@@ -728,36 +729,21 @@ export default function EmployeeLeave() {
                 </label>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                <label>
-                  Start Date *
-                  <input
-                    type="date"
-                    required
-                    value={leaveForm.startDate}
-                    min={leaveEligibility.earliestEligibleDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setLeaveForm((prev) => ({
-                        ...prev,
-                        startDate: newStart,
-                        endDate: prev.endDate && prev.endDate >= newStart ? prev.endDate : newStart,
-                      }));
-                    }}
-                    style={{ marginTop: 4 }}
-                  />
-                </label>
-                <label>
-                  End Date *
-                  <input
-                    type="date"
-                    required
-                    value={leaveForm.endDate}
-                    min={leaveForm.startDate || leaveEligibility.earliestEligibleDate}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </label>
+              <div style={{ marginBottom: 14 }}>
+                <DateRangePicker
+                  label="Leave dates *"
+                  placeholder="Select leave date range"
+                  startDate={leaveForm.startDate}
+                  endDate={leaveForm.endDate}
+                  minDate={leaveEligibility.earliestEligibleDate}
+                  onChange={({ startDate, endDate }) => {
+                    setLeaveForm((prev) => ({
+                      ...prev,
+                      startDate: startDate || "",
+                      endDate: endDate || startDate || "",
+                    }));
+                  }}
+                />
               </div>
 
               <div style={{ marginBottom: 20 }}>

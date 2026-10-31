@@ -61,43 +61,36 @@ export async function listAssets(req, res, next) {
       ];
     }
 
-    const [assets, totalMatched, allAssetsCount] = await Promise.all([
+    const [assets, totalMatched, statusCounts, attentionCount] = await Promise.all([
       CompanyAsset.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parsedLimit)
         .lean(),
       CompanyAsset.countDocuments(query),
-      CompanyAsset.find({}, "status condition").lean(),
+      CompanyAsset.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+      CompanyAsset.countDocuments({
+        $or: [
+          { status: ASSET_STATUSES.UNDER_MAINTENANCE },
+          { status: ASSET_STATUSES.LOST },
+          { condition: ASSET_CONDITIONS.DAMAGED },
+          { condition: ASSET_CONDITIONS.POOR },
+        ],
+      }),
     ]);
 
-    // Compute live inventory summary counts across all tenant assets
+    const statusMap = Object.fromEntries(
+      statusCounts.map((row) => [row._id || "UNKNOWN", row.count])
+    );
     const summary = {
-      total: allAssetsCount.length,
-      available: 0,
-      assigned: 0,
-      underMaintenance: 0,
-      retired: 0,
-      lost: 0,
-      requiringAttention: 0,
+      total: Object.values(statusMap).reduce((sum, n) => sum + n, 0),
+      available: statusMap[ASSET_STATUSES.AVAILABLE] || 0,
+      assigned: statusMap[ASSET_STATUSES.ASSIGNED] || 0,
+      underMaintenance: statusMap[ASSET_STATUSES.UNDER_MAINTENANCE] || 0,
+      retired: statusMap[ASSET_STATUSES.RETIRED] || 0,
+      lost: statusMap[ASSET_STATUSES.LOST] || 0,
+      requiringAttention: attentionCount,
     };
-
-    for (const a of allAssetsCount) {
-      if (a.status === ASSET_STATUSES.AVAILABLE) summary.available++;
-      else if (a.status === ASSET_STATUSES.ASSIGNED) summary.assigned++;
-      else if (a.status === ASSET_STATUSES.UNDER_MAINTENANCE) summary.underMaintenance++;
-      else if (a.status === ASSET_STATUSES.RETIRED) summary.retired++;
-      else if (a.status === ASSET_STATUSES.LOST) summary.lost++;
-
-      if (
-        a.status === ASSET_STATUSES.UNDER_MAINTENANCE ||
-        a.status === ASSET_STATUSES.LOST ||
-        a.condition === ASSET_CONDITIONS.DAMAGED ||
-        a.condition === ASSET_CONDITIONS.POOR
-      ) {
-        summary.requiringAttention++;
-      }
-    }
 
     res.status(200).json({
       success: true,

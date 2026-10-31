@@ -8,11 +8,13 @@ import Pagination from "../components/Pagination";
 import { IconClose, IconCheck } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
+import ColumnChooser from "../components/ColumnChooser";
 import {
   useEmployeesSummaryQuery,
   useEmployeesPoolQuery,
   useEmployeesQuery,
 } from "../hooks/useAdminQueries";
+import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import { invalidateEmployees } from "../lib/queryKeys";
 import "./PeopleManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
@@ -20,17 +22,18 @@ import MobileFilterBar from "../components/mobile/MobileFilterBar";
 const PAGE_SIZE_OPTIONS = [8, 12, 24, 48, 100];
 
 const AVAILABLE_COLUMNS = [
-  { id: "employeeCode", label: "Code" },
-  { id: "fullName", label: "Full Name" },
-  { id: "email", label: "Email" },
-  { id: "phoneNumber", label: "Phone" },
-  { id: "jobTitle", label: "Designation" },
-  { id: "department", label: "Department" },
-  { id: "project", label: "Project" },
-  { id: "status", label: "Status" },
-  { id: "invitation", label: "Invitation" },
-  { id: "salary", label: "Monthly Salary" },
-  { id: "joiningDate", label: "Joining Date" },
+  { id: "employeeCode", label: "Code", essential: true },
+  { id: "fullName", label: "Full Name", essential: true },
+  { id: "email", label: "Email", defaultVisible: false },
+  { id: "phoneNumber", label: "Phone", defaultVisible: false },
+  { id: "jobTitle", label: "Designation", defaultVisible: true },
+  { id: "department", label: "Department", defaultVisible: true },
+  { id: "project", label: "Project", defaultVisible: false },
+  { id: "status", label: "Status", essential: true },
+  { id: "invitation", label: "Invitation", defaultVisible: false },
+  { id: "salary", label: "Monthly Salary", defaultVisible: false },
+  { id: "joiningDate", label: "Joining Date", defaultVisible: false },
+  { id: "actions", label: "Actions", essential: true },
 ];
 
 export default function AdminHome() {
@@ -55,20 +58,8 @@ export default function AdminHome() {
   const [pageSize, setPageSize] = useState(12);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [visibleColumns, setVisibleColumns] = useState({
-    employeeCode: true,
-    fullName: true,
-    email: false,
-    phoneNumber: false,
-    jobTitle: true,
-    department: true,
-    project: false,
-    status: true,
-    invitation: false,
-    salary: false,
-    joiningDate: false,
-  });
-  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const peopleCols = useColumnPreferences("hr-people-directory", AVAILABLE_COLUMNS);
+  const visibleColumns = peopleCols.visible;
 
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -274,12 +265,6 @@ export default function AdminHome() {
     return { projectList, deptList, leadsList };
   }, [allEmployeesPool]);
 
-  const toggleColumn = (columnId) => {
-    setVisibleColumns((prev) => ({
-      ...prev,
-      [columnId]: !prev[columnId],
-    }));
-  };
 
   const handleViewDetails = (empId) => {
     navigate(`/admin/employees/${empId}`);
@@ -905,29 +890,12 @@ export default function AdminHome() {
                   </option>
                 ))}
               </select>
-              <div className="column-visibility-container">
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => setShowColumnPicker((open) => !open)}
-                >
-                  Columns
-                </button>
-                {showColumnPicker && (
-                  <div className="column-visibility-popover">
-                    {AVAILABLE_COLUMNS.map((col) => (
-                      <label key={col.id} className="column-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(visibleColumns[col.id])}
-                          onChange={() => toggleColumn(col.id)}
-                        />
-                        {col.label}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ColumnChooser
+                columns={peopleCols.columns}
+                visible={peopleCols.visible}
+                onToggle={peopleCols.toggle}
+                onReset={peopleCols.reset}
+              />
             </div>
           </div>
 

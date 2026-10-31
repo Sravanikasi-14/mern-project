@@ -219,6 +219,7 @@ export function createCompanyAssetSchema() {
   companyAssetSchema.index({ status: 1, condition: 1, createdAt: -1 });
   companyAssetSchema.index({ "currentAssignment.employeeId": 1 });
   companyAssetSchema.index({ "currentAssignment.employeeId": 1, status: 1 });
+  companyAssetSchema.index({ "assignmentHistory.employeeId": 1 });
   companyAssetSchema.index({ serialNumber: 1 });
   companyAssetSchema.index({ createdAt: -1 });
 

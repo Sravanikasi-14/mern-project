@@ -189,6 +189,8 @@ export function createTaskSchema() {
   taskSchema.index({ department: 1, status: 1 });
   taskSchema.index({ deadline: 1 });
   taskSchema.index({ status: 1, createdAt: -1 });
+  taskSchema.index({ status: 1, completedAt: -1 });
+  taskSchema.index({ completedAt: -1 });
 
   return taskSchema;
 }

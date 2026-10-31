@@ -28,16 +28,31 @@ function eventLabel(event) {
   return first || type || event.title || "Leave";
 }
 
+function attendanceTone(dayMeta) {
+  return dayMeta?.statusKey || "none";
+}
+
+/**
+ * Shared month calendar.
+ * - Default (leave): event chips
+ * - mode="attendance": status-colored days + tooltip/detail via dayStatuses
+ */
 export default function MonthCalendar({
   year,
   month,
   timeZone,
   events = [],
+  dayStatuses = {},
+  mode = "events",
   heading,
   onMonthChange,
+  onDaySelect,
+  selectedDate = "",
   emptyMessage = "No scheduled leave this month.",
+  legend = null,
 }) {
   const [expandedDate, setExpandedDate] = useState("");
+  const [tipDate, setTipDate] = useState("");
   const todayStr = getCompanyBusinessDate(new Date(), timeZone);
   const days = useMemo(
     () => buildMonthGrid(year, month, { weekStartsOn: 1, todayStr }),
@@ -64,8 +79,10 @@ export default function MonthCalendar({
     onMonthChange?.(next);
   };
 
+  const isAttendance = mode === "attendance";
+
   return (
-    <div className="mc-card">
+    <div className={`mc-card ${isAttendance ? "mc-card--attendance" : ""}`}>
       <div className="mc-header">
         <h3 className="mc-title">{heading || monthTitle(year, month)}</h3>
         <div className="mc-nav">
@@ -78,6 +95,8 @@ export default function MonthCalendar({
         </div>
       </div>
 
+      {legend}
+
       <div className="mc-grid" role="grid" aria-label={monthTitle(year, month)}>
         {WEEKDAYS.map((label) => (
           <div key={label} className="mc-weekday" role="columnheader">
@@ -86,6 +105,42 @@ export default function MonthCalendar({
         ))}
 
         {days.map((day) => {
+          if (isAttendance) {
+            const meta = dayStatuses[day.dateStr] || { statusKey: day.isOtherMonth ? "other" : "none" };
+            const tip = meta.tooltip || meta.label || "";
+            const isSelected = selectedDate === day.dateStr;
+            const showTip = tipDate === day.dateStr && tip;
+
+            return (
+              <button
+                key={day.dateStr}
+                type="button"
+                className={`mc-cell mc-cell--status is-${attendanceTone(meta)} ${
+                  day.isOtherMonth ? "is-muted" : ""
+                } ${day.isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
+                role="gridcell"
+                aria-label={`${day.dateStr}: ${meta.label || meta.statusKey}`}
+                title={tip}
+                disabled={day.isOtherMonth}
+                onClick={() => {
+                  if (day.isOtherMonth) return;
+                  setTipDate((prev) => (prev === day.dateStr ? "" : day.dateStr));
+                  onDaySelect?.(day.dateStr, meta);
+                }}
+                onMouseEnter={() => setTipDate(day.dateStr)}
+                onMouseLeave={() => setTipDate((prev) => (prev === day.dateStr ? "" : prev))}
+                onFocus={() => setTipDate(day.dateStr)}
+                onBlur={() => setTipDate("")}
+              >
+                <span className={`mc-date ${day.isToday ? "is-today" : ""}`}>{day.day}</span>
+                {!day.isOtherMonth && meta.shortLabel ? (
+                  <span className="mc-status-label">{meta.shortLabel}</span>
+                ) : null}
+                {showTip ? <span className="mc-tooltip">{tip}</span> : null}
+              </button>
+            );
+          }
+
           const dayEvents = normalizedEvents.filter((event) =>
             dateOnlyInRange(day.dateStr, event.startDate, event.endDate)
           );
@@ -106,7 +161,10 @@ export default function MonthCalendar({
                   <span
                     key={`${event.id || event._id || eventLabel(event)}-${day.dateStr}`}
                     className={`mc-chip ${eventTone(event)}`}
-                    title={event.title || `${event.employeeName || event.label || "Leave"} (${event.startDate} – ${event.endDate})`}
+                    title={
+                      event.title ||
+                      `${event.employeeName || event.label || "Leave"} (${event.startDate} – ${event.endDate})`
+                    }
                   >
                     {eventLabel(event)}
                   </span>
@@ -136,7 +194,7 @@ export default function MonthCalendar({
         })}
       </div>
 
-      {normalizedEvents.length === 0 && <p className="mc-empty">{emptyMessage}</p>}
+      {!isAttendance && normalizedEvents.length === 0 && <p className="mc-empty">{emptyMessage}</p>}
     </div>
   );
 }

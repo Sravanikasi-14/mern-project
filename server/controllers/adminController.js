@@ -243,12 +243,17 @@ export async function getAdminDashboard(req, res, next) {
     };
 
     if (OfferLetter) {
-      const allOffers = await OfferLetter.find({}).lean();
-      const totalOffers = allOffers.length;
-      const acceptedCount = allOffers.filter((o) => o.status === "ACCEPTED").length;
-      const pendingCount = allOffers.filter((o) => o.status === "SENT").length;
-      const declinedCount = allOffers.filter((o) => o.status === "REJECTED").length;
-      const draftCount = allOffers.filter((o) => o.status === "DRAFT").length;
+      const offerCounts = await OfferLetter.aggregate([
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]);
+      const countByStatus = Object.fromEntries(
+        offerCounts.map((row) => [row._id || "UNKNOWN", row.count])
+      );
+      const totalOffers = offerCounts.reduce((sum, row) => sum + row.count, 0);
+      const acceptedCount = countByStatus.ACCEPTED || 0;
+      const pendingCount = countByStatus.SENT || 0;
+      const declinedCount = countByStatus.REJECTED || 0;
+      const draftCount = countByStatus.DRAFT || 0;
       const decidedCount = acceptedCount + declinedCount;
 
       recruitmentFunnel = {
@@ -273,7 +278,10 @@ export async function getAdminDashboard(req, res, next) {
     const monthPrefix = `${targetYear}-${monthStr}`;
 
     const monthAttendanceRecords = await Attendance.find({
-      date: { $regex: `^${monthPrefix}` },
+      date: {
+        $gte: `${monthPrefix}-01`,
+        $lte: `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`,
+      },
       employeeId: { $in: activeEmployeeIds },
     }).lean();
 
@@ -734,6 +742,14 @@ export async function getAdminDashboard(req, res, next) {
         isPaid: Boolean(h.isPaid),
       }));
 
+    const [pendingLeaveRequests, monthlyExits] = await Promise.all([
+      LeaveRequest.countDocuments({ status: "PENDING" }),
+      Employee.countDocuments({
+        status: { $ne: "ACTIVE" },
+        updatedAt: { $gte: monthStart, $lte: monthEnd },
+      }),
+    ]);
+
     // 19. Assemble Final Dashboard Payload
     res.status(200).json({
       success: true,
@@ -761,6 +777,15 @@ export async function getAdminDashboard(req, res, next) {
         isPayrollEstimate: true,
         payrollStatus: payrollCycleSummary.statusLabel,
         payrollCycle: payrollCycleSummary,
+        pendingLeaveRequests,
+        pendingOfferResponses: recruitmentFunnel.pending || 0,
+        monthlyExits,
+      },
+      insightMetrics: {
+        lateArrivalsToday: todayLate,
+        pendingLeaveRequests,
+        pendingOfferResponses: recruitmentFunnel.pending || 0,
+        monthlyExits,
       },
       payrollCycleSummary,
       payrollActionCentre,

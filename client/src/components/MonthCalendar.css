@@ -183,6 +183,137 @@
   color: var(--muted, #646d67);
 }
 
+/* Attendance status calendar */
+.mc-card--attendance .mc-cell--status {
+  position: relative;
+  min-height: 64px;
+  align-items: center;
+  justify-content: flex-start;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.mc-cell--status:disabled {
+  cursor: default;
+}
+
+.mc-cell--status.is-selected {
+  outline: 2px solid var(--g-800, #155a37);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.mc-status-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.mc-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 5;
+  min-width: 160px;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #131a15;
+  color: #f8faf8;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: pre-line;
+  box-shadow: 0 8px 20px rgba(19, 26, 21, 0.28);
+  pointer-events: none;
+}
+
+.mc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.mc-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+}
+
+.mc-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.mc-cell--status.is-present {
+  background: #e8f5ee;
+}
+.mc-cell--status.is-present .mc-status-label {
+  color: #155a37;
+}
+
+.mc-cell--status.is-late {
+  background: #fdf3e2;
+}
+.mc-cell--status.is-late .mc-status-label {
+  color: #9a6700;
+}
+
+.mc-cell--status.is-absent {
+  background: #fde8e8;
+}
+.mc-cell--status.is-absent .mc-status-label {
+  color: #b42318;
+}
+
+.mc-cell--status.is-leave {
+  background: #eef6ff;
+}
+.mc-cell--status.is-leave .mc-status-label {
+  color: #1d4ed8;
+}
+
+.mc-cell--status.is-holiday {
+  background: #f3e8ff;
+}
+.mc-cell--status.is-holiday .mc-status-label {
+  color: #6b21a8;
+}
+
+.mc-cell--status.is-weekend,
+.mc-cell--status.is-nonworking {
+  background: #f4f4f5;
+}
+.mc-cell--status.is-weekend .mc-status-label,
+.mc-cell--status.is-nonworking .mc-status-label {
+  color: #52525b;
+}
+
+.mc-cell--status.is-none {
+  background: #ffffff;
+}
+
+.mc-legend-swatch.is-present { background: #34a06c; }
+.mc-legend-swatch.is-late { background: #d97706; }
+.mc-legend-swatch.is-absent { background: #dc2626; }
+.mc-legend-swatch.is-leave { background: #3b82f6; }
+.mc-legend-swatch.is-holiday { background: #9333ea; }
+.mc-legend-swatch.is-weekend { background: #a1a1aa; }
+
 @media (max-width: 720px) {
   .mc-cell {
     min-height: 58px;
@@ -192,5 +323,16 @@
   .mc-chip {
     font-size: 9px;
     padding: 1px 3px;
+  }
+
+  .mc-cell--status {
+    min-height: 52px;
+  }
+
+  .mc-tooltip {
+    left: 4px;
+    right: 4px;
+    transform: none;
+    max-width: none;
   }
 }

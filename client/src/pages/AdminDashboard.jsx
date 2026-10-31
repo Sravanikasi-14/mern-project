@@ -696,6 +696,59 @@ export default function AdminDashboard() {
         </MobileExpandable>
         </div>
 
+        <section className="card insight-metrics-card" aria-label="Additional HR insights">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Operational insights</h2>
+              <p className="card__subtitle" style={{ margin: "4px 0 0", fontSize: 12.5, color: "var(--muted)" }}>
+                Live counts for follow-up — not duplicates of the headline stats above.
+              </p>
+            </div>
+          </div>
+          <div className="insight-metrics-grid">
+            <Link
+              to="/admin/attendance?filter=PRESENT"
+              className="insight-metric-tile"
+              title="Open attendance overview"
+            >
+              <span className="insight-metric-label">Late arrivals today</span>
+              <span className="insight-metric-value">
+                {data?.insightMetrics?.lateArrivalsToday ?? summary.todayLate ?? 0}
+              </span>
+            </Link>
+            <Link
+              to="/admin/leave?tab=leave&status=PENDING"
+              className="insight-metric-tile"
+              title="Review pending leave"
+            >
+              <span className="insight-metric-label">Pending leave requests</span>
+              <span className="insight-metric-value">
+                {data?.insightMetrics?.pendingLeaveRequests ?? summary.pendingLeaveRequests ?? pendingLeaves.length}
+              </span>
+            </Link>
+            <Link
+              to="/admin/offers?status=SENT"
+              className="insight-metric-tile"
+              title="Pending offer responses"
+            >
+              <span className="insight-metric-label">Pending offer responses</span>
+              <span className="insight-metric-value">
+                {data?.insightMetrics?.pendingOfferResponses ?? pendingOffersCount}
+              </span>
+            </Link>
+            <Link
+              to="/admin?status=INACTIVE"
+              className="insight-metric-tile"
+              title="Employee directory — inactive this month"
+            >
+              <span className="insight-metric-label">Exits this month</span>
+              <span className="insight-metric-value">
+                {data?.insightMetrics?.monthlyExits ?? summary.monthlyExits ?? 0}
+              </span>
+            </Link>
+          </div>
+        </section>
+
         <MobileExpandable title="Recent activity and holidays">
         <section className="card team-activity-card">
           <div className="card__head">

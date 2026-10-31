@@ -427,6 +427,30 @@ export async function getEmployeeAttendanceHistory({
   const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (parsedPage - 1) * parsedLimit;
 
+  const customLogs = employee.customFields?.attendanceLogs || [];
+  const hasLegacyLogs = Array.isArray(customLogs) && customLogs.length > 0;
+
+  // Fast path: no legacy logs — paginate in Mongo instead of loading full history.
+  if (!hasLegacyLogs && Attendance) {
+    const [total, records] = await Promise.all([
+      Attendance.countDocuments(filter),
+      Attendance.find(filter)
+        .sort({ date: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+    ]);
+    return {
+      records: records.map((record) => formatCollectionAttendance(record)),
+      pagination: {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
+      },
+    };
+  }
+
   const records = Attendance
     ? await Attendance.find(filter).sort({ date: -1, createdAt: -1 }).lean()
     : [];
@@ -438,7 +462,6 @@ export async function getEmployeeAttendanceHistory({
     byDate.set(key, formatCollectionAttendance(record));
   }
 
-  const customLogs = employee.customFields?.attendanceLogs || [];
   for (const log of customLogs) {
     const key = civilDateKey(log.date);
     if (!dateInRange(key, startKey, endKey)) continue;

@@ -3,6 +3,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  // Relative asset paths required for Capacitor's bundled WebView (not a remote URL).
+  base: "./",
   server: {
     port: 5174,
     proxy: {

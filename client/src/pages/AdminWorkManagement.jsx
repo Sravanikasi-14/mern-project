@@ -13,6 +13,7 @@ import {
   IconSearch,
   IconPlus,
 } from "../components/Icons";
+import AppModal from "../components/AppModal";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useAdminTasksQuery } from "../hooks/useAdminQueries";
@@ -953,43 +954,33 @@ export default function AdminWorkManagement() {
 
       </div>
 
-      {/* Slide-out Side Panels */}
-      {sidePanelMode !== "none" && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            width: "min(460px, 94vw)",
-            background: "#ffffff",
-            boxShadow: "-4px 0 25px rgba(0,0,0,0.15)",
-            zIndex: 999,
-            display: "flex",
-            flexDirection: "column",
-            animation: "slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-        >
+      {/* Task detail / create — centered modal */}
+      <AppModal
+        open={sidePanelMode !== "none"}
+        onClose={() => setSidePanelMode("none")}
+        size="md"
+        locked={creatingTask}
+        title={
+          sidePanelMode === "create"
+            ? "Assign task"
+            : selectedTask?.title || "Task details"
+        }
+        subtitle={
+          sidePanelMode === "details" && selectedTask
+            ? `${selectedTask.priority || "MEDIUM"} · ${selectedTask.status || ""}`
+            : sidePanelMode === "create"
+              ? "Create and assign work to a team member"
+              : undefined
+        }
+      >
           {/* Detail Mode */}
           {sidePanelMode === "details" && selectedTask && (
             <>
-              <div className="wm-panel-header">
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <StatusBadge status={selectedTask.status} />
-                    <span className="wm-priority-badge wm-priority-medium">
-                      {selectedTask.priority}
-                    </span>
-                  </div>
-                  <h3 className="wm-panel-header-title">{selectedTask.title}</h3>
-                </div>
-                <button
-                  type="button"
-                  className="wm-panel-close-btn"
-                  onClick={() => setSidePanelMode("none")}
-                >
-                  <IconClose size={16} />
-                </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <StatusBadge status={selectedTask.status} />
+                <span className="wm-priority-badge wm-priority-medium">
+                  {selectedTask.priority}
+                </span>
               </div>
 
               <div className="wm-panel-body">
@@ -1141,17 +1132,8 @@ export default function AdminWorkManagement() {
           {/* Create Task Mode */}
           {sidePanelMode === "create" && (
             <>
-              <div className="wm-panel-header">
-                <div>
-                  <h3 className="wm-panel-header-title">New Task</h3>
-                </div>
-                <button type="button" className="wm-panel-close-btn" onClick={() => setSidePanelMode("none")}>
-                  <IconClose size={16} />
-                </button>
-              </div>
-
               {createError && (
-                <div className="alert alert-danger" style={{ margin: "12px 20px 0", padding: "8px 12px", fontSize: 12 }}>
+                <div className="alert alert-danger" style={{ margin: "0 0 12px", padding: "8px 12px", fontSize: 12 }}>
                   <span>{createError}</span>
                 </div>
               )}
@@ -1287,9 +1269,7 @@ export default function AdminWorkManagement() {
               </form>
             </>
           )}
-
-        </div>
-      )}
+      </AppModal>
     </div>
   );
 }

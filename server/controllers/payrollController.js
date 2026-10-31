@@ -10,7 +10,11 @@ export async function listPayrollCycles(req, res, next) {
   try {
     const { PayrollCycle } = req.auth.models;
     const cycles = await PayrollCycle.find({})
+      .select(
+        "periodMonth periodYear status notes totalNetSalary employeeCount createdBy finalizedBy createdAt updatedAt finalizedAt"
+      )
       .sort({ periodYear: -1, periodMonth: -1 })
+      .limit(36)
       .populate("createdBy", "name email")
       .populate("finalizedBy", "name email")
       .lean();
