@@ -1,22 +1,18 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
-import Pagination from "../components/Pagination";
 import { useAuth } from "../context/AuthContext";
 import {
   IconClose,
   IconCheck,
-  IconSearch,
   IconUser,
   IconShield,
   IconMail,
   IconBriefcase,
   IconSettings,
-  IconClipboardList,
   IconEye,
   IconEyeOff,
   IconAlertCircle,
-  IconRefresh,
 } from "../components/Icons";
 import api from "../services/api";
 
@@ -26,7 +22,6 @@ const SETTINGS_TABS = [
   { id: "preferences", label: "Preferences", icon: IconSettings, badge: null },
   { id: "company", label: "Workspace", icon: IconBriefcase, badge: null },
   { id: "email", label: "Email", icon: IconMail, badge: null },
-  { id: "audit", label: "Audit", icon: IconClipboardList, badge: null },
 ];
 
 export default function AdminSettings() {
@@ -82,15 +77,6 @@ export default function AdminSettings() {
   const [lastVerifiedAt, setLastVerifiedAt] = useState(null);
   const [testTo, setTestTo] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
-  // 6. Audit Logs State
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditError, setAuditError] = useState("");
-  const [auditSearch, setAuditSearch] = useState("");
-  const [auditPage, setAuditPage] = useState(1);
-  const [auditPageSize, setAuditPageSize] = useState(10);
-  const [auditTotal, setAuditTotal] = useState(0);
 
   // Sync profile state when user changes
   useEffect(() => {
@@ -169,36 +155,6 @@ export default function AdminSettings() {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [hasSavedLogo, logoFile]);
-
-  // Fetch Audit Logs when tab or page changes
-  const fetchAuditLogs = async () => {
-    try {
-      setAuditLoading(true);
-      setAuditError("");
-      const res = await api.get(
-        `/settings/audit-logs?page=${auditPage}&limit=${auditPageSize}${
-          auditSearch ? `&search=${encodeURIComponent(auditSearch)}` : ""
-        }`
-      );
-      const logs = res.data?.logs;
-      if (!Array.isArray(logs)) {
-        setAuditError("Audit logs could not be read from the server response.");
-        return;
-      }
-      setAuditLogs(logs);
-      setAuditTotal(res.data?.pagination?.total || 0);
-    } catch (err) {
-      setAuditError(err.response?.data?.message || "Failed to load audit logs.");
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === "audit") {
-      fetchAuditLogs();
-    }
-  }, [activeTab, auditPage, auditPageSize]);
 
   // Handler: Save My Profile
   const handleSaveProfile = async (e) => {
@@ -1498,138 +1454,6 @@ export default function AdminSettings() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* TAB 6: AUDIT LOG                                               */}
-          {/* ============================================================== */}
-          {activeTab === "audit" && (
-            <div>
-              <div
-                className="settings-panel-head"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "12px",
-                }}
-              >
-                <div>
-                  <h2 className="settings-panel-title">Audit</h2>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={fetchAuditLogs}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "6px 12px",
-                    fontSize: "12px",
-                    borderRadius: "6px",
-                    background: "#ffffff",
-                    border: "1px solid var(--hair)",
-                    color: "var(--ink)",
-                    cursor: "pointer",
-                    boxShadow: "none",
-                  }}
-                >
-                  <IconRefresh size={14} />
-                  <span>Refresh</span>
-                </button>
-              </div>
-
-              {/* Table */}
-              <div style={{ overflowX: "auto", border: "1px solid var(--hair)", borderRadius: "8px" }}>
-                <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
-                  <thead>
-                    <tr style={{ background: "#f8faf8", borderBottom: "1px solid var(--hair)", textAlign: "left" }}>
-                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
-                        Timestamp
-                      </th>
-                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
-                        Action
-                      </th>
-                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
-                        Actor
-                      </th>
-                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
-                        IP Address
-                      </th>
-                      <th style={{ padding: "10px 12px", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", fontSize: "11px" }}>
-                        Details
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auditLoading ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
-                          Loading audit records...
-                        </td>
-                      </tr>
-                    ) : auditError ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "#991b1b" }}>
-                          {auditError}
-                        </td>
-                      </tr>
-                    ) : auditLogs.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
-                          No audit activity recorded yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      auditLogs.map((log) => (
-                        <tr key={log.id || log._id} style={{ borderBottom: "1px solid var(--hair)" }}>
-                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap", color: "var(--muted)" }}>
-                            {log.timestamp || log.createdAt
-                              ? new Date(log.timestamp || log.createdAt).toLocaleString()
-                              : "—"}
-                          </td>
-                          <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--ink)" }}>
-                            {log.action}
-                          </td>
-                          <td style={{ padding: "10px 12px", color: "var(--ink)" }}>
-                            {log.actorEmail || log.userEmail || "System"}
-                          </td>
-                          <td style={{ padding: "10px 12px", fontFamily: "monospace", color: "var(--muted)" }}>
-                            {log.ipAddress || "—"}
-                          </td>
-                          <td style={{ padding: "10px 12px", color: "var(--muted)" }}>
-                            {log.details
-                              ? (typeof log.details === "object" ? JSON.stringify(log.details) : String(log.details))
-                              : log.targetType
-                                ? `${log.targetType}${log.targetId ? ` · ${log.targetId}` : ""}`
-                                : "—"}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Shared Pagination */}
-              {auditTotal > 0 && (
-                <div style={{ marginTop: "14px" }}>
-                  <Pagination
-                    currentPage={auditPage}
-                    totalRecords={auditTotal}
-                    pageSize={auditPageSize}
-                    pageSizeOptions={[10, 25, 50]}
-                    onPageChange={(p) => setAuditPage(p)}
-                    onPageSizeChange={(sz) => {
-                      setAuditPageSize(sz);
-                      setAuditPage(1);
-                    }}
-                  />
-                </div>
-              )}
             </div>
           )}
         </section>
