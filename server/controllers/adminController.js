@@ -123,7 +123,8 @@ export async function getAdminDashboard(req, res, next) {
 
     const [activeEmployees, allDistinctDepartments] = await Promise.all([
       Employee.find(empQueryFilter)
-        .select("_id employeeCode fullName email job avatar status customFields dateOfBirth")
+        // Avoid pulling large customFields blobs unless needed for legacy punch fallback
+        .select("_id employeeCode fullName email job avatar status dateOfBirth customFields.attendanceLogs")
         .lean(),
       Employee.distinct("job.department", empBaseFilter),
     ]);
@@ -277,13 +278,28 @@ export async function getAdminDashboard(req, res, next) {
     const firstDayWeekday = new Date(Date.UTC(targetYear, targetMonth - 1, 1)).getUTCDay(); // 0 = Sun
     const monthPrefix = `${targetYear}-${monthStr}`;
 
-    const monthAttendanceRecords = await Attendance.find({
-      date: {
-        $gte: `${monthPrefix}-01`,
-        $lte: `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`,
-      },
-      employeeId: { $in: activeEmployeeIds },
-    }).lean();
+    const monthStart = new Date(`${monthPrefix}-01T00:00:00.000Z`);
+    const monthEnd = new Date(`${monthPrefix}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
+
+    const [monthAttendanceRecords, monthLeaves] = await Promise.all([
+      Attendance.find({
+        date: {
+          $gte: `${monthPrefix}-01`,
+          $lte: `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`,
+        },
+        employeeId: { $in: activeEmployeeIds },
+      })
+        .select("date employeeId checkIn status")
+        .lean(),
+      LeaveRequest.find({
+        employeeId: { $in: activeEmployeeIds },
+        status: "APPROVED",
+        fromDate: { $lte: monthEnd },
+        toDate: { $gte: monthStart },
+      })
+        .select("employeeId fromDate toDate")
+        .lean(),
+    ]);
 
     const attendanceByDateMap = new Map();
     for (const record of monthAttendanceRecords) {
@@ -293,15 +309,23 @@ export async function getAdminDashboard(req, res, next) {
       attendanceByDateMap.get(record.date).push(record);
     }
 
-    // Leaves in this month
-    const monthStart = new Date(`${monthPrefix}-01T00:00:00.000Z`);
-    const monthEnd = new Date(`${monthPrefix}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
-    const monthLeaves = await LeaveRequest.find({
-      employeeId: { $in: activeEmployeeIds },
-      status: "APPROVED",
-      fromDate: { $lte: monthEnd },
-      toDate: { $gte: monthStart },
-    }).lean();
+    // Precompute leave counts per day once (avoid O(days × leaves) filter loops)
+    const leaveCountByDate = new Map();
+    for (const leave of monthLeaves) {
+      const fStr = toDateString(leave.fromDate);
+      const tStr = toDateString(leave.toDate);
+      if (!fStr || !tStr) continue;
+      const startDay = fStr < `${monthPrefix}-01` ? 1 : parseInt(fStr.slice(8, 10), 10);
+      const endDay = tStr > `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`
+        ? daysInMonth
+        : parseInt(tStr.slice(8, 10), 10);
+      if (!Number.isFinite(startDay) || !Number.isFinite(endDay)) continue;
+      for (let d = startDay; d <= endDay; d++) {
+        const dateStr = `${monthPrefix}-${String(d).padStart(2, "0")}`;
+        if (!leaveCountByDate.has(dateStr)) leaveCountByDate.set(dateStr, new Set());
+        leaveCountByDate.get(dateStr).add(String(leave.employeeId));
+      }
+    }
 
     // Holiday map
     const holidayDateMap = new Map();
@@ -353,12 +377,7 @@ export async function getAdminDashboard(req, res, next) {
         }
       }
 
-      const dayLeaves = monthLeaves.filter((l) => {
-        const fStr = toDateString(l.fromDate);
-        const tStr = toDateString(l.toDate);
-        return dateStr >= fStr && dateStr <= tStr;
-      });
-      const dayLeaveCount = new Set(dayLeaves.map((l) => String(l.employeeId))).size;
+      const dayLeaveCount = leaveCountByDate.get(dateStr)?.size || 0;
       const dayAbsent = !isFuture && !isWeekend && !isHoliday
         ? Math.max(0, activeCount - dayPresent - dayLeaveCount)
         : 0;

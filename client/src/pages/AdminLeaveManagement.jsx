@@ -444,7 +444,14 @@ export default function AdminLeaveManagement() {
         const start = formatCivilDate(calMonth.year, calMonth.month, 1);
         const end = formatCivilDate(calMonth.year, calMonth.month, civilDaysInMonth(calMonth.year, calMonth.month));
         const response = await api.get("/leave-requests", {
-          params: { status: "APPROVED", fromDate: start, toDate: end, limit: 200, page: 1 },
+          params: {
+            status: "APPROVED",
+            fromDate: start,
+            toDate: end,
+            limit: 200,
+            page: 1,
+            includeSummary: false,
+          },
         });
         if (!cancelled && response.data?.success) {
           setScheduleRequests(response.data.leaveRequests || []);

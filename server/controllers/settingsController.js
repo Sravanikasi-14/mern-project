@@ -464,6 +464,8 @@ export async function uploadCompanyLogo(req, res, next) {
     const previousKey = company.branding.logoUrl;
     company.branding.logoUrl = saved.storageKey;
     company.branding.logoMimeType = saved.mimeType;
+    // Persist bytes in Mongo so logos survive serverless /tmp and multi-instance deploys
+    company.branding.logoData = saved.fileBuffer;
     company.markModified("branding");
     await company.save();
 
@@ -506,11 +508,19 @@ export async function deleteCompanyLogo(req, res, next) {
       });
     }
 
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          "branding.logoUrl": "",
+          "branding.logoMimeType": "",
+        },
+        $unset: { "branding.logoData": "" },
+      }
+    );
     if (!company.branding) company.branding = {};
     company.branding.logoUrl = "";
     company.branding.logoMimeType = "";
-    company.markModified("branding");
-    await company.save();
 
     res.json({
       success: true,
@@ -527,19 +537,38 @@ export async function deleteCompanyLogo(req, res, next) {
 
 /**
  * GET /api/auth/company-logo  (any authenticated company member)
+ * Streams from Mongo branding.logoData (persistent). Falls back to disk for legacy uploads.
  */
 export async function streamCompanyLogo(req, res, next) {
   try {
-    const company = await Company.findById(req.auth.company._id);
+    // Inclusion of extra paths with +branding.logoData forces inclusion-mode and
+    // drops logoMimeType/logoUrl — keep only the select:false override.
+    const company = await Company.findById(req.auth.company._id).select("+branding.logoData");
     if (!company) {
       throw new HttpError(404, "Company not found");
     }
 
     const storageKey = company.branding?.logoUrl;
-    if (!storageKey) {
+    if (!storageKey && !company.branding?.logoData?.length) {
       throw new HttpError(404, "No company logo has been uploaded.");
     }
 
+    const mime =
+      company.branding?.logoMimeType ||
+      (storageKey?.endsWith(".png")
+        ? "image/png"
+        : storageKey?.endsWith(".webp")
+          ? "image/webp"
+          : "image/jpeg");
+
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "private, max-age=120");
+
+    if (company.branding?.logoData?.length) {
+      return res.send(Buffer.from(company.branding.logoData));
+    }
+
+    // Legacy disk fallback (pre-Mongo persistence)
     const filePath = getCompanyLogoAbsolutePath({
       databaseName: company.databaseName,
       storageKey,
@@ -548,17 +577,22 @@ export async function streamCompanyLogo(req, res, next) {
       throw new HttpError(404, "Company logo file was not found.");
     }
 
-    const mime =
-      company.branding?.logoMimeType ||
-      (storageKey.endsWith(".png")
-        ? "image/png"
-        : storageKey.endsWith(".webp")
-          ? "image/webp"
-          : "image/jpeg");
-
-    res.setHeader("Content-Type", mime);
-    res.setHeader("Cache-Control", "private, max-age=120");
-    fs.createReadStream(filePath).pipe(res);
+    // Opportunistically migrate legacy disk logo into Mongo for future requests
+    try {
+      const buf = await fs.promises.readFile(filePath);
+      await Company.updateOne(
+        { _id: company._id },
+        {
+          $set: {
+            "branding.logoData": buf,
+            "branding.logoMimeType": mime,
+          },
+        }
+      );
+      return res.send(buf);
+    } catch {
+      fs.createReadStream(filePath).pipe(res);
+    }
   } catch (error) {
     next(error);
   }

@@ -39,8 +39,14 @@ const companySchema = new mongoose.Schema(
     },
     branding: {
       displayName: { type: String, default: "" },
+      /** Opaque storage key / cache-busting token — never a public CDN URL. */
       logoUrl: { type: String, default: "" },
       logoMimeType: { type: String, default: "" },
+      /**
+       * Persistent logo bytes (required on serverless where /tmp is ephemeral).
+       * Excluded from default queries — stream via GET /auth/company-logo only.
+       */
+      logoData: { type: Buffer, default: undefined, select: false },
       primaryColor: { type: String, default: "#4338ca" },
     },
     config: {

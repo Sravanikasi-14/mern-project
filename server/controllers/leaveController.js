@@ -135,17 +135,23 @@ export async function getLeaveRequests(req, res, next) {
     }
 
     const todayDate = parseDateOnly(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company)));
+    // Calendar / range fetches skip expensive global summary counts (use /summary instead)
+    const includeSummary =
+      String(req.query.includeSummary || "true").toLowerCase() !== "false" &&
+      !(fromDateParam && toDateParam);
 
-    const [total, requests, pendingCount, approvedCount, rejectedCount, onLeaveTodayIds] =
-      await Promise.all([
-        LeaveRequest.countDocuments(query),
-        LeaveRequest.find(query)
-          .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status")
-          .populate("decision.decidedBy", "email role")
-          .sort({ createdAt: -1 })
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
+    const listQueries = [
+      LeaveRequest.countDocuments(query),
+      LeaveRequest.find(query)
+        .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status")
+        .populate("decision.decidedBy", "email role")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ];
+    if (includeSummary) {
+      listQueries.push(
         LeaveRequest.countDocuments({ status: "PENDING" }),
         LeaveRequest.countDocuments({ status: "APPROVED" }),
         LeaveRequest.countDocuments({ status: "REJECTED" }),
@@ -153,8 +159,17 @@ export async function getLeaveRequests(req, res, next) {
           status: "APPROVED",
           fromDate: { $lte: todayDate },
           toDate: { $gte: todayDate },
-        }),
-      ]);
+        })
+      );
+    }
+
+    const listResults = await Promise.all(listQueries);
+    const total = listResults[0];
+    const requests = listResults[1];
+    const pendingCount = includeSummary ? listResults[2] : 0;
+    const approvedCount = includeSummary ? listResults[3] : 0;
+    const rejectedCount = includeSummary ? listResults[4] : 0;
+    const onLeaveTodayIds = includeSummary ? listResults[5] : [];
 
     const formattedRequests = requests.map((req) => ({
       _id: req._id,

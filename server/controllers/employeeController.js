@@ -410,7 +410,8 @@ export async function getMyProfile(req, res, next) {
 
 export async function getEmployeeDashboard(req, res, next) {
   try {
-    const { Employee, EmployeeCompensation, LeaveRequest, CompanyHrPolicy } = req.auth.models;
+    const { Employee, EmployeeCompensation, LeaveRequest, CompanyHrPolicy, Attendance } =
+      req.auth.models;
     const employee = await Employee.findOne({
       $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
     })
@@ -433,23 +434,52 @@ export async function getEmployeeDashboard(req, res, next) {
     const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company));
     const customFields = employee.customFields || {};
     const attendanceLogs = customFields.attendanceLogs || [];
-
-    // Find today's log if present
-    const todayLog = attendanceLogs.find((log) => log.date === todayStr) || null;
-
-    // Fetch active Company HR Policy
-    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
-
-    // Fetch leave requests from LeaveRequest collection
-    let dbRequests = [];
-    if (LeaveRequest) {
-      dbRequests = await LeaveRequest.find({ employeeId: employee._id })
-        .sort({ createdAt: -1 })
-        .lean();
-    }
-
-    // Check if today falls in any APPROVED leave window
     const todayDate = parseDateOnly(todayStr);
+
+    // Limit leave history window — avoid unbounded LeaveRequest reads on every dashboard load
+    const leaveWindowStart = new Date(todayDate);
+    leaveWindowStart.setUTCFullYear(leaveWindowStart.getUTCFullYear() - 1);
+
+    const [policy, todayAttDoc, recentAttDocs, dbRequests] = await Promise.all([
+      getActiveCompanyHrPolicy(CompanyHrPolicy),
+      Attendance
+        ? Attendance.findOne({ employeeId: employee._id, date: todayStr })
+            .select("date checkIn checkOut status workingHours")
+            .lean()
+        : null,
+      Attendance
+        ? Attendance.find({ employeeId: employee._id })
+            .sort({ date: -1 })
+            .limit(7)
+            .select("date checkIn checkOut status workingHours")
+            .lean()
+        : [],
+      LeaveRequest
+        ? LeaveRequest.find({
+            employeeId: employee._id,
+            status: { $in: ["PENDING", "APPROVED", "REJECTED"] },
+            fromDate: { $gte: leaveWindowStart },
+          })
+            .sort({ createdAt: -1 })
+            .limit(80)
+            .select(
+              "leaveTypeCode fromDate toDate daysCount reason status decision createdAt"
+            )
+            .lean()
+        : [],
+    ]);
+
+    // Prefer Attendance collection; fall back to legacy customFields.attendanceLogs
+    const todayLog = todayAttDoc
+      ? {
+          date: todayAttDoc.date,
+          checkIn: todayAttDoc.checkIn,
+          checkOut: todayAttDoc.checkOut,
+          status: todayAttDoc.status,
+          workingHours: todayAttDoc.workingHours,
+        }
+      : attendanceLogs.find((log) => log.date === todayStr) || null;
+
     const approvedLeaveToday = dbRequests.find((r) => {
       if (r.status !== "APPROVED") return false;
       const s = parseDateOnly(r.fromDate);
@@ -474,32 +504,17 @@ export async function getEmployeeDashboard(req, res, next) {
     const daysPresent = employee.attendance?.daysPresent || 0;
     const attendanceRate = totalWorkingDays > 0 ? Math.min(100, Math.round((daysPresent / totalWorkingDays) * 100)) : 100;
 
-    // Build recent attendance records (last 7 logs or generated defaults from present days)
-    let recentAttendance = [...attendanceLogs]
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 7);
-
-    if (recentAttendance.length === 0 && daysPresent > 0) {
-      const recs = [];
-      const cur = new Date();
-      let added = 0;
-      for (let i = 1; i <= 14 && added < Math.min(daysPresent, 5); i++) {
-        const d = new Date(cur);
-        d.setDate(d.getDate() - i);
-        const dayOfWeek = d.getDay();
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-          const dStr = d.toISOString().split("T")[0];
-          recs.push({
-            date: dStr,
-            checkIn: `${dStr}T09:30:00.000Z`,
-            checkOut: `${dStr}T18:30:00.000Z`,
-            status: "PRESENT",
-            workingHours: "9h 00m",
-          });
-          added++;
-        }
-      }
-      recentAttendance = recs;
+    let recentAttendance = (recentAttDocs || []).map((r) => ({
+      date: r.date,
+      checkIn: r.checkIn,
+      checkOut: r.checkOut,
+      status: r.status || "PRESENT",
+      workingHours: r.workingHours || "",
+    }));
+    if (recentAttendance.length === 0) {
+      recentAttendance = [...attendanceLogs]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 7);
     }
 
     // Calculate live leave balances based on Company HR Policy and approved history

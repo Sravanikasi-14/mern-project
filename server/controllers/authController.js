@@ -13,6 +13,7 @@ function isNonEmptyString(value) {
 }
 
 function publicCompany(company) {
+  const branding = company.branding || {};
   return {
     _id: company._id,
     name: company.companyName,
@@ -20,7 +21,13 @@ function publicCompany(company) {
     companyCode: company.slug,
     slug: company.slug,
     status: company.status,
-    branding: company.branding,
+    // Never expose logo binary bytes in session/auth payloads
+    branding: {
+      displayName: branding.displayName || "",
+      logoUrl: branding.logoUrl || "",
+      logoMimeType: branding.logoMimeType || "",
+      primaryColor: branding.primaryColor || "#4338ca",
+    },
     timezone: company.config?.timezone || "Asia/Kolkata",
     config: {
       timezone: company.config?.timezone || "Asia/Kolkata",

@@ -149,6 +149,10 @@ export function validateCompanyLogoFile({ fileName, mimeType, fileSize }) {
   return true;
 }
 
+/**
+ * Decode and validate a company logo payload.
+ * Returns buffer + mime + opaque storage key. Does not rely on ephemeral disk.
+ */
 export async function saveCompanyLogoFile({ databaseName, fileName, fileData, mimeType }) {
   validateCompanyLogoFile({ fileName, mimeType });
 
@@ -171,20 +175,31 @@ export async function saveCompanyLogoFile({ databaseName, fileName, fileData, mi
     throw new HttpError(400, "The uploaded file is not a valid PNG, JPEG, or WebP image.");
   }
 
-  const uploadsRoot = getUploadsRoot();
-  const baseDir = path.join(uploadsRoot, String(databaseName), "branding");
-  await fs.promises.mkdir(baseDir, { recursive: true });
-
   const ext = detected === "image/png" ? ".png" : detected === "image/webp" ? ".webp" : ".jpg";
   const storageKey = `logo_${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext}`;
-  const absolutePath = path.join(baseDir, storageKey);
-  await fs.promises.writeFile(absolutePath, fileBuffer);
+
+  // Best-effort local mirror for non-serverless / persistent disks (optional).
+  // Primary persistence is MongoDB branding.logoData — required on Vercel/Lambda.
+  let absolutePath = null;
+  const ephemeralFs = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  if (!ephemeralFs || process.env.UPLOADS_DIR) {
+    try {
+      const uploadsRoot = getUploadsRoot();
+      const baseDir = path.join(uploadsRoot, String(databaseName), "branding");
+      await fs.promises.mkdir(baseDir, { recursive: true });
+      absolutePath = path.join(baseDir, storageKey);
+      await fs.promises.writeFile(absolutePath, fileBuffer);
+    } catch {
+      absolutePath = null;
+    }
+  }
 
   return {
     storageKey,
     fileName: path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_"),
     fileSize: fileBuffer.length,
     mimeType: detected,
+    fileBuffer,
     absolutePath,
   };
 }

@@ -298,6 +298,9 @@ export function createLeaveRequestSchema() {
   leaveRequestSchema.index({ employeeId: 1, status: 1, fromDate: 1 });
   leaveRequestSchema.index({ status: 1, fromDate: 1 });
   leaveRequestSchema.index({ status: 1, fromDate: 1, toDate: 1 });
+  // Overlap / on-leave-today patterns: toDate-led range scans
+  leaveRequestSchema.index({ status: 1, toDate: 1, fromDate: 1 });
+  leaveRequestSchema.index({ employeeId: 1, status: 1, toDate: 1, fromDate: 1 });
   leaveRequestSchema.index({ employeeId: 1, fromDate: 1 });
   leaveRequestSchema.index({ employeeId: 1, createdAt: -1 });
   leaveRequestSchema.index({ status: 1, createdAt: -1 });
