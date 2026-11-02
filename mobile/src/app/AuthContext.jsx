@@ -10,7 +10,9 @@ export function AuthProvider({ children }) {
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionError, setSessionError] = useState(null);
-  const restoring = useRef(false);
+  const sessionGeneration = useRef(0);
+  const companyRef = useRef(null);
+  companyRef.current = company;
 
   const applySession = (payload) => {
     setUser(payload?.user ?? null);
@@ -20,23 +22,50 @@ export function AuthProvider({ children }) {
     }
   };
 
+  /** Merge branding into the in-memory company so headers update without waiting on /auth/me. */
+  const updateCompanyBranding = (branding = {}) => {
+    const nextLogoUrl = branding?.logoUrl;
+    setCompany((prev) => {
+      if (!prev) return prev;
+      const prevLogoUrl = prev.branding?.logoUrl || "";
+      if (nextLogoUrl !== undefined && String(nextLogoUrl) !== String(prevLogoUrl)) {
+        clearCompanyLogoCache();
+      }
+      return {
+        ...prev,
+        branding: {
+          ...(prev.branding || {}),
+          ...branding,
+        },
+      };
+    });
+  };
+
   const restoreSession = async ({ silent = false } = {}) => {
-    if (restoring.current && silent) {
-      return { success: false, skipped: true };
-    }
-    restoring.current = true;
+    const generation = ++sessionGeneration.current;
     if (!silent) {
       setLoading(true);
       setSessionError(null);
     }
     try {
       const response = await api.get("/auth/me");
+      if (generation !== sessionGeneration.current) {
+        return { success: false, stale: true };
+      }
+      const prevLogo = companyRef.current?.branding?.logoUrl || "";
+      const nextLogo = response.data?.company?.branding?.logoUrl || "";
+      if (String(prevLogo) !== String(nextLogo)) {
+        clearCompanyLogoCache();
+      }
       applySession(response.data);
       if (silent) {
         setSessionError(null);
       }
       return { success: true, data: response.data };
     } catch (err) {
+      if (generation !== sessionGeneration.current) {
+        return { success: false, stale: true, error: err };
+      }
       const status = err?.response?.status;
       if (status === 401) {
         localStorage.removeItem("hrms_token");
@@ -80,8 +109,7 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: err };
     } finally {
-      restoring.current = false;
-      if (!silent) {
+      if (!silent && generation === sessionGeneration.current) {
         setLoading(false);
       }
     }
@@ -172,6 +200,7 @@ export function AuthProvider({ children }) {
       logout,
       restoreSession,
       applySession,
+      updateCompanyBranding,
     }),
     [user, company, loading, sessionError]
   );

@@ -191,8 +191,16 @@ export default function Sidebar({
         return;
       }
       try {
-        const res = await api.get("/auth/company-logo", { responseType: "blob" });
+        const res = await api.get("/auth/company-logo", {
+          responseType: "blob",
+          // Bust any intermediary caches when the storage key changes.
+          params: { v: company.branding.logoUrl },
+        });
         if (cancelled) return;
+        if (!res.data || res.data.size === 0) {
+          setLogoSrc(null);
+          return;
+        }
         objectUrl = URL.createObjectURL(res.data);
         setLogoSrc(objectUrl);
       } catch {
@@ -310,7 +318,12 @@ export default function Sidebar({
         <div className="sidebar-brand">
           <div className={`brand-logo-icon ${logoSrc ? "has-image" : ""}`} aria-hidden="true">
             {logoSrc ? (
-              <img src={logoSrc} alt="" className="brand-logo-img" />
+              <img
+                src={logoSrc}
+                alt=""
+                className="brand-logo-img"
+                onError={() => setLogoSrc(null)}
+              />
             ) : (
               <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3.5" y="3.5" width="25" height="25" rx="8.5" />

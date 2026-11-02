@@ -114,6 +114,8 @@ after(async () => {
 });
 
 describe("Company logo persistence (serverless-safe)", () => {
+  let uploadedLogoUrl = "";
+
   it("1. HR uploads logo; bytes persist in Mongo (not only /tmp)", async () => {
     const upload = await request(app)
       .post("/api/settings/company/logo")
@@ -125,10 +127,12 @@ describe("Company logo persistence (serverless-safe)", () => {
       });
     assert.equal(upload.status, 200);
     assert.ok(upload.body.branding?.logoUrl);
+    uploadedLogoUrl = upload.body.branding.logoUrl;
 
     const stored = await Company.findById(companyA._id).select("+branding.logoData");
     assert.ok(stored.branding.logoData?.length > 0, "logoData must be stored in Mongo");
     assert.equal(stored.branding.logoMimeType, "image/png");
+    assert.equal(stored.branding.logoUrl, uploadedLogoUrl);
   });
 
   it("2. Employee and HR can stream the logo after upload", async () => {
@@ -145,8 +149,12 @@ describe("Company logo persistence (serverless-safe)", () => {
   it("3. Auth/session branding exposes logoUrl but never logo binary", async () => {
     const me = await request(app).get("/api/auth/me").set("Cookie", empCookieA);
     assert.equal(me.status, 200);
-    assert.ok(me.body.company?.branding?.logoUrl);
+    assert.equal(me.body.company?.branding?.logoUrl, uploadedLogoUrl);
     assert.equal(me.body.company.branding.logoData, undefined);
+
+    const settings = await request(app).get("/api/settings/company").set("Cookie", hrCookieA);
+    assert.equal(settings.status, 200);
+    assert.equal(settings.body.company?.branding?.logoUrl, uploadedLogoUrl);
   });
 
   it("4. Employees cannot upload company logo", async () => {
@@ -177,5 +185,32 @@ describe("Company logo persistence (serverless-safe)", () => {
 
     const stream = await request(app).get("/api/auth/company-logo").set("Cookie", hrCookieA);
     assert.equal(stream.status, 404);
+  });
+
+  it("7. Company profile update must not wipe persisted logo bytes", async () => {
+    const upload = await request(app)
+      .post("/api/settings/company/logo")
+      .set("Cookie", hrCookieA)
+      .send({
+        fileName: "keep.png",
+        fileData: PNG_1X1_BASE64,
+        mimeType: "image/png",
+      });
+    assert.equal(upload.status, 200);
+    const logoUrl = upload.body.branding.logoUrl;
+
+    const profile = await request(app)
+      .put("/api/settings/company")
+      .set("Cookie", hrCookieA)
+      .send({ displayName: "Logo Co A Workspace", companyName: "Logo Co A" });
+    assert.equal(profile.status, 200);
+    assert.equal(profile.body.company?.branding?.logoUrl, logoUrl);
+
+    const stored = await Company.findById(companyA._id).select("+branding.logoData");
+    assert.ok(stored.branding.logoData?.length > 0, "logoData must survive profile updates");
+    assert.equal(stored.branding.logoUrl, logoUrl);
+
+    const stream = await request(app).get("/api/auth/company-logo").set("Cookie", hrCookieA);
+    assert.equal(stream.status, 200);
   });
 });

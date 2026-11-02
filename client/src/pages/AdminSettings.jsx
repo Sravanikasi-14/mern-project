@@ -25,7 +25,7 @@ const SETTINGS_TABS = [
 ];
 
 export default function AdminSettings() {
-  const { user, company, restoreSession } = useAuth();
+  const { user, company, restoreSession, updateCompanyBranding } = useAuth();
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -308,17 +308,27 @@ export default function AdminSettings() {
       setLogoSaving(true);
       setLogoError("");
       const fileData = await readFileAsDataUrl(logoFile);
-      await api.post("/settings/company/logo", {
+      const res = await api.post("/settings/company/logo", {
         fileName: logoFile.name,
         fileData,
         mimeType: logoFile.type,
+      });
+      const branding = res.data?.branding || {};
+      if (!branding.logoUrl) {
+        throw new Error("Logo save did not return a persisted logo reference.");
+      }
+      // Update auth company immediately so sidebar/layouts refetch the stream.
+      updateCompanyBranding({
+        displayName: branding.displayName || displayName,
+        logoUrl: branding.logoUrl,
+        logoMimeType: branding.logoMimeType || "",
       });
       setLogoFile(null);
       setHasSavedLogo(true);
       setSuccessMsg("Company logo saved.");
       await restoreSession({ silent: true });
     } catch (err) {
-      setLogoError(err.response?.data?.message || "Failed to save the company logo.");
+      setLogoError(err.response?.data?.message || err.message || "Failed to save the company logo.");
     } finally {
       setLogoSaving(false);
     }
@@ -329,7 +339,13 @@ export default function AdminSettings() {
       setLogoSaving(true);
       setLogoError("");
       if (hasSavedLogo) {
-        await api.delete("/settings/company/logo");
+        const res = await api.delete("/settings/company/logo");
+        const branding = res.data?.branding || {};
+        updateCompanyBranding({
+          displayName: branding.displayName || displayName,
+          logoUrl: "",
+          logoMimeType: "",
+        });
         await restoreSession({ silent: true });
       }
       if (logoPreview && logoPreview.startsWith("blob:")) {

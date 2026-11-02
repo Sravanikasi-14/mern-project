@@ -322,22 +322,24 @@ export async function updateCompanySettings(req, res, next) {
       contactPhone,
     } = req.body || {};
 
+    // Use targeted $set only — never markModified("branding") without logoData loaded,
+    // or Mongoose can wipe the select:false logo binary on save.
+    const $set = {};
+
     if (companyName && typeof companyName === "string" && companyName.trim()) {
-      company.companyName = companyName.trim();
+      $set.companyName = companyName.trim();
     }
 
-    if (!company.branding) company.branding = {};
     if (typeof displayName === "string") {
-      company.branding.displayName = displayName.trim();
+      $set["branding.displayName"] = displayName.trim();
     }
 
-    if (!company.config) company.config = {};
     if (typeof timezone === "string" && timezone.trim()) {
-      company.config.timezone = timezone.trim();
+      $set["config.timezone"] = timezone.trim();
     }
     const nextCurrency = currencyCode || currency;
     if (typeof nextCurrency === "string" && nextCurrency.trim()) {
-      company.config.currencyCode = nextCurrency.trim().replace(/\s*\(.*$/, "").toUpperCase();
+      $set["config.currencyCode"] = nextCurrency.trim().replace(/\s*\(.*$/, "").toUpperCase();
     }
 
     const contactPayload =
@@ -349,38 +351,42 @@ export async function updateCompanySettings(req, res, next) {
           };
 
     if (contactPayload && typeof contactPayload === "object") {
-      if (!company.primaryContact) company.primaryContact = {};
       if (typeof contactPayload.fullName === "string") {
-        company.primaryContact.fullName = contactPayload.fullName.trim();
+        $set["primaryContact.fullName"] = contactPayload.fullName.trim();
       }
       if (typeof contactPayload.email === "string" && contactPayload.email.trim()) {
         const norm = normalizeEmail(contactPayload.email.trim());
         if (norm && isValidEmail(norm)) {
-          company.primaryContact.email = norm;
+          $set["primaryContact.email"] = norm;
         }
       }
       if (typeof contactPayload.phoneNumber === "string") {
-        company.primaryContact.phoneNumber = contactPayload.phoneNumber.trim();
+        $set["primaryContact.phoneNumber"] = contactPayload.phoneNumber.trim();
       }
     }
 
-    company.markModified("branding");
-    company.markModified("config");
-    company.markModified("primaryContact");
-    await company.save();
+    if (Object.keys($set).length > 0) {
+      await Company.updateOne({ _id: company._id }, { $set });
+    }
 
+    const refreshed = await Company.findById(company._id);
     res.json({
       success: true,
       message: "Company profile settings updated successfully.",
       company: {
-        id: company._id,
-        companyName: company.companyName,
-        slug: company.slug,
-        status: company.status,
-        branding: company.branding,
-        config: company.config,
-        primaryContact: company.primaryContact,
-        subscription: company.subscription,
+        id: refreshed._id,
+        companyName: refreshed.companyName,
+        slug: refreshed.slug,
+        status: refreshed.status,
+        branding: {
+          displayName: refreshed.branding?.displayName || "",
+          logoUrl: refreshed.branding?.logoUrl || "",
+          logoMimeType: refreshed.branding?.logoMimeType || "",
+          primaryColor: refreshed.branding?.primaryColor || "#155a37",
+        },
+        config: refreshed.config,
+        primaryContact: refreshed.primaryContact,
+        subscription: refreshed.subscription,
       },
     });
   } catch (error) {
@@ -460,14 +466,19 @@ export async function uploadCompanyLogo(req, res, next) {
       mimeType,
     });
 
-    if (!company.branding) company.branding = {};
-    const previousKey = company.branding.logoUrl;
-    company.branding.logoUrl = saved.storageKey;
-    company.branding.logoMimeType = saved.mimeType;
-    // Persist bytes in Mongo so logos survive serverless /tmp and multi-instance deploys
-    company.branding.logoData = saved.fileBuffer;
-    company.markModified("branding");
-    await company.save();
+    const previousKey = company.branding?.logoUrl || "";
+    const displayName = company.branding?.displayName || "";
+    // Atomic $set so logoUrl + bytes persist together (serverless-safe Mongo storage).
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          "branding.logoUrl": saved.storageKey,
+          "branding.logoMimeType": saved.mimeType,
+          "branding.logoData": saved.fileBuffer,
+        },
+      }
+    );
 
     if (previousKey && previousKey !== saved.storageKey) {
       await deleteCompanyLogoFile({
@@ -480,9 +491,9 @@ export async function uploadCompanyLogo(req, res, next) {
       success: true,
       message: "Company logo saved.",
       branding: {
-        displayName: company.branding.displayName || "",
-        logoUrl: company.branding.logoUrl,
-        logoMimeType: company.branding.logoMimeType,
+        displayName,
+        logoUrl: saved.storageKey,
+        logoMimeType: saved.mimeType,
       },
     });
   } catch (error) {

@@ -42,7 +42,7 @@ function readFileAsDataUrl(file) {
 
 export default function HrSettingsPage() {
   const navigate = useNavigate();
-  const { user, company, restoreSession, logout } = useAuth();
+  const { user, company, restoreSession, logout, updateCompanyBranding } = useAuth();
   const toast = useToast();
   const logoInputRef = useRef(null);
 
@@ -193,17 +193,26 @@ export default function HrSettingsPage() {
       setLogoSaving(true);
       setLogoError("");
       const fileData = await readFileAsDataUrl(logoFile);
-      await api.post("/settings/company/logo", {
+      const res = await api.post("/settings/company/logo", {
         fileName: logoFile.name,
         fileData,
         mimeType: logoFile.type,
+      });
+      const branding = res.data?.branding || {};
+      if (!branding.logoUrl) {
+        throw new Error("Logo save did not return a persisted logo reference.");
+      }
+      updateCompanyBranding({
+        displayName: branding.displayName || displayName,
+        logoUrl: branding.logoUrl,
+        logoMimeType: branding.logoMimeType || "",
       });
       setLogoFile(null);
       setHasSavedLogo(true);
       toast.push("Company logo saved.");
       await restoreSession({ silent: true });
     } catch (err) {
-      setLogoError(err.response?.data?.message || "Failed to save the company logo.");
+      setLogoError(err.response?.data?.message || err.message || "Failed to save the company logo.");
     } finally {
       setLogoSaving(false);
     }
@@ -215,7 +224,13 @@ export default function HrSettingsPage() {
       setLogoSaving(true);
       setLogoError("");
       if (hasSavedLogo) {
-        await api.delete("/settings/company/logo");
+        const res = await api.delete("/settings/company/logo");
+        const branding = res.data?.branding || {};
+        updateCompanyBranding({
+          displayName: branding.displayName || displayName,
+          logoUrl: "",
+          logoMimeType: "",
+        });
         await restoreSession({ silent: true });
       }
       if (logoPreview && logoPreview.startsWith("blob:")) {
