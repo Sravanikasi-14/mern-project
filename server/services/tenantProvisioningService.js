@@ -1,6 +1,7 @@
 import Company from "../models/Company.js";
 import { getCentralDbName, getTenantConnection } from "../config/db.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
+import { getLeaveBackupProposalModel } from "../models/LeaveBackupProposal.js";
 import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
 import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getAttendanceModel } from "../models/Attendance.js";
@@ -242,6 +243,34 @@ export async function provisionTenantDatabase(company, connection) {
     outcome.indexesCreated.push("impact_point_transactions: { idempotencyKey: 1 (unique) }, { employeeId: 1, createdAt: -1 }, { 'employeeSnapshot.department': 1, points: 1 }");
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // 13. Leave backup proposals (Phase 2 — proposed only, does not change task ownership)
+  if (!existingColNames.has("leave_backup_proposals")) {
+    await db.createCollection("leave_backup_proposals");
+    outcome.collectionsCreated.push("leave_backup_proposals");
+    outcome.repaired = true;
+  }
+  const LeaveBackupProposal = getLeaveBackupProposalModel(conn);
+  try {
+    await LeaveBackupProposal.createIndexes();
+    outcome.indexesCreated.push(
+      "leave_backup_proposals: { leaveRequestId: 1, taskId: 1 (unique) }, { proposedBackupEmployeeId: 1, status: 1 }"
+    );
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // Phase 3 handover/delegation is embedded on leave_requests (no separate collections).
+  // Ensure LeaveRequest indexes include handover query paths.
+  try {
+    const LeaveRequest = getLeaveRequestModel(conn);
+    await LeaveRequest.createIndexes();
+    outcome.indexesCreated.push(
+      "leave_requests: handover.status, handover.items.delegation.delegateEmployeeId+status, handover.items.taskId"
+    );
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] LeaveRequest index warning on ${company.databaseName}:`, idxErr.message);
   }
 
   outcome.message = outcome.repaired

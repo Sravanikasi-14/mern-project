@@ -186,9 +186,19 @@ export async function startTaskService({ models, user, taskId }) {
 
   const isAssignee = actorEmployee && String(task.assigneeId) === String(actorEmployee._id);
   const isReviewer = isAuthorizedReviewer(task, user, actorEmployee);
+  let isActiveDelegate = false;
+  if (!isAssignee && actorEmployee) {
+    try {
+      const { getActiveDelegationForActor } = await import("./taskDelegationService.js");
+      const delegation = await getActiveDelegationForActor(models, taskId, actorEmployee._id);
+      isActiveDelegate = Boolean(delegation);
+    } catch {
+      isActiveDelegate = false;
+    }
+  }
 
-  if (!isAssignee && !isReviewer) {
-    throw new HttpError(403, "Only the assigned employee or an authorized manager can start this task");
+  if (!isAssignee && !isReviewer && !isActiveDelegate) {
+    throw new HttpError(403, "Only the assigned employee, temporary backup, or an authorized manager can start this task");
   }
 
   if (task.status !== TASK_STATUSES.ASSIGNED && task.status !== TASK_STATUSES.CHANGES_REQUESTED) {
@@ -218,8 +228,18 @@ export async function submitTaskEvidenceService({ models, user, taskId, delivera
   }
 
   const isAssignee = actorEmployee && String(task.assigneeId) === String(actorEmployee._id);
-  if (!isAssignee && user.role !== USER_ROLES.HR_ADMIN) {
-    throw new HttpError(403, "Only the assigned employee can submit evidence for this task");
+  let isActiveDelegate = false;
+  if (!isAssignee && actorEmployee && user.role !== USER_ROLES.HR_ADMIN) {
+    try {
+      const { getActiveDelegationForActor } = await import("./taskDelegationService.js");
+      const delegation = await getActiveDelegationForActor(models, taskId, actorEmployee._id);
+      isActiveDelegate = Boolean(delegation);
+    } catch {
+      isActiveDelegate = false;
+    }
+  }
+  if (!isAssignee && !isActiveDelegate && user.role !== USER_ROLES.HR_ADMIN) {
+    throw new HttpError(403, "Only the assigned employee or active temporary backup can submit evidence for this task");
   }
 
   if (task.status !== TASK_STATUSES.IN_PROGRESS && task.status !== TASK_STATUSES.CHANGES_REQUESTED && task.status !== TASK_STATUSES.ASSIGNED) {

@@ -117,10 +117,14 @@ describe("HRMS Employee Management Enhancements", () => {
     assert.equal(res.body.employee.fullName, "Peter Parker");
     assert.equal(res.body.employee.employeeCode, "STK-101");
     assert.equal(res.body.invitation.status, "PENDING");
-    assert.ok(res.body.invitation.inviteLink.includes("/onboard?token="));
+    assert.ok(
+      res.body.invitation.inviteLink.includes("/activate?token=") ||
+        res.body.activation?.activationLink?.includes("/activate?token=")
+    );
 
     createdEmployeeId = res.body.employee._id;
-    const url = new URL(res.body.invitation.inviteLink);
+    const link = res.body.activation?.activationLink || res.body.invitation.inviteLink;
+    const url = new URL(link);
     onboardingToken = url.searchParams.get("token");
     assert.ok(onboardingToken);
 
@@ -174,70 +178,40 @@ describe("HRMS Employee Management Enhancements", () => {
     assert.ok(resendLog);
   });
 
-  it("4. Employee onboarding token verification returns employee and company details", async () => {
+  it("4. Employee activation token verification returns employee and company details", async () => {
     const verifyRes = await request(app)
-      .get(`/api/auth/onboard/verify?token=${encodeURIComponent(onboardingToken)}`);
+      .get(`/api/auth/activate/verify?token=${encodeURIComponent(onboardingToken)}`);
 
     assert.equal(verifyRes.status, 200);
     assert.equal(verifyRes.body.email, "peter@stark.test");
-    assert.equal(verifyRes.body.employee?.fullName, "Peter Parker");
+    assert.equal(verifyRes.body.fullName, "Peter Parker");
     assert.equal(verifyRes.body.company?.name, "Stark Industries");
   });
 
-  it("5. Employee completes self-service onboarding and establishes credentials", async () => {
+  it("5. Employee completes activation and establishes credentials", async () => {
     const onboardRes = await request(app)
-      .post("/api/auth/onboard/complete")
+      .post("/api/auth/activate/complete")
       .send({
         token: onboardingToken,
         password: "WebSlinger123!",
-        preferredName: "Spidey",
-        phoneNumber: "+1 555-0199",
-        personalEmail: "peter.private@webmail.test",
-        residentialAddress: {
-          street: "20 Ingram Street",
-          city: "Queens",
-          state: "New York",
-          postalCode: "11375",
-          country: "USA",
-        },
-        emergencyContact: {
-          name: "May Parker",
-          relationship: "Aunt",
-          phone: "+1 555-0188",
-        },
-        bankDetails: {
-          accountHolderName: "Peter Parker",
-          accountNumber: "123456789012",
-          bankName: "Queens Community Bank",
-          ifscCode: "QCB0001",
-          accountType: "Checking",
-        },
-        taxDetails: {
-          panNumber: "SSN-123-45",
-          taxRegime: "Standard",
-        },
       });
 
     if (onboardRes.status !== 200 && onboardRes.status !== 201) {
-      console.error("ONBOARD COMPLETE FAILED:", onboardRes.status, onboardRes.body);
+      console.error("ACTIVATE COMPLETE FAILED:", onboardRes.status, onboardRes.body);
     }
     assert.ok(onboardRes.status === 200 || onboardRes.status === 201);
     assert.equal(onboardRes.body.user.email, "peter@stark.test");
     employeeCookieA = cookieFrom(onboardRes);
-    assert.ok(employeeCookieA, "Expected session cookie issued upon completing onboarding");
+    assert.ok(employeeCookieA, "Expected session cookie issued upon completing activation");
 
-    // Verify employee record updated
     const { Employee } = await getCompanyModels(companyA);
     const emp = await Employee.findById(createdEmployeeId).lean();
     assert.equal(emp.invitation.status, "ACCEPTED");
-    assert.equal(emp.preferredName, "Spidey");
-    assert.equal(emp.residentialAddress.city, "Queens");
-    assert.equal(emp.bankDetails.bankName, "Queens Community Bank");
   });
 
-  it("6. Rejects reuse of consumed onboarding token", async () => {
+  it("6. Rejects reuse of consumed activation token", async () => {
     const reuseRes = await request(app)
-      .post("/api/auth/onboard/complete")
+      .post("/api/auth/activate/complete")
       .send({
         token: onboardingToken,
         password: "WebSlinger123!",
@@ -252,9 +226,6 @@ describe("HRMS Employee Management Enhancements", () => {
 
     assert.equal(meRes.status, 200);
     assert.equal(meRes.body.employee.fullName, "Peter Parker");
-    assert.equal(meRes.body.employee.preferredName, "Spidey");
-    assert.equal(meRes.body.employee.residentialAddress.city, "Queens");
-    assert.equal(meRes.body.employee.bankDetails.bankName, "Queens Community Bank");
     assert.equal(meRes.body.employee.compensation?.monthlyCostToCompany, 75000);
   });
 

@@ -373,6 +373,7 @@ export default function EmployeeDashboard() {
   const employee = dashboardData?.employee;
   const attendance = dashboardData?.attendance;
   const leave = dashboardData?.leave;
+  const coveringResponsibilities = dashboardData?.coveringResponsibilities || [];
   const holidays = dashboardData?.holidays || [];
   const payslips = dashboardData?.payslips || [];
   const persistedPayslips = payslips.filter((p) => p.isPersisted === true);
@@ -797,7 +798,7 @@ export default function EmployeeDashboard() {
                 </div>
               </div>
 
-              {/* Sub-panel 2: Actionable Tasks */}
+              {/* Sub-panel 2: Actionable Tasks + temporary coverage preview */}
               <div className="emp-subpanel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <span className="emp-subpanel-title">Tasks</span>
@@ -815,46 +816,95 @@ export default function EmployeeDashboard() {
                     <span className="m-title-short">Open tasks</span>
                   </Link>
                 </div>
+
+                {coveringResponsibilities.length > 0 && (
+                  <div className="emp-work-cover-preview" aria-label="Additional tasks">
+                    {coveringResponsibilities.slice(0, 2).map((item) => {
+                      const due = homeTaskDeadline(item.deadline, item.status);
+                      return (
+                        <Link
+                          key={String(item.taskId)}
+                          to={`/app/tasks?task=${item.taskId}`}
+                          className="emp-work-cover-row"
+                        >
+                          <div className="emp-work-cover-main">
+                            <div className="emp-work-cover-head">
+                              <span className="emp-work-cover-title">{item.title}</span>
+                            </div>
+                            <span className="emp-work-cover-meta">{due.text}</span>
+                          </div>
+                          <span className="emp-work-cover-open">Open</span>
+                        </Link>
+                      );
+                    })}
+                    {coveringResponsibilities.length > 2 && (
+                      <Link to="/app/tasks" className="emp-card__link emp-work-cover-more">
+                        View all
+                      </Link>
+                    )}
+                  </div>
+                )}
+
                 <div className="m-task-preview">
                   {homeTasksLoading ? (
                     <MobileSkeleton rows={3} />
-                  ) : homeTasks.length === 0 ? (
+                  ) : homeTasks.length === 0 && coveringResponsibilities.length === 0 ? (
                     <MobileEmptyState
                       message="No open tasks right now."
                       actionLabel="Open tasks"
                       onAction={() => navigate("/app/tasks")}
                     />
                   ) : (
-                    homeTasks.map((task) => {
-                      const due = homeTaskDeadline(task.deadline, task.status);
-                      return (
-                        <div key={task._id} className="m-task-row">
-                          <div className="m-task-row-main">
-                            <span className="m-summary-title">{task.title}</span>
-                            <span className="m-summary-sub">{due.text}</span>
-                          </div>
-                          <StatusBadge status={task.status} />
-                          {task.status === "ASSIGNED" ? (
-                            <button
-                              type="button"
-                              className="btn-primary m-task-row-btn"
-                              disabled={startingHomeTaskId === task._id}
-                              onClick={() => handleStartHomeTask(task)}
+                    <>
+                      {coveringResponsibilities.slice(0, 2).map((item) => {
+                        const due = homeTaskDeadline(item.deadline, item.status);
+                        return (
+                          <div key={`cover-${item.taskId}`} className="m-task-row">
+                            <div className="m-task-row-main">
+                              <span className="m-summary-title">{item.title}</span>
+                              <span className="m-summary-sub">{due.text}</span>
+                            </div>
+                            {item.status ? <StatusBadge status={item.status} /> : null}
+                            <Link
+                              to={`/app/tasks?task=${item.taskId}`}
+                              className="btn-secondary m-task-row-btn"
                             >
-                              {startingHomeTaskId === task._id ? "Starting..." : "Start task"}
-                            </button>
-                          ) : task.status === "IN_PROGRESS" ? (
-                            <Link to="/app/tasks" className="btn-primary m-task-row-btn">
-                              Submit work
+                              Open
                             </Link>
-                          ) : (
-                            <Link to="/app/tasks" className="btn-secondary m-task-row-btn">
-                              View details
-                            </Link>
-                          )}
-                        </div>
-                      );
-                    })
+                          </div>
+                        );
+                      })}
+                      {homeTasks.map((task) => {
+                        const due = homeTaskDeadline(task.deadline, task.status);
+                        return (
+                          <div key={task._id} className="m-task-row">
+                            <div className="m-task-row-main">
+                              <span className="m-summary-title">{task.title}</span>
+                              <span className="m-summary-sub">{due.text}</span>
+                            </div>
+                            <StatusBadge status={task.status} />
+                            {task.status === "ASSIGNED" ? (
+                              <button
+                                type="button"
+                                className="btn-primary m-task-row-btn"
+                                disabled={startingHomeTaskId === task._id}
+                                onClick={() => handleStartHomeTask(task)}
+                              >
+                                {startingHomeTaskId === task._id ? "Starting..." : "Start task"}
+                              </button>
+                            ) : task.status === "IN_PROGRESS" ? (
+                              <Link to="/app/tasks" className="btn-primary m-task-row-btn">
+                                Submit work
+                              </Link>
+                            ) : (
+                              <Link to="/app/tasks" className="btn-secondary m-task-row-btn">
+                                View details
+                              </Link>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
                   )}
                 </div>
               </div>

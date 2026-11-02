@@ -3,9 +3,12 @@ import {
   changeLeaveType,
   decideLeaveRequest,
   getCompanyHrPolicy,
+  getLeaveBackupRecommendations,
+  getLeaveImpactAnalysis,
   getLeaveRequestById,
   getLeaveRequests,
   getLeaveSummary,
+  saveLeaveBackupProposal,
 } from "../controllers/leaveController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
@@ -24,6 +27,9 @@ router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN));
 router.get("/summary", getLeaveSummary);
 router.get("/policy", getCompanyHrPolicy);
 router.get("/", getLeaveRequests);
+router.get("/:id/impact", getLeaveImpactAnalysis);
+router.get("/:id/backup-recommendations", getLeaveBackupRecommendations);
+router.put("/:id/backup-proposals", saveLeaveBackupProposal);
 router.get("/:id", getLeaveRequestById);
 router.post("/:id/decision", decideLeaveRequest);
 router.patch("/:id/leave-type", changeLeaveType);

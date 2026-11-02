@@ -18,6 +18,7 @@ import { getCompanyAssetModel } from "../models/CompanyAsset.js";
 import { getTaskModel } from "../models/Task.js";
 import { getImpactPointTransactionModel } from "../models/ImpactPointTransaction.js";
 import { getNotificationModel } from "../models/Notification.js";
+import { getLeaveBackupProposalModel } from "../models/LeaveBackupProposal.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -141,6 +142,7 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     Task: getTaskModel(connection),
     ImpactPointTransaction: getImpactPointTransactionModel(connection),
     Notification: getNotificationModel(connection),
+    LeaveBackupProposal: getLeaveBackupProposalModel(connection),
   };
 }
 

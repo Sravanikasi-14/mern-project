@@ -6,6 +6,7 @@ import { hashPassword } from "../utils/password.js";
 import { setAuthCookie } from "../utils/authCookie.js";
 import { signAuthToken, decodeAuthToken } from "../utils/token.js";
 import { verifyEmployeeActivationToken } from "../utils/onboardingToken.js";
+import { findAuthTokenByRawToken } from "../utils/authTokenHash.js";
 
 /**
  * Verify employee activation token before presenting password setup screen
@@ -31,15 +32,10 @@ export async function verifyActivationTokenEndpoint(req, res, next) {
 
     const models = await getCompanyModels(company);
 
-    if (models.AuthToken) {
-      const tokenDoc = await models.AuthToken.findOne({ token });
-      if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {
-        throw new HttpError(409, "This account activation link has already been used. Please log in.");
-      }
-    }
-
-    const user = await models.User.findById(payload.userId) || await models.User.findOne({ email: payload.sub });
+    const user = (await models.User.findById(payload.userId)) || (await models.User.findOne({ email: payload.sub }));
     if (user) {
+      // Candidate pipeline only: require APPROVED onboarding before activation.
+      // Manual / bulk provisioning users have no onboarding subdocument.
       if (user.onboarding) {
         if (user.onboarding.status === "REJECTED") {
           throw new HttpError(403, "This candidate onboarding has been rejected. Account activation is not permitted.");
@@ -50,6 +46,21 @@ export async function verifyActivationTokenEndpoint(req, res, next) {
       }
       if (user.isActive && user.lastLoginAt) {
         throw new HttpError(409, "This account activation link has already been used. Please log in.");
+      }
+    }
+
+    if (models.AuthToken) {
+      const tokenDoc = await findAuthTokenByRawToken(models.AuthToken, token);
+      if (tokenDoc) {
+        if (!tokenDoc.isActive || tokenDoc.usedAt) {
+          throw new HttpError(409, "This account activation link has already been used. Please log in.");
+        }
+        if (tokenDoc.expiresAt && new Date(tokenDoc.expiresAt) < new Date()) {
+          throw new HttpError(400, "This activation link has expired. Ask HR to regenerate it.");
+        }
+      } else if (user && !user.onboarding) {
+        // Manual/bulk activations always persist a hashed AuthToken row.
+        throw new HttpError(400, "This activation link is invalid or has expired.");
       }
     }
 
@@ -104,13 +115,6 @@ export async function completeActivation(req, res, next) {
 
     const models = await getCompanyModels(company);
 
-    if (models.AuthToken) {
-      const tokenDoc = await models.AuthToken.findOne({ token });
-      if (tokenDoc && (!tokenDoc.isActive || tokenDoc.usedAt)) {
-        throw new HttpError(409, "This account activation link has already been used. Please log in.");
-      }
-    }
-
     let user = await models.User.findById(payload.userId);
     if (!user) {
       user = await models.User.findOne({ email: payload.sub });
@@ -133,12 +137,32 @@ export async function completeActivation(req, res, next) {
       throw new HttpError(409, "This account has already been activated. Please log in.");
     }
 
+    if (models.AuthToken) {
+      const tokenDoc = await findAuthTokenByRawToken(models.AuthToken, token);
+      if (tokenDoc) {
+        if (!tokenDoc.isActive || tokenDoc.usedAt) {
+          throw new HttpError(409, "This account activation link has already been used. Please log in.");
+        }
+        if (tokenDoc.expiresAt && new Date(tokenDoc.expiresAt) < new Date()) {
+          throw new HttpError(400, "This activation link has expired. Ask HR to regenerate it.");
+        }
+      } else if (!user.onboarding) {
+        throw new HttpError(400, "This activation link is invalid or has expired.");
+      }
+    }
+
     const employee = await models.Employee.findById(payload.employeeId);
     if (!employee) {
       throw new HttpError(404, "Employee profile not found.");
     }
 
     employee.userId = user._id;
+    employee.invitation = {
+      ...(employee.invitation?.toObject?.() || employee.invitation || {}),
+      status: "ACCEPTED",
+      token: "",
+      acceptedAt: new Date(),
+    };
     await employee.save();
 
     const passwordHash = await hashPassword(password);
@@ -149,7 +173,7 @@ export async function completeActivation(req, res, next) {
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Mark activation token as used
+    // Mark all activation/invite tokens for this email as used
     if (models.AuthToken) {
       await models.AuthToken.updateMany(
         { email: payload.sub, isActive: true },
@@ -157,7 +181,6 @@ export async function completeActivation(req, res, next) {
       );
     }
 
-    // Sign session token and set secure auth cookie
     const authToken = signAuthToken({
       userId: user._id,
       companyId: company._id,
@@ -193,7 +216,9 @@ export async function completeActivation(req, res, next) {
           ipAddress: req.ip || "",
           timestamp: new Date(),
         });
-      } catch {}
+      } catch {
+        // non-fatal
+      }
     }
 
     res.json({

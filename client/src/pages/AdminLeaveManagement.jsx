@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
 import SoftRefresh from "../components/SoftRefresh";
 import Pagination from "../components/Pagination";
-import { IconClose, IconCheck, IconRefresh } from "../components/Icons";
+import { IconRefresh } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
@@ -29,6 +29,8 @@ import {
 } from "../utils/dateUtils";
 import "./LeaveManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
+import AppModal from "../components/AppModal";
+import LeaveReviewPanel from "../components/LeaveReviewPanel";
 
 const LEAVE_TABLE_COLUMNS = [
   { id: "employee", label: "Employee", essential: true },
@@ -107,6 +109,18 @@ export default function AdminLeaveManagement() {
   const [submittingChangeType, setSubmittingChangeType] = useState(false);
   const [changeTypeError, setChangeTypeError] = useState("");
   const [changeTypeSuccess, setChangeTypeSuccess] = useState("");
+
+  // Leave Impact & Work Continuity (informational — never blocks approval)
+  const [leaveImpact, setLeaveImpact] = useState(null);
+  const [leaveImpactLoading, setLeaveImpactLoading] = useState(false);
+  const [leaveImpactError, setLeaveImpactError] = useState("");
+
+  // Phase 2: Suggested Backup Arrangements (proposed only)
+  const [backupRecs, setBackupRecs] = useState(null);
+  const [handoverRefreshToken, setHandoverRefreshToken] = useState(0);
+  const [backupRecsLoading, setBackupRecsLoading] = useState(false);
+  const [backupRecsError, setBackupRecsError] = useState("");
+  const [savingBackupTaskId, setSavingBackupTaskId] = useState(null);
 
   // Debounce search input
   useEffect(() => {
@@ -206,13 +220,112 @@ export default function AdminLeaveManagement() {
     };
   }, [queryClient]);
 
-  // Quick Action Handler (Approve / Reject directly or via modal)
+  const resetReviewContext = () => {
+    setEmployeeBalance(null);
+    setLeaveImpact(null);
+    setLeaveImpactError("");
+    setBackupRecs(null);
+    setBackupRecsError("");
+    setShowChangeTypeForm(false);
+    setSelectedNewType("");
+    setChangeTypeReason("");
+    setConfirmChangeType(false);
+    setChangeTypeError("");
+    setChangeTypeSuccess("");
+  };
+
+  const loadLeaveReviewContext = async (reqItem) => {
+    try {
+      setRequestDetailsLoading(true);
+      setLeaveImpactLoading(true);
+      setBackupRecsLoading(true);
+      setLeaveImpactError("");
+      setBackupRecsError("");
+      const [detailRes, impactRes, backupRes] = await Promise.allSettled([
+        api.get(`/leave-requests/${reqItem._id}`),
+        api.get(`/leave-requests/${reqItem._id}/impact`),
+        api.get(`/leave-requests/${reqItem._id}/backup-recommendations`),
+      ]);
+
+      if (detailRes.status === "fulfilled" && detailRes.value.data?.success) {
+        setSelectedRequest(detailRes.value.data.leaveRequest);
+        setEmployeeBalance(detailRes.value.data.leaveBalance);
+        if (Array.isArray(detailRes.value.data.availableLeaveTypes)) {
+          setAvailableLeaveTypes(detailRes.value.data.availableLeaveTypes);
+        }
+      }
+
+      if (impactRes.status === "fulfilled" && impactRes.value.data?.success) {
+        setLeaveImpact(impactRes.value.data.impact);
+      } else if (impactRes.status === "rejected") {
+        setLeaveImpact(null);
+        setLeaveImpactError(
+          impactRes.reason?.response?.data?.message || "Work continuity overview could not be loaded."
+        );
+      } else {
+        setLeaveImpact(null);
+        setLeaveImpactError("Work continuity overview could not be loaded.");
+      }
+
+      if (backupRes.status === "fulfilled" && backupRes.value.data?.success) {
+        setBackupRecs(backupRes.value.data);
+      } else if (backupRes.status === "rejected") {
+        setBackupRecs(null);
+        setBackupRecsError(
+          backupRes.reason?.response?.data?.message || "Backup recommendations could not be loaded."
+        );
+      } else {
+        setBackupRecs(null);
+        setBackupRecsError("Backup recommendations could not be loaded.");
+      }
+    } catch (err) {
+      console.warn("Could not fetch full leave review context, using local data", err);
+      setLeaveImpactError((prev) => prev || "Work continuity overview could not be loaded.");
+      setBackupRecsError((prev) => prev || "Backup recommendations could not be loaded.");
+    } finally {
+      setRequestDetailsLoading(false);
+      setLeaveImpactLoading(false);
+      setBackupRecsLoading(false);
+    }
+  };
+
+  const retryBackupRecommendations = async () => {
+    if (!selectedRequest?._id) return;
+    try {
+      setBackupRecsLoading(true);
+      setBackupRecsError("");
+      const refresh = await api.get(`/leave-requests/${selectedRequest._id}/backup-recommendations`);
+      if (refresh.data?.success) setBackupRecs(refresh.data);
+      else {
+        setBackupRecs(null);
+        setBackupRecsError("Backup recommendations could not be loaded.");
+      }
+    } catch (err) {
+      setBackupRecs(null);
+      setBackupRecsError(
+        err.response?.data?.message || "Backup recommendations could not be loaded."
+      );
+    } finally {
+      setBackupRecsLoading(false);
+    }
+  };
+
+  const closeDecisionModal = () => {
+    setConfirmAction(null);
+    setSelectedRequest(null);
+    setDecisionRemarks("");
+    setDecisionError("");
+    resetReviewContext();
+  };
+
+  // Approve / Reject → unified decision modal (loads continuity + backup context)
   const handleQuickDecisionPrompt = (reqItem, action) => {
     setSelectedRequest(reqItem);
     setConfirmAction(action);
     setDecisionRemarks("");
     setDecisionError("");
-    setShowChangeTypeForm(false);
+    resetReviewContext();
+    loadLeaveReviewContext(reqItem);
   };
 
   const handleOpenDetails = async (reqItem) => {
@@ -220,33 +333,38 @@ export default function AdminLeaveManagement() {
     setConfirmAction(null);
     setDecisionRemarks("");
     setDecisionError("");
-    setEmployeeBalance(null);
-    setShowChangeTypeForm(false);
-    setSelectedNewType("");
-    setChangeTypeReason("");
-    setConfirmChangeType(false);
-    setChangeTypeError("");
-    setChangeTypeSuccess("");
+    resetReviewContext();
+    await loadLeaveReviewContext(reqItem);
+  };
 
+  const handleSelectProposedBackup = async (taskId, backupEmployeeId, explanationSnapshot) => {
+    if (!selectedRequest?._id) return;
     try {
-      setRequestDetailsLoading(true);
-      const res = await api.get(`/leave-requests/${reqItem._id}`);
-      if (res.data?.success) {
-        setSelectedRequest(res.data.leaveRequest);
-        setEmployeeBalance(res.data.leaveBalance);
-        if (Array.isArray(res.data.availableLeaveTypes)) {
-          setAvailableLeaveTypes(res.data.availableLeaveTypes);
-        }
-      }
+      setSavingBackupTaskId(taskId);
+      setBackupRecsError("");
+      await api.put(`/leave-requests/${selectedRequest._id}/backup-proposals`, {
+        taskId,
+        backupEmployeeId,
+        explanationSnapshot,
+      });
+      const refresh = await api.get(`/leave-requests/${selectedRequest._id}/backup-recommendations`);
+      if (refresh.data?.success) setBackupRecs(refresh.data);
+      // Refresh handover draft so matching items pick up the proposal (no auto-submit)
+      setHandoverRefreshToken((n) => n + 1);
     } catch (err) {
-      console.warn("Could not fetch full details, using local data", err);
+      setBackupRecsError(err.response?.data?.message || "Could not save proposed backup.");
     } finally {
-      setRequestDetailsLoading(false);
+      setSavingBackupTaskId(null);
     }
   };
 
   const handleSubmitDecision = async () => {
     if (!selectedRequest || !confirmAction) return;
+
+    if (confirmAction === "REJECT" && decisionRemarks.trim().length < 3) {
+      setDecisionError("Please provide a meaningful rejection reason (at least 3 characters).");
+      return;
+    }
 
     try {
       setSubmittingDecision(true);
@@ -258,9 +376,7 @@ export default function AdminLeaveManagement() {
       });
 
       setActionSuccess(res.data?.message || `Leave request ${confirmAction.toLowerCase()}d successfully.`);
-      setSelectedRequest(null);
-      setConfirmAction(null);
-      setDecisionRemarks("");
+      closeDecisionModal();
       await invalidateLeave(queryClient);
       setTimeout(() => setActionSuccess(""), 4000);
     } catch (err) {
@@ -716,14 +832,14 @@ export default function AdminLeaveManagement() {
                   {leaveCols.isVisible("appliedOn") && <td>{formatDate(req.createdAt)}</td>}
                   {leaveCols.isVisible("actions") && (
                     <td>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <div className="lm-row-actions">
                         {req.status === "PENDING" && (
                           <>
-                            <button type="button" className="btn-primary btn-sm" onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}>Approve</button>
-                            <button type="button" className="btn-secondary btn-sm" onClick={() => handleQuickDecisionPrompt(req, "REJECT")}>Reject</button>
+                            <button type="button" className="btn-primary btn-sm lm-action-btn" onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}>Approve</button>
+                            <button type="button" className="btn-secondary btn-sm lm-action-btn" onClick={() => handleQuickDecisionPrompt(req, "REJECT")}>Reject</button>
                           </>
                         )}
-                        <button type="button" className="btn-secondary btn-sm" onClick={() => handleOpenDetails(req)}>Details</button>
+                        <button type="button" className="btn-secondary btn-sm lm-action-btn" onClick={() => handleOpenDetails(req)}>Details</button>
                       </div>
                     </td>
                   )}
@@ -756,205 +872,248 @@ export default function AdminLeaveManagement() {
       )}
 
       {/* -----------------------------------------------------------------------
-          CONFIRM DECISION MODAL (Quick Decision or Full Decision)
+          UNIFIED LEAVE DECISION MODAL (Approve / Reject)
           ----------------------------------------------------------------------- */}
-      {selectedRequest && confirmAction && (
-        <div className="modal-overlay" onClick={() => setConfirmAction(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <div className="modal-header">
-              <h2>Confirm {confirmAction === "APPROVE" ? "Approval" : "Rejection"}</h2>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setConfirmAction(null)}
-                aria-label="Close"
-              >
-                <IconClose size={14} />
-              </button>
+      {selectedRequest && confirmAction && (() => {
+        const emp = selectedRequest.employee || selectedRequest.employeeId || {};
+        const empName = emp.fullName || selectedRequest.employeeName || "Employee";
+        const isApprove = confirmAction === "APPROVE";
+
+        return (
+          <AppModal
+            open
+            onClose={closeDecisionModal}
+            size="lg"
+            className="lm-decision-modal"
+            locked={submittingDecision}
+            title={isApprove ? "Approve Leave" : "Reject Leave"}
+            subtitle={
+              isApprove
+                ? "Review continuity information, then confirm approval. Backup selection is optional."
+                : "Review the request context and provide a rejection reason before confirming."
+            }
+            footer={
+              <>
+                <button
+                  type="button"
+                  className="btn-secondary lm-action-btn"
+                  onClick={closeDecisionModal}
+                  disabled={submittingDecision}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`${isApprove ? "btn-primary" : "btn-secondary"} lm-action-btn`}
+                  style={
+                    !isApprove
+                      ? { background: "var(--rose, #c45c5c)", color: "#fff", borderColor: "var(--rose, #c45c5c)" }
+                      : undefined
+                  }
+                  onClick={handleSubmitDecision}
+                  disabled={submittingDecision}
+                >
+                  {submittingDecision ? "Submitting" : isApprove ? "Approve Leave" : "Reject Leave"}
+                </button>
+              </>
+            }
+          >
+            {decisionError && <div className="error" style={{ marginBottom: 12 }}>{decisionError}</div>}
+
+            <div className={`lm-decision-banner lm-decision-banner--${isApprove ? "approve" : "reject"}`}>
+              You are about to <strong>{isApprove ? "approve" : "reject"}</strong> leave for{" "}
+              <strong>{empName}</strong>. Operational information below is for planning only and does not block leave.
             </div>
 
-            {decisionError && <div className="error" style={{ marginBottom: 14 }}>{decisionError}</div>}
+            <LeaveReviewPanel
+              selectedRequest={selectedRequest}
+              employeeBalance={employeeBalance}
+              leaveImpact={leaveImpact}
+              leaveImpactLoading={leaveImpactLoading}
+              leaveImpactError={leaveImpactError}
+              backupRecs={backupRecs}
+              backupRecsLoading={backupRecsLoading}
+              backupRecsError={backupRecsError}
+              onRetryBackup={retryBackupRecommendations}
+              requestDetailsLoading={requestDetailsLoading}
+              formatDate={formatDate}
+              getInitials={getInitials}
+              mode="decision"
+              showHandover={false}
+            />
 
-            <p style={{ fontSize: "13.5px", color: "var(--ink)", margin: "8px 0 16px" }}>
-              Are you sure you want to <strong>{confirmAction.toLowerCase()}</strong> this leave request for{" "}
-              <strong>{selectedRequest.employeeId?.fullName || "this employee"}</strong>?
-            </p>
-
-            <div style={{ background: "var(--panel)", padding: "12px 14px", borderRadius: 8, marginBottom: 16 }}>
-              <div style={{ fontSize: "13px", marginBottom: 4 }}>
-                <strong>Dates:</strong> {formatDate(selectedRequest.startDate)} to {formatDate(selectedRequest.endDate)} ({selectedRequest.calculatedDays || 1} day(s))
-              </div>
-              <div style={{ fontSize: "13px" }}>
-                <strong>Reason:</strong> {selectedRequest.reason || "Not specified"}
-              </div>
-            </div>
-
-            <label style={{ display: "block", marginBottom: 18 }}>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--muted)", display: "block", marginBottom: 6 }}>
-                Reviewer Remarks (Optional)
-              </span>
-              <textarea
-                rows={3}
-                value={decisionRemarks}
-                onChange={(e) => setDecisionRemarks(e.target.value)}
-                placeholder="Enter remarks or approval notes..."
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--hair)", boxSizing: "border-box" }}
-              />
-            </label>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setConfirmAction(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={confirmAction === "APPROVE" ? "btn-primary" : "btn-secondary"}
-                style={confirmAction === "REJECT" ? { background: "var(--rose)", color: "#fff", borderColor: "var(--rose)" } : {}}
-                onClick={handleSubmitDecision}
-                disabled={submittingDecision}
-              >
-                {submittingDecision ? "Submitting..." : `Confirm ${confirmAction}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <section className="lm-decision-section lm-decision-section--action">
+              <h4 className="lm-impact-heading">{isApprove ? "Approval comments" : "Rejection reason"}</h4>
+              <label className="lm-decision-remarks">
+                <span>
+                  {isApprove
+                    ? "Optional notes for the employee or your records"
+                    : "Required — explain the rejection clearly"}
+                </span>
+                <textarea
+                  rows={3}
+                  value={decisionRemarks}
+                  onChange={(e) => setDecisionRemarks(e.target.value)}
+                  placeholder={
+                    isApprove
+                      ? "Optional approval notes"
+                      : "Enter a meaningful rejection reason"
+                  }
+                  disabled={submittingDecision}
+                />
+              </label>
+            </section>
+          </AppModal>
+        );
+      })()}
 
       {/* -----------------------------------------------------------------------
           DETAILS & CHANGE LEAVE TYPE MODAL
           ----------------------------------------------------------------------- */}
       {selectedRequest && !confirmAction && (
-        <div className="modal-overlay" onClick={() => setSelectedRequest(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <div className="modal-header">
-              <h2>Leave Request Details</h2>
+        <AppModal
+          open
+          size="lg"
+          className="lm-details-modal"
+          title="Leave Request Details"
+          subtitle="Review eligibility, work impact, and optional backup coordination. Leave approval is independent of handover."
+          onClose={() => {
+            setSelectedRequest(null);
+            resetReviewContext();
+          }}
+          footer={
+            <>
               <button
                 type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setSelectedRequest(null)}
-                aria-label="Close"
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-
-            {changeTypeSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{changeTypeSuccess}</div>}
-            {changeTypeError && <div className="error" style={{ marginBottom: 14 }}>{changeTypeError}</div>}
-
-            <div style={{ padding: "8px 0" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-                <div className="lm-req-avatar" style={{ width: 48, height: 48, fontSize: 18 }}>
-                  {getInitials(selectedRequest.employeeId?.fullName)}
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>{selectedRequest.employeeId?.fullName}</h3>
-                  <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
-                    {selectedRequest.employeeId?.job?.jobTitle || "Team Member"} • {selectedRequest.employeeId?.job?.department || "General"}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Leave Type</span>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{selectedRequest.leaveTypeCode}</div>
-                </div>
-                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Status</span>
-                  <div style={{ marginTop: 2 }}><StatusBadge status={selectedRequest.status} /></div>
-                </div>
-                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Duration</span>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{selectedRequest.calculatedDays || 1} Day(s)</div>
-                </div>
-                <div style={{ background: "var(--panel)", padding: "10px 12px", borderRadius: 8 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Dates</span>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
-                    {formatDate(selectedRequest.startDate)} - {formatDate(selectedRequest.endDate)}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <span style={{ fontSize: 11.5, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Reason for Leave</span>
-                <div style={{ padding: "10px 12px", background: "var(--panel)", borderRadius: 8, marginTop: 4, fontSize: 13, fontStyle: "italic" }}>
-                  "{selectedRequest.reason || "No reason specified."}"
-                </div>
-              </div>
-
-              {/* Change Leave Type Form for APPROVED requests */}
-              {selectedRequest.status === "APPROVED" && (
-                <div style={{ borderTop: "1px solid var(--hair)", paddingTop: 16, marginTop: 16 }}>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => setShowChangeTypeForm((prev) => !prev)}
-                    style={{ marginBottom: 12 }}
-                  >
-                    {showChangeTypeForm ? "Cancel Leave Type Adjustment" : "Adjust / Change Leave Type"}
-                  </button>
-
-                  {showChangeTypeForm && (
-                    <div style={{ background: "var(--panel)", padding: "14px", borderRadius: 8 }}>
-                      <label style={{ display: "block", marginBottom: 10 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600 }}>Select New Leave Type:</span>
-                        <select
-                          value={selectedNewType}
-                          onChange={(e) => setSelectedNewType(e.target.value)}
-                          className="filter-select"
-                          style={{ width: "100%", marginTop: 4 }}
-                        >
-                          <option value="">-- Choose Type --</option>
-                          {availableLeaveTypes
-                            .filter((t) => t.code !== selectedRequest.leaveTypeCode)
-                            .map((t) => (
-                              <option key={t.code} value={t.code}>
-                                {t.name || t.code}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-
-                      <label style={{ display: "block", marginBottom: 12 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600 }}>Reason for Adjustment:</span>
-                        <input
-                          value={changeTypeReason}
-                          onChange={(e) => setChangeTypeReason(e.target.value)}
-                          placeholder="e.g. Employee requested change from Casual to Sick leave"
-                          className="search-input"
-                          style={{ width: "100%", marginTop: 4 }}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        onClick={handleChangeLeaveType}
-                        disabled={submittingChangeType || !selectedNewType || !changeTypeReason.trim()}
-                      >
-                        {submittingChangeType ? "Updating..." : "Save Leave Type Change"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setSelectedRequest(null)}
+                className="btn-secondary lm-action-btn"
+                onClick={() => {
+                  setSelectedRequest(null);
+                  resetReviewContext();
+                }}
               >
                 Close
               </button>
+              {selectedRequest.status === "PENDING" && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary lm-action-btn"
+                    style={{
+                      background: "var(--rose, #c45c5c)",
+                      color: "#fff",
+                      borderColor: "var(--rose, #c45c5c)",
+                    }}
+                    onClick={() => {
+                      setConfirmAction("REJECT");
+                      setDecisionRemarks("");
+                      setDecisionError("");
+                    }}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary lm-action-btn"
+                    onClick={() => {
+                      setConfirmAction("APPROVE");
+                      setDecisionRemarks("");
+                      setDecisionError("");
+                    }}
+                  >
+                    Approve
+                  </button>
+                </>
+              )}
+            </>
+          }
+        >
+          {changeTypeSuccess && (
+            <div className="success-alert" style={{ marginBottom: 14 }}>
+              {changeTypeSuccess}
             </div>
-          </div>
-        </div>
+          )}
+          {changeTypeError && (
+            <div className="error" style={{ marginBottom: 14 }}>
+              {changeTypeError}
+            </div>
+          )}
+
+          <LeaveReviewPanel
+            selectedRequest={selectedRequest}
+            employeeBalance={employeeBalance}
+            leaveImpact={leaveImpact}
+            leaveImpactLoading={leaveImpactLoading}
+            leaveImpactError={leaveImpactError}
+            backupRecs={backupRecs}
+            backupRecsLoading={backupRecsLoading}
+            backupRecsError={backupRecsError}
+            onRetryBackup={retryBackupRecommendations}
+            requestDetailsLoading={requestDetailsLoading}
+            formatDate={formatDate}
+            getInitials={getInitials}
+            mode="details"
+            showHandover
+            handoverRefreshToken={handoverRefreshToken}
+            savingBackupTaskId={savingBackupTaskId}
+            onProposeBackup={(taskId, backupEmployeeId, explanationSnapshot) =>
+              handleSelectProposedBackup(taskId, backupEmployeeId, explanationSnapshot)
+            }
+            onClearBackup={(taskId) => handleSelectProposedBackup(taskId, null)}
+          />
+
+          {selectedRequest.status === "APPROVED" && (
+            <div className="lm-change-type-block">
+              <button
+                type="button"
+                className="btn-secondary btn-sm lm-action-btn"
+                onClick={() => setShowChangeTypeForm((prev) => !prev)}
+              >
+                {showChangeTypeForm ? "Cancel leave type adjustment" : "Adjust leave type"}
+              </button>
+
+              {showChangeTypeForm && (
+                <div className="lm-change-type-form">
+                  <label>
+                    <span>Select new leave type</span>
+                    <select
+                      value={selectedNewType}
+                      onChange={(e) => setSelectedNewType(e.target.value)}
+                      className="filter-select"
+                    >
+                      <option value="">Choose type</option>
+                      {availableLeaveTypes
+                        .filter((t) => t.code !== selectedRequest.leaveTypeCode)
+                        .map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.name || t.code}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Reason for adjustment</span>
+                    <input
+                      value={changeTypeReason}
+                      onChange={(e) => setChangeTypeReason(e.target.value)}
+                      placeholder="e.g. Employee requested change from Casual to Sick leave"
+                      className="search-input"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm lm-action-btn"
+                    onClick={handleChangeLeaveType}
+                    disabled={
+                      submittingChangeType || !selectedNewType || !changeTypeReason.trim()
+                    }
+                  >
+                    {submittingChangeType ? "Updating…" : "Save leave type change"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </AppModal>
       )}
     </div>
   );

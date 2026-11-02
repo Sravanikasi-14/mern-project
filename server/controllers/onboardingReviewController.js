@@ -782,7 +782,7 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
       throw createErr;
     }
 
-    // 10. Generate Employee Activation Token (Stage 6)
+    // 10. Generate Employee Activation Token (Stage 6) — store hash only
     const activationToken = signEmployeeActivationToken({
       companyId: req.auth.company._id,
       employeeId: newEmployee._id,
@@ -791,10 +791,11 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
     });
 
     if (AuthToken) {
+      const { hashAuthToken } = await import("../utils/authTokenHash.js");
       await AuthToken.create({
         userId: candidateUser._id,
         email: candidateEmail,
-        token: activationToken,
+        token: hashAuthToken(activationToken),
         type: TOKEN_TYPES.INVITATION,
         role: "EMPLOYEE",
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -924,10 +925,11 @@ export async function resendEmployeeActivationEmail(req, res, next) {
     });
 
     if (AuthToken) {
+      const { hashAuthToken } = await import("../utils/authTokenHash.js");
       await AuthToken.create({
         userId: user._id,
         email: employee.email,
-        token: activationToken,
+        token: hashAuthToken(activationToken),
         type: TOKEN_TYPES.INVITATION,
         role: "EMPLOYEE",
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

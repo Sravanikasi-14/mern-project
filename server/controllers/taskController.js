@@ -98,12 +98,25 @@ export async function getTasks(req, res, next) {
     const rawScope = String(req.query.scope || "auto").trim().toLowerCase();
     const isMyTasks = rawScope === "my_tasks" || rawScope === "my";
     const isTeamTasks = rawScope === "team_tasks" || rawScope === "team";
+    const isCovering = rawScope === "covering";
     const isAll = rawScope === "all";
 
     const conditions = [];
 
     // Scope-based authorization filtering
-    if (isMyTasks || (!isHrAdmin && !isTeamTasks)) {
+    if (isCovering) {
+      if (!actorEmployee) {
+        return res.status(200).json({
+          success: true,
+          tasks: [],
+          pagination: { total: 0, page, limit, pages: 1 },
+          data: { tasks: [], pagination: { total: 0, page, limit, pages: 1 } },
+        });
+      }
+      const { listCoveringTaskIds } = await import("../services/taskDelegationService.js");
+      const coveringIds = await listCoveringTaskIds(req.auth.models, actorEmployee._id);
+      conditions.push({ _id: { $in: coveringIds } });
+    } else if (isMyTasks || (!isHrAdmin && !isTeamTasks)) {
       if (!actorEmployee) {
         return res.status(200).json({
           success: true,
@@ -186,7 +199,7 @@ export async function getTasks(req, res, next) {
         ? conditions[0]
         : { $and: conditions };
 
-    const [total, tasks] = await Promise.all([
+    const [total, tasksRaw] = await Promise.all([
       Task.countDocuments(query),
       Task.find(query)
         .sort({ deadline: 1, createdAt: -1 })
@@ -194,6 +207,10 @@ export async function getTasks(req, res, next) {
         .limit(limit)
         .lean(),
     ]);
+
+    // Covering scope returns ordinary task payloads — authorization uses delegation
+    // server-side; do not expose handover/leave metadata to employees.
+    const tasks = tasksRaw;
 
     const pagination = {
       total,
@@ -231,12 +248,29 @@ export async function getTaskById(req, res, next) {
       throw new HttpError(404, "Task not found");
     }
 
-    // Authorization: HR Admin, assignee, or assigning manager
+    // Authorization: HR Admin, assignee, assigning manager, or temporary coverage delegate
     const isAssignee = actorEmployee && String(task.assigneeId) === String(actorEmployee._id);
-    const isAssigner = actorEmployee && task.assignedByEmployeeId && String(task.assignedByEmployeeId) === String(actorEmployee._id);
+    const isAssigner =
+      actorEmployee &&
+      task.assignedByEmployeeId &&
+      String(task.assignedByEmployeeId) === String(actorEmployee._id);
 
     if (!isHrAdmin && !isAssignee && !isAssigner) {
-      throw new HttpError(403, "You do not have permission to view this task");
+      if (!actorEmployee) {
+        throw new HttpError(403, "You do not have permission to view this task");
+      }
+      const { getActiveDelegationForActor } = await import("../services/taskDelegationService.js");
+      const delegation = await getActiveDelegationForActor(
+        req.auth.models,
+        task._id,
+        actorEmployee._id
+      );
+      if (!delegation) {
+        throw new HttpError(403, "You do not have permission to view this task");
+      }
+      // Authorized via active/scheduled delegation — return the task without
+      // employee-facing handover or leave metadata.
+      return res.status(200).json({ success: true, task });
     }
 
     res.status(200).json({ success: true, task });

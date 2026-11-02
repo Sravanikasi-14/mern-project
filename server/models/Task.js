@@ -90,6 +90,14 @@ export function createTaskSchema() {
         type: Date,
         required: [true, "Task deadline is required"],
       },
+      /**
+       * Optional skill tags required for coverage (Phase 2 backup recommendations).
+       * Empty means skill matching cannot be assessed for this task.
+       */
+      requiredSkills: {
+        type: [{ type: String, trim: true }],
+        default: [],
+      },
       deliverables: {
         type: [
           {

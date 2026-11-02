@@ -177,12 +177,21 @@ export default function EmployeeTasksPage() {
   // server page UI would hide grouped items across pages.
   const taskParams = { page: 1, limit: 50, search: debouncedSearch, priority };
   const myTasksQuery = useMyTasksQuery(taskParams);
+  const coveringQuery = useMyTasksQuery({ page: 1, limit: 50, scope: "covering" });
   const teamTasksQuery = useTeamTasksQuery(taskParams, { enabled: isManager });
 
+  const coveringTasks = useMemo(() => {
+    const raw = coveringQuery.data;
+    return Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : [];
+  }, [coveringQuery.data]);
   const tasks = useMemo(() => {
     const raw = myTasksQuery.data;
-    return Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : [];
-  }, [myTasksQuery.data]);
+    const mine = Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : [];
+    if (!coveringTasks.length) return mine;
+    const seen = new Set(mine.map((t) => String(t._id)));
+    const extras = coveringTasks.filter((t) => !seen.has(String(t._id)));
+    return [...extras, ...mine];
+  }, [myTasksQuery.data, coveringTasks]);
   const teamTasks = useMemo(() => {
     if (!isManager) return [];
     const raw = teamTasksQuery.data;
@@ -193,7 +202,9 @@ export default function EmployeeTasksPage() {
     || myTasksQuery.error?.response?.data?.message
     || myTasksQuery.error?.message
     || "";
-  const refreshing = (myTasksQuery.isFetching || teamTasksQuery.isFetching) && tasks.length > 0;
+  const refreshing =
+    (myTasksQuery.isFetching || teamTasksQuery.isFetching || coveringQuery.isFetching) &&
+    tasks.length > 0;
 
   const employee = dashQuery.data?.employee;
   const fullName = employee?.preferredName || employee?.fullName || user?.fullName || user?.email || "Colleague";

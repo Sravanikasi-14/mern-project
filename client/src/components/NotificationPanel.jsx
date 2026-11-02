@@ -52,13 +52,18 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // Handle escape key and click outside
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Handle escape key and click outside (stable — do not depend on onClose identity)
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current?.();
       }
     };
 
@@ -69,7 +74,7 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
         if (bellBtn && bellBtn.contains(e.target)) {
           return;
         }
-        onClose();
+        onCloseRef.current?.();
       }
     };
 
@@ -79,7 +84,7 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   const handleItemClick = async (notif) => {
     // Optimistically mark as read

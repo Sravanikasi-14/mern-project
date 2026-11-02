@@ -2,14 +2,14 @@ import mongoose from "mongoose";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES, serializeUser } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
-import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { HttpError } from "../utils/httpError.js";
-import { hashPassword } from "../utils/password.js";
-import { signEmployeeInvitationToken } from "../utils/onboardingToken.js";
-import { emailService } from "../services/emailService.js";
 import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
-import { TOKEN_TYPES } from "../models/AuthToken.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
+import {
+  provisionEmployeeAccount,
+  regenerateActivationLink,
+  PROVISIONING_SOURCES,
+} from "../services/employeeProvisioningService.js";
 import {
   calculateEmployeeLeaveBalances,
   calculateLeaveDays,
@@ -685,6 +685,28 @@ export async function getEmployeeDashboard(req, res, next) {
       };
     }
 
+    // Employee dashboard preview of delegated tasks — task fields only (no leave/handover metadata).
+    let coveringResponsibilities = [];
+    try {
+      const { listCoveringResponsibilitySummaries } = await import(
+        "../services/taskDelegationService.js"
+      );
+      const rawCover = await listCoveringResponsibilitySummaries(
+        req.auth.models,
+        employee._id,
+        { limit: 8 }
+      );
+      coveringResponsibilities = rawCover.map((row) => ({
+        taskId: row.taskId,
+        title: row.title,
+        deadline: row.deadline || null,
+        priority: row.priority || null,
+        status: row.taskStatus || null,
+      }));
+    } catch (coverErr) {
+      console.warn("[dashboard] covering responsibilities:", coverErr.message);
+    }
+
     res.json({
       success: true,
       user: serializeUser(req.auth.user),
@@ -733,6 +755,7 @@ export async function getEmployeeDashboard(req, res, next) {
           })),
         config: leaveConfig,
       },
+      coveringResponsibilities,
       holidays: upcomingHolidays,
       payslips,
       assets: assignedAssets,
@@ -1185,265 +1208,62 @@ This is a system-generated document and does not require a signature.
   }
 }
 
+/**
+ * Path A – Manual HR employee creation.
+ * Creates Employee + User via shared provisioning service.
+ * Returns an activation link for HR to copy (no automatic email).
+ */
 export async function createEmployee(req, res, next) {
   try {
-    const {
-      fullName,
-      email,
-      employeeCode,
-      phoneNumber,
-      dateOfBirth,
-      city,
-      status = EMPLOYEE_STATUSES.ACTIVE,
-      jobTitle,
-      department,
-      employmentType,
-      jobGrade,
-      workLocation,
-      joiningDate,
-      reportingManagerId,
-      projectName,
-      projectType = "MANDATE",
-      monthlySalary,
-      password,
-      offerLetterId,
-    } = req.body || {};
+    const body = req.body || {};
+    // Client-supplied role/password/company overrides are intentionally ignored.
+    const clientBaseUrl =
+      process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
 
-    if (!fullName || typeof fullName !== "string" || !fullName.trim()) {
-      throw new HttpError(400, "Full name is required", {
-        field: "fullName",
-        errors: { fullName: "Full name is required" },
-      });
-    }
-    if (!employeeCode || typeof employeeCode !== "string" || !employeeCode.trim()) {
-      throw new HttpError(400, "Employee code is required", {
-        field: "employeeCode",
-        errors: { employeeCode: "Employee code is required" },
-      });
-    }
-    if (!email || !isValidEmail(email)) {
-      throw new HttpError(400, "A valid email is required", {
-        field: "email",
-        errors: { email: "A valid email is required" },
-      });
-    }
-
-    const normalizedEmail = normalizeEmail(email);
-    const code = employeeCode.trim();
-
-    if (password && password.length < 8) {
-      throw new HttpError(400, "Initial password must be at least 8 characters long.", {
-        field: "password",
-        errors: { password: "Initial password must be at least 8 characters long." },
-      });
-    }
-
-    if (monthlySalary !== undefined && monthlySalary !== null && monthlySalary !== "") {
-      const numSal = parseFloat(monthlySalary);
-      if (isNaN(numSal) || numSal < 0) {
-        throw new HttpError(400, "Please enter a valid non-negative salary amount.", {
-          field: "monthlySalary",
-          errors: { monthlySalary: "Please enter a valid non-negative salary amount." },
-        });
-      }
-    }
-
-    if (joiningDate && isNaN(new Date(joiningDate).getTime())) {
-      throw new HttpError(400, "Please enter a valid joining date.", {
-        field: "joiningDate",
-        errors: { joiningDate: "Please enter a valid joining date." },
-      });
-    }
-
-    const { Employee, User, EmployeeCompensation, AuthToken, AuditLog, OfferLetter } = req.auth.models;
-
-    let linkedOffer = null;
-    if (offerLetterId) {
-      if (!mongoose.Types.ObjectId.isValid(offerLetterId)) {
-        throw new HttpError(400, "Invalid offer letter ID provided.", {
-          field: "offerLetterId",
-          errors: { offerLetterId: "Invalid offer letter ID provided." },
-        });
-      }
-      if (OfferLetter) {
-        linkedOffer = await OfferLetter.findById(offerLetterId);
-        if (!linkedOffer) {
-          throw new HttpError(404, "Referenced offer letter was not found.", {
-            field: "offerLetterId",
-            errors: { offerLetterId: "Referenced offer letter was not found." },
-          });
-        }
-        if (linkedOffer.status !== "ACCEPTED") {
-          throw new HttpError(400, `Cannot onboard candidate from offer letter with status '${linkedOffer.status}'. Only ACCEPTED offers can be onboarded.`, {
-            field: "offerLetterId",
-            errors: { offerLetterId: `Offer letter is in '${linkedOffer.status}' status. Only ACCEPTED offers can be onboarded.` },
-          });
-        }
-        if (linkedOffer.employeeId) {
-          throw new HttpError(409, "This offer letter has already been linked to an onboarded employee.", {
-            field: "offerLetterId",
-            errors: { offerLetterId: "This offer letter has already been linked to an onboarded employee." },
-          });
-        }
-      }
-    }
-
-    const existingCode = await Employee.findOne({ employeeCode: code });
-    if (existingCode) {
-      throw new HttpError(409, "An employee with this employee code already exists.", {
-        field: "employeeCode",
-        errors: { employeeCode: "An employee with this employee code already exists." },
-      });
-    }
-
-    const existingEmail = await Employee.findOne({ email: normalizedEmail });
-    if (existingEmail) {
-      throw new HttpError(409, "An employee with this email address already exists.", {
-        field: "email",
-        errors: { email: "An employee with this email address already exists." },
-      });
-    }
-
-    let user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
-      const initialPassword = password && password.length >= 8 ? password : "TempPass" + Math.random().toString(36).substring(2, 8) + "!";
-      const passwordHash = await hashPassword(initialPassword);
-      user = await User.create({
-        email: normalizedEmail,
-        passwordHash,
-        role: USER_ROLES.EMPLOYEE,
-        isActive: status === EMPLOYEE_STATUSES.ACTIVE,
-        schemaVersion: 1,
-      });
-    }
-
-    const employee = await Employee.create({
-      userId: user._id,
-      employeeCode: code,
-      fullName: fullName.trim(),
-      email: normalizedEmail,
-      phoneNumber: phoneNumber ? String(phoneNumber).trim() : "",
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-      city: city ? String(city).trim() : "",
-      status:
-        status === EMPLOYEE_STATUSES.INACTIVE
-          ? EMPLOYEE_STATUSES.INACTIVE
-          : EMPLOYEE_STATUSES.ACTIVE,
-      job: {
-        jobTitle: jobTitle ? String(jobTitle).trim() : "",
-        department: department ? String(department).trim() : "",
-        employmentType: employmentType ? String(employmentType).trim() : "Full-time",
-        jobGrade: jobGrade ? String(jobGrade).trim() : "",
-        workLocation: workLocation ? String(workLocation).trim() : "",
-        joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
-        reportingManagerId: reportingManagerId || null,
-        project: {
-          projectName: projectName ? String(projectName).trim() : "",
-          projectType: projectType || "MANDATE",
-        },
+    const result = await provisionEmployeeAccount(
+      {
+        models: req.auth.models,
+        company: req.auth.company,
+        actorUserId: req.auth.user._id,
+        actorEmail: req.auth.user.email,
+        actorRole: req.auth.user.role,
+        clientBaseUrl,
+        ipAddress: req.ip || "",
       },
-      schemaVersion: 1,
-    });
-
-    // Generate onboarding invitation token
-    const inviteToken = signEmployeeInvitationToken({
-      companyId: req.auth.company._id,
-      employeeId: employee._id,
-      email: normalizedEmail,
-    });
-
-    if (AuthToken) {
-      await AuthToken.create({
-        userId: user._id,
-        email: normalizedEmail,
-        token: inviteToken,
-        type: TOKEN_TYPES.ONBOARDING,
-        role: "EMPLOYEE",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        createdBy: req.auth.user._id,
-        isActive: true,
-      });
-    }
-
-    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
-
-    const emailResult = await emailService.sendEmployeeInvitation({
-      companyName: req.auth.company?.companyName || req.auth.company?.name || "Your Company",
-      employeeName: employee.fullName,
-      email: normalizedEmail,
-      inviteLink,
-      company: req.auth.company,
-    });
-
-    employee.invitation = {
-      status: emailResult.success ? "PENDING" : "DELIVERY_FAILED",
-      token: inviteToken,
-      sentAt: new Date(),
-    };
-    await employee.save();
-
-    const numericSalary = parseFloat(monthlySalary);
-    if (!isNaN(numericSalary) && numericSalary > 0 && EmployeeCompensation) {
-      const basic = numericSalary * 0.5;
-      const hra = numericSalary * 0.25;
-      const conveyance = numericSalary * 0.1;
-      const special = numericSalary * 0.15;
-
-      await EmployeeCompensation.create({
-        employeeId: employee._id,
-        revisions: [
-          {
-            effectiveFromDate: joiningDate ? new Date(joiningDate) : new Date(),
-            monthlyCostToCompany: mongoose.Types.Decimal128.fromString(numericSalary.toFixed(2)),
-            salaryComponents: {
-              basicSalary: mongoose.Types.Decimal128.fromString(basic.toFixed(2)),
-              houseRentAllowance: mongoose.Types.Decimal128.fromString(hra.toFixed(2)),
-              conveyanceAllowance: mongoose.Types.Decimal128.fromString(conveyance.toFixed(2)),
-              specialAllowance: mongoose.Types.Decimal128.fromString(special.toFixed(2)),
-            },
-            revisedBy: req.auth.user._id,
-            revisedAt: new Date(),
-          },
-        ],
-        schemaVersion: 1,
-      });
-    }
-
-    if (AuditLog) {
-      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.EMPLOYEE_CREATED, employee._id, {
-        fullName: employee.fullName,
-        employeeCode: employee.employeeCode,
-        email: employee.email,
-        monthlySalary: !isNaN(numericSalary) ? numericSalary : null,
-      });
-      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.INVITATION_SENT, employee._id, {
-        email: normalizedEmail,
-        deliveryStatus: employee.invitation.status,
-        error: emailResult.error || null,
-      });
-
-      if (linkedOffer) {
-        linkedOffer.employeeId = employee._id;
-        await linkedOffer.save();
-        await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_LINKED, linkedOffer._id, {
-          offerLetterId: linkedOffer._id,
-          employeeId: employee._id,
-          employeeCode: employee.employeeCode,
-          candidateName: linkedOffer.candidate?.fullName,
-        });
-      }
-    }
+      {
+        fullName: body.fullName,
+        email: body.email,
+        employeeCode: body.employeeCode,
+        phoneNumber: body.phoneNumber,
+        dateOfBirth: body.dateOfBirth,
+        city: body.city,
+        status: body.status,
+        jobTitle: body.jobTitle,
+        department: body.department,
+        employmentType: body.employmentType,
+        jobGrade: body.jobGrade,
+        workLocation: body.workLocation,
+        joiningDate: body.joiningDate,
+        reportingManagerId: body.reportingManagerId,
+        projectName: body.projectName,
+        projectType: body.projectType,
+        monthlySalary: body.monthlySalary,
+        offerLetterId: body.offerLetterId,
+      },
+      { source: PROVISIONING_SOURCES.MANUAL }
+    );
 
     res.status(201).json({
-      message: "Employee created successfully",
-      employee,
+      message: "Employee created successfully. Share the activation link so they can set a password.",
+      employee: result.employee,
+      accountStatus: result.accountStatus,
       invitation: {
-        status: employee.invitation.status,
-        inviteLink,
-        emailSent: emailResult.success,
-        error: emailResult.error || null,
+        status: "PENDING",
+        inviteLink: result.activation.activationLink,
+        emailSent: false,
+        error: null,
       },
+      activation: result.activation,
     });
   } catch (error) {
     next(error);
@@ -1683,79 +1503,38 @@ export async function updateEmployee(req, res, next) {
   }
 }
 
+/**
+ * Regenerate a single-use activation link for a pending employee.
+ * Does not create another Employee or User. Does not send email.
+ */
 export async function resendInvitation(req, res, next) {
   try {
-    const { Employee, AuthToken, AuditLog } = req.auth.models;
-    const { id } = req.params;
+    const clientBaseUrl =
+      process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
 
-    const employee = await Employee.findById(id);
-    if (!employee) {
-      throw new HttpError(404, "Employee not found");
-    }
-
-    if (employee.invitation?.status === "ACCEPTED") {
-      throw new HttpError(400, "Employee has already accepted their onboarding invitation and established credentials.");
-    }
-
-    const inviteToken = signEmployeeInvitationToken({
-      companyId: req.auth.company._id,
-      employeeId: employee._id,
-      email: employee.email,
-    });
-
-    if (AuthToken) {
-      // Invalidate any older pending invitation tokens for this user
-      await AuthToken.updateMany(
-        { email: employee.email, role: "EMPLOYEE", isActive: true },
-        { isActive: false }
-      );
-
-      await AuthToken.create({
-        userId: employee.userId,
-        email: employee.email,
-        token: inviteToken,
-        type: TOKEN_TYPES.ONBOARDING,
-        role: "EMPLOYEE",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        createdBy: req.auth.user._id,
-        isActive: true,
-      });
-    }
-
-    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const inviteLink = `${clientUrl}/onboard?token=${inviteToken}`;
-
-    const emailResult = await emailService.sendEmployeeInvitation({
-      companyName: req.auth.company?.companyName || req.auth.company?.name || "Your Organization",
-      employeeName: employee.fullName,
-      email: employee.email,
-      inviteLink,
-      company: req.auth.company,
-    });
-
-    employee.invitation = {
-      status: emailResult.success ? "PENDING" : "DELIVERY_FAILED",
-      token: inviteToken,
-      sentAt: new Date(),
-    };
-    await employee.save();
-
-    if (AuditLog) {
-      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.INVITATION_RESENT, employee._id, {
-        email: employee.email,
-        deliveryStatus: employee.invitation.status,
-        error: emailResult.error || null,
-      });
-    }
+    const result = await regenerateActivationLink(
+      {
+        models: req.auth.models,
+        company: req.auth.company,
+        actorUserId: req.auth.user._id,
+        actorEmail: req.auth.user.email,
+        actorRole: req.auth.user.role,
+        clientBaseUrl,
+        ipAddress: req.ip || "",
+      },
+      req.params.id
+    );
 
     res.json({
-      message: emailResult.success ? "Invitation resent successfully" : "Invitation created, but email delivery failed",
+      message: "Activation link regenerated. Copy and share it with the employee.",
       invitation: {
-        status: employee.invitation.status,
-        inviteLink,
-        emailSent: emailResult.success,
-        error: emailResult.error || null,
+        status: "PENDING",
+        inviteLink: result.activation.activationLink,
+        emailSent: false,
+        error: null,
       },
+      activation: result.activation,
+      accountStatus: result.accountStatus,
     });
   } catch (error) {
     next(error);

@@ -20,6 +20,69 @@
   box-sizing: border-box;
 }
 
+/* Compact temporary coverage inside My Work / Tasks */
+.emp-work-cover-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.emp-work-cover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  padding: 8px 0;
+  border-top: 1px solid var(--hair, #e3e7e4);
+}
+
+.emp-work-cover-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.emp-work-cover-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.emp-work-cover-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink, #131a15);
+  line-height: 1.35;
+}
+
+.emp-work-cover-meta {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  line-height: 1.35;
+}
+
+.emp-work-cover-open {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-800, #166534);
+}
+
+.emp-work-cover-more {
+  margin-top: 2px;
+  align-self: flex-start;
+}
+
+@media (max-width: 768px) {
+  .emp-work-cover-preview {
+    display: none;
+  }
+}
+
 /* ==========================================================================
    1. Board Header (Greeting, Meta, Actions)
    ========================================================================== */

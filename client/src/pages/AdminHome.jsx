@@ -69,10 +69,18 @@ export default function AdminHome() {
   const [savingAdd, setSavingAdd] = useState(false);
   const [addError, setAddError] = useState("");
   const [addFieldErrors, setAddFieldErrors] = useState({});
-  const [showNewEmpPassword, setShowNewEmpPassword] = useState(false);
   const [createdInvitationInfo, setCreatedInvitationInfo] = useState(null);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [resendingId, setResendingId] = useState(null);
+
+  // Bulk import modal
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importResult, setImportResult] = useState(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [copiedActivationId, setCopiedActivationId] = useState(null);
 
   const [newEmployee, setNewEmployee] = useState({
     fullName: "",
@@ -84,7 +92,6 @@ export default function AdminHome() {
     joiningDate: "",
     projectName: "",
     monthlySalary: "",
-    password: "",
     offerLetterId: null,
   });
 
@@ -132,7 +139,6 @@ export default function AdminHome() {
             joiningDate: offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : "",
             projectName: "",
             monthlySalary: offer.monthlySalary ? String(offer.monthlySalary) : "",
-            password: "",
             offerLetterId: offer._id,
           });
           setShowAddModal(true);
@@ -308,10 +314,6 @@ export default function AdminHome() {
       }
     }
 
-    if (newEmployee.password && newEmployee.password.length < 8) {
-      errors.password = "Initial password must be at least 8 characters long.";
-    }
-
     if (Object.keys(errors).length > 0) {
       setAddFieldErrors(errors);
       return;
@@ -328,10 +330,11 @@ export default function AdminHome() {
         offerLetterId: newEmployee.offerLetterId || undefined,
       });
 
-      setSuccessMsg("Employee created successfully! Onboarding invitation generated.");
+      setSuccessMsg("Employee created. Copy and share the activation link.");
       setCreatedInvitationInfo({
         employee: response.data?.employee,
-        invitation: response.data?.invitation,
+        invitation: response.data?.invitation || response.data?.activation,
+        activation: response.data?.activation,
       });
       invalidateEmployees(queryClient);
     } catch (err) {
@@ -384,17 +387,124 @@ export default function AdminHome() {
       joiningDate: "",
       projectName: "",
       monthlySalary: "",
-      password: "",
       offerLetterId: null,
     });
     if (onboardOfferId) {
       searchParams.delete("onboardOfferId");
       setSearchParams(searchParams, { replace: true });
     }
-    setShowNewEmpPassword(false);
     setAddFieldErrors({});
     setAddError("");
     setCopiedInvite(false);
+  };
+
+  const parseDelimitedText = (text) => {
+    const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const splitCsv = (line) => {
+      const cells = [];
+      let cur = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            cur += '"';
+            i += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === "," && !inQuotes) {
+          cells.push(cur.trim());
+          cur = "";
+        } else {
+          cur += ch;
+        }
+      }
+      cells.push(cur.trim());
+      return cells;
+    };
+    const headers = splitCsv(lines[0]).map((h) => h.trim());
+    return lines.slice(1).map((line) => {
+      const cells = splitCsv(line);
+      const row = {};
+      headers.forEach((h, idx) => {
+        row[h] = cells[idx] ?? "";
+      });
+      return row;
+    });
+  };
+
+  const handleImportFile = async (file) => {
+    setImportError("");
+    setImportPreview(null);
+    setImportResult(null);
+    if (!file) return;
+
+    const name = (file.name || "").toLowerCase();
+    try {
+      let rows = [];
+      if (name.endsWith(".csv") || name.endsWith(".txt")) {
+        const text = await file.text();
+        rows = parseDelimitedText(text);
+      } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+        const XLSX = await import("xlsx");
+        const buf = await file.arrayBuffer();
+        const workbook = XLSX.read(buf, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      } else {
+        setImportError("Please upload a .csv or .xlsx file.");
+        return;
+      }
+
+      if (!rows.length) {
+        setImportError("No data rows found in the file.");
+        return;
+      }
+
+      setImportRows(rows);
+      setImportBusy(true);
+      const res = await api.post("/employees/import/preview", { rows });
+      setImportPreview(res.data);
+    } catch (err) {
+      setImportError(err.response?.data?.message || "Failed to read or validate the import file.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const handleCommitImport = async () => {
+    if (!importRows.length) return;
+    setImportBusy(true);
+    setImportError("");
+    try {
+      const res = await api.post("/employees/import", {
+        rows: importRows,
+        importValidOnly: true,
+      });
+      setImportResult(res.data);
+      setImportPreview(null);
+      invalidateEmployees(queryClient);
+      setSuccessMsg(res.data?.message || "Import completed.");
+    } catch (err) {
+      if (err.response?.data?.failed || err.response?.data?.summary) {
+        setImportResult(err.response.data);
+      } else {
+        setImportError(err.response?.data?.message || "Import failed.");
+      }
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+    setImportRows([]);
+    setImportPreview(null);
+    setImportResult(null);
+    setImportError("");
+    setCopiedActivationId(null);
   };
 
   const formatCurrency = (amount) => {
@@ -465,6 +575,14 @@ export default function AdminHome() {
                     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                   </svg>
                   <span>All Employees</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowImportModal(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
+                >
+                  Import
                 </button>
                 <button
                   type="button"
@@ -699,6 +817,13 @@ export default function AdminHome() {
             actions={
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <SoftRefresh active={listFetching} />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowImportModal(true)}
+                >
+                  Import
+                </button>
                 <button
                   type="button"
                   className="btn-primary"
@@ -1224,7 +1349,7 @@ export default function AdminHome() {
         <div className="modal-overlay" onClick={handleCloseAddModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "620px" }}>
             <div className="modal-header">
-              <h2>{createdInvitationInfo ? "Invitation Sent" : "Add Employee"}</h2>
+              <h2>{createdInvitationInfo ? "Activation Link Ready" : "Add Employee"}</h2>
               <button
                 type="button"
                 className="btn-secondary btn-sm"
@@ -1278,20 +1403,24 @@ export default function AdminHome() {
                     <strong style={{ color: "var(--ink)" }}>{createdInvitationInfo.employee?.email}</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "14px", fontSize: "13px", alignItems: "center" }}>
-                    <span style={{ color: "var(--muted)" }}>Invite Status</span>
+                    <span style={{ color: "var(--muted)" }}>Account Status</span>
                     <StatusBadge
-                      status={createdInvitationInfo.invitation?.status || "PENDING"}
-                      label={createdInvitationInfo.invitation?.status || "Pending"}
+                      status="PENDING"
+                      label="Pending Activation"
                     />
                   </div>
 
                   <label style={{ fontSize: "12px", color: "var(--muted)", display: "block", marginBottom: "6px" }}>
-                    Onboarding Link (Valid for 7 days)
+                    Activation Link (Valid for 7 days)
                   </label>
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input
                       readOnly
-                      value={createdInvitationInfo.invitation?.inviteLink || ""}
+                      value={
+                        createdInvitationInfo.activation?.activationLink ||
+                        createdInvitationInfo.invitation?.inviteLink ||
+                        ""
+                      }
                       style={{
                         background: "#ffffff",
                         border: "1px solid var(--hair)",
@@ -1306,8 +1435,11 @@ export default function AdminHome() {
                       type="button"
                       className="btn-primary"
                       onClick={() => {
-                        if (createdInvitationInfo.invitation?.inviteLink) {
-                          navigator.clipboard?.writeText(createdInvitationInfo.invitation.inviteLink);
+                        const link =
+                          createdInvitationInfo.activation?.activationLink ||
+                          createdInvitationInfo.invitation?.inviteLink;
+                        if (link) {
+                          navigator.clipboard?.writeText(link);
                           setCopiedInvite(true);
                           setTimeout(() => setCopiedInvite(false), 3000);
                         }
@@ -1317,15 +1449,8 @@ export default function AdminHome() {
                       {copiedInvite ? "Copied" : "Copy Link"}
                     </button>
                   </div>
-                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--muted)", display: "flex", alignItems: "center", gap: "6px" }}>
-                    {createdInvitationInfo.invitation?.emailSent ? (
-                      <>
-                        <IconCheck size={14} style={{ color: "var(--g-700)" }} />
-                        <span>Invitation email sent to employee.</span>
-                      </>
-                    ) : (
-                      <span>You can copy and send this link directly to the employee.</span>
-                    )}
+                  <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--muted)" }}>
+                    Share this link so the employee can set their password and activate login. No email is sent automatically.
                   </p>
                 </div>
 
@@ -1501,43 +1626,9 @@ export default function AdminHome() {
                       placeholder="e.g. Core Banking Platform"
                     />
                   </label>
-                  <label>
-                    Password (Optional)
-                    <div className="password-input-wrapper">
-                      <input
-                        type={showNewEmpPassword ? "text" : "password"}
-                        className={addFieldErrors.password ? "has-error" : ""}
-                        value={newEmployee.password}
-                        onChange={(e) => {
-                          setNewEmployee({ ...newEmployee, password: e.target.value });
-                          if (addFieldErrors.password) setAddFieldErrors((prev) => ({ ...prev, password: "" }));
-                          if (addError) setAddError("");
-                        }}
-                        placeholder="Leave blank for employee invite"
-                      />
-                      <button
-                        type="button"
-                        className="password-toggle-btn"
-                        onClick={() => setShowNewEmpPassword((prev) => !prev)}
-                        title={showNewEmpPassword ? "Hide password" : "Show password"}
-                        aria-label={showNewEmpPassword ? "Hide password" : "Show password"}
-                      >
-                        {showNewEmpPassword ? (
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                          </svg>
-                        ) : (
-                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    {addFieldErrors.password && (
-                      <span className="field-error">{addFieldErrors.password}</span>
-                    )}
-                  </label>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", alignSelf: "end", paddingBottom: 10 }}>
+                    After creation you will get an activation link to share. The employee sets their own password.
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>
@@ -1553,6 +1644,165 @@ export default function AdminHome() {
                   </button>
                 </div>
               </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={handleCloseImportModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "760px" }}>
+            <div className="modal-header">
+              <h2>Import Employees</h2>
+              <button type="button" className="btn-secondary btn-sm" onClick={handleCloseImportModal} aria-label="Close">
+                <IconClose size={14} />
+              </button>
+            </div>
+
+            {importError && <div className="error">{importError}</div>}
+
+            {!importResult && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)" }}>
+                  Upload a CSV or Excel file. Preview validates every row before import. Activation links are shown only after a successful create — copy them securely.
+                </p>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <a
+                    className="btn-secondary"
+                    href={`${api.defaults.baseURL || "/api"}/employees/import/template`}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try {
+                        const res = await api.get("/employees/import/template", { responseType: "blob" });
+                        const url = URL.createObjectURL(res.data);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "employee-import-template.csv";
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        setImportError("Could not download the template.");
+                      }
+                    }}
+                    style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", height: 34, padding: "0 12px" }}
+                  >
+                    Download template
+                  </a>
+                  <label className="btn-primary" style={{ cursor: "pointer", height: 34, padding: "0 12px", display: "inline-flex", alignItems: "center" }}>
+                    {importBusy ? "Working..." : "Choose file"}
+                    <input
+                      type="file"
+                      accept=".csv,.txt,.xlsx,.xls"
+                      hidden
+                      disabled={importBusy}
+                      onChange={(e) => handleImportFile(e.target.files?.[0])}
+                    />
+                  </label>
+                </div>
+
+                {importPreview && (
+                  <>
+                    <div style={{ fontSize: 13, color: "var(--ink)" }}>
+                      Total {importPreview.summary?.totalRows ?? 0} · Valid {importPreview.summary?.validRows ?? 0} · Invalid {importPreview.summary?.invalidRows ?? 0}
+                    </div>
+                    <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--hair)", borderRadius: 8 }}>
+                      <table className="data-table" style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: "#f8faf8", textAlign: "left" }}>
+                            <th style={{ padding: "8px 10px" }}>#</th>
+                            <th style={{ padding: "8px 10px" }}>Name</th>
+                            <th style={{ padding: "8px 10px" }}>Email</th>
+                            <th style={{ padding: "8px 10px" }}>Code</th>
+                            <th style={{ padding: "8px 10px" }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(importPreview.rows || []).map((r) => (
+                            <tr key={r.rowIndex} style={{ borderTop: "1px solid var(--hair)" }}>
+                              <td style={{ padding: "8px 10px" }}>{r.rowIndex + 1}</td>
+                              <td style={{ padding: "8px 10px" }}>{r.data?.fullName || "—"}</td>
+                              <td style={{ padding: "8px 10px" }}>{r.data?.email || "—"}</td>
+                              <td style={{ padding: "8px 10px" }}>{r.data?.employeeCode || "—"}</td>
+                              <td style={{ padding: "8px 10px", color: r.valid ? "var(--g-800)" : "#b91c1c" }}>
+                                {r.valid ? "Valid" : Object.values(r.errors || {}).join("; ")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      <button type="button" className="btn-secondary" onClick={handleCloseImportModal}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={importBusy || !(importPreview.summary?.validRows > 0)}
+                        onClick={handleCommitImport}
+                      >
+                        {importBusy ? "Importing..." : `Import ${importPreview.summary?.validRows || 0} valid row(s)`}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {importResult && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ fontSize: 13.5, color: "var(--ink)" }}>
+                  Created {importResult.summary?.createdCount ?? 0} · Failed {importResult.summary?.failedCount ?? 0} · Invalid {importResult.summary?.invalidRows ?? 0}
+                </div>
+                {(importResult.created || []).length > 0 && (
+                  <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--hair)", borderRadius: 8 }}>
+                    <table className="data-table" style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "#f8faf8", textAlign: "left" }}>
+                          <th style={{ padding: "8px 10px" }}>Employee</th>
+                          <th style={{ padding: "8px 10px" }}>Email</th>
+                          <th style={{ padding: "8px 10px" }}>Activation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importResult.created.map((c) => (
+                          <tr key={c.employeeId} style={{ borderTop: "1px solid var(--hair)" }}>
+                            <td style={{ padding: "8px 10px" }}>{c.fullName} ({c.employeeCode})</td>
+                            <td style={{ padding: "8px 10px" }}>{c.email}</td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(c.activationLink);
+                                  setCopiedActivationId(c.employeeId);
+                                  setTimeout(() => setCopiedActivationId(null), 2500);
+                                }}
+                              >
+                                {copiedActivationId === c.employeeId ? "Copied" : "Copy link"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(importResult.failed || []).length > 0 && (
+                  <div style={{ fontSize: 12.5, color: "#b91c1c" }}>
+                    {(importResult.failed || []).slice(0, 8).map((f) => (
+                      <div key={f.rowIndex}>
+                        Row {f.rowIndex + 1}: {Object.values(f.errors || {}).join("; ")}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button type="button" className="btn-primary" onClick={handleCloseImportModal}>
+                    Done
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

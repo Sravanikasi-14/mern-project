@@ -240,6 +240,14 @@ export function createEmployeeSchema() {
           earned: { type: Number, default: 12 },
         },
       },
+      /**
+       * Optional skill tags for backup recommendations (Phase 2).
+       * Empty means skill matching is unavailable — never invent skills.
+       */
+      skills: {
+        type: [{ type: String, trim: true }],
+        default: [],
+      },
       customFields: {
         type: mongoose.Schema.Types.Mixed,
         default: {},
@@ -262,6 +270,7 @@ export function createEmployeeSchema() {
   employeeSchema.index({ "job.department": 1, status: 1 });
   employeeSchema.index({ "job.project.projectName": 1, status: 1 });
   employeeSchema.index({ fullName: 1 });
+  employeeSchema.index({ skills: 1 });
   employeeSchema.index(
     { userId: 1 },
     { unique: true, partialFilterExpression: { userId: { $type: "objectId" } } }

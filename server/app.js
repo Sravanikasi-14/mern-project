@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
+import handoverRoutes from "./routes/handoverRoutes.js";
 import offerLetterRoutes from "./routes/offerLetterRoutes.js";
 import settlementRoutes from "./routes/settlementRoutes.js";
 import candidateOfferRoutes from "./routes/candidateOfferRoutes.js";
@@ -118,6 +119,7 @@ export function createApp() {
   app.use("/api/admin", adminRoutes);
   app.use("/api/employees", employeeRoutes);
   app.use("/api/leave-requests", leaveRoutes);
+  app.use("/api/handovers", handoverRoutes);
   app.use("/api/offer-letters", offerLetterRoutes);
   app.use("/api/settlements", settlementRoutes);
 

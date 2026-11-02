@@ -15,6 +15,11 @@ import {
   uploadEmployeeDocument,
 } from "../controllers/employeeController.js";
 import {
+  downloadImportTemplate,
+  previewEmployeeImport,
+  commitEmployeeImport,
+} from "../controllers/employeeImportController.js";
+import {
   punchIn,
   punchOut,
   handleCheckIn,
@@ -66,9 +71,13 @@ router.post("/:id/documents", authenticate, uploadEmployeeDocument);
 router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN));
 
 router.get("/summary", getEmployeeSummary);
+router.get("/import/template", downloadImportTemplate);
+router.post("/import/preview", previewEmployeeImport);
+router.post("/import", commitEmployeeImport);
 router.get("/", getEmployees);
 router.post("/", createEmployee);
 router.post("/:id/resend-invite", resendInvitation);
+router.post("/:id/activation-link", resendInvitation);
 router.get("/:id", getEmployeeById);
 router.patch("/:id", updateEmployee);
 

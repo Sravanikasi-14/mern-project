@@ -5,6 +5,10 @@ import "./AppModal.css";
 /**
  * Shared centered modal for desktop HRMS overlays.
  * Escape + outside-click close (unless locked). Footer slot for actions.
+ *
+ * Focus trap note: open-time focus on the close button must run only when `open`
+ * flips to true — never when callback identities change — or controlled inputs
+ * inside the modal lose focus after every keystroke.
  */
 export default function AppModal({
   open,
@@ -21,27 +25,41 @@ export default function AppModal({
 }) {
   const titleId = useId();
   const panelRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const lockedRef = useRef(locked);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    lockedRef.current = locked;
+  });
 
   useEffect(() => {
     if (!open) return undefined;
+
     const onKey = (e) => {
-      if (e.key === "Escape" && !locked) onClose?.();
+      if (e.key === "Escape" && !lockedRef.current) onCloseRef.current?.();
     };
     window.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const closeBtn = panelRef.current?.querySelector("[data-app-modal-close]");
-    closeBtn?.focus?.();
+
+    // Initial focus only when the dialog opens — skip if focus is already inside.
+    const panel = panelRef.current;
+    if (panel && !panel.contains(document.activeElement)) {
+      const closeBtn = panel.querySelector("[data-app-modal-close]");
+      closeBtn?.focus?.();
+    }
+
     return () => {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, locked, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   const handleBackdrop = () => {
-    if (!locked) onClose?.();
+    if (!lockedRef.current) onCloseRef.current?.();
   };
 
   return (
@@ -70,7 +88,7 @@ export default function AppModal({
               type="button"
               className="app-modal-close"
               data-app-modal-close
-              onClick={onClose}
+              onClick={() => onCloseRef.current?.()}
               disabled={locked}
               aria-label="Close"
               title="Close (Esc)"

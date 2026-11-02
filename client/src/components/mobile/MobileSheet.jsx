@@ -7,11 +7,20 @@ function focusables(root) {
   );
 }
 
+/**
+ * Mobile bottom sheet. Setup effect depends on `open` (and titleId), not `onClose`,
+ * so typing in sheet inputs does not re-run history push / close-button focus.
+ */
 export default function MobileSheet({ open, onClose, title, children }) {
   const titleId = useId();
   const panelRef = useRef(null);
   const lastFocus = useRef(null);
   const closedByPop = useRef(false);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -20,13 +29,16 @@ export default function MobileSheet({ open, onClose, title, children }) {
     const token = `sheet-${titleId}`;
     window.history.pushState({ mobileSheet: token }, "");
 
-    const closeBtn = panelRef.current?.querySelector("[data-sheet-close]");
-    closeBtn?.focus();
+    const panel = panelRef.current;
+    if (panel && !panel.contains(document.activeElement)) {
+      const closeBtn = panel.querySelector("[data-sheet-close]");
+      closeBtn?.focus();
+    }
 
     const onKey = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== "Tab") return;
@@ -45,7 +57,7 @@ export default function MobileSheet({ open, onClose, title, children }) {
 
     const onPop = () => {
       closedByPop.current = true;
-      onClose();
+      onCloseRef.current?.();
     };
 
     document.addEventListener("keydown", onKey);
@@ -60,13 +72,18 @@ export default function MobileSheet({ open, onClose, title, children }) {
         lastFocus.current.focus();
       }
     };
-  }, [open, onClose, titleId]);
+  }, [open, titleId]);
 
   if (!open) return null;
 
   return (
     <div className="m-sheet-root" role="presentation">
-      <button type="button" className="m-sheet-backdrop" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="m-sheet-backdrop"
+        aria-label="Close"
+        onClick={() => onCloseRef.current?.()}
+      />
       <div
         ref={panelRef}
         className="m-sheet-panel"
@@ -76,8 +93,16 @@ export default function MobileSheet({ open, onClose, title, children }) {
       >
         <div className="m-sheet-handle" />
         <div className="m-sheet-head">
-          <h2 id={titleId} className="m-sheet-title">{title}</h2>
-          <button type="button" className="m-sheet-close" data-sheet-close onClick={onClose} aria-label="Close">
+          <h2 id={titleId} className="m-sheet-title">
+            {title}
+          </h2>
+          <button
+            type="button"
+            className="m-sheet-close"
+            data-sheet-close
+            onClick={() => onCloseRef.current?.()}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>

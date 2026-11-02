@@ -160,6 +160,7 @@ function EmployeeDashboard({ data, tasks, impact, error, timezone, onStartTask, 
   const navigate = useNavigate();
   const employee = data?.employee;
   const leave = data?.leave;
+  const coveringResponsibilities = data?.coveringResponsibilities || [];
   const payslips = data?.payslips || [];
   const latestPayslip = payslips.find((p) => p.isPersisted === true);
   const fullName = employee?.preferredName || employee?.fullName || "Colleague";
@@ -191,6 +192,7 @@ function EmployeeDashboard({ data, tasks, impact, error, timezone, onStartTask, 
         <h1>My Dashboard</h1>
         <p>{dateLabel}</p>
       </div>
+
       <div className="emp-metric-grid">
         <button type="button" className="emp-metric-card" onClick={() => navigate("/app/leave")}>
           <div>
@@ -227,7 +229,31 @@ function EmployeeDashboard({ data, tasks, impact, error, timezone, onStartTask, 
           <h2 className="section-title">Today&apos;s Schedule</h2>
           <Link to="/app/tasks">View all</Link>
         </div>
-        {todaysTasks.length === 0 ? (
+        {coveringResponsibilities.slice(0, 2).map((item) => (
+          <div key={String(item.taskId)} className="summary-row">
+            <button
+              type="button"
+              className="summary-body"
+              style={{ textAlign: "left", border: "none", background: "transparent", padding: 0 }}
+              onClick={() => navigate(`/app/tasks?task=${item.taskId}`)}
+            >
+              <span className="summary-title">{item.title}</span>
+              <span className="summary-sub">
+                {item.deadline
+                  ? `Due ${new Date(item.deadline).toLocaleDateString("en-IN")}`
+                  : "No deadline"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => navigate(`/app/tasks?task=${item.taskId}`)}
+            >
+              Open
+            </button>
+          </div>
+        ))}
+        {todaysTasks.length === 0 && coveringResponsibilities.length === 0 ? (
           <div className="emp-schedule-empty">
             <span className="emp-metric-icon" aria-hidden="true">😌</span>
             <div>

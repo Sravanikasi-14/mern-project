@@ -7,6 +7,11 @@ import {
   parseDateOnly,
   toDateString,
 } from "../services/leaveService.js";
+import { analyzeLeaveImpact } from "../services/leaveImpactAnalysisService.js";
+import {
+  recommendBackupsForLeaveRequest,
+  upsertLeaveBackupProposal,
+} from "../services/backupRecommendationService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/companyTime.js";
 
@@ -268,6 +273,99 @@ export async function getLeaveRequestById(req, res, next) {
 }
 
 /**
+ * Operational leave impact & work continuity analysis for a leave request.
+ * Informational only — never blocks or drives approve/reject.
+ */
+export async function getLeaveImpactAnalysis(req, res, next) {
+  try {
+    const { LeaveRequest } = req.auth.models;
+    const { id } = req.params;
+
+    const leaveRequest = await LeaveRequest.findById(id).lean();
+    if (!leaveRequest) {
+      throw new HttpError(404, "Leave request not found");
+    }
+
+    const impact = await analyzeLeaveImpact(
+      {
+        models: req.auth.models,
+        company: req.auth.company,
+      },
+      leaveRequest.employeeId,
+      leaveRequest.fromDate,
+      leaveRequest.toDate,
+      { leaveRequestId: leaveRequest._id }
+    );
+
+    res.json({
+      success: true,
+      leaveRequestId: leaveRequest._id,
+      leaveTypeCode: leaveRequest.leaveTypeCode,
+      status: leaveRequest.status,
+      impact,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Phase 2: suggested backup arrangements for coverage responsibilities.
+ * Recommendation-only — does not assign tasks or block leave approval.
+ */
+export async function getLeaveBackupRecommendations(req, res, next) {
+  try {
+    const recommendations = await recommendBackupsForLeaveRequest(
+      {
+        models: req.auth.models,
+        company: req.auth.company,
+      },
+      req.params.id
+    );
+    res.json({ success: true, ...recommendations });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Phase 2: save or clear a PROPOSED backup for one responsibility.
+ * Body: { taskId, backupEmployeeId | null }
+ */
+export async function saveLeaveBackupProposal(req, res, next) {
+  try {
+    const { taskId, backupEmployeeId = null, explanationSnapshot } = req.body || {};
+    if (!taskId) {
+      throw new HttpError(400, "taskId is required.");
+    }
+
+    const result = await upsertLeaveBackupProposal(
+      {
+        models: req.auth.models,
+        company: req.auth.company,
+      },
+      {
+        leaveRequestId: req.params.id,
+        taskId,
+        backupEmployeeId,
+        proposedByUserId: req.auth.user._id,
+        explanationSnapshot,
+      }
+    );
+
+    res.json({
+      success: true,
+      message: result.cleared
+        ? "Proposed backup cleared. Leave processing is unchanged."
+        : "Proposed backup saved. Task ownership was not changed.",
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * Change leave type of an APPROVED leave request (HR-only)
  */
 export async function changeLeaveType(req, res, next) {
@@ -493,6 +591,19 @@ export async function decideLeaveRequest(req, res, next) {
       action: cleanAction,
       remarks: leaveRequest.decision.remarks,
     });
+
+    // Phase 3: sync/cancel related handover — never blocks leave decision
+    try {
+      const { onLeaveDecisionSideEffect } = await import("../services/leaveHandoverService.js");
+      await onLeaveDecisionSideEffect(
+        { models: req.auth.models, company: req.auth.company },
+        leaveRequest,
+        cleanAction,
+        req.auth.user
+      );
+    } catch (handoverErr) {
+      console.error("[leave] handover side-effect failed:", handoverErr.message);
+    }
 
     res.json({
       success: true,

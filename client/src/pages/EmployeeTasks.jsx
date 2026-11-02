@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
@@ -47,6 +48,7 @@ const VIEW_MODES = {
 export default function EmployeeTasks() {
   const { user, company } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(EMPLOYEE_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
@@ -71,6 +73,12 @@ export default function EmployeeTasks() {
     departments: [],
   };
   const myPoints = impactQuery.data ?? null;
+
+  const coveringQuery = useMyTasksQuery(
+    { scope: "covering", page: 1, limit: 50 },
+    { staleTime: 30_000 }
+  );
+  const coveringTasks = coveringQuery.data?.tasks || [];
 
   const taskParams = useMemo(() => {
     const params = {
@@ -135,6 +143,19 @@ export default function EmployeeTasks() {
   useEffect(() => {
     setPage(1);
   }, [activeTab, priorityFilter, viewMode]);
+
+  useEffect(() => {
+    const focusTaskId = searchParams.get("task");
+    if (!focusTaskId) return;
+    const fromCovering = coveringTasks.find((t) => String(t._id) === String(focusTaskId));
+    const fromMine = tasks.find((t) => String(t._id) === String(focusTaskId));
+    const found = fromCovering || fromMine;
+    if (found) {
+      setActiveTab(EMPLOYEE_TABS.ALL);
+      setSelectedTask(found);
+      setSidePanelMode("details");
+    }
+  }, [searchParams, coveringTasks, tasks]);
 
   // Auto-dismiss toasts after 4.5 seconds
   useEffect(() => {
@@ -395,9 +416,16 @@ export default function EmployeeTasks() {
   }, [tasks]);
 
   const displayedTasks = useMemo(() => {
-    if (selectedProject === "ALL") return tasks;
-    return tasks.filter((t) => (t.projectName?.trim() || "General") === selectedProject);
-  }, [tasks, selectedProject]);
+    let list = tasks;
+    // Merge temporary coverage into the existing board/list (no separate tab).
+    if (activeTab !== EMPLOYEE_TABS.TEAM_QUEUE && coveringTasks.length > 0) {
+      const seen = new Set(list.map((t) => String(t._id)));
+      const extras = coveringTasks.filter((t) => !seen.has(String(t._id)));
+      list = [...extras, ...list];
+    }
+    if (selectedProject === "ALL") return list;
+    return list.filter((t) => (t.projectName?.trim() || "General") === selectedProject);
+  }, [tasks, selectedProject, activeTab, coveringTasks]);
 
   const weeklyTimeline = useMemo(() => {
     return buildWeekStrip(new Date(), timeZone, 1).map((day) => ({
@@ -928,7 +956,7 @@ export default function EmployeeTasks() {
           {/* Details Mode */}
           {sidePanelMode === "details" && selectedTask && (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                 <StatusBadge status={selectedTask.status} />
                 <span className="wm-priority-badge wm-priority-medium">
                   {selectedTask.priority}

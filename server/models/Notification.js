@@ -5,6 +5,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   TASK: "TASK",
   PAYROLL: "PAYROLL",
   SYSTEM: "SYSTEM",
+  HANDOVER: "HANDOVER",
 });
 
 export function createNotificationSchema() {
