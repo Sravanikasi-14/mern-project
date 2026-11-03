@@ -506,11 +506,14 @@ export default function AdminLeaveManagement() {
           className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
           onClick={() => {
             setLeaveSection("overview");
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.set("tab", "overview");
-              return next;
-            });
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("tab", "overview");
+                return next;
+              },
+              { replace: true }
+            );
             setPage(1);
           }}
         >
@@ -521,11 +524,14 @@ export default function AdminLeaveManagement() {
           className={`module-tab ${leaveSection === "leave" ? "is-active" : ""}`}
           onClick={() => {
             setLeaveSection("leave");
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.set("tab", "leave");
-              return next;
-            });
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("tab", "leave");
+                return next;
+              },
+              { replace: true }
+            );
             setPage(1);
           }}
         >

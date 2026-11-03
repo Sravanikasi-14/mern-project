@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   Briefcase,
   CalendarDays,
@@ -98,6 +99,7 @@ const CATEGORIES = [
 
 export default function HrPoliciesPage() {
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/more");
   const { user } = useAuth();
   const notify = useNotify();
   const [search, setSearch] = useState("");
@@ -113,7 +115,7 @@ export default function HrPoliciesPage() {
   return (
     <div className="st-pol">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>HR Policies</h1>

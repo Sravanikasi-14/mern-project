@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import { ChevronLeft, List, Map as MapIcon, MoreVertical, Search, X } from "lucide-react";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
@@ -51,6 +52,7 @@ export default function HrLiveTrackingPage() {
   const { company, user } = useAuth();
   const notify = useNotify();
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/attendance");
   const timezone = resolveCompanyTimezone(company);
   const todayStr = getCompanyBusinessDate(new Date(), timezone);
 
@@ -216,7 +218,7 @@ export default function HrLiveTrackingPage() {
   return (
     <div className="st-live">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Live Tracking</h1>

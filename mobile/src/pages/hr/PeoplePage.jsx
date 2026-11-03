@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronRight, Plus } from "lucide-react";
 import HrPortalHeader from "../../components/HrPortalHeader";
 import SearchBar from "../../components/SearchBar";
@@ -38,16 +38,31 @@ const emptyFilters = {
 export default function HrPeoplePage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [employees, setEmployees] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page") || 1) || 1));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState(emptyFilters);
-  const [draft, setDraft] = useState(emptyFilters);
+  const [search, setSearch] = useState(() => searchParams.get("q") || "");
+  const [filters, setFilters] = useState(() => ({
+    status: (searchParams.get("status") || emptyFilters.status).toUpperCase(),
+    department: searchParams.get("department") || "",
+    jobTitle: searchParams.get("jobTitle") || "",
+    project: searchParams.get("project") || "",
+    sortBy: searchParams.get("sortBy") || emptyFilters.sortBy,
+    sortOrder: searchParams.get("sortOrder") || emptyFilters.sortOrder,
+  }));
+  const [draft, setDraft] = useState(() => ({
+    status: (searchParams.get("status") || emptyFilters.status).toUpperCase(),
+    department: searchParams.get("department") || "",
+    jobTitle: searchParams.get("jobTitle") || "",
+    project: searchParams.get("project") || "",
+    sortBy: searchParams.get("sortBy") || emptyFilters.sortBy,
+    sortOrder: searchParams.get("sortOrder") || emptyFilters.sortOrder,
+  }));
   const [filterOpen, setFilterOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [hire, setHire] = useState(emptyHire);
@@ -114,6 +129,25 @@ export default function HrPeoplePage() {
   useEffect(() => {
     setPage(1);
   }, [search, filters.status, filters.department, filters.jobTitle, filters.project, filters.sortBy, filters.sortOrder]);
+
+  // Persist list state in the URL so Back from details restores filters/pagination.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (search.trim()) next.set("q", search.trim());
+    if (filters.status && filters.status !== "ACTIVE") next.set("status", filters.status);
+    if (filters.department.trim()) next.set("department", filters.department.trim());
+    if (filters.jobTitle.trim()) next.set("jobTitle", filters.jobTitle.trim());
+    if (filters.project.trim()) next.set("project", filters.project.trim());
+    if (filters.sortBy && filters.sortBy !== emptyFilters.sortBy) next.set("sortBy", filters.sortBy);
+    if (filters.sortOrder && filters.sortOrder !== emptyFilters.sortOrder) next.set("sortOrder", filters.sortOrder);
+    if (page > 1) next.set("page", String(page));
+    const cur = searchParams.toString();
+    const upcoming = next.toString();
+    if (cur === upcoming) return;
+    // Preserve one-shot flags like new=1 until their own effect clears them.
+    if (searchParams.get("new") === "1") next.set("new", "1");
+    setSearchParams(next, { replace: true });
+  }, [search, filters, page, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -250,7 +284,11 @@ export default function HrPeoplePage() {
                 key={emp._id}
                 type="button"
                 className={`st-roster-row${index === 0 ? " is-first" : ""}`}
-                onClick={() => navigate(`/admin/employees/${emp._id}`)}
+                onClick={() =>
+                  navigate(`/admin/employees/${emp._id}`, {
+                    state: { from: `${location.pathname}${location.search || ""}` },
+                  })
+                }
               >
                 <span className="st-roster-avatar-wrap">
                   <ProfileAvatar

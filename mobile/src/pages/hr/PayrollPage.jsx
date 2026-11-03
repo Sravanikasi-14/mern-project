@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   ChevronLeft,
   ChevronRight,
@@ -40,6 +41,7 @@ export default function HrPayrollPage() {
   const notify = useNotify();
   const toast = useToast();
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/more");
   const now = new Date();
 
   const [cycles, setCycles] = useState([]);
@@ -238,7 +240,7 @@ export default function HrPayrollPage() {
     return (
       <div className="st-pay">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Payroll & Payslips</h1>
@@ -252,7 +254,7 @@ export default function HrPayrollPage() {
     return (
       <div className="st-pay">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Payroll & Payslips</h1>
@@ -265,7 +267,7 @@ export default function HrPayrollPage() {
   return (
     <div className="st-pay">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Payroll & Payslips</h1>

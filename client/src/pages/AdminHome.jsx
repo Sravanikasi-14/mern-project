@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
@@ -38,6 +38,7 @@ const AVAILABLE_COLUMNS = [
 
 export default function AdminHome() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const onboardOfferId = searchParams.get("onboardOfferId");
@@ -47,16 +48,16 @@ export default function AdminHome() {
   const [selectedProject, setSelectedProject] = useState(projectParam || "ALL");
   const [selectedDepartment, setSelectedDepartment] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") || "");
   const initialStatus = searchParams.get("status") ? searchParams.get("status").toUpperCase() : "ALL";
   const [statusFilter, setStatusFilter] = useState(
     ["ACTIVE", "INACTIVE", "ALL"].includes(initialStatus) ? initialStatus : "ALL"
   );
-  const [sortBy, setSortBy] = useState("createdAt");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [pageSize, setPageSize] = useState(12);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState(() => searchParams.get("sortBy") || "createdAt");
+  const [sortOrder, setSortOrder] = useState(() => searchParams.get("sortOrder") || "desc");
+  const [pageSize, setPageSize] = useState(() => Math.max(1, Number(searchParams.get("limit") || 12) || 12));
+  const [currentPage, setCurrentPage] = useState(() => Math.max(1, Number(searchParams.get("page") || 1) || 1));
 
   const peopleCols = useColumnPreferences("hr-people-directory", AVAILABLE_COLUMNS);
   const visibleColumns = peopleCols.visible;
@@ -107,8 +108,41 @@ export default function AdminHome() {
     } else {
       searchParams.delete("project");
     }
+    searchParams.delete("q");
+    searchParams.delete("page");
     setSearchParams(searchParams, { replace: true });
   };
+
+  // Persist directory list state so Back from employee details restores filters/pagination.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (selectedProject && selectedProject !== "ALL") next.set("project", selectedProject);
+    else next.delete("project");
+    if (statusFilter && statusFilter !== "ALL") next.set("status", statusFilter);
+    else next.delete("status");
+    if (debouncedSearch.trim()) next.set("q", debouncedSearch.trim());
+    else next.delete("q");
+    if (sortBy && sortBy !== "createdAt") next.set("sortBy", sortBy);
+    else next.delete("sortBy");
+    if (sortOrder && sortOrder !== "desc") next.set("sortOrder", sortOrder);
+    else next.delete("sortOrder");
+    if (pageSize !== 12) next.set("limit", String(pageSize));
+    else next.delete("limit");
+    if (currentPage > 1) next.set("page", String(currentPage));
+    else next.delete("page");
+    if (next.toString() === searchParams.toString()) return;
+    setSearchParams(next, { replace: true });
+  }, [
+    selectedProject,
+    statusFilter,
+    debouncedSearch,
+    sortBy,
+    sortOrder,
+    pageSize,
+    currentPage,
+    searchParams,
+    setSearchParams,
+  ]);
 
   // Check for offer letter onboarding parameter
   useEffect(() => {
@@ -273,11 +307,15 @@ export default function AdminHome() {
 
 
   const handleViewDetails = (empId) => {
-    navigate(`/admin/employees/${empId}`);
+    navigate(`/admin/employees/${empId}`, {
+      state: { from: `${location.pathname}${location.search || ""}` },
+    });
   };
 
   const handleOpenEdit = (emp) => {
-    navigate(`/admin/employees/${emp._id}/edit`);
+    navigate(`/admin/employees/${emp._id}/edit`, {
+      state: { from: `${location.pathname}${location.search || ""}` },
+    });
   };
 
   const handleCreateEmployee = async (e) => {

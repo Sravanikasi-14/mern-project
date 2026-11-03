@@ -3,11 +3,13 @@ import { useAskAi } from "../app/askAiContext";
 import { useNotify } from "../app/notifyContext";
 import { initialsFrom } from "./SummaryRow";
 import { useAuth } from "../app/AuthContext";
+import { useSmartBack } from "../hooks/useSmartBack";
 
 export default function PageHeader({
   title,
   subtitle,
   back = false,
+  backFallback,
   onAskAi,
   onNotifications,
   showAvatar = false,
@@ -17,13 +19,14 @@ export default function PageHeader({
   const notify = useNotify();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const goBack = useSmartBack(backFallback);
   const openAsk = onAskAi || askAi;
   const openNotes = onNotifications || notify;
 
   return (
     <header className="page-header">
       {back ? (
-        <button type="button" className="icon-btn is-back" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn is-back" aria-label="Go back" onClick={() => goBack()}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>

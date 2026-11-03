@@ -13,6 +13,7 @@ import api from "../../services/api";
 import { formatDisplayDate, parseCivilDate, toDateOnlyString } from "../../utils/dateUtils";
 import { useDashboardQuery } from "../../hooks/useEmployeeQueries";
 import { invalidateLeave } from "../../app/queryKeys";
+import PersonalLeaveInsights from "../../components/leave/PersonalLeaveInsights";
 
 const emptyForm = { leaveType: "CASUAL", startDate: "", endDate: "", reason: "" };
 const FALLBACK_TYPES = [{ code: "CASUAL", name: "Casual" }];
@@ -203,7 +204,7 @@ export default function EmployeeLeavePage() {
   if (composing) {
     return (
       <>
-        <PageHeader title="Leave Request" back />
+        <PageHeader title="Leave Request" back backFallback="/app/leave" />
         <form className="form-grid lv-form" onSubmit={submit} noValidate>
           {fieldErrors.form ? <div className="alert alert-error">{fieldErrors.form}</div> : null}
           <div>
@@ -311,6 +312,11 @@ export default function EmployeeLeavePage() {
           ))}
         </div>
       ) : null}
+
+      <PersonalLeaveInsights
+        leave={leave}
+        holidays={data?.holidays || data?.companyHolidays || []}
+      />
 
       <SegmentedTabs
         value={tab}

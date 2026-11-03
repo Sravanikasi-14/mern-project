@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronLeft,
   ChevronRight,
   MoreVertical,
   Plus,
@@ -11,12 +11,15 @@ import {
 import StatusBadge from "../../components/StatusBadge";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import Modal from "../../components/Modal";
+import BackButton from "../../components/BackButton";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import Pagination from "../../components/Pagination";
+import LeaveRequestIntelligence from "../../components/leave/LeaveRequestIntelligence";
 import { useToast } from "../../components/Toast";
 import { useNotify } from "../../app/notifyContext";
 import { useAuth } from "../../app/AuthContext";
+import { invalidateLeaveIntelligence } from "../../app/queryKeys";
 import api from "../../services/api";
 import { formatDisplayDate } from "../../utils/dateUtils";
 
@@ -46,6 +49,9 @@ export default function HrLeavePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const initialStatus = String(searchParams.get("status") || "PENDING").toUpperCase();
   const [scope, setScope] = useState("team");
   const [items, setItems] = useState([]);
   const [myItems, setMyItems] = useState([]);
@@ -53,7 +59,9 @@ export default function HrLeavePage() {
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("PENDING");
+  const [status, setStatus] = useState(
+    ["ALL", "PENDING", "APPROVED", "REJECTED"].includes(initialStatus) ? initialStatus : "PENDING"
+  );
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -225,7 +233,7 @@ export default function HrLeavePage() {
       setConfirm(null);
       setSelected(null);
       setRemarks("");
-      await load();
+      await Promise.all([load(), invalidateLeaveIntelligence(queryClient)]);
     } catch (err) {
       setError(err.response?.data?.message || "Could not save this decision.");
     } finally {
@@ -269,9 +277,7 @@ export default function HrLeavePage() {
   return (
     <div className="st-leave">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
-          <ChevronLeft size={22} strokeWidth={1.85} />
-        </button>
+        <BackButton fallback="/admin/more" />
         <h1>Leave Management</h1>
         <div className="st-subhead-actions">
           <button type="button" className="icon-btn" aria-label="Notifications" onClick={() => notify()}>
@@ -447,21 +453,30 @@ export default function HrLeavePage() {
         </section>
       ) : null}
 
-      <Modal open={Boolean(selected) && !confirm} onClose={() => setSelected(null)} title="Leave Request">
+      <Modal
+        open={Boolean(selected) && !confirm}
+        onClose={() => setSelected(null)}
+        title="Leave Request"
+        size="lg"
+      >
         {selected ? (
-          <>
-            <p className="section-title">{selected.employeeName || selected.employeeId?.fullName || "Leave"}</p>
-            <p className="caption">{selected.jobTitle || selected.employeeId?.job?.jobTitle}</p>
-            <div style={{ margin: "12px 0" }}>
+          <div className="li-detail-body">
+            <div className="li-modal-summary">
+              <div>
+                <p className="section-title">
+                  {selected.employeeName || selected.employeeId?.fullName || "Leave"}
+                </p>
+                <p className="caption">
+                  {selected.leaveTypeCode || selected.leaveType} ·{" "}
+                  {formatDisplayDate(selected.startDate || selected.fromDate)} –{" "}
+                  {formatDisplayDate(selected.endDate || selected.toDate)}
+                </p>
+              </div>
               <StatusBadge status={selected.status} />
             </div>
-            <p>{selected.leaveTypeCode || selected.leaveType}</p>
-            <p className="caption">
-              {formatDisplayDate(selected.startDate || selected.fromDate)} – {formatDisplayDate(selected.endDate || selected.toDate)}
-            </p>
-            <p style={{ marginTop: 12 }}>{selected.reason || "No reason on file."}</p>
+
             {scope === "team" && String(selected.status).toUpperCase() === "PENDING" ? (
-              <div className="row-actions" style={{ marginTop: 16 }}>
+              <div className="row-actions" style={{ marginTop: 12, marginBottom: 4 }}>
                 <button type="button" className="btn-danger" onClick={() => setConfirm("REJECT")}>
                   Reject
                 </button>
@@ -470,7 +485,17 @@ export default function HrLeavePage() {
                 </button>
               </div>
             ) : null}
-          </>
+
+            {scope === "team" ? (
+              <LeaveRequestIntelligence
+                leaveRequestId={selected._id}
+                enabled={Boolean(selected?._id)}
+                listItem={selected}
+              />
+            ) : (
+              <p style={{ marginTop: 12 }}>{selected.reason || "No reason on file."}</p>
+            )}
+          </div>
         ) : null}
       </Modal>
 

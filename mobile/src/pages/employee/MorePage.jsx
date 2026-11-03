@@ -10,7 +10,7 @@ import api from "../../services/api";
 const FEATURES = [
   { id: "tasks", label: "My Tasks", path: "/app/tasks", icon: "tasks", color: "#e3f2e9", ink: "#155a37" },
   { id: "attendance", label: "Attendance", path: "/app/attendance", icon: "clock", color: "#eff6ff", ink: "#2563eb" },
-  { id: "leave", label: "Leave", path: "/app/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a" },
+  { id: "leave", label: "My Leave", path: "/app/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a" },
   { id: "payslips", label: "My Payslips", path: "/app/payslips", icon: "payslips", color: "#e3f2e9", ink: "#155a37" },
   { id: "assets", label: "Company Assets", path: "/app/assets", icon: "assets", color: "#fdf3e2", ink: "#b06d0a" },
   { id: "policies", label: "HR Policies", path: "/app/policies", icon: "policies", color: "#e3f2e9", ink: "#1d7347" },

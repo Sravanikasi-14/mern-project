@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { IconDocument } from "../components/Icons";
+import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
 
 export default function EditEmployee() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useSmartBack(`/admin/employees/${id}`);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -128,7 +130,7 @@ export default function EditEmployee() {
       );
       if (!confirmLeave) return;
     }
-    navigate(`/admin/employees/${id}`);
+    goBack();
   };
 
   const formatFileSize = (bytes) => {
@@ -301,7 +303,7 @@ export default function EditEmployee() {
       setSuccessMsg("Employee updated successfully! Redirecting...");
       setIsDirty(false);
       setTimeout(() => {
-        navigate(`/admin/employees/${id}`);
+        navigate(`/admin/employees/${id}`, { replace: true });
       }, 900);
     } catch (err) {
       setError(err.response?.data?.message || "Unable to update employee. Please try again.");

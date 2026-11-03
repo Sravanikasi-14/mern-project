@@ -27,8 +27,12 @@ export default function NotificationSheet({ open, onClose }) {
       // still allow navigation
     }
     if (item.link) {
+      // Close overlay first so its history entry is released before route push.
       onClose();
-      navigate(item.link);
+      queueMicrotask(() => {
+        const link = String(item.link);
+        if (link.startsWith("/")) navigate(link);
+      });
     }
   };
 

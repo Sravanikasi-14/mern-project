@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import { ChevronLeft, Download, MoreVertical } from "lucide-react";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
@@ -31,6 +32,7 @@ export default function HrPayslipDetailPage() {
   const { payslipId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/payroll");
   const { user } = useAuth();
   const notify = useNotify();
   const toast = useToast();
@@ -159,7 +161,7 @@ export default function HrPayslipDetailPage() {
     return (
       <div className="st-pay-detail">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Payslip Details</h1>
@@ -173,7 +175,7 @@ export default function HrPayslipDetailPage() {
     return (
       <div className="st-pay-detail">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Payslip Details</h1>
@@ -192,7 +194,7 @@ export default function HrPayslipDetailPage() {
   return (
     <div className="st-pay-detail">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Payslip Details</h1>

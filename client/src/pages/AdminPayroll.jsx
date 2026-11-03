@@ -16,6 +16,7 @@ import {
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import { useAuth } from "../context/AuthContext";
+import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
 import "./AdminPayroll.css";
@@ -44,6 +45,7 @@ export default function AdminPayroll() {
   const { user, company } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/payroll?tab=ff_settlements");
 
   // Active top tab: "payroll_registers" or "ff_settlements"
   const [activeTab, setActiveTab] = useState(() => {
@@ -686,7 +688,7 @@ export default function AdminPayroll() {
               className="btn-secondary"
               onClick={() => {
                 setSelectedSettlementId(null);
-                navigate("/admin/payroll");
+                goBack();
               }}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, height: 32 }}
             >

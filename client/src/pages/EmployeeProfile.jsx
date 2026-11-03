@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import StatusBadge from "../components/StatusBadge";
 import { IconDocument, IconArrowLeft, IconClose, IconCheck, IconAlertCircle } from "../components/Icons";
+import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
 
 export default function EmployeeProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useSmartBack();
 
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -329,7 +331,7 @@ export default function EmployeeProfile() {
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => navigate("/admin")}
+            onClick={() => goBack()}
             style={{ marginTop: "16px", display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             <IconArrowLeft size={14} />

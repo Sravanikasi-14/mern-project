@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import { ChevronLeft, MapPinned, Search } from "lucide-react";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
@@ -38,6 +39,7 @@ export default function HrAttendancePage() {
   const notify = useNotify();
   const timezone = resolveCompanyTimezone(company);
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/more");
   const todayStr = getCompanyBusinessDate(new Date(), timezone);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
@@ -106,7 +108,7 @@ export default function HrAttendancePage() {
     <div className="st-att">
       <header className="st-att-head">
         <div className="st-att-head-main">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Attendance Records</h1>

@@ -78,7 +78,12 @@ export default function BottomNav() {
             className={active ? "is-active" : ""}
             aria-current={active ? "page" : undefined}
             aria-label={item.label}
-            onClick={() => navigate(item.path)}
+            onClick={() => {
+              const current = `${location.pathname}${location.search || ""}`;
+              if (current === item.path) return;
+              // Tab roots should replace to avoid endless Back through prior tabs.
+              navigate(item.path, { replace: true });
+            }}
           >
             <span className="nav-ico" aria-hidden="true">
               <TabIcon size={22} strokeWidth={active ? 2.1 : 1.85} />

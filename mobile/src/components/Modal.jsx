@@ -9,10 +9,12 @@ function focusables(root) {
 
 /** Shared stack so stacked/swapped modals share one history entry and do not auto-dismiss. */
 const modalStack = [];
+const closeHandlers = new Map();
 let historyOwned = false;
 
-function pushModalToken(token) {
+function pushModalToken(token, onClose) {
   modalStack.push(token);
+  if (typeof onClose === "function") closeHandlers.set(token, onClose);
   if (!historyOwned) {
     window.history.pushState({ mobileModal: true }, "");
     historyOwned = true;
@@ -22,12 +24,30 @@ function pushModalToken(token) {
 function releaseModalToken(token) {
   const idx = modalStack.lastIndexOf(token);
   if (idx >= 0) modalStack.splice(idx, 1);
+  closeHandlers.delete(token);
   if (modalStack.length === 0 && historyOwned) {
     historyOwned = false;
     if (window.history.state?.mobileModal) {
       window.history.back();
     }
   }
+}
+
+/** Whether any modal/sheet is open (for hardware/header back priority). */
+export function hasOpenOverlay() {
+  return modalStack.length > 0;
+}
+
+/** Close the topmost overlay without navigating. */
+export function closeTopOverlay() {
+  if (modalStack.length === 0) return false;
+  const token = modalStack[modalStack.length - 1];
+  const handler = closeHandlers.get(token);
+  if (typeof handler === "function") {
+    handler();
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -49,7 +69,7 @@ export default function Modal({ open, onClose, title, children, footer, size = "
     lastFocus.current = document.activeElement;
     closedByPop.current = false;
     const token = `modal-${titleId}`;
-    pushModalToken(token);
+    pushModalToken(token, () => onCloseRef.current());
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -84,6 +104,7 @@ export default function Modal({ open, onClose, title, children, footer, size = "
       closedByPop.current = true;
       const idx = modalStack.lastIndexOf(token);
       if (idx >= 0) modalStack.splice(idx, 1);
+      closeHandlers.delete(token);
       if (modalStack.length === 0) {
         historyOwned = false;
       } else {

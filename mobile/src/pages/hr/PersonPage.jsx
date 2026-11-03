@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   BadgeCheck,
   Briefcase,
@@ -61,6 +62,7 @@ export default function HrPersonPage() {
   const { user, company } = useAuth();
   const timezone = resolveCompanyTimezone(company);
   const navigate = useNavigate();
+  const goBack = useSmartBack();
   const [emp, setEmp] = useState(null);
   const [history, setHistory] = useState([]);
   const [attLoading, setAttLoading] = useState(false);
@@ -201,7 +203,7 @@ export default function HrPersonPage() {
     return (
       <div className="st-profile">
         <div className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Employee Profile</h1>
@@ -214,7 +216,7 @@ export default function HrPersonPage() {
     return (
       <div className="st-profile">
         <div className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Employee Profile</h1>
@@ -263,7 +265,7 @@ export default function HrPersonPage() {
   return (
     <div className="st-profile">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Employee Profile</h1>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   ChevronLeft,
   Clock3,
@@ -87,6 +88,7 @@ function stageHint(status) {
 
 export default function HrOffersPage() {
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/more");
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const notify = useNotify();
@@ -464,7 +466,7 @@ export default function HrOffersPage() {
     return (
       <div className="st-rec">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>{segment === "offers" ? "Offer Letters" : "Recruitment"}</h1>
@@ -478,7 +480,7 @@ export default function HrOffersPage() {
     return (
       <div className="st-rec">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Recruitment</h1>
@@ -491,7 +493,7 @@ export default function HrOffersPage() {
   return (
     <div className="st-rec">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>{segment === "offers" ? "Offer Letters" : "Recruitment"}</h1>

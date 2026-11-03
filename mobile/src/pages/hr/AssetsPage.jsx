@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   ChevronLeft,
   Laptop,
@@ -103,6 +104,7 @@ function formatDate(value) {
 
 export default function HrAssetsPage() {
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/more");
   const { user } = useAuth();
   const notify = useNotify();
   const toast = useToast();
@@ -345,7 +347,7 @@ export default function HrAssetsPage() {
     return (
       <div className="st-ast">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Company Assets</h1>
@@ -359,7 +361,7 @@ export default function HrAssetsPage() {
     return (
       <div className="st-ast">
         <header className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Company Assets</h1>
@@ -372,7 +374,7 @@ export default function HrAssetsPage() {
   return (
     <div className="st-ast">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Company Assets</h1>

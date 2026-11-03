@@ -292,7 +292,9 @@ export default function Sidebar({
     }
 
     if (item.path) {
-      if (location.pathname !== item.path) {
+      const current = `${location.pathname}${location.search || ""}`;
+      if (current !== item.path) {
+        // Navigating to the section root clears deep-link query state (e.g. settlementId).
         navigate(item.path);
       }
     } else {

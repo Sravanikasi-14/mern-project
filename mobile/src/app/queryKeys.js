@@ -12,6 +12,12 @@ export const qk = {
   settlement: () => ["employee", "settlement"],
   assets: () => ["employee", "assets"],
   notifications: () => ["employee", "notifications"],
+  /** HR leave request intelligence — never used on employee screens */
+  leaveImpact: (id) => ["hr", "leave-impact", String(id || "")],
+  leaveBackup: (id) => ["hr", "leave-backup", String(id || "")],
+  leaveHandover: (id) => ["hr", "leave-handover", String(id || "")],
+  leaveRequestDetail: (id) => ["hr", "leave-request", String(id || "")],
+  employeeLeaveInsights: () => ["employee", "leave-insights"],
 };
 
 export function invalidateEmployeeWork(queryClient) {
@@ -32,7 +38,21 @@ export function invalidateAttendance(queryClient) {
 }
 
 export function invalidateLeave(queryClient) {
-  return queryClient.invalidateQueries({ queryKey: ["employee", "dashboard"] });
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["employee", "dashboard"] }),
+    queryClient.invalidateQueries({ queryKey: ["employee", "leave-insights"] }),
+  ]);
+}
+
+/** Clear / refresh HR leave intelligence caches after decisions or coordination changes. */
+export function invalidateLeaveIntelligence(queryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["hr", "leave-impact"] }),
+    queryClient.invalidateQueries({ queryKey: ["hr", "leave-backup"] }),
+    queryClient.invalidateQueries({ queryKey: ["hr", "leave-handover"] }),
+    queryClient.invalidateQueries({ queryKey: ["hr", "leave-request"] }),
+    queryClient.invalidateQueries({ queryKey: ["employee", "dashboard"] }),
+  ]);
 }
 
 export function invalidateProfile(queryClient) {

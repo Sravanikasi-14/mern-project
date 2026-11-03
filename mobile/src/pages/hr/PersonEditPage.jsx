@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import PageHeader from "../../components/PageHeader";
 import Expandable from "../../components/Expandable";
 import { ErrorState, Skeleton } from "../../components/EmptyState";
@@ -38,6 +39,7 @@ export default function HrPersonEditPage() {
   const { id } = useParams();
   const toast = useToast();
   const navigate = useNavigate();
+  const goBack = useSmartBack(id ? `/admin/employees/${id}` : "/admin");
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -146,7 +148,7 @@ export default function HrPersonEditPage() {
   };
 
   if (loading) return <><PageHeader title="Edit profile" back /><Skeleton /></>;
-  if (error && !form.fullName) return <><PageHeader title="Edit profile" back /><ErrorState message={error} onRetry={() => navigate(-1)} /></>;
+  if (error && !form.fullName) return <><PageHeader title="Edit profile" back /><ErrorState message={error} onRetry={() => goBack()} /></>;
 
   return (
     <>

@@ -242,7 +242,7 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
   if (editing) {
     return (
       <>
-        <PageHeader title="Edit Profile" back />
+        <PageHeader title="Edit Profile" back backFallback="/app/profile" />
         <form className="form-grid pf-form" onSubmit={save} noValidate>
           {fieldErrors.form ? <div className="alert alert-error">{fieldErrors.form}</div> : null}
           <section className="pf-card pf-edit-hero">

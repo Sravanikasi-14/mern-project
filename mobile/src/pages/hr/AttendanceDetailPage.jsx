@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import { ChevronLeft, MoreVertical } from "lucide-react";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
@@ -58,6 +59,7 @@ export default function HrAttendanceDetailPage() {
   const { user, company } = useAuth();
   const notify = useNotify();
   const navigate = useNavigate();
+  const goBack = useSmartBack("/admin/attendance");
   const timezone = resolveCompanyTimezone(company);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +112,7 @@ export default function HrAttendanceDetailPage() {
     return (
       <div className="st-att-detail">
         <div className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Attendance History</h1>
@@ -124,7 +126,7 @@ export default function HrAttendanceDetailPage() {
     return (
       <div className="st-att-detail">
         <div className="st-subhead">
-          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+          <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
             <ChevronLeft size={22} strokeWidth={1.85} />
           </button>
           <h1>Attendance History</h1>
@@ -142,7 +144,7 @@ export default function HrAttendanceDetailPage() {
   return (
     <div className="st-att-detail">
       <header className="st-subhead">
-        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => navigate(-1)}>
+        <button type="button" className="icon-btn" aria-label="Go back" onClick={() => goBack()}>
           <ChevronLeft size={22} strokeWidth={1.85} />
         </button>
         <h1>Attendance History</h1>
