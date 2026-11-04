@@ -15,7 +15,7 @@ async function run() {
   console.log("   HRMS Offer Letter PDF Attachment SMTP Verification   ");
   console.log("========================================================");
 
-  const targetRecipient = process.argv[2] || process.env.TEST_EMAIL_RECIPIENT || process.env.SMTP_USER || process.env.EMAIL_FROM || "sravanikasi14@gmail.com";
+  const targetRecipient = process.argv[2] || process.env.TEST_EMAIL_RECIPIENT || process.env.SMTP_USER || process.env.EMAIL_FROM;
 
   if (!emailService.isConfigured()) {
     console.error("[Error] SMTP credentials not configured in server/.env or Settings UI");
