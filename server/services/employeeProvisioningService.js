@@ -9,6 +9,12 @@ import { HttpError } from "../utils/httpError.js";
 import { hashPassword } from "../utils/password.js";
 import { signEmployeeActivationToken } from "../utils/onboardingToken.js";
 import { hashAuthToken } from "../utils/authTokenHash.js";
+import { resolveDepartmentAssignment } from "./departmentLinkService.js";
+import {
+  assertValidReportingManagerAssignment,
+  isStrictObjectId,
+  parseReportingManagerInput,
+} from "./reportingManagerService.js";
 
 export const PROVISIONING_SOURCES = Object.freeze({
   MANUAL: "MANUAL",
@@ -26,6 +32,28 @@ const ACTIVATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function trimStr(value) {
   return value == null ? "" : String(value).trim();
+}
+
+/**
+ * Ordinary provisioning must not change a Company Admin or HR Admin into an employee.
+ * Candidate conversion stays limited to the onboarding path that already loaded that user.
+ */
+function assertAccountCanBecomeEmployee(existing) {
+  if (!existing) return;
+  if (existing.role === USER_ROLES.HR_ADMIN) {
+    throw new HttpError(409, "This email belongs to an HR admin account and cannot be provisioned as an employee.", {
+      field: "email",
+      errors: { email: "This email belongs to an HR admin account." },
+      code: "EMAIL_OWNED_BY_HR_ADMIN",
+    });
+  }
+  if (existing.role === USER_ROLES.COMPANY_ADMIN) {
+    throw new HttpError(409, "This email belongs to the Company Admin account and cannot be used for an employee.", {
+      field: "email",
+      errors: { email: "This email belongs to the Company Admin account." },
+      code: "EMAIL_OWNED_BY_COMPANY_ADMIN",
+    });
+  }
 }
 
 /**
@@ -55,6 +83,16 @@ export function validateEmployeeProvisionData(employeeData = {}, { requireEmploy
     }
   }
 
+  let reportingManagerId = null;
+  if (employeeData.reportingManagerId !== undefined && employeeData.reportingManagerId !== null && employeeData.reportingManagerId !== "") {
+    try {
+      const parsed = parseReportingManagerInput(employeeData.reportingManagerId);
+      reportingManagerId = parsed.managerId;
+    } catch (err) {
+      errors.reportingManagerId = err?.errors?.reportingManagerId || err.message || "Invalid reporting manager reference.";
+    }
+  }
+
   if (Object.keys(errors).length > 0) {
     const first = Object.values(errors)[0];
     throw new HttpError(400, first, { field: Object.keys(errors)[0], errors });
@@ -73,11 +111,12 @@ export function validateEmployeeProvisionData(employeeData = {}, { requireEmploy
         : EMPLOYEE_STATUSES.ACTIVE,
     jobTitle: trimStr(employeeData.jobTitle),
     department: trimStr(employeeData.department),
+    departmentId: employeeData.departmentId || null,
     employmentType: trimStr(employeeData.employmentType) || "Full-time",
     jobGrade: trimStr(employeeData.jobGrade),
     workLocation: trimStr(employeeData.workLocation),
     joiningDate: employeeData.joiningDate ? new Date(employeeData.joiningDate) : new Date(),
-    reportingManagerId: employeeData.reportingManagerId || null,
+    reportingManagerId,
     projectName: trimStr(employeeData.projectName),
     projectType: trimStr(employeeData.projectType) || "MANDATE",
     monthlySalary: employeeData.monthlySalary,
@@ -354,7 +393,7 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     skipAudit = false,
   } = options;
 
-  const { Employee, User, EmployeeCompensation, OfferLetter, AuditLog } = models;
+  const { Employee, User, EmployeeCompensation, OfferLetter, AuditLog, Department } = models;
 
   let normalized = validateEmployeeProvisionData(employeeData, {
     requireEmployeeCode: !generateCodeIfMissing || Boolean(trimStr(employeeData.employeeCode)),
@@ -367,6 +406,33 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     };
   }
 
+  const departmentAssignment = await resolveDepartmentAssignment(Department, {
+    department: normalized.department,
+    departmentId: normalized.departmentId,
+    departmentProvided: true,
+    departmentIdProvided: Boolean(normalized.departmentId),
+    existingDepartmentId: null,
+    existingDepartmentName: "",
+    session,
+  });
+  normalized = {
+    ...normalized,
+    department: departmentAssignment.departmentName || "",
+    departmentId: departmentAssignment.departmentId,
+  };
+
+  // Same-company existence + ObjectId validation (create has no subject id yet → no cycle walk).
+  if (normalized.reportingManagerId) {
+    normalized = {
+      ...normalized,
+      reportingManagerId: await assertValidReportingManagerAssignment({
+        Employee,
+        employeeId: null,
+        managerId: normalized.reportingManagerId,
+      }),
+    };
+  }
+
   // Role / company overrides from the client are ignored — backend owns these.
   const linkedOffer = await resolveLinkedOffer(OfferLetter, normalized.offerLetterId || employeeData.offerLetterId, session);
   await assertNoDuplicateEmployee(
@@ -375,7 +441,7 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     session
   );
 
-  // Resolve User — never silently reuse HR_ADMIN or foreign roles for Path A/C.
+  // Resolve User — never convert a Company Admin or HR Admin into an employee.
   let user = null;
   let createdUser = false;
 
@@ -389,18 +455,13 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     if (user.email !== normalized.email) {
       throw new HttpError(400, "Onboarding user email does not match provisioned employee email.");
     }
+    assertAccountCanBecomeEmployee(user);
   } else {
     const q = User.findOne({ email: normalized.email });
     if (session) q.session(session);
     const existing = await q;
     if (existing) {
-      if (existing.role === USER_ROLES.HR_ADMIN) {
-        throw new HttpError(409, "This email belongs to an HR admin account and cannot be provisioned as an employee.", {
-          field: "email",
-          errors: { email: "This email belongs to an HR admin account." },
-          code: "EMAIL_OWNED_BY_HR_ADMIN",
-        });
-      }
+      assertAccountCanBecomeEmployee(existing);
       if (existing.role === USER_ROLES.CANDIDATE || existing.onboarding) {
         throw new HttpError(409, "This email belongs to an in-progress candidate. Complete onboarding approval instead.", {
           field: "email",
@@ -413,6 +474,13 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
           field: "email",
           errors: { email: "A user account with this email already exists." },
           code: "DUPLICATE_USER_EMAIL",
+        });
+      }
+      if (existing.role !== USER_ROLES.EMPLOYEE) {
+        throw new HttpError(409, "This email belongs to an account that cannot be used for an employee.", {
+          field: "email",
+          errors: { email: "This email belongs to an account that cannot be used for an employee." },
+          code: "EMAIL_ROLE_CONFLICT",
         });
       }
       // Orphan EMPLOYEE user without employeeId — reuse safely for idempotent retry
@@ -440,6 +508,7 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     }
     createdUser = true;
   } else {
+    assertAccountCanBecomeEmployee(user);
     user.role = USER_ROLES.EMPLOYEE;
     user.isActive = false;
     // Candidate users may have no passwordHash; set a placeholder until activation.
@@ -462,6 +531,7 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     job: {
       jobTitle: normalized.jobTitle,
       department: normalized.department,
+      departmentId: normalized.departmentId || null,
       employmentType: normalized.employmentType,
       jobGrade: normalized.jobGrade,
       workLocation: normalized.workLocation,
@@ -685,15 +755,6 @@ export async function validateImportRow(models, row, { seenEmails, seenCodes }) 
     }
   }
 
-  if (normalized.reportingManagerId) {
-    if (!mongoose.Types.ObjectId.isValid(normalized.reportingManagerId)) {
-      errors.reportingManagerId = "Invalid reporting manager reference.";
-    } else {
-      const mgr = await models.Employee.findById(normalized.reportingManagerId).select("_id").lean();
-      if (!mgr) errors.reportingManagerId = "Reporting manager not found in this company.";
-    }
-  }
-
   // Optional: resolve reporting manager by employee code if provided as reportingManagerCode
   if (row.reportingManagerCode && !normalized.reportingManagerId) {
     const mgr = await models.Employee.findOne({
@@ -705,6 +766,23 @@ export async function validateImportRow(models, row, { seenEmails, seenCodes }) 
       errors.reportingManagerCode = "Reporting manager employee code not found.";
     } else {
       normalized.reportingManagerId = mgr._id;
+    }
+  }
+
+  if (normalized.reportingManagerId) {
+    if (!isStrictObjectId(normalized.reportingManagerId)) {
+      errors.reportingManagerId = "Invalid reporting manager reference.";
+    } else {
+      try {
+        normalized.reportingManagerId = await assertValidReportingManagerAssignment({
+          Employee: models.Employee,
+          employeeId: null,
+          managerId: normalized.reportingManagerId,
+        });
+      } catch (err) {
+        errors.reportingManagerId =
+          err?.errors?.reportingManagerId || err.message || "Invalid reporting manager reference.";
+      }
     }
   }
 

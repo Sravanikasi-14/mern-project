@@ -9,6 +9,13 @@ import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
 import { useToast } from "../../components/Toast";
 import api from "../../services/api";
+import {
+  blobFromAxiosResponse,
+  documentErrorMessage,
+  openDocument,
+  saveDocument,
+  shareDocument,
+} from "../../services/documents";
 import { formatDisplayDate } from "../../utils/dateUtils";
 import {
   deductionLines,
@@ -96,37 +103,37 @@ export default function HrPayslipDetailPage() {
   const canDownload =
     Boolean(slipId(payslip)) && String(payslip?.status || "").toUpperCase() !== "DRAFT";
 
+  const fetchPayslipPdf = async () => {
+    const id = slipId(payslip);
+    let response;
+    try {
+      response = await api.get(`/payroll/employee/payslips/${id}/download`, { responseType: "blob" });
+    } catch {
+      response = await api.get(`/payroll/payslips/${id}/download`, { responseType: "blob" });
+    }
+    const code = (payslipEmployeeCode(payslip) || "EMP").replace(/[^a-zA-Z0-9_-]/g, "");
+    const fallback =
+      payslip.payslipNumber ||
+      `Payslip_${code}_${payslip.periodYear}_${String(payslip.periodMonth).padStart(2, "0")}.pdf`;
+    return blobFromAxiosResponse(response, fallback);
+  };
+
   const download = async () => {
     const id = slipId(payslip);
-    if (!id || !canDownload) {
-      setError("This payslip cannot be downloaded until payroll is finalized.");
+    if (!id || !canDownload || downloading) {
+      if (!id || !canDownload) {
+        setError("This payslip cannot be downloaded until payroll is finalized.");
+      }
       return;
     }
     try {
       setDownloading(true);
       setError("");
-      let response;
-      try {
-        response = await api.get(`/payroll/employee/payslips/${id}/download`, { responseType: "blob" });
-      } catch {
-        response = await api.get(`/payroll/payslips/${id}/download`, { responseType: "blob" });
-      }
-      const contentType = String(response.headers?.["content-type"] || response.data?.type || "");
-      if (contentType && !contentType.includes("pdf") && !contentType.includes("octet-stream")) {
-        throw new Error("Payslip PDF was not returned.");
-      }
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a");
-      link.href = url;
-      const code = (payslipEmployeeCode(payslip) || "EMP").replace(/[^a-zA-Z0-9_-]/g, "");
-      link.download =
-        payslip.payslipNumber ||
-        `Payslip_${code}_${payslip.periodYear}_${String(payslip.periodMonth).padStart(2, "0")}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
-      toast.push("Payslip PDF downloaded.");
+      const file = await fetchPayslipPdf();
+      await saveDocument(file);
+      toast.push("Payslip ready — use Save or Share.");
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Could not download this payslip.");
+      setError(documentErrorMessage(err, "Could not download this payslip."));
     } finally {
       setDownloading(false);
     }
@@ -134,24 +141,34 @@ export default function HrPayslipDetailPage() {
 
   const openPreview = async () => {
     const id = slipId(payslip);
-    if (!id || !canDownload) {
-      setError("Preview is available after payroll is finalized.");
+    if (!id || !canDownload || downloading) {
+      if (!id || !canDownload) {
+        setError("Preview is available after payroll is finalized.");
+      }
       return;
     }
     try {
       setDownloading(true);
       setError("");
-      let response;
-      try {
-        response = await api.get(`/payroll/employee/payslips/${id}/download`, { responseType: "blob" });
-      } catch {
-        response = await api.get(`/payroll/payslips/${id}/download`, { responseType: "blob" });
-      }
-      const url = URL.createObjectURL(response.data);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const file = await fetchPayslipPdf();
+      await openDocument(file);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Could not open payslip preview.");
+      setError(documentErrorMessage(err, "Could not open payslip preview."));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const sharePdf = async () => {
+    const id = slipId(payslip);
+    if (!id || !canDownload || downloading) return;
+    try {
+      setDownloading(true);
+      setError("");
+      const file = await fetchPayslipPdf();
+      await shareDocument(file);
+    } catch (err) {
+      setError(documentErrorMessage(err, "Could not share this payslip."));
     } finally {
       setDownloading(false);
     }
@@ -340,7 +357,7 @@ export default function HrPayslipDetailPage() {
           onClick={download}
         >
           <Download size={18} strokeWidth={1.85} aria-hidden="true" />
-          {downloading ? "Preparing PDF..." : "Download Payslip (PDF)"}
+          {downloading ? "Preparing PDF…" : "Download / share PDF"}
         </button>
         <button
           type="button"
@@ -348,7 +365,15 @@ export default function HrPayslipDetailPage() {
           disabled={downloading || !canDownload}
           onClick={openPreview}
         >
-          Preview PDF
+          {downloading ? "Opening…" : "View PDF"}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary btn-block"
+          disabled={downloading || !canDownload}
+          onClick={sharePdf}
+        >
+          Share
         </button>
         {!canDownload ? (
           <p className="caption">Draft payslips cannot be downloaded until the cycle is finalized.</p>

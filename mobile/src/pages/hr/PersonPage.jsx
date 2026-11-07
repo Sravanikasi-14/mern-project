@@ -24,6 +24,12 @@ import { useAuth } from "../../app/AuthContext";
 import { initialsFrom } from "../../components/SummaryRow";
 import api from "../../services/api";
 import {
+  blobFromAxiosResponse,
+  documentErrorMessage,
+  openDocument,
+  saveDocument,
+} from "../../services/documents";
+import {
   formatCivilDate,
   formatDisplayDate,
   resolveCompanyTimezone,
@@ -155,21 +161,27 @@ export default function HrPersonPage() {
     }
   };
 
-  const downloadDoc = async (doc) => {
+  const downloadDoc = async (doc, mode = "open") => {
     const docId = doc._id || doc.id;
+    if (!docId || downloading) return;
     try {
       setDownloading(String(docId));
+      setError("");
       const response = await api.get(`/employees/${id}/documents/${docId}/download`, {
         responseType: "blob",
       });
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = doc.title || doc.fileName || "document";
-      link.click();
-      URL.revokeObjectURL(url);
+      const file = await blobFromAxiosResponse(
+        response,
+        doc.title || doc.fileName || "document"
+      );
+      if (mode === "save") {
+        await saveDocument(file);
+        toast.push("Document ready — use Save or Share.");
+      } else {
+        await openDocument(file);
+      }
     } catch (err) {
-      setError(err.response?.data?.message || "Could not download this document.");
+      setError(documentErrorMessage(err, "Could not download this document."));
     } finally {
       setDownloading("");
     }
@@ -255,12 +267,9 @@ export default function HrPersonPage() {
     emp?.job?.reportingManagerId && typeof emp.job.reportingManagerId === "object"
       ? emp.job.reportingManagerId
       : null;
-  const managerName =
-    manager?.fullName ||
-    emp?.reportingManager?.fullName ||
-    emp?.manager?.fullName ||
-    emp?.job?.reportingManagerName ||
-    null;
+  const managerName = manager?.fullName || null;
+  const managerTitle = manager?.job?.jobTitle || null;
+  const managerId = manager?._id ? String(manager._id) : null;
 
   return (
     <div className="st-profile">
@@ -365,13 +374,37 @@ export default function HrPersonPage() {
               <div className="st-detail-row">
                 <span>Reporting Manager</span>
                 <strong className="st-manager">
-                  {managerName ? (
-                    <>
+                  {managerName && managerId ? (
+                    <button
+                      type="button"
+                      className="st-manager-link"
+                      onClick={() => navigate(`/admin/employees/${managerId}`)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        font: "inherit",
+                        color: "var(--g-800, #155a37)",
+                        fontWeight: 600,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
                       <span className="st-manager-av">{initialsFrom(managerName)}</span>
-                      {managerName}
-                    </>
+                      <span>
+                        {managerName}
+                        {managerTitle ? (
+                          <span style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--muted)" }}>
+                            {managerTitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
                   ) : (
-                    "—"
+                    "No reporting manager"
                   )}
                 </strong>
               </div>
@@ -493,7 +526,7 @@ export default function HrPersonPage() {
                   key={docId || doc.title}
                   type="button"
                   className="doc-folder-file"
-                  onClick={() => downloadDoc(doc)}
+                  onClick={() => downloadDoc(doc, "open")}
                   disabled={Boolean(downloading)}
                 >
                   <span>
@@ -503,7 +536,7 @@ export default function HrPersonPage() {
                     </small>
                   </span>
                   <em>
-                    {downloading === String(docId) ? "..." : "Download"}
+                    {downloading === String(docId) ? "…" : "Open"}
                     <ChevronRight size={16} strokeWidth={1.85} aria-hidden="true" />
                   </em>
                 </button>

@@ -9,6 +9,8 @@ import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
 import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import MonthCalendar from "../components/MonthCalendar";
 import DateRangePicker from "../components/DateRangePicker";
 import ColumnChooser from "../components/ColumnChooser";
@@ -29,6 +31,7 @@ import {
 } from "../utils/dateUtils";
 import "./LeaveManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
+import ModuleToolbar from "../components/ModuleToolbar";
 import AppModal from "../components/AppModal";
 import LeaveReviewPanel from "../components/LeaveReviewPanel";
 
@@ -54,7 +57,8 @@ const STATUS_OPTIONS = [
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export default function AdminLeaveManagement() {
-  const { company } = useAuth();
+  const { company, user } = useAuth();
+  const canApproveLeave = hrPortalAllows(user, company, "leave.approve");
   const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -499,6 +503,7 @@ export default function AdminLeaveManagement() {
         title="Leave"
         actions={<SoftRefresh active={Boolean(leaveQuery.isFetching && requests.length > 0)} />}
       />
+      {!canApproveLeave ? <AccessRestrictedInline /> : null}
 
       <div className="module-tabs" role="tablist" aria-label="Leave sections">
         <button
@@ -646,25 +651,41 @@ export default function AdminLeaveManagement() {
 
       {leaveSection === "leave" && (
       <>
-      <div className="lm-records-heading">
-        <span className="m-title-full">Leave workspace</span>
-        <span className="m-title-short">Leave</span>
-      </div>
-      <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--muted)" }}>
-        Search, filter, and approve leave in one place. Pending rows show approve/reject actions.
-      </p>
       <MobileFilterBar
         search={search}
         onSearchChange={(e) => setSearch(e.target.value)}
         searchPlaceholder="Search by name"
-        filterCount={(typeFilter !== "ALL" ? 1 : 0) + (fromDateFilter ? 1 : 0) + (toDateFilter ? 1 : 0)}
+        filterCount={
+          (statusFilter !== "ALL" ? 1 : 0) +
+          (typeFilter !== "ALL" ? 1 : 0) +
+          (fromDateFilter ? 1 : 0) +
+          (toDateFilter ? 1 : 0)
+        }
         onReset={() => {
+          setStatusFilter("ALL");
           setTypeFilter("ALL");
           setFromDateFilter("");
           setToDateFilter("");
           setPage(1);
         }}
       >
+        <label>
+          Status
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            className="filter-select"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Leave type
           <select
@@ -693,90 +714,96 @@ export default function AdminLeaveManagement() {
           }}
         />
       </MobileFilterBar>
-      <div className="lm-toolbar">
-        <div className="lm-toolbar-left">
-          <div style={{ display: "flex", background: "#f1f5f9", padding: 2, borderRadius: 6 }}>
-            {STATUS_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`text-filter-link ${statusFilter === opt.value ? "active" : ""}`}
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  borderRadius: 5,
-                  fontWeight: statusFilter === opt.value ? 700 : 500,
-                  background: statusFilter === opt.value ? "#ffffff" : "transparent",
-                  color: statusFilter === opt.value ? "var(--g-950, #0d3a23)" : "var(--muted, #646d67)",
-                  border: "none",
-                  boxShadow: statusFilter === opt.value ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                  cursor: "pointer",
-                }}
-                onClick={() => {
-                  setStatusFilter(opt.value);
+      <ModuleToolbar
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        searchPlaceholder="Search employee, role, reason..."
+        searchAriaLabel="Search leave requests"
+        actions={
+          <>
+            <ColumnChooser
+              columns={leaveCols.columns}
+              visible={leaveCols.visible}
+              onToggle={leaveCols.toggle}
+              onReset={leaveCols.reset}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => leaveQuery.refetch()}
+              title="Refresh leave requests"
+            >
+              <IconRefresh size={18} />
+              <span>Refresh</span>
+            </button>
+          </>
+        }
+        filterCount={
+          (statusFilter !== "ALL" ? 1 : 0) +
+          (typeFilter !== "ALL" ? 1 : 0) +
+          (fromDateFilter ? 1 : 0) +
+          (toDateFilter ? 1 : 0)
+        }
+        onFiltersClear={() => {
+          setStatusFilter("ALL");
+          setTypeFilter("ALL");
+          setFromDateFilter("");
+          setToDateFilter("");
+          setPage(1);
+        }}
+        filters={
+          <>
+            <label className="module-toolbar-filter-field">
+              Status
+              <select
+                className="filter-select"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
                   setPage(1);
                 }}
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ position: "relative", minWidth: 200 }}>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search employee, role, reason..."
-              className="search-input"
-              style={{ width: "100%", paddingLeft: "30px", height: 32, fontSize: 12.5 }}
-            />
-          </div>
-          <select
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value);
-              setPage(1);
-            }}
-            className="filter-select"
-            style={{ height: 32, fontSize: 12.5 }}
-          >
-            {filterLeaveTypes.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <DateRangePicker
-            label=""
-            placeholder="Date range"
-            startDate={fromDateFilter}
-            endDate={toDateFilter}
-            onChange={({ startDate, endDate }) => {
-              setFromDateFilter(startDate || "");
-              setToDateFilter(endDate || "");
-              setPage(1);
-            }}
-          />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ColumnChooser
-            columns={leaveCols.columns}
-            visible={leaveCols.visible}
-            onToggle={leaveCols.toggle}
-            onReset={leaveCols.reset}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => leaveQuery.refetch()}
-            title="Refresh leave requests"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 12px", fontSize: 13 }}
-          >
-            <IconRefresh size={18} />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="module-toolbar-filter-field">
+              Leave type
+              <select
+                className="filter-select"
+                value={typeFilter}
+                onChange={(e) => {
+                  setTypeFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                {filterLeaveTypes.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="module-toolbar-filter-field">
+              <span>Date range</span>
+              <DateRangePicker
+                label=""
+                placeholder="Date range"
+                startDate={fromDateFilter}
+                endDate={toDateFilter}
+                onChange={({ startDate, endDate }) => {
+                  setFromDateFilter(startDate || "");
+                  setToDateFilter(endDate || "");
+                  setPage(1);
+                }}
+              />
+            </div>
+          </>
+        }
+      />
 
         {loading && requests.length === 0 ? (
           <div className="pm-empty-box">
@@ -846,7 +873,7 @@ export default function AdminLeaveManagement() {
                   {leaveCols.isVisible("actions") && (
                     <td>
                       <div className="lm-row-actions">
-                        {req.status === "PENDING" && (
+                        {req.status === "PENDING" && canApproveLeave && (
                           <>
                             <button type="button" className="btn-primary btn-sm lm-action-btn" onClick={() => handleQuickDecisionPrompt(req, "APPROVE")}>Approve</button>
                             <button type="button" className="btn-secondary btn-sm lm-action-btn" onClick={() => handleQuickDecisionPrompt(req, "REJECT")}>Reject</button>
@@ -1006,7 +1033,7 @@ export default function AdminLeaveManagement() {
               >
                 Close
               </button>
-              {selectedRequest.status === "PENDING" && (
+              {selectedRequest.status === "PENDING" && canApproveLeave && (
                 <>
                   <button
                     type="button"

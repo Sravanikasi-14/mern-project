@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import StatusBadge from "../components/StatusBadge";
+import DepartmentSelect from "../components/DepartmentSelect";
+import { departmentPayload } from "../components/departmentAssignment";
+import ReportingManagerSelect from "../components/ReportingManagerSelect";
+import DesignationFields from "../components/organization-workspace/DesignationFields";
 import { IconDocument, IconArrowLeft, IconClose, IconCheck, IconAlertCircle } from "../components/Icons";
 import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
+
+function managerIdOf(emp) {
+  const m = emp?.job?.reportingManagerId;
+  if (!m) return null;
+  return typeof m === "object" ? String(m._id || "") || null : String(m);
+}
 
 export default function EmployeeProfile() {
   const { id } = useParams();
@@ -56,7 +66,10 @@ export default function EmployeeProfile() {
       emergencyRel: emp.emergencyContact?.relationship || "",
       emergencyPhone: emp.emergencyContact?.phone || "",
       jobTitle: emp.job?.jobTitle || "",
-      department: emp.job?.department || "",
+      departmentId: emp.job?.departmentId ? String(emp.job.departmentId) : "",
+      departmentName: emp.job?.department || "",
+      clearDepartment: false,
+      departmentTouched: false,
       jobGrade: emp.job?.jobGrade || "Level L3",
       employmentType: emp.job?.employmentType || "Full-time Permanent",
       workLocation: emp.job?.workLocation || "",
@@ -64,6 +77,7 @@ export default function EmployeeProfile() {
       projectName: emp.job?.project?.projectName || "",
       projectType: emp.job?.project?.projectType || "MANDATE",
       monthlySalary: emp.currentMonthlySalary != null ? String(emp.currentMonthlySalary) : "",
+      reportingManagerId: managerIdOf(emp),
       bankName: emp.bankDetails?.bankName || "",
       accountNumber: emp.bankDetails?.accountNumber || "",
       ifscCode: emp.bankDetails?.ifscCode || "",
@@ -119,13 +133,20 @@ export default function EmployeeProfile() {
         dateOfBirth: editFormData.dateOfBirth || undefined,
         gender: editFormData.gender || undefined,
         jobTitle: editFormData.jobTitle?.trim() || undefined,
-        department: editFormData.department?.trim() || undefined,
+        ...departmentPayload({
+          clearDepartment: editFormData.departmentTouched && editFormData.clearDepartment,
+          departmentId: editFormData.departmentTouched && !editFormData.clearDepartment ? editFormData.departmentId : "",
+        }),
         jobGrade: editFormData.jobGrade?.trim() || undefined,
         employmentType: editFormData.employmentType || undefined,
         workLocation: editFormData.workLocation?.trim() || undefined,
         status: editFormData.status || "ACTIVE",
         projectName: editFormData.projectName?.trim() || undefined,
         projectType: editFormData.projectType || "MANDATE",
+        reportingManagerId:
+          editFormData.reportingManagerId === undefined
+            ? undefined
+            : editFormData.reportingManagerId || null,
         emergencyContact: {
           name: editFormData.emergencyName?.trim() || undefined,
           relationship: editFormData.emergencyRel?.trim() || undefined,
@@ -154,15 +175,10 @@ export default function EmployeeProfile() {
         payload.monthlySalary = parseFloat(editFormData.monthlySalary);
       }
 
-      const res = await api.patch(`/employees/${id}`, payload);
-      if (res.data?.employee) {
-        setEmployee((prev) => ({
-          ...prev,
-          ...res.data.employee,
-          currentMonthlySalary:
-            payload.monthlySalary !== undefined ? payload.monthlySalary : prev.currentMonthlySalary,
-        }));
-      }
+      await api.patch(`/employees/${id}`, payload);
+      // Refetch so reporting manager stays populated for display/navigation.
+      const refreshed = await api.get(`/employees/${id}`);
+      if (refreshed.data) setEmployee(refreshed.data);
 
       setEditSuccess("Employee profile updated successfully.");
       setIsEditing(false);
@@ -547,137 +563,100 @@ export default function EmployeeProfile() {
         </div>
       </section>
 
-      {/* -----------------------------------------------------------------------
-          REFERENCE 3: TWO-COLUMN SPLIT GRID (LEFT PANEL & RIGHT TABS)
-          ----------------------------------------------------------------------- */}
-      <div className="epv-split-grid">
-        {/* =====================================================================
-            LEFT PROFILE PANEL (Person Card & Format Card)
-            ===================================================================== */}
-        <aside className="epv-left-panel">
-          {/* Person Card */}
-          <div className="epv-person-card">
-            <div className="epv-avatar-wrapper">
-              <div className="epv-avatar-large">
-                {userInitial}
+      {/* Identity band + working summary (single flow, no side-by-side cards) */}
+      <section className="epv-identity-band" aria-label="Employee identity">
+        <div className="epv-identity-main">
+          <div className="epv-avatar-large" aria-hidden="true">{userInitial}</div>
+          <div className="epv-identity-copy">
+            <div className="epv-identity-title-row">
+              <h2 className="epv-person-name">{employee.fullName}</h2>
+              <div className="epv-person-badges">
+                <span className="epv-code-badge">{employee.employeeCode || "EMP-000"}</span>
+                <StatusBadge status={employee.status || "ACTIVE"} />
               </div>
             </div>
-
-            <h2 className="epv-person-name">{employee.fullName}</h2>
             <p className="epv-person-role">{employee.job?.jobTitle || "Team Member"}</p>
-
-            <div className="epv-person-badges">
-              <span className="epv-code-badge">{employee.employeeCode || "EMP-000"}</span>
-              <StatusBadge status={employee.status || "ACTIVE"} />
-            </div>
-
-            <div className="epv-left-meta-list">
-              <div className="epv-meta-row">
-                <span className="epv-meta-lbl">Department</span>
-                <span className="epv-meta-val">{employee.job?.department || "General"}</span>
+            <dl className="epv-identity-meta">
+              <div>
+                <dt>Department</dt>
+                <dd>{employee.job?.department || "General"}</dd>
               </div>
-              <div className="epv-meta-row">
-                <span className="epv-meta-lbl">Location</span>
-                <span className="epv-meta-val">
-                  {employee.job?.workLocation || employee.city || "Bangalore HQ"}
-                </span>
+              <div>
+                <dt>Location</dt>
+                <dd>{employee.job?.workLocation || employee.city || "Bangalore HQ"}</dd>
               </div>
-              <div className="epv-meta-row">
-                <span className="epv-meta-lbl">Joining Date</span>
-                <span className="epv-meta-val">{formatDate(employee.job?.joiningDate)}</span>
+              <div>
+                <dt>Joined</dt>
+                <dd>{formatDate(employee.job?.joiningDate)}</dd>
               </div>
-              <div className="epv-meta-row">
-                <span className="epv-meta-lbl">Work Email</span>
-                <span className="epv-meta-val" style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {employee.email}
-                </span>
+              <div>
+                <dt>Email</dt>
+                <dd title={employee.email}>{employee.email}</dd>
               </div>
-              {employee.phoneNumber && (
-                <div className="epv-meta-row">
-                  <span className="epv-meta-lbl">Phone</span>
-                  <span className="epv-meta-val">{employee.phoneNumber}</span>
+              {employee.phoneNumber ? (
+                <div>
+                  <dt>Phone</dt>
+                  <dd>{employee.phoneNumber}</dd>
                 </div>
-              )}
-            </div>
-
-            <div className="epv-person-actions">
-              {isEditing ? (
-                <button
-                  type="button"
-                  className="epv-btn-full epv-btn-primary"
-                  onClick={handleSaveProfile}
-                  disabled={savingEdit}
-                >
-                  <IconCheck size={14} />
-                  <span>{savingEdit ? "Saving..." : "Save Changes"}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="epv-btn-full epv-btn-primary"
-                  onClick={handleStartEdit}
-                  title="Edit employee details"
-                  aria-label="Edit employee details"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                  <span>Edit Details</span>
-                </button>
-              )}
-            </div>
+              ) : null}
+            </dl>
           </div>
+        </div>
+        <div className="epv-identity-actions">
+          {isEditing ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleSaveProfile}
+              disabled={savingEdit}
+            >
+              <IconCheck size={15} />
+              <span>{savingEdit ? "Saving..." : "Save Changes"}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleStartEdit}
+              aria-label="Edit employee details"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              <span>Edit Details</span>
+            </button>
+          )}
+        </div>
+      </section>
 
-          {/* Working Format Card (Integrated in Left Panel for space balance) */}
-          <div className="epv-format-card">
-            <h3 className="epv-format-title">
-              <span>Working Format</span>
-              <span style={{ fontSize: "12px", color: "var(--g-700)", fontWeight: "600" }}>
-                {employee.job?.employmentType || "Full-time"}
-              </span>
-            </h3>
-
-            <div className="epv-donut-ring-wrap">
-              <div className="epv-donut-circle">
-                <span className="epv-donut-days">{attendanceInfo.daysPresent || 21}</span>
-                <span className="epv-donut-sub">Present</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <div className="epv-format-pill">
-                  <span className="epv-dot-green" />
-                  <span style={{ fontSize: "12.5px", fontWeight: "600", color: "var(--ink)" }}>
-                    {attendanceInfo.daysPresent || 21} Days Present
-                  </span>
-                </div>
-                <div className="epv-format-pill">
-                  <span className="epv-dot-amber" />
-                  <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
-                    {(attendanceInfo.totalWorkingDays || 22) - (attendanceInfo.daysPresent || 21)} Days Leave
-                  </span>
-                </div>
-                <div className="epv-format-pill">
-                  <span className="epv-dot-blue" />
-                  <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
-                    {attendanceInfo.totalWorkingDays || 22} Working Days
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="epv-format-breakdown">
-              <span>Casual: <strong>{attendanceInfo.leaveBalance?.casual || 8}</strong></span>
-              <span>Sick: <strong>{attendanceInfo.leaveBalance?.sick || 6}</strong></span>
-              <span>Earned: <strong>{attendanceInfo.leaveBalance?.earned || 12}</strong></span>
-            </div>
+      <section className="epv-work-summary" aria-label="Working format">
+        <div className="epv-work-summary-head">
+          <h3>Working format</h3>
+          <span className="epv-work-type">{employee.job?.employmentType || "Full-time"}</span>
+        </div>
+        <div className="epv-work-summary-stats">
+          <div className="epv-work-stat">
+            <strong>{attendanceInfo.daysPresent || 21}</strong>
+            <span>Present</span>
           </div>
-        </aside>
+          <div className="epv-work-stat">
+            <strong>{(attendanceInfo.totalWorkingDays || 22) - (attendanceInfo.daysPresent || 21)}</strong>
+            <span>Leave</span>
+          </div>
+          <div className="epv-work-stat">
+            <strong>{attendanceInfo.totalWorkingDays || 22}</strong>
+            <span>Working days</span>
+          </div>
+          <div className="epv-work-balances">
+            <span>Casual <strong>{attendanceInfo.leaveBalance?.casual || 8}</strong></span>
+            <span>Sick <strong>{attendanceInfo.leaveBalance?.sick || 6}</strong></span>
+            <span>Earned <strong>{attendanceInfo.leaveBalance?.earned || 12}</strong></span>
+          </div>
+        </div>
+      </section>
 
-        {/* =====================================================================
-            RIGHT INFORMATION AREA (Clean Text-Based Tabs & Natural Spacing)
-            ===================================================================== */}
-        <section className="epv-right-panel" aria-label="Detailed Records Tabs">
-          {/* Tabs Navigation Strip — Clean Text Links (Requirement 4) */}
+      <section className="epv-records-panel" aria-label="Detailed Records Tabs">
           <div className="epv-tabs-strip">
             <button
               type="button"
@@ -955,31 +934,29 @@ export default function EmployeeProfile() {
                       </label>
                       <input className="epv-edit-input" value={employee.employeeCode || "—"} disabled />
                     </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Official Job Title</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.jobTitle || ""}
-                        onChange={(e) => handleEditChange("jobTitle", e.target.value)}
-                        placeholder="Job Title"
+                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
+                      <DesignationFields
+                        jobTitle={editFormData.jobTitle || ""}
+                        jobGrade={editFormData.jobGrade || ""}
+                        inputClassName="epv-edit-input"
+                        titleLabel="Official job title"
+                        gradeLabel="Job grade / level"
+                        disabled={savingEdit}
+                        onJobTitleChange={(value) => handleEditChange("jobTitle", value)}
+                        onJobGradeChange={(value) => handleEditChange("jobGrade", value)}
                       />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Department</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.department || ""}
-                        onChange={(e) => handleEditChange("department", e.target.value)}
-                        placeholder="Department"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Job Grade / Level</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.jobGrade || ""}
-                        onChange={(e) => handleEditChange("jobGrade", e.target.value)}
-                        placeholder="e.g. Level L3"
+                      <DepartmentSelect
+                        departmentId={editFormData.clearDepartment ? "" : editFormData.departmentId}
+                        departmentName={editFormData.clearDepartment ? "" : editFormData.departmentName}
+                        linked={Boolean(editFormData.departmentId) && !editFormData.clearDepartment}
+                        disabled={savingEdit}
+                        onChange={(next) => setEditFormData((prev) => ({
+                          ...prev,
+                          departmentId: next.departmentId,
+                          departmentName: next.departmentName,
+                          clearDepartment: next.clearDepartment && !next.departmentId,
+                          departmentTouched: true,
+                        }))}
                       />
                     </div>
                     <div className="epv-edit-field-group">
@@ -1022,15 +999,18 @@ export default function EmployeeProfile() {
                         placeholder="Work Location"
                       />
                     </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">
-                        <span>Reporting Manager</span>
-                        <span className="epv-readonly-tag">Read-only</span>
-                      </label>
-                      <input
-                        className="epv-edit-input"
-                        value={employee.job?.reportingManagerId?.fullName || "Company Leadership"}
-                        disabled
+                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
+                      <ReportingManagerSelect
+                        value={editFormData.reportingManagerId ?? null}
+                        initialSelected={
+                          employee.job?.reportingManagerId &&
+                          typeof employee.job.reportingManagerId === "object"
+                            ? employee.job.reportingManagerId
+                            : null
+                        }
+                        excludeEmployeeId={id}
+                        disabled={savingEdit}
+                        onChange={(nextId) => handleEditChange("reportingManagerId", nextId)}
                       />
                     </div>
                   </div>
@@ -1075,7 +1055,25 @@ export default function EmployeeProfile() {
                     <div className="epv-field-item">
                       <span className="epv-field-lbl">Reporting Manager</span>
                       <span className="epv-field-val">
-                        {employee.job?.reportingManagerId?.fullName || "Company Leadership"}
+                        {employee.job?.reportingManagerId &&
+                        typeof employee.job.reportingManagerId === "object" &&
+                        employee.job.reportingManagerId._id ? (
+                          <>
+                            <Link
+                              to={`/admin/employees/${employee.job.reportingManagerId._id}`}
+                              style={{ fontWeight: 600, color: "var(--g-800, #155a37)" }}
+                            >
+                              {employee.job.reportingManagerId.fullName}
+                            </Link>
+                            {employee.job.reportingManagerId.job?.jobTitle ? (
+                              <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                                {employee.job.reportingManagerId.job.jobTitle}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          "No reporting manager"
+                        )}
                       </span>
                     </div>
                   </div>
@@ -1164,7 +1162,25 @@ export default function EmployeeProfile() {
                     <div className="epv-field-item">
                       <span className="epv-field-lbl">Reporting Manager</span>
                       <span className="epv-field-val">
-                        {employee.job?.reportingManagerId?.fullName || "Director of Operations"}
+                        {employee.job?.reportingManagerId &&
+                        typeof employee.job.reportingManagerId === "object" &&
+                        employee.job.reportingManagerId._id ? (
+                          <>
+                            <Link
+                              to={`/admin/employees/${employee.job.reportingManagerId._id}`}
+                              style={{ fontWeight: 600, color: "var(--g-800, #155a37)" }}
+                            >
+                              {employee.job.reportingManagerId.fullName}
+                            </Link>
+                            {employee.job.reportingManagerId.job?.jobTitle ? (
+                              <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                                {employee.job.reportingManagerId.job.jobTitle}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          "No reporting manager"
+                        )}
                       </span>
                     </div>
                     <div className="epv-field-item">
@@ -1405,8 +1421,7 @@ export default function EmployeeProfile() {
               </div>
             </div>
           )}
-        </section>
-      </div>
+      </section>
 
       {/* =========================================================================
           F&F Initiation Modal (Preserved Operational Settlement Flow)

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calendar, CheckCircle2, ChevronRight, ClipboardList, Clock, Plus } from "lucide-react";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import HrPortalHeader from "../../components/HrPortalHeader";
 import SearchBar from "../../components/SearchBar";
 import StatusBadge from "../../components/StatusBadge";
@@ -67,6 +68,7 @@ function priorityLabel(priority) {
 }
 
 export default function HrWorkPage() {
+  const goBack = useSmartBack("/admin/more");
   const toast = useToast();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -285,7 +287,7 @@ export default function HrWorkPage() {
 
   return (
     <div className="hr-work tk-page tk-page--folders">
-      <HrPortalHeader title="Work Management" />
+      <HrPortalHeader title="Work Management" showBack onBack={() => goBack()} />
 
       <div className="hr-work-toolbar">
         <SearchBar value={search} onChange={setSearch} placeholder="Search tasks" />

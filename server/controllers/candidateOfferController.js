@@ -2,11 +2,17 @@ import crypto from "node:crypto";
 import { findCompanyById, getCompanyModels } from "../config/db.js";
 import { HttpError } from "../utils/httpError.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
-import { USER_ROLES, ONBOARDING_STATUSES } from "../models/User.js";
+import { USER_ROLES, ONBOARDING_STATUSES, ONBOARDING_FROZEN_STATUSES } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { emailService } from "../services/emailService.js";
-import { generateOfferLetterPdf } from "../services/pdfService.js";
-import { renderOfferLetterHtml } from "../services/offerTemplateService.js";
+import {
+  appendSignatureBlockToHtml,
+  pdfBufferFromHtml,
+} from "../services/offerStandardRenderService.js";
+import { getIssuedPdfDownload } from "../services/offerDocumentService.js";
+import { getOrCreateSignedPdf } from "../services/offerSignedPdfService.js";
+import { normalizeSignatureInput } from "../utils/signatureImage.js";
+import { getStorageFileId } from "../services/offerGridFsStorageService.js";
 import {
   verifyOfferSigningToken,
   signCandidateOnboardingToken,
@@ -46,12 +52,66 @@ export async function getOfferForReview(req, res, next) {
     const isExpired =
       offerLetter.signingTokenExpiresAt && new Date() > new Date(offerLetter.signingTokenExpiresAt);
 
-    // If already accepted, ensure authoritative electronic signature details are rendered in content
-    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED) {
-      const signedHtml = renderOfferLetterHtml(offerLetter, company);
-      if (offerLetter.content !== signedHtml) {
-        offerLetter.content = signedHtml;
-        await offerLetter.save().catch(() => {});
+    const isWithdrawn = offerLetter.status === OFFER_LETTER_STATUSES.WITHDRAWN;
+    const alreadySigned = offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED;
+
+    // Continuity: when offer is already signed, re-issue a candidate_onboarding token so
+    // refresh of the offer-review page can continue onboarding without relying on email alone.
+    // Never reuse offer_signing purpose for onboarding APIs.
+    let onboardingToken = null;
+    let onboardingLink = null;
+    let onboardingStatus = null;
+    let onboardingId = null;
+
+    if (alreadySigned) {
+      const candidateEmail = offerLetter.candidate?.email?.trim()?.toLowerCase();
+      let candidateUser = null;
+      if (offerLetter.candidateUserId) {
+        candidateUser = await models.User.findById(offerLetter.candidateUserId);
+      }
+      if (!candidateUser && offerLetter.onboardingId) {
+        candidateUser = await models.User.findById(offerLetter.onboardingId);
+      }
+      if (!candidateUser && candidateEmail) {
+        candidateUser = await models.User.findOne({
+          email: candidateEmail,
+          role: USER_ROLES.CANDIDATE,
+        });
+      }
+
+      const obStatus = candidateUser?.onboarding?.status || null;
+      onboardingStatus = obStatus;
+      onboardingId = candidateUser?._id || null;
+
+      const canContinueOnboarding =
+        candidateUser &&
+        candidateUser.role === USER_ROLES.CANDIDATE &&
+        obStatus &&
+        !ONBOARDING_FROZEN_STATUSES.includes(obStatus);
+
+      if (canContinueOnboarding) {
+        onboardingToken = signCandidateOnboardingToken({
+          companyId: company._id,
+          onboardingId: candidateUser._id,
+          userId: candidateUser._id,
+          email: candidateUser.email || candidateEmail,
+        });
+        const onboardingTokenHash = crypto.createHash("sha256").update(onboardingToken).digest("hex");
+        if (!candidateUser.onboarding) {
+          candidateUser.onboarding = {
+            offerLetterId: offerLetter._id,
+            status: ONBOARDING_STATUSES.DRAFT,
+          };
+        }
+        candidateUser.onboarding.onboardingTokenHash = onboardingTokenHash;
+        candidateUser.onboarding.tokenExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+        await candidateUser.save();
+
+        const clientUrl =
+          process.env.CLIENT_URL ||
+          process.env.APP_BASE_URL ||
+          `${req.protocol}://${req.get("host")}`;
+        onboardingLink = `${clientUrl}/candidate/onboarding/${onboardingToken}`;
       }
     }
 
@@ -68,11 +128,25 @@ export async function getOfferForReview(req, res, next) {
         annualSalary: offerLetter.annualSalary || offerLetter.monthlySalary * 12,
         joiningDate: offerLetter.joiningDate,
         clauses: offerLetter.clauses || [],
-        content: offerLetter.content,
+        // Frozen legal text for SENT/ACCEPTED; falls back to content for legacy/unfrozen offers.
+        content: offerLetter.issuedContent || offerLetter.content,
         status: offerLetter.status,
-        signature: offerLetter.signature || null,
+        // Summary only: never expose captured image bytes through the review API.
+        signature: offerLetter.signature?.signedAt
+          ? {
+              signerName: offerLetter.signature.signerName || "",
+              signerEmail: offerLetter.signature.signerEmail || "",
+              signedAt: offerLetter.signature.signedAt,
+              documentHash: offerLetter.signature.documentHash || "",
+              legalStatement: offerLetter.signature.legalStatement || "",
+              method: offerLetter.signature.method || "",
+              hasImage: Boolean(offerLetter.signature.hasImage),
+            }
+          : null,
+        hasSignedPdf: Boolean(getStorageFileId(offerLetter.signedPdf)),
+        // Candidate-facing notes only (never expose HR withdrawal reason)
         decisionAt: offerLetter.decisionAt || null,
-        decisionNotes: offerLetter.decisionNotes || "",
+        decisionNotes: isWithdrawn ? "" : offerLetter.decisionNotes || "",
         issuedAt: offerLetter.issuedAt || offerLetter.createdAt,
         company: {
           name: company.companyName,
@@ -91,8 +165,13 @@ export async function getOfferForReview(req, res, next) {
       legalStatement: "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document.",
       isCurrentToken,
       isExpired,
-      alreadySigned: offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED,
+      alreadySigned,
       alreadyDeclined: offerLetter.status === OFFER_LETTER_STATUSES.REJECTED,
+      alreadyWithdrawn: isWithdrawn,
+      onboardingToken,
+      onboardingLink,
+      onboardingStatus,
+      onboardingId,
     });
   } catch (error) {
     next(error);
@@ -124,6 +203,10 @@ export async function acceptAndSignOffer(req, res, next) {
       throw new HttpError(400, "You must acknowledge and accept the employment terms to sign.");
     }
 
+    // Electronic signature (draw / upload / type) is required in addition to the typed legal name.
+    // Validates MIME (png/jpeg/webp), data URL shape and size (~500 KB) or derives an SVG from typed text.
+    const sigInput = normalizeSignatureInput(req.body || {});
+
     const company = await findCompanyById(payload.companyId);
     if (!company) {
       throw new HttpError(404, "Company workspace not found.");
@@ -145,6 +228,10 @@ export async function acceptAndSignOffer(req, res, next) {
       throw new HttpError(400, "This offer letter was previously declined and cannot be signed.");
     }
 
+    if (offerLetter.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+      throw new HttpError(400, "This offer letter has been withdrawn by the employer and can no longer be signed.");
+    }
+
     if (offerLetter.status !== OFFER_LETTER_STATUSES.SENT) {
       throw new HttpError(400, `Offer letter cannot be signed in '${offerLetter.status}' status.`);
     }
@@ -164,7 +251,8 @@ export async function acceptAndSignOffer(req, res, next) {
     }
 
     // SHA-256 hash of the exact offer content to guarantee document integrity
-    const documentHash = crypto.createHash("sha256").update(offerLetter.content).digest("hex");
+    const issuedContent = offerLetter.issuedContent || offerLetter.content || "";
+    const documentHash = crypto.createHash("sha256").update(issuedContent).digest("hex");
 
     const signatureRecord = {
       signerName: nameToSign.trim(),
@@ -174,20 +262,59 @@ export async function acceptAndSignOffer(req, res, next) {
       userAgent: req.headers["user-agent"] || "",
       documentHash,
       legalStatement: "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document.",
+      method: sigInput.method,
+      typedText: sigInput.typedText,
+      imageMimeType: sigInput.mimeType,
+      imageData: sigInput.buffer,
+      hasImage: true,
     };
+    // Audit/response copies never carry raw image bytes.
+    const { imageData: _omitImage, ...signatureAudit } = signatureRecord;
 
-    // Transition offer to ACCEPTED
-    offerLetter.status = OFFER_LETTER_STATUSES.ACCEPTED;
-    offerLetter.decisionAt = new Date();
-    offerLetter.signature = signatureRecord;
-    offerLetter.signingTokenHash = null; // Invalidate single-use token
+    // Atomically claim SENT -> ACCEPTED so concurrent withdrawal cannot also succeed
+    const claimed = await models.OfferLetter.findOneAndUpdate(
+      {
+        _id: offerLetter._id,
+        status: OFFER_LETTER_STATUSES.SENT,
+      },
+      {
+        $set: {
+          status: OFFER_LETTER_STATUSES.ACCEPTED,
+          decisionAt: signatureRecord.signedAt,
+          signature: signatureRecord,
+          signingTokenHash: null,
+          signingTokenEncrypted: null,
+          signingTokenExpiresAt: null,
+          // Legal text is unchanged by signing; signature is stored separately.
+          issuedContent,
+          content: issuedContent,
+        },
+      },
+      { returnDocument: "after" }
+    );
 
-    // Preserve the originally issued terms before updating content with electronic signature block
-    offerLetter.issuedContent = offerLetter.content;
-    offerLetter.content = renderOfferLetterHtml(offerLetter, company);
+    if (!claimed) {
+      const current = await models.OfferLetter.findById(offerLetter._id).lean();
+      if (current?.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+        throw new HttpError(
+          409,
+          "This offer letter was withdrawn by the employer and can no longer be signed."
+        );
+      }
+      if (current?.status === OFFER_LETTER_STATUSES.ACCEPTED) {
+        throw new HttpError(409, "This offer letter has already been signed.");
+      }
+      throw new HttpError(
+        409,
+        `Offer letter cannot be signed in '${current?.status || "unknown"}' status.`
+      );
+    }
+
+    // Continue onboarding linkage against the claimed document
+    const acceptedOffer = claimed;
 
     // Initialize or locate candidate account in company users collection
-    const candidateEmail = offerLetter.candidate.email.trim().toLowerCase();
+    const candidateEmail = acceptedOffer.candidate.email.trim().toLowerCase();
 
     // 1. Prevent email collision with existing employees in this company
     const existingEmployee = await models.Employee.findOne({ email: candidateEmail });
@@ -211,7 +338,7 @@ export async function acceptAndSignOffer(req, res, next) {
       // Never overwrite an existing onboarding with a different offer
       if (
         candidateUser.onboarding?.offerLetterId &&
-        String(candidateUser.onboarding.offerLetterId) !== String(offerLetter._id)
+        String(candidateUser.onboarding.offerLetterId) !== String(acceptedOffer._id)
       ) {
         throw new HttpError(
           409,
@@ -219,16 +346,24 @@ export async function acceptAndSignOffer(req, res, next) {
         );
       }
       // Never re-onboard an approved candidate
-      if (candidateUser.onboarding?.status === ONBOARDING_STATUSES.APPROVED) {
+      if (
+        [
+          ONBOARDING_STATUSES.APPROVED,
+          ONBOARDING_STATUSES.PROCESSING_APPROVAL,
+          ONBOARDING_STATUSES.ACCOUNT_SETUP_SENT,
+          ONBOARDING_STATUSES.ACCOUNT_SETUP_PENDING,
+          ONBOARDING_STATUSES.ACTIVATED,
+        ].includes(candidateUser.onboarding?.status)
+      ) {
         throw new HttpError(409, "Onboarding for this candidate has already been approved.");
       }
     }
 
     // 3. Prevent offer from being reassigned to a different user
     if (
-      offerLetter.candidateUserId &&
+      acceptedOffer.candidateUserId &&
       candidateUser &&
-      String(offerLetter.candidateUserId) !== String(candidateUser._id)
+      String(acceptedOffer.candidateUserId) !== String(candidateUser._id)
     ) {
       throw new HttpError(
         409,
@@ -243,15 +378,15 @@ export async function acceptAndSignOffer(req, res, next) {
         isActive: false, // Activated only after HR approves and employee activates
         schemaVersion: 1,
         onboarding: {
-          offerLetterId: offerLetter._id,
+          offerLetterId: acceptedOffer._id,
           status: ONBOARDING_STATUSES.DRAFT,
           candidate: {
-            fullName: offerLetter.candidate.fullName,
+            fullName: acceptedOffer.candidate.fullName,
             email: candidateEmail,
             phoneNumber: "",
           },
           personalDetails: {
-            fullName: offerLetter.candidate.fullName,
+            fullName: acceptedOffer.candidate.fullName,
             email: candidateEmail,
           },
           history: [
@@ -268,15 +403,15 @@ export async function acceptAndSignOffer(req, res, next) {
       // Existing candidate user: ensure onboarding subdocument is populated
       if (!candidateUser.onboarding) {
         candidateUser.onboarding = {
-          offerLetterId: offerLetter._id,
+          offerLetterId: acceptedOffer._id,
           status: ONBOARDING_STATUSES.DRAFT,
           candidate: {
-            fullName: offerLetter.candidate.fullName,
+            fullName: acceptedOffer.candidate.fullName,
             email: candidateEmail,
             phoneNumber: "",
           },
           personalDetails: {
-            fullName: offerLetter.candidate.fullName,
+            fullName: acceptedOffer.candidate.fullName,
             email: candidateEmail,
           },
           history: [
@@ -289,9 +424,9 @@ export async function acceptAndSignOffer(req, res, next) {
           ],
         };
       } else {
-        candidateUser.onboarding.offerLetterId = offerLetter._id;
+        candidateUser.onboarding.offerLetterId = acceptedOffer._id;
         if (!candidateUser.onboarding.candidate?.fullName) {
-          candidateUser.onboarding.candidate.fullName = offerLetter.candidate.fullName;
+          candidateUser.onboarding.candidate.fullName = acceptedOffer.candidate.fullName;
         }
         candidateUser.onboarding.candidate.email = candidateEmail;
         candidateUser.onboarding.history.push({
@@ -303,9 +438,9 @@ export async function acceptAndSignOffer(req, res, next) {
       }
     }
 
-    offerLetter.candidateUserId = candidateUser._id;
-    offerLetter.onboardingId = candidateUser._id;
-    await offerLetter.save();
+    acceptedOffer.candidateUserId = candidateUser._id;
+    acceptedOffer.onboardingId = candidateUser._id;
+    await acceptedOffer.save();
 
     // Generate Candidate Onboarding access token & dispatch invitation
     const onboardingToken = signCandidateOnboardingToken({
@@ -327,11 +462,11 @@ export async function acceptAndSignOffer(req, res, next) {
     try {
       await emailService.sendCandidateOnboardingInvite({
         companyName: company.companyName,
-        candidateName: offerLetter.candidate.fullName,
-        candidateEmail: offerLetter.candidate.email,
+        candidateName: acceptedOffer.candidate.fullName,
+        candidateEmail: acceptedOffer.candidate.email,
         onboardingLink,
-        joiningDate: offerLetter.joiningDate,
-        position: offerLetter.position,
+        joiningDate: acceptedOffer.joiningDate,
+        position: acceptedOffer.position,
         company,
       });
     } catch (eErr) {
@@ -342,13 +477,13 @@ export async function acceptAndSignOffer(req, res, next) {
     if (models.AuditLog) {
       try {
         await models.AuditLog.create({
-          actorEmail: offerLetter.candidate.email,
+          actorEmail: acceptedOffer.candidate.email,
           actorRole: "CANDIDATE",
           action: AUDIT_ACTIONS.OFFER_LETTER_SIGNED,
           targetType: "OfferLetter",
-          targetId: offerLetter._id,
+          targetId: acceptedOffer._id,
           changes: {
-            signature: signatureRecord,
+            signature: signatureAudit,
             candidateUserId: candidateUser._id,
             onboardingId: candidateUser._id,
           },
@@ -360,11 +495,24 @@ export async function acceptAndSignOffer(req, res, next) {
       }
     }
 
+    // Final signed PDF (HR signature from the frozen issued document + candidate signature).
+    // Stored as SIGNED_PDF; generatedPdf (issued copy) is never overwritten. Best-effort: the
+    // download endpoints regenerate it lazily if this fails.
+    try {
+      await getOrCreateSignedPdf({
+        OfferLetter: models.OfferLetter,
+        offerLetterId: acceptedOffer._id,
+        connection: models.connection,
+      });
+    } catch (pdfErr) {
+      console.error("[candidateOfferController] Signed PDF generation warning:", pdfErr.message);
+    }
+
     res.json({
       success: true,
       message: "Offer letter signed successfully. Onboarding has been initiated.",
-      offer: offerLetter,
-      offerLetter,
+      offer: acceptedOffer,
+      offerLetter: acceptedOffer,
       onboardingToken,
       onboardingLink,
       userId: candidateUser._id,
@@ -422,6 +570,10 @@ export async function declineOffer(req, res, next) {
       throw new HttpError(400, "This offer has already been signed and cannot be declined.");
     }
 
+    if (offerLetter.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+      throw new HttpError(400, "This offer has been withdrawn by the employer and can no longer be declined.");
+    }
+
     if (offerLetter.status === OFFER_LETTER_STATUSES.REJECTED) {
       return res.json({
         success: true,
@@ -430,21 +582,45 @@ export async function declineOffer(req, res, next) {
       });
     }
 
-    offerLetter.status = OFFER_LETTER_STATUSES.REJECTED;
-    offerLetter.decisionAt = new Date();
-    offerLetter.decisionNotes = reason ? String(reason).trim() : "Declined by candidate";
-    offerLetter.signingTokenHash = null;
-    await offerLetter.save();
+    const declined = await models.OfferLetter.findOneAndUpdate(
+      { _id: offerLetter._id, status: OFFER_LETTER_STATUSES.SENT },
+      {
+        $set: {
+          status: OFFER_LETTER_STATUSES.REJECTED,
+          decisionAt: new Date(),
+          decisionNotes: reason ? String(reason).trim() : "Declined by candidate",
+          signingTokenHash: null,
+          signingTokenEncrypted: null,
+          signingTokenExpiresAt: null,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!declined) {
+      const current = await models.OfferLetter.findById(offerLetter._id);
+      if (current?.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+        throw new HttpError(409, "This offer was withdrawn by the employer before it could be declined.");
+      }
+      if (current?.status === OFFER_LETTER_STATUSES.REJECTED) {
+        return res.json({
+          success: true,
+          message: "This offer has already been declined.",
+          offer: current,
+        });
+      }
+      throw new HttpError(409, `Offer cannot be declined in '${current?.status || "unknown"}' status.`);
+    }
 
     if (models.AuditLog) {
       try {
         await models.AuditLog.create({
-          actorEmail: offerLetter.candidate.email,
+          actorEmail: declined.candidate.email,
           actorRole: "CANDIDATE",
           action: AUDIT_ACTIONS.OFFER_LETTER_DECLINED,
           targetType: "OfferLetter",
-          targetId: offerLetter._id,
-          changes: { reason: offerLetter.decisionNotes },
+          targetId: declined._id,
+          changes: { reason: declined.decisionNotes },
           ipAddress: req.ip || "",
           timestamp: new Date(),
         });
@@ -454,7 +630,7 @@ export async function declineOffer(req, res, next) {
     res.json({
       success: true,
       message: "Offer letter declined.",
-      offer: offerLetter,
+      offer: declined,
     });
   } catch (error) {
     next(error);
@@ -497,18 +673,51 @@ export async function downloadOfferReviewPdf(req, res, next) {
       throw new HttpError(400, "This offer review link has expired.");
     }
 
-    let htmlToRender = offerLetter.content;
-    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED) {
-      htmlToRender = renderOfferLetterHtml(offerLetter, company);
-      if (offerLetter.content !== htmlToRender) {
-        offerLetter.content = htmlToRender;
-        await offerLetter.save().catch(() => {});
+    let pdfBuffer = null;
+    let downloadSuffix = "";
+    // Signed offers: prefer the signed PDF (HR + candidate signatures). Issued PDF stays untouched.
+    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED && offerLetter.signature?.signedAt) {
+      try {
+        const signed = await getOrCreateSignedPdf({
+          OfferLetter: models.OfferLetter,
+          offerLetterId: offerLetter._id,
+          connection: models.connection,
+        });
+        if (signed?.buffer?.length) {
+          pdfBuffer = signed.buffer;
+          downloadSuffix = "_signed";
+        }
+      } catch (signedErr) {
+        console.warn("[candidateOfferController] Signed PDF unavailable:", signedErr.message);
       }
     }
-
-    const pdfBuffer = await generateOfferLetterPdf(htmlToRender);
+    // Prefer the immutable issued PDF from GridFS; regenerate from frozen content on miss.
+    if (!pdfBuffer && getStorageFileId(offerLetter.generatedPdf)) {
+      try {
+        const stored = await getIssuedPdfDownload({
+          offerLetter,
+          connection: models.connection,
+        });
+        pdfBuffer = stored?.buffer || null;
+      } catch (storedErr) {
+        console.warn(
+          "[candidateOfferController] Issued PDF unavailable; regenerating:",
+          storedErr.message
+        );
+      }
+    }
+    if (!pdfBuffer) {
+      let htmlToRender = offerLetter.issuedContent || offerLetter.content || "";
+      if (
+        offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED &&
+        offerLetter.signature?.signerName
+      ) {
+        htmlToRender = appendSignatureBlockToHtml(htmlToRender, offerLetter.signature);
+      }
+      pdfBuffer = await pdfBufferFromHtml(htmlToRender);
+    }
     const safeName = (offerLetter.candidate?.fullName || "Candidate").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filename = `Offer_Letter_${safeName}.pdf`;
+    const filename = `Offer_Letter_${safeName}${downloadSuffix}.pdf`;
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

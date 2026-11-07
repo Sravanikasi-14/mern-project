@@ -1,6 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import SignatureCapture, { isSignatureValueComplete } from "../components/SignatureCapture";
+
+/** Renders the frozen offer HTML in an isolated iframe so its print CSS cannot leak into the app. */
+function OfferDocumentFrame({ html }) {
+  const frameRef = useRef(null);
+  const [height, setHeight] = useState(900);
+
+  const resize = () => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc) return;
+    const next = Math.max(doc.documentElement?.scrollHeight || 0, doc.body?.scrollHeight || 0);
+    if (next > 0) setHeight(next + 8);
+  };
+
+  return (
+    <iframe
+      ref={frameRef}
+      title="Offer letter"
+      srcDoc={html || ""}
+      sandbox="allow-same-origin"
+      onLoad={resize}
+      style={{ display: "block", width: "100%", minWidth: "8.5in", height, border: "none", background: "#fff" }}
+    />
+  );
+}
 
 export default function CandidateOfferReview() {
   const { token } = useParams();
@@ -13,6 +38,7 @@ export default function CandidateOfferReview() {
   // Signing state
   const [fullName, setFullName] = useState("");
   const [legalConsent, setLegalConsent] = useState(false);
+  const [signature, setSignature] = useState(null);
   const [signing, setSigning] = useState(false);
   const [signSuccess, setSignSuccess] = useState(null);
   const [signError, setSignError] = useState("");
@@ -35,6 +61,15 @@ export default function CandidateOfferReview() {
           setOfferData(res.data);
           if (res.data.offer?.candidate?.fullName) {
             setFullName(res.data.offer.candidate.fullName);
+          }
+          // Persist continuity fields from GET so refresh keeps the onboarding CTA
+          if (res.data.onboardingLink || res.data.onboardingToken) {
+            setSignSuccess((prev) => ({
+              ...(prev || {}),
+              onboardingLink: res.data.onboardingLink,
+              onboardingToken: res.data.onboardingToken,
+              onboardingStatus: res.data.onboardingStatus,
+            }));
           }
         }
       } catch (err) {
@@ -82,11 +117,19 @@ export default function CandidateOfferReview() {
       return;
     }
 
+    if (!isSignatureValueComplete(signature)) {
+      setSignError("Please draw, upload, or type your signature before accepting.");
+      return;
+    }
+
     try {
       setSigning(true);
       const res = await api.post(`/candidate/offers/review/${encodeURIComponent(token)}/accept`, {
         fullName: fullName.trim(),
         legalConsent: true,
+        signatureMethod: signature.method,
+        imageDataUrl: signature.dataUrl || undefined,
+        typedText: signature.method === "TYPE" ? signature.typedText : undefined,
       });
 
       setSignSuccess(res.data);
@@ -95,7 +138,17 @@ export default function CandidateOfferReview() {
           ...prev,
           offer: res.data.offer,
           alreadySigned: true,
+          onboardingLink: res.data.onboardingLink || prev?.onboardingLink || null,
+          onboardingToken: res.data.onboardingToken || prev?.onboardingToken || null,
+          onboardingStatus: res.data.onboardingStatus || "DRAFT",
         }));
+      }
+      // Continue into onboarding in the same portal when a secure token is returned
+      if (res.data.onboardingToken) {
+        navigate(`/candidate/onboarding/${encodeURIComponent(res.data.onboardingToken)}`, {
+          replace: false,
+        });
+        return;
       }
     } catch (err) {
       setSignError(
@@ -158,7 +211,11 @@ export default function CandidateOfferReview() {
     );
   }
 
-  const { offer, alreadySigned, alreadyDeclined } = offerData;
+  const { offer, alreadySigned, alreadyDeclined, alreadyWithdrawn } = offerData;
+  const onboardingLink =
+    signSuccess?.onboardingLink || offerData?.onboardingLink || null;
+  const onboardingStatus = offerData?.onboardingStatus || null;
+  const actionsClosed = alreadySigned || alreadyDeclined || alreadyWithdrawn;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "32px 16px" }}>
@@ -194,7 +251,12 @@ export default function CandidateOfferReview() {
                 Declined
               </span>
             )}
-            {!alreadySigned && !alreadyDeclined && (
+            {alreadyWithdrawn && (
+              <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#f4f4f5", color: "#52525b", fontSize: "13px", fontWeight: "600" }}>
+                Withdrawn
+              </span>
+            )}
+            {!actionsClosed && (
               <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "13px", fontWeight: "600" }}>
                 Pending Review
               </span>
@@ -210,13 +272,29 @@ export default function CandidateOfferReview() {
               Thank you for accepting our offer! This document was electronically signed by <strong>{offer.signature?.signerName || offer.candidate?.fullName}</strong> on{" "}
               {offer.decisionAt ? new Date(offer.decisionAt).toLocaleString("en-IN") : new Date().toLocaleDateString("en-IN")}.
             </p>
-            {signSuccess?.onboardingLink ? (
+            {onboardingLink ? (
               <a
-                href={signSuccess.onboardingLink}
+                href={onboardingLink.startsWith("http")
+                  ? onboardingLink
+                  : `/candidate/onboarding/${encodeURIComponent(offerData.onboardingToken || "")}`}
+                onClick={(e) => {
+                  if (offerData.onboardingToken) {
+                    e.preventDefault();
+                    navigate(`/candidate/onboarding/${encodeURIComponent(offerData.onboardingToken)}`);
+                  }
+                }}
                 style={{ display: "inline-block", background: "#059669", color: "#ffffff", padding: "10px 22px", borderRadius: "6px", fontSize: "13px", fontWeight: "600", textDecoration: "none" }}
               >
-                Proceed to Employee Onboarding
+                {onboardingStatus === "SUBMITTED"
+                  ? "View onboarding submission"
+                  : onboardingStatus === "CHANGES_REQUESTED"
+                    ? "Continue corrections"
+                    : "Continue employee onboarding"}
               </a>
+            ) : onboardingStatus === "APPROVED" ? (
+              <p style={{ fontSize: "12px", color: "#065f46", margin: 0 }}>
+                Onboarding is approved. Check your email for the account activation link.
+              </p>
             ) : (
               <p style={{ fontSize: "12px", color: "#065f46", margin: 0 }}>
                 Check your inbox at <strong>{offer.candidate?.email}</strong> for your onboarding invitation email.
@@ -232,6 +310,16 @@ export default function CandidateOfferReview() {
             <p style={{ fontSize: "13px", color: "#be123c", margin: 0, lineHeight: "1.5" }}>
               This offer was marked as declined on {offer.decisionAt ? new Date(offer.decisionAt).toLocaleString("en-IN") : "record"}.
               {offer.decisionNotes ? ` Reason: ${offer.decisionNotes}` : ""}
+            </p>
+          </div>
+        )}
+
+        {alreadyWithdrawn && (
+          <div style={{ background: "#f4f4f5", border: "1px solid #e4e4e7", padding: "20px 24px", borderRadius: "10px", marginBottom: "24px" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#3f3f46", margin: "0 0 6px" }}>Offer Withdrawn</h3>
+            <p style={{ fontSize: "13px", color: "#52525b", margin: 0, lineHeight: "1.5" }}>
+              This offer has been withdrawn by the employer and is no longer available to accept or sign.
+              Please contact HR if you have questions.
             </p>
           </div>
         )}
@@ -269,20 +357,17 @@ export default function CandidateOfferReview() {
 
         {/* Rendered HTML Document Frame */}
         <div
-          style={{ background: "#ffffff", padding: "40px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "28px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}
+          style={{ background: "#ffffff", padding: "12px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "28px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", overflowX: "auto" }}
         >
-          <div
-            dangerouslySetInnerHTML={{ __html: offer.content }}
-            style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: "#1e293b", lineHeight: "1.6" }}
-          />
+          <OfferDocumentFrame html={offer.content} />
         </div>
 
-        {/* Candidate Signing Action Section (Only visible when status is SENT) */}
-        {!alreadySigned && !alreadyDeclined && (
+        {/* Candidate Signing Action Section (Only visible when offer is still open) */}
+        {!actionsClosed && (
           <div style={{ background: "#ffffff", padding: "32px", borderRadius: "12px", border: "1px solid #cbd5e1", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
             <h2 style={{ fontSize: "18px", fontWeight: "700", color: "#0f172a", margin: "0 0 6px" }}>Accept and Sign Employment Offer</h2>
             <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 24px", lineHeight: "1.5" }}>
-              Please type your full legal name below to electronically accept this employment offer. Your typed name and timestamp will be permanently linked to this document version.
+              Type your full legal name and add your signature below to electronically accept this employment offer. Your signature, typed name and timestamp will be permanently linked to this document version.
             </p>
 
             {signError && (
@@ -304,6 +389,13 @@ export default function CandidateOfferReview() {
                   style={{ width: "100%", padding: "10px 14px", fontSize: "14px", border: "1px solid #cbd5e1", borderRadius: "6px", fontFamily: "inherit" }}
                   required
                 />
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "600", color: "#334155", marginBottom: "6px" }}>
+                  Your Signature <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <SignatureCapture onChange={setSignature} disabled={signing} defaultTypedText={fullName} />
               </div>
 
               <div style={{ marginBottom: "24px" }}>

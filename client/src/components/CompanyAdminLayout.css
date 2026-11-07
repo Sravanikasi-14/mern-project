@@ -1,0 +1,199 @@
+.ca-shell {
+  --ca-sidebar-w: 248px;
+  display: grid;
+  grid-template-columns: var(--ca-sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 480px at 12% -10%, color-mix(in srgb, var(--g-400) 18%, transparent), transparent 60%),
+    radial-gradient(900px 420px at 100% 0%, color-mix(in srgb, var(--g-100) 80%, transparent), transparent 55%),
+    var(--page, #f8faf8);
+  font-family: var(--font, "Plus Jakarta Sans", system-ui, sans-serif);
+  color: var(--ink, #131a15);
+}
+
+.ca-shell--collapsed {
+  --ca-sidebar-w: 76px;
+}
+
+.ca-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 14px;
+  background: color-mix(in srgb, var(--panel, #fff) 92%, var(--g-100));
+  border-right: 1px solid var(--hair, #e6ede8);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--g-100) 70%, transparent);
+}
+
+.ca-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 4px 6px;
+}
+
+.ca-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: linear-gradient(160deg, var(--g-700), var(--g-950));
+  color: #fff;
+  overflow: hidden;
+}
+
+.ca-logo.has-image {
+  background: var(--panel, #fff);
+  border: 1px solid var(--hair, #e6ede8);
+}
+
+.ca-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ca-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ca-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ca-role-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--g-800, #155a37);
+  background: var(--g-100, #e3f2e9);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.ca-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.ca-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--muted, #646d67);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 160ms var(--ease, ease), color 160ms var(--ease, ease);
+}
+
+.ca-nav-link:hover {
+  background: color-mix(in srgb, var(--g-100) 70%, transparent);
+  color: var(--ink, #131a15);
+}
+
+.ca-nav-link.is-active {
+  background: color-mix(in srgb, var(--g-100) 100%, transparent);
+  color: var(--g-950, #0d3a23);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--g-400) 35%, transparent);
+}
+
+.ca-sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hair, #e6ede8);
+}
+
+.ca-sidebar-user {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--muted, #646d67);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ca-sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted, #646d67);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ca-sidebar-btn:hover {
+  background: color-mix(in srgb, var(--g-100) 65%, transparent);
+  color: var(--ink, #131a15);
+}
+
+.ca-sidebar-btn--danger:hover {
+  background: var(--rose-bg, #fdeceb);
+  color: var(--rose, #c23b3b);
+}
+
+.ca-main {
+  min-width: 0;
+  min-height: 100vh;
+}
+
+@media (max-width: 900px) {
+  .ca-shell,
+  .ca-shell--collapsed {
+    --ca-sidebar-w: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .ca-sidebar {
+    position: relative;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--hair, #e6ede8);
+  }
+
+  .ca-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .ca-sidebar-footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}

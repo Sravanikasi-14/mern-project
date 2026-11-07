@@ -67,6 +67,44 @@ Only after health + login work on production:
 2. **Settings** → save Gmail + app password (or rely on SMTP env vars)
 3. Send a test offer letter
 
+## F. Scheduled announcements
+
+This is not configured on the current production deployment. Do not treat scheduled publication as automatic until the steps below are done and a production invocation returns success.
+
+The production frontend calls:
+
+`https://mern-project-backend-woad.vercel.app/api`
+
+After the announcement API is deployed, the scheduler URL is:
+
+`GET https://mern-project-backend-woad.vercel.app/api/announcements/publish-due`
+
+`POST` to the same path is also accepted. Vercel Cron sends `GET`.
+
+`https://mern-hrms-api.vercel.app` currently has no deployment. Do not send the cron there. The root rewrite to that host is not the URL the frontend uses.
+
+An unauthenticated call does not publish anything. It returns 401 when `CRON_SECRET` or `ANNOUNCEMENT_CRON_SECRET` is set, and 503 when neither is set. The live API does not have this route yet.
+
+No cron entry is in `server/vercel.json`. The project plan could not be read from this machine. On the Hobby plan, Vercel allows a cron only once per day, and a more frequent expression fails the deployment. A daily job is not precise enough for a chosen publication time, so a cron expression was not added.
+
+To enable it:
+
+1. Open the Vercel project that serves `mern-project-backend-woad.vercel.app`. Its root directory is `server`.
+2. Settings → Environment Variables → Production. Add `CRON_SECRET`: at least 16 letters or numbers, with no spaces or line breaks. Do not add it to the frontend project, and do not commit the value.
+3. On Pro or Enterprise, add this to `server/vercel.json`, then redeploy the API:
+
+```json
+"crons": [
+  { "path": "/api/announcements/publish-due", "schedule": "*/15 * * * *" }
+]
+```
+
+4. On Hobby, upgrade before adding that expression. An external scheduler can call the GET URL with `Authorization: Bearer <CRON_SECRET>` instead.
+5. Redeploy the API after saving the variable. Cron runs only on the production deployment, and only with the secret captured by that deployment.
+6. Opening Messages still publishes due announcements for that company when someone loads them. That does not replace a scheduler while the app is idle.
+
+A repeated call publishes each due announcement once and does not create a second notification.
+
 ## Local development
 
 Unchanged:

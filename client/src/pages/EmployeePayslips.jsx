@@ -12,6 +12,7 @@ import {
 import api from "../services/api";
 import { usePayslipsQuery, useSettlementQuery } from "../hooks/useEmployeeQueries";
 import Pagination from "../components/Pagination";
+import ModuleToolbar from "../components/ModuleToolbar";
 import "./EmployeePayslips.css";
 
 export default function EmployeePayslips() {
@@ -253,60 +254,52 @@ export default function EmployeePayslips() {
             </div>
           )}
 
-          {/* Filter Toolbar */}
-          <div className="ep-toolbar">
-            <div className="ep-toolbar-left">
-              <div className="ep-filter-pill-group">
-                <button
-                  type="button"
-                  className={`ep-filter-pill ${statusFilter === "ALL" ? "active" : ""}`}
-                  onClick={() => setStatusFilter("ALL")}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  className={`ep-filter-pill ${statusFilter === "PAID" ? "active" : ""}`}
-                  onClick={() => setStatusFilter("PAID")}
-                >
-                  Paid
-                </button>
-                <button
-                  type="button"
-                  className={`ep-filter-pill ${statusFilter === "UNPAID" ? "active" : ""}`}
-                  onClick={() => setStatusFilter("UNPAID")}
-                >
-                  Pending
-                </button>
-              </div>
-
-              {availableYears.length > 0 && (
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                  className="ep-select"
-                  aria-label="Filter by Year"
-                >
-                  <option value="ALL">All Years</option>
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      {yr}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="search"
-                placeholder="Search by month or payslip #..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="ep-search-input"
-              />
-            </div>
-          </div>
+          <ModuleToolbar
+            searchValue={searchQuery}
+            onSearchChange={(e) => setSearchQuery(e.target.value)}
+            searchPlaceholder="Search by month or payslip #..."
+            searchAriaLabel="Search payslips"
+            filterCount={
+              (statusFilter !== "ALL" ? 1 : 0) + (selectedYear !== "ALL" ? 1 : 0)
+            }
+            onFiltersClear={() => {
+              setStatusFilter("ALL");
+              setSelectedYear("ALL");
+            }}
+            filters={
+              <>
+                <label className="module-toolbar-filter-field">
+                  Status
+                  <select
+                    className="filter-select"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="PAID">Paid</option>
+                    <option value="UNPAID">Pending</option>
+                  </select>
+                </label>
+                {availableYears.length > 0 && (
+                  <label className="module-toolbar-filter-field">
+                    Year
+                    <select
+                      className="filter-select"
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                    >
+                      <option value="ALL">All Years</option>
+                      {availableYears.map((yr) => (
+                        <option key={yr} value={yr}>
+                          {yr}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            }
+          />
 
           {/* Master-Detail Workspace Layout */}
           <div className="ep-workspace-grid">

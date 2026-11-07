@@ -4,15 +4,15 @@ import { IconAlertCircle, IconAlertTriangle } from "../components/Icons";
 import SessionBoot from "../components/SessionBoot";
 import { useAuth } from "../context/AuthContext";
 import { classifyLoginError } from "../services/api";
-
-function homeForRole(role) {
-  return role === "HR_ADMIN" ? "/admin/dashboard" : "/app";
-}
+import { homeForRole } from "../utils/navigation";
 
 function destinationForLogin(returnUrl, role) {
   const home = homeForRole(role);
   if (!returnUrl || returnUrl === "/login" || returnUrl.startsWith("/login")) {
     return home;
+  }
+  if (role === "COMPANY_ADMIN") {
+    return returnUrl.startsWith("/admin") || returnUrl.startsWith("/company") ? returnUrl : home;
   }
   if (role === "HR_ADMIN") {
     return returnUrl.startsWith("/admin") ? returnUrl : home;

@@ -316,4 +316,41 @@ describe("Tenant-Specific Email Configuration & Settings Verification Suite", ()
     assert.equal(sendResult.code, "COMPANY_EMAIL_NOT_CONFIGURED");
     assert.ok(sendResult.error.toLowerCase().includes("not configured for this company"));
   });
+
+  it("11. PUT /api/settings/email preserves existing encrypted SMTP password when appPassword is omitted", async () => {
+    emailService.setTransporter({
+      sendMail: async () => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
+    });
+
+    const before = await Company.findById(companyA._id);
+    const previousEncrypted = before.emailSettings.appPasswordEncrypted;
+    assert.ok(previousEncrypted);
+    const previousPlain = decryptSecret(previousEncrypted);
+
+    const res = await request(app)
+      .put("/api/settings/email")
+      .set("Cookie", hrCookieA)
+      .send({
+        fromName: "Alpha HR Preserved",
+        fromEmail: "updated-hr@alpha.test",
+        smtpHost: "smtp.alpha-updated.test",
+        smtpPort: 465,
+        smtpSecure: true,
+        // intentionally omit appPassword
+      });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.emailSettings.hasAppPassword, true);
+    assert.equal(res.body.emailSettings.fromName, "Alpha HR Preserved");
+
+    const after = await Company.findById(companyA._id);
+    assert.equal(after.emailSettings.appPasswordEncrypted, previousEncrypted);
+    assert.equal(decryptSecret(after.emailSettings.appPasswordEncrypted), previousPlain);
+    assert.equal(after.emailSettings.fromName, "Alpha HR Preserved");
+    assert.equal(after.emailSettings.smtpHost, "smtp.alpha-updated.test");
+    assert.equal(after.emailSettings.smtpPort, 465);
+    assert.equal(after.emailSettings.smtpSecure, true);
+  });
 });

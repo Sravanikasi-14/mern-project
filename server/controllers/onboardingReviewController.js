@@ -2,9 +2,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import mongoose from "mongoose";
 import { HttpError } from "../utils/httpError.js";
-import { USER_ROLES, ONBOARDING_STATUSES } from "../models/User.js";
+import {
+  ONBOARDING_ACCOUNT_SETUP_STATUSES,
+  ONBOARDING_FROZEN_STATUSES,
+  ONBOARDING_STATUSES,
+  SECTION_REVIEW_STATUSES,
+} from "../models/User.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
-import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { TOKEN_TYPES } from "../models/AuthToken.js";
 import { emailService } from "../services/emailService.js";
@@ -13,13 +17,105 @@ import {
   signCandidateOnboardingToken,
   signEmployeeActivationToken,
 } from "../utils/onboardingToken.js";
+import {
+  SECTION_LABELS,
+  allRequiredSectionsApproved,
+  applySectionDecision,
+  backfillLegacySectionReviews,
+  buildCorrectionSummary,
+  deriveOverallStatus,
+  flagUnapprovedSectionsForCorrection,
+  isSectionEditableByCandidate,
+  isValidSectionKey,
+  serializeSectionReviews,
+  SECTION_KEY_LIST,
+  unapprovedSections,
+} from "../services/onboardingSectionService.js";
+import {
+  assertOfferReadyForConversion,
+  assertOnboardingDataComplete,
+} from "../services/onboardingEmployeeService.js";
+import { emitOnboardingEvent, ONBOARDING_EVENT_TYPES } from "../services/onboardingEventsService.js";
 
 function escapeRegex(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
 
+/** HR-facing onboarding snapshot: never exposes the candidate token hash; includes section reviews. */
+function serializeOnboardingForHr(candidateUser) {
+  const raw = candidateUser.onboarding.toObject
+    ? candidateUser.onboarding.toObject()
+    : { ...candidateUser.onboarding };
+  delete raw.onboardingTokenHash;
+  delete raw.activationLockedAt;
+  return {
+    _id: candidateUser._id,
+    ...raw,
+    sectionReviews: serializeSectionReviews(candidateUser.onboarding),
+  };
+}
+
 /**
- * List all candidate onboarding submissions with status filter, search, and pagination
+ * Light offer projection used when an offer is populated on an onboarding submission.
+ * NEVER include content / issuedContent / offerDataSnapshot / clauses / signature image data:
+ * those are large HTML or base64 blobs that made the Review modal slow to open.
+ */
+export const ONBOARDING_OFFER_LIGHT_SELECT = [
+  "position",
+  "department",
+  "monthlySalary",
+  "annualSalary",
+  "joiningDate",
+  "status",
+  "workLocation",
+  "employmentType",
+  "reportingManager",
+  "signature.signerName",
+  "signature.signedAt",
+  "signature.method",
+  "emailedAt",
+  "emailDelivery.status",
+].join(" ");
+
+/** Max history entries returned in the onboarding detail response. */
+export const ONBOARDING_DETAIL_HISTORY_LIMIT = 30;
+
+/**
+ * Fields read from the candidate User for the onboarding LIST (summary).
+ * Excludes address / bank / tax / identity / full history. Documents are projected to `_id` only
+ * so we can return a count without shipping document metadata for every row.
+ */
+export const ONBOARDING_LIST_SELECT = [
+  "email",
+  "createdAt",
+  "updatedAt",
+  "onboarding.status",
+  "onboarding.offerLetterId",
+  "onboarding.candidate.fullName",
+  "onboarding.candidate.email",
+  "onboarding.personalDetails.fullName",
+  "onboarding.sectionReviews.personalDetails.status",
+  "onboarding.sectionReviews.residentialAddress.status",
+  "onboarding.sectionReviews.emergencyContact.status",
+  "onboarding.sectionReviews.bankAndTax.status",
+  "onboarding.sectionReviews.documents.status",
+  "onboarding.documents._id",
+  "onboarding.correctionReason",
+  "onboarding.rejectionReason",
+  "onboarding.invitationSentAt",
+  "onboarding.accountActivatedAt",
+  "onboarding.submittedAt",
+  "onboarding.reviewedAt",
+  "onboarding.approvedAt",
+  "onboarding.rejectedAt",
+  "onboarding.employeeId",
+].join(" ");
+
+/**
+ * List all candidate onboarding submissions with status filter, search, and pagination.
+ *
+ * Default `include=summary` returns light rows only (names, status, section statuses, document
+ * count, light offer). `include=full` restores the legacy heavy payload for older clients.
  */
 export async function getOnboardingSubmissions(req, res, next) {
   try {
@@ -29,10 +125,23 @@ export async function getOnboardingSubmissions(req, res, next) {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
     const status = typeof req.query.status === "string" ? req.query.status.trim().toUpperCase() : "";
+    const include =
+      typeof req.query.include === "string" && req.query.include.trim().toLowerCase() === "full"
+        ? "full"
+        : "summary";
 
     const query = {
       "onboarding.status": { $exists: true, $ne: null },
     };
+
+    const offerId =
+      typeof req.query.offerId === "string" ? req.query.offerId.trim() : "";
+    if (offerId) {
+      if (!mongoose.Types.ObjectId.isValid(offerId)) {
+        throw new HttpError(400, "Invalid offerId filter.");
+      }
+      query["onboarding.offerLetterId"] = new mongoose.Types.ObjectId(offerId);
+    }
 
     if (status && Object.values(ONBOARDING_STATUSES).includes(status)) {
       query["onboarding.status"] = status;
@@ -48,16 +157,23 @@ export async function getOnboardingSubmissions(req, res, next) {
       ];
     }
 
+    const isFull = include === "full";
+    let listQuery = User.find(query);
+    if (!isFull) {
+      listQuery = listQuery.select(ONBOARDING_LIST_SELECT);
+    }
+    listQuery = listQuery
+      .populate("onboarding.offerLetterId", ONBOARDING_OFFER_LIGHT_SELECT)
+      .populate("onboarding.employeeId", "fullName employeeCode email status");
+    if (isFull) {
+      listQuery = listQuery
+        .populate("onboarding.approvedBy", "email role")
+        .populate("onboarding.rejectedBy", "email role");
+    }
+
     const [total, candidateUsers] = await Promise.all([
       User.countDocuments(query),
-      User.find(query)
-        .populate(
-          "onboarding.offerLetterId",
-          "position department monthlySalary annualSalary joiningDate status signature"
-        )
-        .populate("onboarding.employeeId", "fullName employeeCode email status")
-        .populate("onboarding.approvedBy", "email role")
-        .populate("onboarding.rejectedBy", "email role")
+      listQuery
         .sort({ "onboarding.submittedAt": -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -66,14 +182,36 @@ export async function getOnboardingSubmissions(req, res, next) {
 
     const submissions = candidateUsers.map((u) => {
       const ob = u.onboarding || {};
-      return {
+      const base = {
         _id: u._id,
         candidateUserId: u._id,
-        candidate: ob.candidate || { email: u.email },
+        candidate: {
+          fullName: ob.candidate?.fullName || "",
+          email: ob.candidate?.email || u.email,
+        },
         candidateName: ob.candidate?.fullName || ob.personalDetails?.fullName || "",
         candidateEmail: ob.candidate?.email || u.email,
         status: ob.status || ONBOARDING_STATUSES.DRAFT,
         offerLetterId: ob.offerLetterId,
+        correctionReason: ob.correctionReason || "",
+        rejectionReason: ob.rejectionReason || "",
+        sectionReviews: serializeSectionReviews(ob),
+        documentsCount: Array.isArray(ob.documents) ? ob.documents.length : 0,
+        invitationSentAt: ob.invitationSentAt || null,
+        accountActivatedAt: ob.accountActivatedAt || null,
+        submittedAt: ob.submittedAt || null,
+        reviewedAt: ob.reviewedAt || null,
+        approvedAt: ob.approvedAt || null,
+        rejectedAt: ob.rejectedAt || null,
+        employeeId: ob.employeeId || null,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+      };
+      if (!isFull) return base;
+
+      return {
+        ...base,
+        candidate: ob.candidate || { email: u.email },
         personalDetails: ob.personalDetails,
         residentialAddress: ob.residentialAddress,
         emergencyContact: ob.emergencyContact,
@@ -89,24 +227,16 @@ export async function getOnboardingSubmissions(req, res, next) {
             id: docId,
           };
         }),
-        correctionReason: ob.correctionReason || "",
-        rejectionReason: ob.rejectionReason || "",
         reviewNotes: ob.reviewNotes || "",
-        submittedAt: ob.submittedAt || null,
-        reviewedAt: ob.reviewedAt || null,
-        approvedAt: ob.approvedAt || null,
         approvedBy: ob.approvedBy || null,
-        rejectedAt: ob.rejectedAt || null,
         rejectedBy: ob.rejectedBy || null,
-        employeeId: ob.employeeId || null,
         history: ob.history || [],
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
       };
     });
 
     res.json({
       success: true,
+      include,
       submissions,
       pagination: {
         page,
@@ -133,7 +263,9 @@ export async function getOnboardingSubmissionById(req, res, next) {
     }
 
     const candidateUser = await User.findById(id)
-      .populate("onboarding.offerLetterId")
+      .select("-passwordHash -onboarding.onboardingTokenHash")
+      // Light offer only: full OfferLetter carries HTML + base64 signature blobs (slow modal open).
+      .populate("onboarding.offerLetterId", ONBOARDING_OFFER_LIGHT_SELECT)
       .populate("onboarding.employeeId", "fullName employeeCode email status")
       .populate("onboarding.reviewedBy", "email role")
       .populate("onboarding.approvedBy", "email role")
@@ -145,6 +277,7 @@ export async function getOnboardingSubmissionById(req, res, next) {
     }
 
     const ob = candidateUser.onboarding;
+    const allHistory = Array.isArray(ob.history) ? ob.history : [];
     const submission = {
       _id: candidateUser._id,
       candidateUserId: candidateUser._id,
@@ -171,6 +304,9 @@ export async function getOnboardingSubmissionById(req, res, next) {
       correctionReason: ob.correctionReason || "",
       rejectionReason: ob.rejectionReason || "",
       reviewNotes: ob.reviewNotes || "",
+      sectionReviews: serializeSectionReviews(ob),
+      invitationSentAt: ob.invitationSentAt || null,
+      accountActivatedAt: ob.accountActivatedAt || null,
       submittedAt: ob.submittedAt,
       reviewedAt: ob.reviewedAt,
       reviewedBy: ob.reviewedBy,
@@ -179,7 +315,8 @@ export async function getOnboardingSubmissionById(req, res, next) {
       rejectedAt: ob.rejectedAt || null,
       rejectedBy: ob.rejectedBy || null,
       employeeId: ob.employeeId,
-      history: ob.history || [],
+      history: allHistory.slice(-ONBOARDING_DETAIL_HISTORY_LIMIT),
+      historyTotal: allHistory.length,
       createdAt: candidateUser.createdAt,
       updatedAt: candidateUser.updatedAt,
     };
@@ -256,12 +393,25 @@ export async function requestOnboardingCorrections(req, res, next) {
       throw new HttpError(404, "Onboarding submission not found.");
     }
 
-    if (candidateUser.onboarding.status === ONBOARDING_STATUSES.APPROVED) {
+    if (
+      ONBOARDING_FROZEN_STATUSES.includes(candidateUser.onboarding.status) &&
+      candidateUser.onboarding.status !== ONBOARDING_STATUSES.REJECTED
+    ) {
       throw new HttpError(400, "This onboarding has already been approved and cannot be updated.");
     }
 
     const cleanReason = reason.trim();
+    // Whole-submission request: every submitted-but-not-approved section is flagged for correction.
+    // Already-approved sections stay locked.
+    backfillLegacySectionReviews(candidateUser.onboarding);
+    flagUnapprovedSectionsForCorrection(candidateUser.onboarding, cleanReason, req.auth.user._id);
     candidateUser.onboarding.status = ONBOARDING_STATUSES.CHANGES_REQUESTED;
+    if (!SECTION_KEY_LIST.some((key) => isSectionEditableByCandidate(candidateUser.onboarding, key))) {
+      throw new HttpError(
+        400,
+        "Every section is already approved. Use a section-level correction request or give final approval."
+      );
+    }
     candidateUser.onboarding.correctionReason = cleanReason;
     candidateUser.onboarding.reviewedAt = new Date();
     candidateUser.onboarding.reviewedBy = req.auth.user._id;
@@ -323,15 +473,17 @@ export async function requestOnboardingCorrections(req, res, next) {
       } catch {}
     }
 
-    const serializedOnboarding = {
-      _id: candidateUser._id,
-      ...(candidateUser.onboarding.toObject ? candidateUser.onboarding.toObject() : candidateUser.onboarding),
-    };
+    emitOnboardingEvent({
+      type: ONBOARDING_EVENT_TYPES.CORRECTION_REQUESTED,
+      companyId: req.auth.company._id,
+      submissionId: candidateUser._id,
+      status: candidateUser.onboarding.status,
+    });
 
     res.json({
       success: true,
       message: "Correction request sent to candidate successfully.",
-      onboarding: serializedOnboarding,
+      onboarding: serializeOnboardingForHr(candidateUser),
       onboardingToken: token,
       emailDelivered: emailResult.success,
     });
@@ -363,7 +515,8 @@ export async function rejectOnboardingSubmission(req, res, next) {
     }
 
     if (
-      candidateUser.onboarding.status === ONBOARDING_STATUSES.APPROVED ||
+      (ONBOARDING_FROZEN_STATUSES.includes(candidateUser.onboarding.status) &&
+        candidateUser.onboarding.status !== ONBOARDING_STATUSES.REJECTED) ||
       candidateUser.employeeId ||
       candidateUser.onboarding.employeeId
     ) {
@@ -425,15 +578,17 @@ export async function rejectOnboardingSubmission(req, res, next) {
       } catch {}
     }
 
-    const serializedOnboarding = {
-      _id: candidateUser._id,
-      ...(candidateUser.onboarding.toObject ? candidateUser.onboarding.toObject() : candidateUser.onboarding),
-    };
+    emitOnboardingEvent({
+      type: ONBOARDING_EVENT_TYPES.REJECTED,
+      companyId: req.auth.company._id,
+      submissionId: candidateUser._id,
+      status: candidateUser.onboarding.status,
+    });
 
     res.json({
       success: true,
       message: "Candidate onboarding has been rejected.",
-      onboarding: serializedOnboarding,
+      onboarding: serializeOnboardingForHr(candidateUser),
       emailDelivered: emailResult.success,
     });
   } catch (error) {
@@ -442,26 +597,176 @@ export async function rejectOnboardingSubmission(req, res, next) {
 }
 
 /**
- * Stage 5: Approval-Driven Employee Creation
- * Strictly executes after HR approves complete, signed, and reviewed onboarding
+ * Section-wise review: approve / reject / request correction for a single onboarding section.
+ * POST /api/onboarding/submissions/:id/sections/:section/review  body: { decision, note }
+ */
+export async function reviewOnboardingSection(req, res, next) {
+  try {
+    const { User, AuditLog } = req.auth.models;
+    const id = req.params.id;
+    const section = req.params.section || req.body?.section;
+    const { decision, note } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new HttpError(400, "Invalid onboarding submission ID.");
+    }
+    if (!isValidSectionKey(section)) {
+      throw new HttpError(400, `Unknown onboarding section '${section}'.`);
+    }
+
+    const candidateUser = await User.findById(id);
+    if (!candidateUser || !candidateUser.onboarding) {
+      throw new HttpError(404, "Onboarding submission not found.");
+    }
+
+    const onboarding = candidateUser.onboarding;
+    if (
+      ![ONBOARDING_STATUSES.SUBMITTED, ONBOARDING_STATUSES.CHANGES_REQUESTED].includes(onboarding.status)
+    ) {
+      if (ONBOARDING_FROZEN_STATUSES.includes(onboarding.status)) {
+        throw new HttpError(
+          409,
+          `Onboarding is ${onboarding.status} and can no longer be reviewed section by section.`
+        );
+      }
+      throw new HttpError(409, "The candidate has not submitted onboarding for review yet.");
+    }
+
+    backfillLegacySectionReviews(onboarding);
+    const previousOverall = onboarding.status;
+    const result = applySectionDecision({
+      onboarding,
+      section,
+      decision,
+      note,
+      reviewerId: req.auth.user._id,
+    });
+
+    const flagged =
+      result.status === SECTION_REVIEW_STATUSES.REJECTED ||
+      result.status === SECTION_REVIEW_STATUSES.CORRECTION_REQUESTED;
+
+    onboarding.status = deriveOverallStatus(onboarding);
+    onboarding.reviewedAt = new Date();
+    onboarding.reviewedBy = req.auth.user._id;
+    onboarding.history.push({
+      action: `SECTION_${result.status}`,
+      timestamp: new Date(),
+      actorRole: "HR_ADMIN",
+      notes: result.note || `${SECTION_LABELS[section]} approved`,
+      section,
+    });
+
+    let token = null;
+    let candidateEmail = onboarding.candidate?.email || candidateUser.email;
+    if (flagged) {
+      onboarding.correctionReason = buildCorrectionSummary(onboarding);
+      // Re-issue candidate token so the candidate can open the correction link.
+      token = signCandidateOnboardingToken({
+        companyId: req.auth.company._id,
+        onboardingId: candidateUser._id,
+        userId: candidateUser._id,
+        email: candidateEmail,
+      });
+      onboarding.onboardingTokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      onboarding.tokenExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    }
+
+    await candidateUser.save();
+
+    let emailResult = { success: false };
+    if (flagged && token) {
+      const clientUrl =
+        process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
+      try {
+        emailResult = await emailService.sendOnboardingCorrectionRequest({
+          companyName: req.auth.company?.companyName || "Our Organization",
+          candidateName: onboarding.candidate?.fullName || "Candidate",
+          candidateEmail,
+          correctionReason: onboarding.correctionReason,
+          updateLink: `${clientUrl}/candidate/onboarding/${token}`,
+          company: req.auth.company,
+        });
+      } catch (eErr) {
+        console.error("[onboardingReviewController] Section correction email warning:", eErr.message);
+      }
+    }
+
+    if (AuditLog) {
+      try {
+        await AuditLog.create({
+          actorUserId: req.auth.user._id,
+          actorEmail: req.auth.user.email,
+          actorRole: req.auth.user.role,
+          action: AUDIT_ACTIONS.ONBOARDING_SECTION_REVIEWED,
+          targetType: "User",
+          targetId: candidateUser._id,
+          changes: {
+            section,
+            decision: result.decision,
+            from: result.previousStatus,
+            to: result.status,
+            note: result.note,
+            emailDelivered: emailResult.success,
+          },
+          ipAddress: req.ip || "",
+          timestamp: new Date(),
+        });
+      } catch {}
+    }
+
+    const eventBase = {
+      companyId: req.auth.company._id,
+      submissionId: candidateUser._id,
+      status: onboarding.status,
+    };
+    emitOnboardingEvent({ ...eventBase, type: ONBOARDING_EVENT_TYPES.SECTION_REVIEW, section });
+    if (flagged && previousOverall !== ONBOARDING_STATUSES.CHANGES_REQUESTED) {
+      emitOnboardingEvent({ ...eventBase, type: ONBOARDING_EVENT_TYPES.CORRECTION_REQUESTED, section });
+    }
+
+    const messages = {
+      APPROVED: `${SECTION_LABELS[section]} approved.`,
+      REJECTED: `${SECTION_LABELS[section]} rejected. The candidate has been asked to resubmit this section.`,
+      CORRECTION_REQUESTED: `Correction requested for ${SECTION_LABELS[section]}. The candidate has been notified.`,
+    };
+
+    res.json({
+      success: true,
+      message: messages[result.status],
+      section,
+      sectionStatus: result.status,
+      status: onboarding.status,
+      sectionReviews: serializeSectionReviews(onboarding),
+      allSectionsApproved: allRequiredSectionsApproved(onboarding),
+      onboarding: serializeOnboardingForHr(candidateUser),
+      ...(token ? { onboardingToken: token } : {}),
+      emailDelivered: emailResult.success,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Final HR approval.
+ *
+ * Does NOT create an Employee. It verifies every section is approved, freezes the approval,
+ * issues an account-setup invitation (activation token + email). The Employee and compensation
+ * records are created ONLY after the candidate completes activation (see completeActivation).
+ *
+ * Function name is kept for route/test compatibility.
  */
 export async function approveOnboardingAndCreateEmployee(req, res, next) {
   try {
-    const {
-      User,
-      OfferLetter,
-      Employee,
-      EmployeeCompensation,
-      AuthToken,
-      AuditLog,
-    } = req.auth.models;
+    const { User, OfferLetter, Employee, AuthToken, AuditLog } = req.auth.models;
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new HttpError(400, "Invalid onboarding submission ID.");
     }
 
-    // 1. Atomically acquire approval lock on this candidate user to prevent concurrent duplicate employee creation
+    // 1. Atomically acquire approval lock to prevent concurrent duplicate approval / invitations
     let candidateUser = await User.findOneAndUpdate(
       {
         _id: id,
@@ -471,7 +776,7 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
       },
       {
         $set: {
-          "onboarding.status": "PROCESSING_APPROVAL",
+          "onboarding.status": ONBOARDING_STATUSES.PROCESSING_APPROVAL,
         },
       },
       { returnDocument: "after" }
@@ -483,13 +788,14 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
         throw new HttpError(404, "Onboarding submission not found.");
       }
       if (
-        existing.onboarding.status === ONBOARDING_STATUSES.APPROVED ||
+        ONBOARDING_ACCOUNT_SETUP_STATUSES.includes(existing.onboarding.status) ||
+        existing.onboarding.status === ONBOARDING_STATUSES.ACTIVATED ||
         existing.employeeId ||
         existing.onboarding.employeeId
       ) {
-        throw new HttpError(409, "This candidate has already been approved and created as an employee.");
+        throw new HttpError(409, "This candidate onboarding has already been approved.");
       }
-      if (existing.onboarding.status === "PROCESSING_APPROVAL") {
+      if (existing.onboarding.status === ONBOARDING_STATUSES.PROCESSING_APPROVAL) {
         throw new HttpError(409, "This candidate onboarding approval is currently in progress.");
       }
       throw new HttpError(
@@ -498,326 +804,120 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
       );
     }
 
-    // Helper to revert atomic lock if validation or creation fails
+    // Helper to revert atomic lock if validation fails
     const revertApprovalLock = async () => {
       try {
         await User.updateOne(
-          { _id: candidateUser._id, "onboarding.status": "PROCESSING_APPROVAL" },
+          { _id: candidateUser._id, "onboarding.status": ONBOARDING_STATUSES.PROCESSING_APPROVAL },
           { $set: { "onboarding.status": ONBOARDING_STATUSES.SUBMITTED } }
         );
       } catch {}
     };
 
-    // 2. Verify offer is signed and valid
-    const offerLetter = await OfferLetter.findById(candidateUser.onboarding.offerLetterId);
-    if (!offerLetter) {
-      await revertApprovalLock();
-      throw new HttpError(404, "Linked offer letter was not found.");
-    }
-
-    if (offerLetter.status !== OFFER_LETTER_STATUSES.ACCEPTED || !offerLetter.signature?.signedAt) {
-      await revertApprovalLock();
-      throw new HttpError(
-        400,
-        "Cannot approve onboarding: Linked offer letter has not been electronically signed and accepted by the candidate."
-      );
-    }
-
-    const candidateEmail = (offerLetter.candidate?.email || candidateUser.email).trim().toLowerCase();
-
-    if (offerLetter.convertedToEmployeeAt) {
-      await revertApprovalLock();
-      throw new HttpError(409, "This offer letter has already been converted to an employee profile.");
-    }
-
-    if (offerLetter.employeeId) {
-      const linkedEmployee = await Employee.findById(offerLetter.employeeId);
-      if (
-        linkedEmployee &&
-        (String(linkedEmployee.userId) === String(candidateUser._id) ||
-          linkedEmployee.email.toLowerCase() === candidateEmail)
-      ) {
-        await revertApprovalLock();
-        throw new HttpError(409, "This offer letter has already been converted to an employee profile.");
+    let candidateEmail;
+    let offerLetter;
+    try {
+      // 2. Every required section must be individually approved by HR
+      if (!allRequiredSectionsApproved(candidateUser.onboarding)) {
+        const pending = unapprovedSections(candidateUser.onboarding)
+          .map((s) => `${SECTION_LABELS[s.section]} (${s.status})`)
+          .join(", ");
+        throw new HttpError(
+          400,
+          `All onboarding sections must be approved before final approval. Outstanding: ${pending}.`
+        );
       }
+
+      // 3. Verify offer is signed and valid
+      offerLetter = await OfferLetter.findById(candidateUser.onboarding.offerLetterId);
+      candidateEmail = await assertOfferReadyForConversion({
+        Employee,
+        offerLetter,
+        candidateUser,
+        acceptedStatus: OFFER_LETTER_STATUSES.ACCEPTED,
+      });
+
+      // 4. Verify required onboarding information is complete
+      assertOnboardingDataComplete(candidateUser.onboarding);
+
+      // 5. Fail early (before inviting) if an employee already exists for this identity
+      const existingEmployee = await Employee.findOne({
+        $or: [{ email: candidateEmail }, { userId: candidateUser._id }],
+      });
+      if (existingEmployee) {
+        throw new HttpError(
+          409,
+          `An employee record with email '${candidateEmail}' already exists in this workspace.`
+        );
+      }
+    } catch (validationErr) {
+      await revertApprovalLock();
+      throw validationErr;
     }
 
-    // 3. Verify required onboarding information is complete
-    const pd = candidateUser.onboarding.personalDetails || {};
-    const addr = candidateUser.onboarding.residentialAddress || {};
-    const ec = candidateUser.onboarding.emergencyContact || {};
-    const bd = candidateUser.onboarding.bankDetails || {};
-    const td = candidateUser.onboarding.taxDetails || {};
-
-    if (!pd.fullName?.trim() || !pd.phoneNumber?.trim() || !pd.dateOfBirth) {
-      await revertApprovalLock();
-      throw new HttpError(400, "Candidate personal details are incomplete and cannot be approved.");
-    }
-    if (!addr.street?.trim() || !addr.city?.trim() || !addr.state?.trim() || !addr.postalCode?.trim()) {
-      await revertApprovalLock();
-      throw new HttpError(400, "Candidate residential address is incomplete and cannot be approved.");
-    }
-    if (!ec.name?.trim() || !ec.phone?.trim()) {
-      await revertApprovalLock();
-      throw new HttpError(400, "Candidate emergency contact details are incomplete and cannot be approved.");
-    }
-    if (!bd.accountNumber?.trim() || !bd.ifscCode?.trim()) {
-      await revertApprovalLock();
-      throw new HttpError(400, "Candidate bank details are incomplete and cannot be approved.");
-    }
-    if (!td.panNumber?.trim()) {
-      await revertApprovalLock();
-      throw new HttpError(400, "Candidate tax / PAN details are incomplete and cannot be approved.");
-    }
-
-    // 4. Generate unique employee code using project conventions
-    const companySlug = req.auth.company?.slug || "EMP";
-    const prefix = companySlug.substring(0, 3).toUpperCase();
-    const count = await Employee.countDocuments({});
-    let nextNum = count + 1;
-    let employeeCode = `${prefix}-${String(nextNum).padStart(3, "0")}`;
-    while (await Employee.findOne({ employeeCode })) {
-      nextNum++;
-      employeeCode = `${prefix}-${String(nextNum).padStart(3, "0")}`;
-    }
-
-    // Prevent duplicate email collision in employees collection
-    const existingEmployee = await Employee.findOne({
-      $or: [{ email: candidateEmail }, { userId: candidateUser._id }],
-    });
-    if (existingEmployee) {
-      await revertApprovalLock();
-      throw new HttpError(409, `An employee record with email '${candidateEmail}' already exists in this workspace.`);
-    }
-
-    // 5. Map verified onboarding data to Employee document
-    const employeeDocs = (candidateUser.onboarding.documents || []).map((doc) => ({
-      documentType: doc.documentType === "ID_PROOF" ? "ID_PROOF" : "OTHER",
-      title: doc.title,
-      fileName: doc.fileName,
-      fileSize: doc.fileSize,
-      mimeType: doc.mimeType,
-      storageKey: doc.storageKey,
-      uploadedBy: req.auth.user._id,
-      uploadedByRole: "HR_ADMIN",
-      createdAt: doc.uploadedAt || new Date(),
-    }));
-
-    const employeePayload = {
-      employeeCode,
-      fullName: pd.fullName.trim(),
-      preferredName: pd.preferredName?.trim() || "",
-      email: candidateEmail,
-      phoneNumber: pd.phoneNumber.trim(),
-      personalEmail: pd.email ? pd.email.trim().toLowerCase() : candidateEmail,
-      personalPhone: pd.personalPhone?.trim() || "",
-      dateOfBirth: new Date(pd.dateOfBirth),
-      gender: pd.gender?.trim() || "Not specified",
-      city: pd.city?.trim() || offerLetter.workLocation || "",
-      status: EMPLOYEE_STATUSES.ACTIVE,
+    // 6. Freeze approval — no Employee / Compensation created here.
+    const candidateName =
+      candidateUser.onboarding.personalDetails?.fullName?.trim() ||
+      candidateUser.onboarding.candidate?.fullName ||
+      "Candidate";
+    const activationToken = signEmployeeActivationToken({
+      companyId: req.auth.company._id,
       userId: candidateUser._id,
-      job: {
-        jobTitle: offerLetter.position,
-        department: offerLetter.department || "",
-        employmentType: offerLetter.employmentType || "Full-time Permanent",
-        workLocation: offerLetter.workLocation || "",
-        joiningDate: offerLetter.joiningDate || new Date(),
-        reportingManagerId: offerLetter.reportingManager || null,
-        project: {
-          projectName: "",
-          projectType: "MANDATE",
-        },
-      },
-      residentialAddress: {
-        street: addr.street.trim(),
-        city: addr.city.trim(),
-        state: addr.state.trim(),
-        postalCode: addr.postalCode.trim(),
-        country: addr.country?.trim() || "India",
-      },
-      emergencyContact: {
-        name: ec.name.trim(),
-        relationship: ec.relationship?.trim() || "Contact",
-        phone: ec.phone.trim(),
-      },
-      bankDetails: {
-        accountHolderName: bd.accountHolderName?.trim() || pd.fullName.trim(),
-        bankName: bd.bankName?.trim() || "",
-        accountNumber: bd.accountNumber?.trim() || "",
-        ifscCode: bd.ifscCode?.trim() || "",
-        accountType: bd.accountType?.trim() || "Salary Account",
-      },
-      taxDetails: {
-        panNumber: td.panNumber?.trim() || "",
-        taxRegime: td.taxRegime?.trim() || "New Tax Regime (Sec 115BAC)",
-      },
-      identityDetails: {
-        idType: candidateUser.onboarding.identityDetails?.idType || "PAN / Aadhaar",
-        idNumber: candidateUser.onboarding.identityDetails?.idNumber || td.panNumber?.trim() || "",
-        isVerified: true,
-      },
-      documents: employeeDocs,
-      schemaVersion: 1,
-    };
-
-    // 6. Transactional execution with safe compensating rollback
-    let session = null;
-    let useTransaction = false;
-    const connection = req.auth.models.connection || User.db;
-    const topologyType = connection?.client?.topology?.description?.type;
-    const supportsTransactions =
-      topologyType === "ReplicaSetWithPrimary" ||
-      topologyType === "Sharded" ||
-      topologyType === "LoadBalanced";
-
-    if (supportsTransactions && typeof connection.startSession === "function") {
-      try {
-        session = await connection.startSession();
-        session.startTransaction();
-        useTransaction = true;
-      } catch {
-        if (session) {
-          try {
-            await session.endSession();
-          } catch {}
-          session = null;
-        }
-        useTransaction = false;
-      }
-    }
-
-    let newEmployee = null;
-    let newComp = null;
-    const monthlySalary = offerLetter.monthlySalary;
+      email: candidateEmail,
+    });
 
     try {
-      const sessionOpt = useTransaction && session ? { session } : {};
-
-      const [createdEmp] = await Employee.create([employeePayload], sessionOpt);
-      newEmployee = createdEmp;
-
-      if (monthlySalary && EmployeeCompensation) {
-        const basic = Math.round(monthlySalary * 0.5);
-        const hra = Math.round(monthlySalary * 0.25);
-        const conveyance = Math.round(monthlySalary * 0.1);
-        const special = Math.round(monthlySalary * 0.15);
-
-        const [createdComp] = await EmployeeCompensation.create(
-          [
-            {
-              employeeId: newEmployee._id,
-              revisions: [
-                {
-                  effectiveFromDate: offerLetter.joiningDate || new Date(),
-                  monthlyCostToCompany: mongoose.Types.Decimal128.fromString(monthlySalary.toFixed(2)),
-                  salaryComponents: {
-                    basicSalary: mongoose.Types.Decimal128.fromString(basic.toFixed(2)),
-                    houseRentAllowance: mongoose.Types.Decimal128.fromString(hra.toFixed(2)),
-                    conveyanceAllowance: mongoose.Types.Decimal128.fromString(conveyance.toFixed(2)),
-                    specialAllowance: mongoose.Types.Decimal128.fromString(special.toFixed(2)),
-                  },
-                  revisedBy: req.auth.user._id,
-                  revisedAt: new Date(),
-                },
-              ],
-              schemaVersion: 1,
-            },
-          ],
-          sessionOpt
-        );
-        newComp = createdComp;
-      }
-
-      // Link offer letter to created employee
-      offerLetter.employeeId = newEmployee._id;
-      offerLetter.candidateUserId = candidateUser._id;
-      await offerLetter.save(sessionOpt);
-
-      // Update candidate user: link employee, update role, invalidate candidate token
-      candidateUser.role = USER_ROLES.EMPLOYEE;
-      candidateUser.isActive = false; // Inactive until Stage 6 activation
-      candidateUser.employeeId = newEmployee._id;
-      candidateUser.onboarding.employeeId = newEmployee._id;
       candidateUser.onboarding.status = ONBOARDING_STATUSES.APPROVED;
       candidateUser.onboarding.approvedAt = new Date();
       candidateUser.onboarding.approvedBy = req.auth.user._id;
-      candidateUser.onboarding.onboardingTokenHash = null; // Invalidate candidate onboarding token upon approval
+      candidateUser.onboarding.reviewedAt = new Date();
+      candidateUser.onboarding.reviewedBy = req.auth.user._id;
+      candidateUser.onboarding.correctionReason = "";
+      candidateUser.onboarding.onboardingTokenHash = null; // Freeze: candidate edit link no longer valid
       candidateUser.onboarding.tokenExpiresAt = null;
       candidateUser.onboarding.history.push({
         action: "APPROVED",
         timestamp: new Date(),
         actorRole: "HR_ADMIN",
-        notes: `Approved by HR. Employee profile created with code ${employeeCode}.`,
+        notes: "Final HR approval. Account setup invitation issued; employee profile is created on activation.",
       });
-      await candidateUser.save(sessionOpt);
+      await candidateUser.save();
 
-      if (useTransaction && session) {
-        await session.commitTransaction();
-        await session.endSession();
-        session = null;
+      if (AuthToken) {
+        const { hashAuthToken } = await import("../utils/authTokenHash.js");
+        await AuthToken.updateMany(
+          { email: candidateEmail, isActive: true },
+          { isActive: false, usedAt: new Date() }
+        );
+        await AuthToken.create({
+          userId: candidateUser._id,
+          email: candidateEmail,
+          token: hashAuthToken(activationToken),
+          type: TOKEN_TYPES.INVITATION,
+          role: "EMPLOYEE",
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          createdBy: req.auth.user._id,
+          isActive: true,
+        });
       }
-    } catch (createErr) {
-      if (useTransaction && session) {
-        try {
-          await session.abortTransaction();
-        } catch {}
-        try {
-          await session.endSession();
-        } catch {}
-        session = null;
-      } else {
-        // Safe compensating recovery for standalone/non-transactional databases
-        if (newEmployee) {
-          try {
-            await Employee.deleteOne({ _id: newEmployee._id });
-          } catch {}
-        }
-        if (newComp) {
-          try {
-            await EmployeeCompensation.deleteOne({ _id: newComp._id });
-          } catch {}
-        }
-      }
+    } catch (freezeErr) {
       await revertApprovalLock();
-      throw createErr;
-    }
-
-    // 10. Generate Employee Activation Token (Stage 6) — store hash only
-    const activationToken = signEmployeeActivationToken({
-      companyId: req.auth.company._id,
-      employeeId: newEmployee._id,
-      userId: candidateUser._id,
-      email: candidateEmail,
-    });
-
-    if (AuthToken) {
-      const { hashAuthToken } = await import("../utils/authTokenHash.js");
-      await AuthToken.create({
-        userId: candidateUser._id,
-        email: candidateEmail,
-        token: hashAuthToken(activationToken),
-        type: TOKEN_TYPES.INVITATION,
-        role: "EMPLOYEE",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        createdBy: req.auth.user._id,
-        isActive: true,
-      });
+      throw freezeErr;
     }
 
     const clientUrl =
       process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
     const activationLink = `${clientUrl}/activate?token=${activationToken}`;
 
-    // 11. Dispatch Account Activation Email
+    // 7. Dispatch account-setup invitation email
     let activationEmailSent = false;
     let emailError = "";
     try {
       const emailResult = await emailService.sendEmployeeActivationEmail({
         companyName: req.auth.company?.companyName || "Our Organization",
-        employeeName: newEmployee.fullName,
+        employeeName: candidateName,
         email: candidateEmail,
         activationLink,
-        employeeCode,
         company: req.auth.company,
       });
       activationEmailSent = Boolean(emailResult.success);
@@ -825,11 +925,19 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
         emailError = emailResult.error || "Email delivery failed";
       }
     } catch (sendErr) {
-      console.error("[onboardingReviewController] Activation email warning:", sendErr.message);
+      console.error("[onboardingReviewController] Account setup email warning:", sendErr.message);
       emailError = sendErr.message;
     }
 
-    // 12. Record Audit Logs
+    candidateUser.onboarding.status = activationEmailSent
+      ? ONBOARDING_STATUSES.ACCOUNT_SETUP_SENT
+      : ONBOARDING_STATUSES.ACCOUNT_SETUP_PENDING;
+    if (activationEmailSent) {
+      candidateUser.onboarding.invitationSentAt = new Date();
+    }
+    await candidateUser.save();
+
+    // 8. Audit
     if (AuditLog) {
       try {
         await AuditLog.create({
@@ -840,26 +948,8 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
           targetType: "User",
           targetId: candidateUser._id,
           changes: {
-            employeeId: newEmployee._id,
-            employeeCode,
+            employeeCreated: false,
             activationEmailSent,
-          },
-          ipAddress: req.ip || "",
-          timestamp: new Date(),
-        });
-
-        await AuditLog.create({
-          actorUserId: req.auth.user._id,
-          actorEmail: req.auth.user.email,
-          actorRole: req.auth.user.role,
-          action: AUDIT_ACTIONS.EMPLOYEE_CREATED,
-          targetType: "Employee",
-          targetId: newEmployee._id,
-          changes: {
-            employeeCode,
-            fullName: newEmployee.fullName,
-            email: newEmployee.email,
-            joiningDate: newEmployee.job.joiningDate,
           },
           ipAddress: req.ip || "",
           timestamp: new Date(),
@@ -869,16 +959,24 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
       }
     }
 
-    const serializedOnboarding = {
-      _id: candidateUser._id,
-      ...(candidateUser.onboarding.toObject ? candidateUser.onboarding.toObject() : candidateUser.onboarding),
+    // 9. Realtime
+    const eventBase = {
+      companyId: req.auth.company._id,
+      submissionId: candidateUser._id,
+      status: candidateUser.onboarding.status,
     };
+    emitOnboardingEvent({ ...eventBase, type: ONBOARDING_EVENT_TYPES.HR_APPROVED });
+    if (activationEmailSent) {
+      emitOnboardingEvent({ ...eventBase, type: ONBOARDING_EVENT_TYPES.INVITE_SENT });
+    }
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: `Onboarding approved successfully. Employee profile created (${employeeCode}) and activation email dispatched.`,
-      employee: newEmployee,
-      onboarding: serializedOnboarding,
+      message: activationEmailSent
+        ? "Onboarding approved. Account setup invitation sent to the candidate. The employee profile will be created once they activate their account."
+        : "Onboarding approved, but the account setup invitation email could not be delivered. Use 'Resend invitation' to retry.",
+      employee: null,
+      onboarding: serializeOnboardingForHr(candidateUser),
       activationEmailSent,
       emailError: activationEmailSent ? undefined : emailError,
     });
@@ -888,47 +986,85 @@ export async function approveOnboardingAndCreateEmployee(req, res, next) {
 }
 
 /**
- * Resend activation email for an already-approved employee
+ * Resend the account-setup invitation for an HR-approved onboarding (no Employee required yet).
+ * Also accepts a legacy Employee id for backward compatibility.
  */
 export async function resendEmployeeActivationEmail(req, res, next) {
   try {
     const { Employee, User, AuthToken, AuditLog } = req.auth.models;
     const { id } = req.params;
 
-    const employee = await Employee.findById(id);
-    if (!employee) {
-      throw new HttpError(404, "Employee record not found.");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new HttpError(400, "Invalid submission or employee ID.");
     }
 
-    const user = await User.findOne({ email: employee.email });
-    if (!user) {
-      throw new HttpError(404, "User account not found for this employee.");
+    // Route is /submissions/:id/resend-activation — :id is the candidate User (submission) id.
+    // Also accept Employee id for backward compatibility.
+    let user = await User.findById(id);
+    let employee = null;
+
+    if (user) {
+      const linkedEmployeeId = user.onboarding?.employeeId || user.employeeId || null;
+      if (linkedEmployeeId) {
+        employee = await Employee.findById(linkedEmployeeId);
+      }
+      const onboardingStatus = user.onboarding?.status;
+      if (!employee && !ONBOARDING_ACCOUNT_SETUP_STATUSES.includes(onboardingStatus)) {
+        throw new HttpError(
+          400,
+          "Account setup invitation is only available after final HR approval. Approve onboarding before resending."
+        );
+      }
+    } else {
+      employee = await Employee.findById(id);
+      if (!employee) {
+        throw new HttpError(404, "Onboarding submission or employee record not found.");
+      }
+      user = await User.findOne({
+        $or: [{ email: employee.email }, { employeeId: employee._id }, { "onboarding.employeeId": employee._id }],
+      });
+      if (!user) {
+        throw new HttpError(404, "User account not found for this employee.");
+      }
     }
 
-    if (user.isActive && user.lastLoginAt) {
+    if (user.onboarding?.status === ONBOARDING_STATUSES.ACTIVATED || (user.isActive && user.lastLoginAt)) {
       throw new HttpError(400, "Employee account is already activated and in use.");
     }
+
+    const recipientEmail = (
+      employee?.email ||
+      user.onboarding?.candidate?.email ||
+      user.email
+    )
+      .trim()
+      .toLowerCase();
+    const recipientName =
+      employee?.fullName ||
+      user.onboarding?.personalDetails?.fullName?.trim() ||
+      user.onboarding?.candidate?.fullName ||
+      "Candidate";
 
     // Invalidate old tokens
     if (AuthToken) {
       await AuthToken.updateMany(
-        { email: employee.email, isActive: true },
+        { email: recipientEmail, isActive: true },
         { isActive: false, usedAt: new Date() }
       );
     }
 
     const activationToken = signEmployeeActivationToken({
       companyId: req.auth.company._id,
-      employeeId: employee._id,
+      employeeId: employee?._id,
       userId: user._id,
-      email: employee.email,
+      email: recipientEmail,
     });
 
     if (AuthToken) {
       const { hashAuthToken } = await import("../utils/authTokenHash.js");
       await AuthToken.create({
         userId: user._id,
-        email: employee.email,
+        email: recipientEmail,
         token: hashAuthToken(activationToken),
         type: TOKEN_TYPES.INVITATION,
         role: "EMPLOYEE",
@@ -942,14 +1078,34 @@ export async function resendEmployeeActivationEmail(req, res, next) {
       process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
     const activationLink = `${clientUrl}/activate?token=${activationToken}`;
 
-    const emailResult = await emailService.sendEmployeeActivationEmail({
-      companyName: req.auth.company?.companyName || "Our Organization",
-      employeeName: employee.fullName,
-      email: employee.email,
-      activationLink,
-      employeeCode: employee.employeeCode,
-      company: req.auth.company,
-    });
+    let emailResult = { success: false };
+    try {
+      emailResult = await emailService.sendEmployeeActivationEmail({
+        companyName: req.auth.company?.companyName || "Our Organization",
+        employeeName: recipientName,
+        email: recipientEmail,
+        activationLink,
+        employeeCode: employee?.employeeCode,
+        company: req.auth.company,
+      });
+    } catch (sendErr) {
+      console.error("[onboardingReviewController] Resend email warning:", sendErr.message);
+      emailResult = { success: false, error: sendErr.message };
+    }
+
+    if (ONBOARDING_ACCOUNT_SETUP_STATUSES.includes(user.onboarding?.status)) {
+      const nextStatus = emailResult.success
+        ? ONBOARDING_STATUSES.ACCOUNT_SETUP_SENT
+        : ONBOARDING_STATUSES.ACCOUNT_SETUP_PENDING;
+      const $set = { "onboarding.status": nextStatus };
+      if (emailResult.success) {
+        $set["onboarding.invitationSentAt"] = new Date();
+      }
+      await User.updateOne(
+        { _id: user._id, "onboarding.status": { $in: ONBOARDING_ACCOUNT_SETUP_STATUSES } },
+        { $set }
+      );
+    }
 
     if (AuditLog) {
       try {
@@ -958,8 +1114,8 @@ export async function resendEmployeeActivationEmail(req, res, next) {
           actorEmail: req.auth.user.email,
           actorRole: req.auth.user.role,
           action: AUDIT_ACTIONS.INVITATION_RESENT,
-          targetType: "Employee",
-          targetId: employee._id,
+          targetType: employee ? "Employee" : "User",
+          targetId: employee ? employee._id : user._id,
           changes: { emailResult },
           ipAddress: req.ip || "",
           timestamp: new Date(),
@@ -967,9 +1123,22 @@ export async function resendEmployeeActivationEmail(req, res, next) {
       } catch {}
     }
 
+    if (user.onboarding) {
+      emitOnboardingEvent({
+        type: ONBOARDING_EVENT_TYPES.INVITE_SENT,
+        companyId: req.auth.company._id,
+        submissionId: user._id,
+        status: emailResult.success
+          ? ONBOARDING_STATUSES.ACCOUNT_SETUP_SENT
+          : ONBOARDING_STATUSES.ACCOUNT_SETUP_PENDING,
+      });
+    }
+
     res.json({
       success: true,
-      message: `Activation email resent to ${employee.email}.`,
+      message: emailResult.success
+        ? `Account setup invitation resent to ${recipientEmail}.`
+        : `Invitation regenerated for ${recipientEmail}, but email delivery failed. Please retry.`,
       deliverySuccess: emailResult.success,
     });
   } catch (error) {

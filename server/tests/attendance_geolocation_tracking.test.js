@@ -410,10 +410,25 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
   });
 
   it("10. Live Tracking lifecycle: start session, update coordinates, throttle, and stop", async () => {
+    // Tracking requires an active punch-in (employee A already punched out earlier).
+    const modelsA = await getCompanyModels(companyA);
+    await modelsA.Attendance.deleteMany({ employeeId: employeeRecordA2._id });
+    await modelsA.LiveTrackingSession.deleteMany({ employeeId: employeeRecordA2._id });
+
+    const punchInA2 = await request(app)
+      .post("/api/employees/me/attendance/punch-in")
+      .set("Cookie", employeeCookieA2)
+      .send({ location: validLocationA });
+    assert.equal(
+      punchInA2.status,
+      200,
+      punchInA2.body?.message || JSON.stringify(punchInA2.body)
+    );
+
     // 10a. Start tracking session
     const startRes = await request(app)
       .post("/api/employees/me/tracking/start")
-      .set("Cookie", employeeCookieA)
+      .set("Cookie", employeeCookieA2)
       .send({ durationMinutes: 30 });
 
     assert.equal(startRes.status, 200);
@@ -424,7 +439,7 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     // 10b. Check status
     const statusRes = await request(app)
       .get("/api/employees/me/tracking/status")
-      .set("Cookie", employeeCookieA);
+      .set("Cookie", employeeCookieA2);
 
     assert.equal(statusRes.status, 200);
     assert.equal(statusRes.body.isTrackingActive, true);
@@ -432,7 +447,7 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     // 10c. Send first location update
     const updateRes1 = await request(app)
       .post("/api/employees/me/tracking/update")
-      .set("Cookie", employeeCookieA)
+      .set("Cookie", employeeCookieA2)
       .send({ location: { latitude: 12.9720, longitude: 77.5950, accuracy: 8.5 } });
 
     assert.equal(updateRes1.status, 200);
@@ -442,7 +457,7 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     // 10d. Immediate second update should be throttled safely
     const updateRes2 = await request(app)
       .post("/api/employees/me/tracking/update")
-      .set("Cookie", employeeCookieA)
+      .set("Cookie", employeeCookieA2)
       .send({ location: { latitude: 12.9721, longitude: 77.5951, accuracy: 8.5 } });
 
     assert.equal(updateRes2.status, 200);
@@ -451,7 +466,7 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     // 10e. Stop tracking session
     const stopRes = await request(app)
       .post("/api/employees/me/tracking/stop")
-      .set("Cookie", employeeCookieA)
+      .set("Cookie", employeeCookieA2)
       .send({});
 
     assert.equal(stopRes.status, 200);
@@ -460,7 +475,7 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     // 10f. Update after stop must be rejected
     const updateAfterStop = await request(app)
       .post("/api/employees/me/tracking/update")
-      .set("Cookie", employeeCookieA)
+      .set("Cookie", employeeCookieA2)
       .send({ location: { latitude: 12.9722, longitude: 77.5952 } });
 
     assert.equal(updateAfterStop.status, 400);

@@ -45,11 +45,27 @@ function MarkdownText({ content }) {
     }
   };
 
+  const escapeHtml = (value) =>
+    String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const safeHref = (href) => {
+    const trimmed = String(href || "").trim();
+    if (/^(https?:|mailto:)/i.test(trimmed)) return escapeHtml(trimmed);
+    return "#";
+  };
+
   const parseInline = (text) => {
-    return text
+    const escaped = escapeHtml(text);
+    return escaped
       .replace(
         /\[(.*?)\]\((.*?)\)/g,
-        '<a href="$2" class="chat-markdown-link" style="color: #2563eb; text-decoration: underline; font-weight: 500;">$1</a>'
+        (_match, label, href) =>
+          `<a href="${safeHref(href)}" class="chat-markdown-link" rel="noopener noreferrer" target="_blank" style="color: #2563eb; text-decoration: underline; font-weight: 500;">${label}</a>`
       )
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>")

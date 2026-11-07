@@ -105,6 +105,7 @@ export default function HrHomePage() {
   }, []);
 
   const summary = data?.summary || {};
+  const funnel = data?.recruitmentFunnel || {};
   const weekDays = Array.isArray(data?.attendanceOverview?.days) ? data.attendanceOverview.days : [];
   const calendarDays = Array.isArray(data?.attendanceCalendar?.days) ? data.attendanceCalendar.days : [];
   const chartDays = weekDays.length > 0 ? weekDays : calendarDays.slice(-7);
@@ -119,6 +120,7 @@ export default function HrHomePage() {
   const pendingLeaveCount = recentLeaves.filter(
     (lv) => String(lv.status || "").toUpperCase() === "PENDING"
   ).length;
+  const pendingOffersCount = Number(funnel.pending ?? summary.pendingOfferResponses ?? 0);
 
   const openLiveTracking = () => navigate("/admin/attendance/live");
 
@@ -254,6 +256,51 @@ export default function HrHomePage() {
 
                   <section className="hr-panel-card">
                     <div className="hr-panel-card__head">
+                      <h3>Recruitment funnel</h3>
+                      <Link to="/admin/hiring" className="hr-text-link">
+                        Hiring
+                      </Link>
+                    </div>
+                    <div className="hr-stat-grid">
+                      <div className="hr-stat">
+                        <span>Offers generated</span>
+                        <strong>{funnel.offersGenerated ?? 0}</strong>
+                      </div>
+                      <div className="hr-stat">
+                        <span>Pending review</span>
+                        <strong>
+                          {funnel.pending ?? 0}
+                          {funnel.pendingPct != null ? (
+                            <small className="caption"> · {funnel.pendingPct}%</small>
+                          ) : null}
+                        </strong>
+                      </div>
+                      <div className="hr-stat">
+                        <span>Accepted</span>
+                        <strong>
+                          {funnel.accepted ?? 0}
+                          {funnel.acceptedPct != null ? (
+                            <small className="caption"> · {funnel.acceptedPct}%</small>
+                          ) : null}
+                        </strong>
+                      </div>
+                      <div className="hr-stat">
+                        <span>Declined</span>
+                        <strong>
+                          {funnel.declined ?? 0}
+                          {funnel.declinedPct != null ? (
+                            <small className="caption"> · {funnel.declinedPct}%</small>
+                          ) : null}
+                        </strong>
+                      </div>
+                    </div>
+                    <p className="hr-section-sub" style={{ marginTop: 8 }}>
+                      Acceptance rate: {funnel.acceptanceRate ?? "0.0"}%
+                    </p>
+                  </section>
+
+                  <section className="hr-panel-card">
+                    <div className="hr-panel-card__head">
                       <h3>Pending actions</h3>
                     </div>
                     <div className="hr-action-list">
@@ -267,6 +314,22 @@ export default function HrHomePage() {
                         </span>
                         {pendingLeaveCount > 0 ? (
                           <span className="hr-action-count">{pendingLeaveCount}</span>
+                        ) : (
+                          <span className="hr-action-chevron" aria-hidden="true">
+                            ›
+                          </span>
+                        )}
+                      </Link>
+                      <Link to="/admin/hiring?stage=OFFERS" className="hr-action-row">
+                        <span className="hr-action-icon">
+                          <UserPlus size={20} strokeWidth={1.85} />
+                        </span>
+                        <span className="hr-action-copy">
+                          <strong>Pending offer responses</strong>
+                          <small>Awaiting candidate decision</small>
+                        </span>
+                        {pendingOffersCount > 0 ? (
+                          <span className="hr-action-count">{pendingOffersCount}</span>
                         ) : (
                           <span className="hr-action-chevron" aria-hidden="true">
                             ›
@@ -461,9 +524,9 @@ export default function HrHomePage() {
                         <Users size={22} strokeWidth={1.85} />
                         <span>People</span>
                       </Link>
-                      <Link to="/admin/onboarding" className="hr-dash-quick-tile">
+                      <Link to="/admin/hiring" className="hr-dash-quick-tile">
                         <UserPlus size={22} strokeWidth={1.85} />
-                        <span>Onboarding</span>
+                        <span>Hiring</span>
                       </Link>
                       <Link to="/admin/reports" className="hr-dash-quick-tile">
                         <BarChart3 size={22} strokeWidth={1.85} />

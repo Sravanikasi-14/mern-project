@@ -1,4 +1,8 @@
 import mongoose from "mongoose";
+import {
+  assertCanAccessEmployeeOwnedResource,
+  assertCanAccessPayslip,
+} from "../authorization/resourceOwnership.js";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES, serializeUser } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
@@ -10,6 +14,17 @@ import {
   regenerateActivationLink,
   PROVISIONING_SOURCES,
 } from "../services/employeeProvisioningService.js";
+import { resolveDepartmentAssignment } from "../services/departmentLinkService.js";
+import {
+  assertValidReportingManagerAssignment,
+  isStrictObjectId,
+  parseReportingManagerInput,
+} from "../services/reportingManagerService.js";
+import {
+  buildVisibleEmployeeProfile,
+  sanitizeHrEmployeePayload,
+} from "../services/employeeVisibilityService.js";
+import { buildEmployeeDirectory } from "../services/employeeDirectoryService.js";
 import {
   calculateEmployeeLeaveBalances,
   calculateLeaveDays,
@@ -24,6 +39,13 @@ import {
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
 import { getCompanyBusinessDate, resolveCompanyTimezone, weekdayLong } from "../utils/companyTime.js";
 import { generatePayslipPdfBuffer } from "../services/payslipPdfService.js";
+import {
+  assertEmployeeInScope,
+  assertHrPermission,
+  assertEmployeeDepartmentInHrScope,
+  mergeEmployeeScopeFilter,
+  redactOutOfScopeManagerIdentity,
+} from "../services/hrAccessEnforcementService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -49,7 +71,8 @@ function escapeRegex(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
 
-const ALLOWED_LIMITS = new Set([10, 50, 100, 200, 300]);
+/** Desktop People page uses 8/12/24/48; keep prior API sizes too. */
+const ALLOWED_LIMITS = new Set([8, 10, 12, 24, 48, 50, 100, 200, 300]);
 const ALLOWED_SORT_FIELDS = {
   fullName: "fullName",
   employeeCode: "employeeCode",
@@ -57,6 +80,48 @@ const ALLOWED_SORT_FIELDS = {
   createdAt: "createdAt",
   joiningDate: "job.joiningDate",
 };
+const INVITATION_STATUSES = new Set(["PENDING", "ACCEPTED", "EXPIRED", "DELIVERY_FAILED"]);
+const PROJECT_TYPES = new Set(["MANDATE", "RETAIL", "BENCH", "INTERNAL"]);
+
+/**
+ * Parse a calendar date query param as UTC midnight.
+ * Accepts ISO date strings and YYYY-MM-DD.
+ */
+function parseEmployeeFilterDate(raw, fieldName) {
+  if (raw == null || raw === "") return null;
+  if (typeof raw !== "string") {
+    throw new HttpError(400, `Invalid ${fieldName} date.`, {
+      field: fieldName,
+      errors: { [fieldName]: `Invalid ${fieldName} date.` },
+      code: "INVALID_DATE",
+    });
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = parseDateOnly(trimmed);
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    throw new HttpError(400, `Invalid ${fieldName} date.`, {
+      field: fieldName,
+      errors: { [fieldName]: `Invalid ${fieldName} date.` },
+      code: "INVALID_DATE",
+    });
+  }
+  return parsed;
+}
+
+function endOfUtcDay(dateOnly) {
+  return new Date(
+    Date.UTC(
+      dateOnly.getUTCFullYear(),
+      dateOnly.getUTCMonth(),
+      dateOnly.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
+}
 
 export async function getEmployees(req, res, next) {
   try {
@@ -73,6 +138,29 @@ export async function getEmployees(req, res, next) {
     const project = typeof req.query.project === "string" ? req.query.project.trim() : "";
     const department = typeof req.query.department === "string" ? req.query.department.trim() : "";
     const jobTitle = typeof req.query.jobTitle === "string" ? req.query.jobTitle.trim() : "";
+    const reportingManagerRaw =
+      typeof req.query.reportingManagerId === "string" ? req.query.reportingManagerId.trim() : "";
+    const employmentType =
+      typeof req.query.employmentType === "string" ? req.query.employmentType.trim() : "";
+    const workLocation =
+      typeof req.query.workLocation === "string" ? req.query.workLocation.trim() : "";
+    const invitationStatusRaw =
+      typeof req.query.invitationStatus === "string" ? req.query.invitationStatus.trim() : "";
+    const projectTypeRaw =
+      typeof req.query.projectType === "string" ? req.query.projectType.trim() : "";
+    const joiningFrom = parseEmployeeFilterDate(req.query.joiningFrom, "joiningFrom");
+    const joiningTo = parseEmployeeFilterDate(req.query.joiningTo, "joiningTo");
+
+    if (joiningFrom && joiningTo && joiningFrom.getTime() > joiningTo.getTime()) {
+      throw new HttpError(400, "joiningFrom cannot be later than joiningTo.", {
+        field: "joiningFrom",
+        errors: {
+          joiningFrom: "joiningFrom cannot be later than joiningTo.",
+          joiningTo: "joiningTo cannot be earlier than joiningFrom.",
+        },
+        code: "INVALID_DATE_RANGE",
+      });
+    }
 
     const sortByParam = req.query.sortBy;
     const sortField = ALLOWED_SORT_FIELDS[sortByParam] || "createdAt";
@@ -81,14 +169,24 @@ export async function getEmployees(req, res, next) {
       String(req.query.includeCompensation || "true").toLowerCase() !== "false";
 
     const query = {};
+    const andClauses = [];
 
     if (search) {
       const regex = new RegExp(escapeRegex(search), "i");
-      query.$or = [
-        { fullName: regex },
-        { email: regex },
-        { employeeCode: regex },
-      ];
+      andClauses.push({
+        $or: [
+          { fullName: regex },
+          { preferredName: regex },
+          { employeeCode: regex },
+          { email: regex },
+          { phoneNumber: regex },
+          { "job.jobTitle": regex },
+          { "job.department": regex },
+          { "job.project.projectName": regex },
+          { "job.workLocation": regex },
+          { city: regex },
+        ],
+      });
     }
 
     if (status && (status === EMPLOYEE_STATUSES.ACTIVE || status === EMPLOYEE_STATUSES.INACTIVE)) {
@@ -107,11 +205,95 @@ export async function getEmployees(req, res, next) {
       query["job.jobTitle"] = new RegExp(escapeRegex(jobTitle), "i");
     }
 
+    if (employmentType) {
+      query["job.employmentType"] = new RegExp(`^${escapeRegex(employmentType)}$`, "i");
+    }
+
+    if (workLocation) {
+      query["job.workLocation"] = new RegExp(escapeRegex(workLocation), "i");
+    }
+
+    if (invitationStatusRaw) {
+      const invitationStatus = invitationStatusRaw.toUpperCase();
+      if (!INVITATION_STATUSES.has(invitationStatus)) {
+        throw new HttpError(400, "Invalid invitationStatus.", {
+          field: "invitationStatus",
+          errors: {
+            invitationStatus:
+              "invitationStatus must be PENDING, ACCEPTED, EXPIRED, or DELIVERY_FAILED.",
+          },
+          code: "INVALID_INVITATION_STATUS",
+        });
+      }
+      query["invitation.status"] = invitationStatus;
+    }
+
+    if (projectTypeRaw) {
+      const projectType = projectTypeRaw.toUpperCase();
+      if (!PROJECT_TYPES.has(projectType)) {
+        throw new HttpError(400, "Invalid projectType.", {
+          field: "projectType",
+          errors: {
+            projectType: "projectType must be MANDATE, RETAIL, BENCH, or INTERNAL.",
+          },
+          code: "INVALID_PROJECT_TYPE",
+        });
+      }
+      query["job.project.projectType"] = projectType;
+    }
+
+    if (joiningFrom || joiningTo) {
+      const joiningRange = {};
+      if (joiningFrom) joiningRange.$gte = joiningFrom;
+      if (joiningTo) joiningRange.$lte = endOfUtcDay(joiningTo);
+      query["job.joiningDate"] = joiningRange;
+    }
+
+    // Direct-reports / unassigned filter (tenant-scoped via this company's Employee model).
+    if (reportingManagerRaw) {
+      const noneAliases = new Set(["none", "null", "unassigned"]);
+      if (noneAliases.has(reportingManagerRaw.toLowerCase())) {
+        andClauses.push({
+          $or: [
+            { "job.reportingManagerId": null },
+            { "job.reportingManagerId": { $exists: false } },
+          ],
+        });
+      } else if (!isStrictObjectId(reportingManagerRaw)) {
+        throw new HttpError(400, "Invalid reporting manager reference.", {
+          field: "reportingManagerId",
+          errors: { reportingManagerId: "Invalid reporting manager reference." },
+          code: "INVALID_MANAGER_ID",
+        });
+      } else {
+        const managerObjectId = new mongoose.Types.ObjectId(reportingManagerRaw);
+        const managerExists = await Employee.findById(managerObjectId).select("_id").lean();
+        if (!managerExists) {
+          throw new HttpError(400, "Reporting manager not found in this company.", {
+            field: "reportingManagerId",
+            errors: { reportingManagerId: "Reporting manager not found in this company." },
+            code: "MANAGER_NOT_FOUND",
+          });
+        }
+        query["job.reportingManagerId"] = managerObjectId;
+      }
+    }
+
+    if (andClauses.length === 1) {
+      Object.assign(query, andClauses[0]);
+    } else if (andClauses.length > 1) {
+      query.$and = andClauses;
+    }
+
+    const scopedQuery = mergeEmployeeScopeFilter(req.hrAccess, query);
+
     const [totalEmployees, employees] = await Promise.all([
-      Employee.countDocuments(query),
-      Employee.find(query)
-        .select("_id employeeCode fullName email phoneNumber job status invitation createdAt updatedAt userId dateOfBirth city")
-        .populate("job.reportingManagerId", "fullName employeeCode")
+      Employee.countDocuments(scopedQuery),
+      Employee.find(scopedQuery)
+        .select(
+          "_id employeeCode fullName preferredName email phoneNumber job status invitation.status invitation.sentAt invitation.acceptedAt createdAt updatedAt userId city"
+        )
+        .populate("job.reportingManagerId", "fullName employeeCode job.jobTitle")
         .sort({ [sortField]: sortDirection })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -144,12 +326,23 @@ export async function getEmployees(req, res, next) {
       }
     }
 
-    const enrichedEmployees = employees.map((emp) => ({
-      ...emp,
-      currentMonthlySalary: includeCompensation
-        ? compensationMap.get(String(emp._id)) ?? null
-        : undefined,
-    }));
+    const enrichedEmployees = employees.map((emp) => {
+      const manager = emp.job?.reportingManagerId;
+      const job =
+        manager && typeof manager === "object"
+          ? {
+              ...emp.job,
+              reportingManagerId: redactOutOfScopeManagerIdentity(req.hrAccess, manager),
+            }
+          : emp.job;
+      return {
+        ...emp,
+        job,
+        currentMonthlySalary: includeCompensation
+          ? compensationMap.get(String(emp._id)) ?? null
+          : undefined,
+      };
+    });
 
     res.json({
       employees: enrichedEmployees,
@@ -170,6 +363,14 @@ export async function getEmployeeSummary(req, res, next) {
     const { Employee, EmployeeCompensation } = req.auth.models;
     const now = new Date();
 
+    const baseAll = mergeEmployeeScopeFilter(req.hrAccess, {});
+    const baseActive = mergeEmployeeScopeFilter(req.hrAccess, { status: EMPLOYEE_STATUSES.ACTIVE });
+    const baseInactive = mergeEmployeeScopeFilter(req.hrAccess, { status: EMPLOYEE_STATUSES.INACTIVE });
+    const baseAssigned = mergeEmployeeScopeFilter(req.hrAccess, {
+      status: EMPLOYEE_STATUSES.ACTIVE,
+      "job.project.projectName": { $exists: true, $nin: ["", null] },
+    });
+
     const [
       totalEmployees,
       activeEmployees,
@@ -177,14 +378,11 @@ export async function getEmployeeSummary(req, res, next) {
       assignedEmployees,
       activeEmployeeDocs,
     ] = await Promise.all([
-      Employee.countDocuments({}),
-      Employee.countDocuments({ status: EMPLOYEE_STATUSES.ACTIVE }),
-      Employee.countDocuments({ status: EMPLOYEE_STATUSES.INACTIVE }),
-      Employee.countDocuments({
-        status: EMPLOYEE_STATUSES.ACTIVE,
-        "job.project.projectName": { $exists: true, $nin: ["", null] },
-      }),
-      Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE }).select("_id").lean(),
+      Employee.countDocuments(baseAll),
+      Employee.countDocuments(baseActive),
+      Employee.countDocuments(baseInactive),
+      Employee.countDocuments(baseAssigned),
+      Employee.find(baseActive).select("_id").lean(),
     ]);
 
     const activeIds = activeEmployeeDocs.map((emp) => emp._id);
@@ -225,7 +423,7 @@ export async function getEmployeeById(req, res, next) {
   try {
     const { Employee, EmployeeCompensation, Settlement } = req.auth.models;
     const employee = await Employee.findById(req.params.id)
-      .populate("job.reportingManagerId", "fullName employeeCode")
+      .populate("job.reportingManagerId", "fullName employeeCode job.jobTitle job.department")
       .lean();
 
     if (!employee) {
@@ -283,7 +481,17 @@ export async function getEmployeeById(req, res, next) {
       }
     }
 
-    res.json({
+    if (employee.job?.reportingManagerId && typeof employee.job.reportingManagerId === "object") {
+      employee.job = {
+        ...employee.job,
+        reportingManagerId: redactOutOfScopeManagerIdentity(
+          req.hrAccess,
+          employee.job.reportingManagerId
+        ),
+      };
+    }
+
+    const payload = sanitizeHrEmployeePayload({
       ...employee,
       preferredName: employee.preferredName || "",
       personalEmail: employee.personalEmail || "",
@@ -313,6 +521,76 @@ export async function getEmployeeById(req, res, next) {
       salaryComponents,
       settlement,
     });
+
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Relationship-scoped employee profile for any authenticated company user.
+ * EMPLOYEE callers receive allowlisted fields by reporting relationship.
+ * HR_ADMIN callers receive a broad HR card without invitation tokens.
+ * Does not replace HR-only GET /employees/:id management detail.
+ */
+export async function getVisibleEmployeeProfile(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+      assertHrPermission(req.hrAccess, "people.view");
+      assertEmployeeInScope(
+        req.hrAccess,
+        req.params.id,
+        "You do not have access to this employee."
+      );
+    }
+    const result = await buildVisibleEmployeeProfile({
+      Employee,
+      user: req.auth.user,
+      targetEmployeeId: req.params.id,
+    });
+    const visibleEmployee = result.employee;
+    if (
+      req.auth.user.role === USER_ROLES.HR_ADMIN &&
+      visibleEmployee?.job?.reportingManagerId &&
+      typeof visibleEmployee.job.reportingManagerId === "object"
+    ) {
+      visibleEmployee.job = {
+        ...visibleEmployee.job,
+        reportingManagerId: redactOutOfScopeManagerIdentity(
+          req.hrAccess,
+          visibleEmployee.job.reportingManagerId
+        ),
+      };
+    }
+    res.json({
+      success: true,
+      relationship: result.relationship,
+      visibilityTier: result.visibilityTier,
+      employee: visibleEmployee,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Company-wide employee directory for authenticated EMPLOYEE and HR_ADMIN.
+ * Does not replace HR-only GET /employees People Management list.
+ */
+export async function getEmployeeDirectory(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const result = await buildEmployeeDirectory({
+      Employee,
+      user: req.auth.user,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
+      hrAccess: req.hrAccess,
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -324,7 +602,7 @@ export async function getMyProfile(req, res, next) {
     const employee = await Employee.findOne({
       $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
     })
-      .populate("job.reportingManagerId", "fullName employeeCode")
+      .populate("job.reportingManagerId", "fullName employeeCode job.jobTitle job.department")
       .lean();
 
     if (!employee) {
@@ -1094,11 +1372,13 @@ export async function downloadPayslip(req, res, next) {
       }
     }
 
-    // If persisted payslip found, ensure ownership
+    // If persisted payslip found, ensure ownership (fail closed for non-owner / non-HR).
     if (persistedPayslip) {
-      if (req.auth.user.role === "EMPLOYEE" && String(persistedPayslip.employeeId) !== String(employee._id)) {
-        throw new HttpError(403, "Access denied: You are not authorized to view or download this payslip.");
-      }
+      assertCanAccessPayslip({
+        user: req.auth.user,
+        viewerEmployee: employee,
+        payslip: persistedPayslip,
+      });
 
       // If PDF format requested
       if (req.query.format === "pdf" || req.headers.accept?.includes("application/pdf")) {
@@ -1231,6 +1511,12 @@ This is a system-generated document and does not require a signature.
 export async function createEmployee(req, res, next) {
   try {
     const body = req.body || {};
+    await assertEmployeeDepartmentInHrScope(
+      req.hrAccess,
+      req.auth.models,
+      { departmentId: body.departmentId || null, departmentName: body.department || "" },
+      "You cannot create an employee outside your department scope."
+    );
     // Client-supplied role/password/company overrides are intentionally ignored.
     const clientBaseUrl =
       process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
@@ -1255,6 +1541,7 @@ export async function createEmployee(req, res, next) {
         status: body.status,
         jobTitle: body.jobTitle,
         department: body.department,
+        departmentId: body.departmentId,
         employmentType: body.employmentType,
         jobGrade: body.jobGrade,
         workLocation: body.workLocation,
@@ -1308,7 +1595,6 @@ export async function updateEmployee(req, res, next) {
       workAddress,
       emergencyContact,
       jobTitle,
-      department,
       jobGrade,
       employmentType,
       workLocation,
@@ -1322,9 +1608,11 @@ export async function updateEmployee(req, res, next) {
       identityDetails,
       attendance,
       monthlySalary,
+      reportingManagerId: reportingManagerIdRaw,
     } = req.body || {};
 
     const changes = {};
+    const reportingManagerParse = parseReportingManagerInput(reportingManagerIdRaw);
 
     // Personal details
     if (fullName && typeof fullName === "string" && fullName.trim()) {
@@ -1369,8 +1657,31 @@ export async function updateEmployee(req, res, next) {
       changes.jobTitle = { old: employee.job.jobTitle, new: String(jobTitle).trim() };
       employee.job.jobTitle = String(jobTitle).trim();
     }
-    if (department !== undefined) {
-      employee.job.department = String(department).trim();
+    const departmentBody = req.body || {};
+    const departmentProvided = Object.prototype.hasOwnProperty.call(departmentBody, "department");
+    const departmentIdProvided = Object.prototype.hasOwnProperty.call(departmentBody, "departmentId");
+    const clearDepartment = departmentBody.clearDepartment === true;
+    if (departmentProvided || departmentIdProvided || clearDepartment) {
+      const assignment = await resolveDepartmentAssignment(req.auth.models.Department, {
+        department: departmentBody.department,
+        departmentId: departmentBody.departmentId,
+        departmentProvided,
+        departmentIdProvided,
+        clearDepartment,
+        existingDepartmentId: employee.job?.departmentId || null,
+        existingDepartmentName: employee.job?.department || "",
+      });
+      if (assignment.changed && (assignment.departmentId || assignment.departmentName)) {
+        await assertEmployeeDepartmentInHrScope(req.hrAccess, req.auth.models, {
+          departmentId: assignment.departmentId,
+          departmentName: assignment.departmentName,
+        });
+      }
+      if (assignment.changed) {
+        employee.job.department = assignment.departmentName;
+        employee.job.departmentId = assignment.departmentId;
+        employee.markModified("job");
+      }
     }
     if (jobGrade !== undefined) {
       employee.job.jobGrade = String(jobGrade).trim();
@@ -1392,6 +1703,20 @@ export async function updateEmployee(req, res, next) {
     }
     if (projectType !== undefined) {
       employee.job.project.projectType = projectType;
+    }
+    if (reportingManagerParse.provided) {
+      const nextManagerId = await assertValidReportingManagerAssignment({
+        Employee,
+        employeeId: employee._id,
+        managerId: reportingManagerParse.managerId,
+      });
+      const prevManagerId = employee.job.reportingManagerId || null;
+      const prevStr = prevManagerId ? String(prevManagerId) : null;
+      const nextStr = nextManagerId ? String(nextManagerId) : null;
+      if (prevStr !== nextStr) {
+        changes.reportingManagerId = { old: prevManagerId, new: nextManagerId };
+        employee.job.reportingManagerId = nextManagerId;
+      }
     }
 
     // Status changes
@@ -1679,15 +2004,21 @@ export async function uploadEmployeeDocument(req, res, next) {
       });
     } else {
       employee = await Employee.findById(req.params.id);
-      if (employee && req.auth.user.role === USER_ROLES.EMPLOYEE) {
-        if (!employee.userId || employee.userId.toString() !== req.auth.user._id.toString()) {
-          throw new HttpError(403, "You are not authorized to upload documents for another employee.");
-        }
-      }
     }
 
     if (!employee) {
       throw new HttpError(404, "Employee record not found");
+    }
+
+    assertCanAccessEmployeeOwnedResource({
+      user: req.auth.user,
+      targetEmployee: employee,
+      denyMessage: "You are not authorized to upload documents for another employee.",
+    });
+
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+      assertHrPermission(req.hrAccess, "people.edit");
+      assertEmployeeInScope(req.hrAccess, employee._id);
     }
 
     const {
@@ -1793,11 +2124,16 @@ export async function downloadDocument(req, res, next) {
       throw new HttpError(404, "Employee not found");
     }
 
-    // Authorization check: employees may only download their own documents.
-    if (req.auth.user.role === USER_ROLES.EMPLOYEE) {
-      if (!employee.userId || employee.userId.toString() !== req.auth.user._id.toString()) {
-        throw new HttpError(403, "Access denied. You cannot access documents belonging to another employee.");
-      }
+    assertCanAccessEmployeeOwnedResource({
+      user: req.auth.user,
+      targetEmployee: employee,
+      denyMessage:
+        "Access denied. You cannot access documents belonging to another employee.",
+    });
+
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+      assertHrPermission(req.hrAccess, "people.view");
+      assertEmployeeInScope(req.hrAccess, employee._id);
     }
 
     const doc = employee.documents.id(docId);

@@ -453,6 +453,7 @@ export async function sendChatMessage({
   models,
   user,
   company,
+  hrAccess = null,
   message,
   history = [],
   abortSignal,
@@ -462,6 +463,7 @@ export async function sendChatMessage({
   const context = await getAuthorizedContext({ models, user, company });
   const systemInstruction = buildSystemInstruction(context);
   const isHrAdmin = context.isHrAdmin;
+  const toolCtx = { models, company, user, hrAccess };
 
   let ai;
   try {
@@ -472,11 +474,7 @@ export async function sendChatMessage({
     if (isHrAdmin) {
       const intentTool = detectHrQueryIntent(userMessage);
       if (intentTool) {
-        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
-          models,
-          company,
-          user,
-        });
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
         return {
           reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
           model: "deterministic-live-analyst",
@@ -522,11 +520,7 @@ export async function sendChatMessage({
 
       for (const call of initialResponse.functionCalls) {
         lastToolName = call.name;
-        const result = await executeHrAnalystTool(call.name, call.args || {}, {
-          models,
-          company,
-          user,
-        });
+        const result = await executeHrAnalystTool(call.name, call.args || {}, toolCtx);
         lastToolResult = result;
         functionResponseParts.push({
           functionResponse: {
@@ -605,11 +599,7 @@ export async function sendChatMessage({
         const intentTool = detectHrQueryIntent(userMessage);
         if (intentTool) {
           try {
-            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
-              models,
-              company,
-              user,
-            });
+            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
             return {
               reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
               model: "deterministic-live-analyst",
@@ -686,6 +676,7 @@ export async function* streamChatMessage({
   models,
   user,
   company,
+  hrAccess = null,
   message,
   history = [],
   abortSignal,
@@ -695,6 +686,7 @@ export async function* streamChatMessage({
   const context = await getAuthorizedContext({ models, user, company });
   const systemInstruction = buildSystemInstruction(context);
   const isHrAdmin = context.isHrAdmin;
+  const toolCtx = { models, company, user, hrAccess };
 
   let ai;
   try {
@@ -703,11 +695,7 @@ export async function* streamChatMessage({
     if (isHrAdmin) {
       const intentTool = detectHrQueryIntent(userMessage);
       if (intentTool) {
-        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
-          models,
-          company,
-          user,
-        });
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
         yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
         return;
       }
@@ -751,11 +739,7 @@ export async function* streamChatMessage({
 
         for (const call of initialResponse.functionCalls) {
           lastToolName = call.name;
-          const result = await executeHrAnalystTool(call.name, call.args || {}, {
-            models,
-            company,
-            user,
-          });
+          const result = await executeHrAnalystTool(call.name, call.args || {}, toolCtx);
           lastToolResult = result;
           functionResponseParts.push({
             functionResponse: {
@@ -855,11 +839,7 @@ export async function* streamChatMessage({
         const intentTool = detectHrQueryIntent(userMessage);
         if (intentTool) {
           try {
-            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, {
-              models,
-              company,
-              user,
-            });
+            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
             yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
             return;
           } catch {

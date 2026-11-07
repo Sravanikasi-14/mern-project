@@ -255,6 +255,39 @@ describe("EmailService Nodemailer SMTP Integration & Safety Suite", () => {
     assert.ok(result.error.includes("Authentication failed"));
   });
 
+  it("13b. Full recipient rejection is treated as SMTP failure (not success)", async () => {
+    emailService.setTransporter({
+      sendMail: async () => ({
+        messageId: "rej_1",
+        accepted: [],
+        rejected: ["nobody@example.test"],
+        response: "550 mailbox unavailable",
+        responseCode: 550,
+      }),
+    });
+
+    const result = await emailService.sendOfferLetter({
+      candidateName: "Nobody",
+      candidateEmail: "nobody@example.test",
+      pdfBuffer: Buffer.from("%PDF-1.4 test"),
+      company: {
+        _id: "tenant_reject_test",
+        emailSettings: {
+          fromEmail: "hr@example.test",
+          fromName: "HR",
+          smtpHost: "smtp.example.test",
+          smtpPort: 587,
+          smtpSecure: false,
+          appPasswordEncrypted: encryptSecret("reject-test-pass-1234"),
+        },
+      },
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.responseCode, 550);
+    assert.ok(String(result.error).toLowerCase().includes("reject"));
+  });
+
   it("14. setTransporter() works for direct Nodemailer-style mocks", async () => {
     let captured = null;
     emailService.setTransporter({

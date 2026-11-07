@@ -41,17 +41,28 @@ export async function authenticate(req, res, next) {
       throw new HttpError(401, "Invalid or expired credentials");
     }
 
-    if (user.onboarding && user.onboarding.status && user.onboarding.status !== "APPROVED") {
+    // APPROVED = legacy approved+activated accounts; ACTIVATED = account setup completed.
+    if (
+      user.onboarding &&
+      user.onboarding.status &&
+      user.onboarding.status !== "APPROVED" &&
+      user.onboarding.status !== "ACTIVATED"
+    ) {
       throw new HttpError(401, "Candidate onboarding must be approved before employee portal access is permitted");
     }
 
     if (models.AuthSession) {
-      const revoked = await models.AuthSession.findOne({
+      // Prefer an active session. Identical JWT strings can exist after a fast
+      // re-login when iat matches; do not deny solely because an older row is inactive.
+      const activeSession = await models.AuthSession.findOne({
         token,
-        isActive: false,
+        isActive: true,
       });
-      if (revoked) {
-        throw new HttpError(401, "Session has been logged out");
+      if (!activeSession) {
+        const priorSession = await models.AuthSession.findOne({ token });
+        if (priorSession) {
+          throw new HttpError(401, "Session has been logged out");
+        }
       }
     }
 

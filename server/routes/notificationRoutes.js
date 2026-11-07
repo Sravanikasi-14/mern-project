@@ -5,10 +5,11 @@ import {
   markAllNotificationsRead,
 } from "../controllers/notificationController.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { loadHrAccessContext } from "../middleware/hrAccessEnforcement.js";
 
 const router = express.Router();
 
-router.use(authenticate);
+router.use(authenticate, loadHrAccessContext);
 
 router.get("/", getNotifications);
 router.patch("/:id/read", markNotificationRead);

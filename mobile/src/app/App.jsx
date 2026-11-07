@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { buildHiringRedirect } from "../utils/hiringStage";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ProtectedRoute from "./ProtectedRoute";
@@ -21,6 +22,7 @@ import EmployeeAssetsPage from "../pages/employee/AssetsPage";
 import EmployeeImpactPage from "../pages/employee/ImpactPage";
 import EmployeeSettingsPage from "../pages/employee/SettingsPage";
 import EmployeeMorePage from "../pages/employee/MorePage";
+import EmployeeOrganizationPage from "../pages/employee/OrganizationPage";
 import EmployeePoliciesPage from "../pages/employee/PoliciesPage";
 import HrHomePage from "../pages/hr/HomePage";
 import HrPeoplePage from "../pages/hr/PeoplePage";
@@ -37,21 +39,48 @@ import HrPolicyDetailPage from "../pages/hr/PolicyDetailPage";
 import HrPayrollPage from "../pages/hr/PayrollPage";
 import HrPayslipDetailPage from "../pages/hr/PayslipDetailPage";
 import HrOffersPage from "../pages/hr/OffersPage";
-import HrOnboardingPage from "../pages/hr/OnboardingPage";
+import HrHiringPage from "../pages/hr/HiringPage";
+import HrOrganizationPage from "../pages/hr/OrganizationPage";
 import HrSettingsPage from "../pages/hr/SettingsPage";
 import HrReportsPage from "../pages/hr/ReportsPage";
 import HrImpactPage from "../pages/hr/ImpactPage";
 import HrMorePage from "../pages/hr/MorePage";
+import CompanyAdminHomePage from "../pages/company/HomePage";
+import { homeForRole } from "../utils/navigation";
 
 function IndexRedirect() {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, user, loading, sessionError, restoreSession } = useAuth();
   if (loading) {
     return <SessionBoot />;
   }
+  if (sessionError && !isAuthenticated && (sessionError.type === "network" || sessionError.type === "server")) {
+    return (
+      <main className="auth-screen">
+        <div className="auth-card">
+          <h2 className="section-title">Unable to verify session</h2>
+          <p className="caption" style={{ margin: "8px 0 16px" }}>{sessionError.message}</p>
+          <div className="stack">
+            <button type="button" className="btn-primary" onClick={() => restoreSession()}>
+              Try again
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => { window.location.href = "/login"; }}>
+              Sign in again
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === "HR_ADMIN" ? "/admin/dashboard" : "/app"} replace />;
+    return <Navigate to={homeForRole(user.role)} replace />;
   }
   return <Navigate to="/login" replace />;
+}
+
+/** Legacy /admin/offers and /admin/onboarding URLs -> unified /admin/hiring (status -> stage, offerId kept). */
+function HiringRedirect({ context }) {
+  const location = useLocation();
+  return <Navigate to={buildHiringRedirect(location.search, context)} replace />;
 }
 
 function Employee({ children }) {
@@ -70,6 +99,14 @@ function Hr({ children }) {
   );
 }
 
+function CompanyAdmin({ children }) {
+  return (
+    <ProtectedRoute roles={["COMPANY_ADMIN"]}>
+      {children}
+    </ProtectedRoute>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -82,6 +119,14 @@ export default function App() {
             <Route path="/activate" element={<ActivatePage />} />
             <Route path="/offers/review/:token" element={<OfferReviewPage />} />
             <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
+            <Route
+              path="/company"
+              element={
+                <CompanyAdmin>
+                  <CompanyAdminHomePage />
+                </CompanyAdmin>
+              }
+            />
             <Route element={<Employee><AppShell /></Employee>}>
               <Route path="/app" element={<EmployeeHomePage />} />
               <Route path="/app/dashboard" element={<EmployeeHomePage />} />
@@ -97,6 +142,7 @@ export default function App() {
               <Route path="/app/settings" element={<EmployeeSettingsPage />} />
               <Route path="/app/policies" element={<EmployeePoliciesPage />} />
               <Route path="/app/policies/:section" element={<HrPolicyDetailPage readOnly />} />
+              <Route path="/app/organization" element={<EmployeeOrganizationPage />} />
               <Route path="/app/more" element={<EmployeeMorePage />} />
             </Route>
             <Route element={<Hr><AppShell /></Hr>}>
@@ -115,8 +161,12 @@ export default function App() {
               <Route path="/admin/policies/:section" element={<HrPolicyDetailPage />} />
               <Route path="/admin/payroll" element={<HrPayrollPage />} />
               <Route path="/admin/payroll/payslips/:payslipId" element={<HrPayslipDetailPage />} />
-              <Route path="/admin/offers" element={<HrOffersPage />} />
-              <Route path="/admin/onboarding" element={<HrOnboardingPage />} />
+              <Route path="/admin/hiring" element={<HrHiringPage />} />
+              <Route path="/admin/organization" element={<HrOrganizationPage />} />
+              {/* Offer draft editor (create / edit DRAFT offers); the pipeline itself lives only at /admin/hiring. */}
+              <Route path="/admin/hiring/offer-editor" element={<HrOffersPage />} />
+              <Route path="/admin/offers" element={<HiringRedirect context="offers" />} />
+              <Route path="/admin/onboarding" element={<HiringRedirect context="onboarding" />} />
               <Route path="/admin/impact-points" element={<HrImpactPage />} />
               <Route path="/admin/reports" element={<HrReportsPage />} />
               <Route path="/admin/settings" element={<HrSettingsPage />} />

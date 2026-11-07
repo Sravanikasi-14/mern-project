@@ -1,13 +1,42 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSmartBack } from "../../hooks/useSmartBack";
-import { ChevronLeft } from "lucide-react";
+import { CalendarClock, ChevronLeft, History } from "lucide-react";
 import SegmentedTabs from "../../components/SegmentedTabs";
 import Toggle from "../../components/Toggle";
 import Modal from "../../components/Modal";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
 import { useToast } from "../../components/Toast";
-import { loadActivePolicy, savePolicy } from "../../services/policy.js";
+import {
+  createPolicyRevision,
+  deletePolicyRevision,
+  loadActivePolicy,
+  loadPolicyById,
+  loadPolicyHistory,
+  revisionDateKey,
+  revisionStatus,
+  savePolicy,
+  todayKey,
+} from "../../services/policy.js";
+
+const STATUS_META = {
+  ACTIVE_NOW: { label: "Active now", tone: "is-approved" },
+  FUTURE_SCHEDULED: { label: "Scheduled", tone: "is-pending" },
+  HISTORICAL: { label: "Historical", tone: "" },
+  UNKNOWN: { label: "Unknown", tone: "" },
+};
+
+function tomorrowKey() {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
+function formatRevisionDate(value) {
+  const key = revisionDateKey(value);
+  if (!key) return "—";
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+}
 
 const TITLES = {
   "work-hours": "Work Hours & Shifts",
@@ -25,7 +54,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function HrPolicyDetailPage({ readOnly = false }) {
   const navigate = useNavigate();
-  const goBack = useSmartBack("/admin/policies");
+  const goBack = useSmartBack(readOnly ? "/app/policies" : "/admin/policies");
   const { section } = useParams();
   const toast = useToast();
   const title = TITLES[section] || "Policy";
@@ -39,11 +68,40 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
   const [holidayOpen, setHolidayOpen] = useState(false);
   const [holidayForm, setHolidayForm] = useState({ name: "", date: "", type: "Gazetted Holiday" });
 
-  const load = async () => {
+  const [revisions, setRevisions] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [revisionBusy, setRevisionBusy] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newDate, setNewDate] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [newError, setNewError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const today = todayKey();
+
+  const load = async (preserveRevisionId = null) => {
     try {
       setLoading(true);
       setError("");
-      setPolicy(await loadActivePolicy());
+      const active = await loadActivePolicy();
+      if (readOnly) {
+        setPolicy(active);
+        return;
+      }
+      let list = [];
+      try {
+        list = await loadPolicyHistory();
+      } catch {
+        list = [];
+      }
+      setRevisions(list);
+      const target =
+        (preserveRevisionId && list.find((r) => r._id === preserveRevisionId)) ||
+        (active?._id && list.find((r) => r._id === active._id)) ||
+        active ||
+        list[0] ||
+        null;
+      setPolicy(target);
     } catch (err) {
       setError(err.response?.data?.message || "Could not load policy.");
     } finally {
@@ -58,13 +116,86 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
     try {
       setSaving(true);
       setError("");
+      // PUT /policies/:id against the selected revision (savePolicy uses next._id).
       const saved = await savePolicy(next);
-      setPolicy(saved?._id ? saved : next);
+      const merged = saved?._id ? saved : next;
+      setPolicy(merged);
+      if (merged?._id) {
+        setRevisions((prev) => prev.map((r) => (r._id === merged._id ? { ...r, ...merged } : r)));
+      }
       toast.push("Saved changes.");
     } catch (err) {
       setError(err.response?.data?.message || "Could not save this policy.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const selectRevision = async (rev) => {
+    if (!rev?._id || revisionBusy) return;
+    if (rev._id === policy?._id) {
+      setHistoryOpen(false);
+      return;
+    }
+    try {
+      setRevisionBusy(true);
+      setError("");
+      const fresh = await loadPolicyById(rev._id);
+      setPolicy(fresh || rev);
+      setHistoryOpen(false);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not load this revision.");
+    } finally {
+      setRevisionBusy(false);
+    }
+  };
+
+  const openNewRevision = () => {
+    setNewDate("");
+    setNewNotes("");
+    setNewError("");
+    setHistoryOpen(false);
+    setNewOpen(true);
+  };
+
+  const submitNewRevision = async () => {
+    if (revisionBusy) return;
+    if (!newDate) {
+      setNewError("Pick an effective from date for the new revision.");
+      return;
+    }
+    if (newDate <= today) {
+      setNewError("Scheduled revisions need a future effective date.");
+      return;
+    }
+    try {
+      setRevisionBusy(true);
+      setNewError("");
+      const created = await createPolicyRevision(policy, { effectiveFromDate: newDate, notes: newNotes });
+      setNewOpen(false);
+      toast.push("Scheduled revision created.");
+      await load(created?._id || null);
+    } catch (err) {
+      setNewError(err.response?.data?.message || "Could not create the policy revision.");
+    } finally {
+      setRevisionBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || revisionBusy) return;
+    try {
+      setRevisionBusy(true);
+      await deletePolicyRevision(deleteTarget._id);
+      const wasSelected = deleteTarget._id === policy?._id;
+      setDeleteTarget(null);
+      toast.push("Revision deleted.");
+      await load(wasSelected ? null : policy?._id);
+    } catch (err) {
+      setDeleteTarget(null);
+      setError(err.response?.data?.message || "Could not delete this revision.");
+    } finally {
+      setRevisionBusy(false);
     }
   };
 
@@ -89,10 +220,34 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
     return (
       <div className="st-pol-detail">
         {head}
-        <ErrorState message={error} onRetry={load} />
+        <ErrorState message={error} onRetry={() => load()} />
       </div>
     );
   }
+
+  if (!policy) {
+    return (
+      <div className="st-pol-detail">
+        {head}
+        <EmptyState message="No active company policy is available yet." />
+      </div>
+    );
+  }
+
+  if (!TITLES[section]) {
+    return (
+      <div className="st-pol-detail">
+        {head}
+        <EmptyState message="This policy section is not available." />
+        <button type="button" className="btn-secondary" style={{ marginTop: 12 }} onClick={() => goBack()}>
+          Back to policies
+        </button>
+      </div>
+    );
+  }
+
+  const selectedStatus = revisionStatus(policy, revisions, today);
+  const selectedMeta = STATUS_META[selectedStatus] || STATUS_META.UNKNOWN;
 
   const ar = policy.attendanceRules || {};
   const wr = policy.workHoursRules || {};
@@ -118,7 +273,33 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
       {head}
       {error ? <div className="alert alert-error">{error}</div> : null}
       {!readOnly ? (
-        <p className="st-pol-edit-hint">Editable policy template — changes save to the active company policy.</p>
+        <>
+          <div className="summary-row st-pol-rev-card">
+            <span className="summary-body">
+              <span className="summary-title">Effective {formatRevisionDate(policy.effectiveFromDate)}</span>
+              <span className="summary-sub">
+                {revisions.length > 0 ? `${revisions.length} revision${revisions.length === 1 ? "" : "s"}` : "Policy revision"}
+                {policy.notes ? ` · ${policy.notes}` : ""}
+              </span>
+            </span>
+            <span className={`hr-status-pill ${selectedMeta.tone}`}>{selectedMeta.label}</span>
+          </div>
+          <div className="st-pol-rev-actions">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => setHistoryOpen(true)}>
+              <History size={16} strokeWidth={1.85} aria-hidden="true" /> Revision history
+            </button>
+            <button type="button" className="btn-secondary btn-sm" disabled={!policy._id} onClick={openNewRevision}>
+              <CalendarClock size={16} strokeWidth={1.85} aria-hidden="true" /> Schedule revision
+            </button>
+          </div>
+          <p className="st-pol-edit-hint">
+            {selectedStatus === "ACTIVE_NOW"
+              ? "Editing the currently active revision — changes save to this revision."
+              : selectedStatus === "FUTURE_SCHEDULED"
+                ? "Editing a scheduled revision — it takes effect on its effective date."
+                : "Editing a historical revision — it does not affect the live policy."}
+          </p>
+        </>
       ) : null}
 
       {section === "work-hours" ? (
@@ -281,6 +462,104 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
             </span>
           </div>
         ))
+      ) : null}
+
+      {!readOnly ? (
+        <>
+          <Modal
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            title="Revision history"
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setHistoryOpen(false)}>Close</button>
+                <button type="button" className="btn-primary" onClick={openNewRevision}>Schedule revision</button>
+              </>
+            }
+          >
+            {revisions.length === 0 ? (
+              <EmptyState message="No revisions found." />
+            ) : (
+              <div className="st-pol-rev-list">
+                {revisions.map((rev) => {
+                  const status = revisionStatus(rev, revisions, today);
+                  const meta = STATUS_META[status] || STATUS_META.UNKNOWN;
+                  const isSelected = rev._id === policy._id;
+                  return (
+                    <div key={rev._id} className={`summary-row st-pol-rev-row${isSelected ? " is-selected" : ""}`}>
+                      <span className="summary-body">
+                        <span className="summary-title">{formatRevisionDate(rev.effectiveFromDate)}</span>
+                        <span className="summary-sub">{rev.notes || (isSelected ? "Currently editing" : "No notes")}</span>
+                        <span className="st-pol-rev-btns">
+                          {isSelected ? (
+                            <span className="caption">Currently editing</span>
+                          ) : (
+                            <button type="button" className="btn-secondary btn-sm" disabled={revisionBusy} onClick={() => selectRevision(rev)}>
+                              View / Edit
+                            </button>
+                          )}
+                          {revisions.length > 1 && !isSelected ? (
+                            <button type="button" className="btn-ghost btn-sm st-pol-rev-del" disabled={revisionBusy} onClick={() => setDeleteTarget(rev)}>
+                              Delete
+                            </button>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span className={`hr-status-pill ${meta.tone}`}>{meta.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Modal>
+
+          <Modal
+            open={newOpen}
+            onClose={() => setNewOpen(false)}
+            title="Schedule policy revision"
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setNewOpen(false)}>Cancel</button>
+                <button type="button" className="btn-primary" disabled={revisionBusy} onClick={submitNewRevision}>
+                  {revisionBusy ? "Creating..." : "Create revision"}
+                </button>
+              </>
+            }
+          >
+            <form className="form-grid" onSubmit={(event) => { event.preventDefault(); submitNewRevision(); }}>
+              <p className="caption">
+                Creates a new revision cloned from the one you are viewing. It takes effect automatically on the selected date; existing revisions stay intact.
+              </p>
+              {newError ? <div className="alert alert-error">{newError}</div> : null}
+              <label>
+                Effective from
+                <input type="date" min={tomorrowKey()} value={newDate} onChange={(event) => setNewDate(event.target.value)} />
+              </label>
+              <label>
+                Notes (optional)
+                <input value={newNotes} onChange={(event) => setNewNotes(event.target.value)} placeholder="e.g. FY27 leave update" />
+              </label>
+            </form>
+          </Modal>
+
+          <Modal
+            open={Boolean(deleteTarget)}
+            onClose={() => setDeleteTarget(null)}
+            title="Delete revision?"
+            footer={
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                <button type="button" className="btn-primary" disabled={revisionBusy} onClick={confirmDelete}>
+                  {revisionBusy ? "Deleting..." : "Delete"}
+                </button>
+              </>
+            }
+          >
+            <p className="caption">
+              Delete the policy revision effective {formatRevisionDate(deleteTarget?.effectiveFromDate)}? This cannot be undone.
+            </p>
+          </Modal>
+        </>
       ) : null}
 
       <Modal

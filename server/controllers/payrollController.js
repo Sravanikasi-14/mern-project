@@ -1,6 +1,17 @@
+import { assertCanAccessPayslip } from "../authorization/resourceOwnership.js";
 import { HttpError } from "../utils/httpError.js";
 import { calculatePayrollCycle } from "../services/payrollCalculationService.js";
 import { generatePayslipPdfBuffer } from "../services/payslipPdfService.js";
+import {
+  assertEmployeeInScope,
+  assertHrPermission,
+  assertHrCompanyWidePayrollMutation,
+  filterPayslipsByScope,
+  filterValidationIssuesByScope,
+  isEmployeeIdInScope,
+  shapePayrollCycleForHrAccess,
+} from "../services/hrAccessEnforcementService.js";
+import { USER_ROLES } from "../models/User.js";
 
 /**
  * GET /api/payroll/cycles
@@ -11,7 +22,7 @@ export async function listPayrollCycles(req, res, next) {
     const { PayrollCycle } = req.auth.models;
     const cycles = await PayrollCycle.find({})
       .select(
-        "periodMonth periodYear status notes totalNetSalary employeeCount createdBy finalizedBy createdAt updatedAt finalizedAt"
+        "periodMonth periodYear status notes totalNetSalary totalNetPayable totalGrossEarnings totalEmployeeDeductions employeeCount createdBy finalizedBy createdAt updatedAt finalizedAt"
       )
       .sort({ periodYear: -1, periodMonth: -1 })
       .limit(36)
@@ -19,10 +30,13 @@ export async function listPayrollCycles(req, res, next) {
       .populate("finalizedBy", "name email")
       .lean();
 
+    // CUSTOM-scoped HR: redact company-wide stored totals (list has no payslip set to recompute)
+    const shaped = cycles.map((c) => shapePayrollCycleForHrAccess(req.hrAccess, c, null));
+
     res.status(200).json({
       success: true,
-      cycles,
-      data: cycles,
+      cycles: shaped,
+      data: shaped,
     });
   } catch (error) {
     next(error);
@@ -35,6 +49,7 @@ export async function listPayrollCycles(req, res, next) {
  */
 export async function createPayrollCycle(req, res, next) {
   try {
+    assertHrCompanyWidePayrollMutation(req.hrAccess);
     const { PayrollCycle, Payslip } = req.auth.models;
     const { notes } = req.body || {};
 
@@ -112,12 +127,28 @@ export async function createPayrollCycle(req, res, next) {
       await Payslip.insertMany(payslipsToInsert);
     }
 
+    const createdPayslips = await Payslip.find({ payrollCycleId: newCycle._id })
+      .populate("employeeId", "fullName employeeCode email avatar job")
+      .lean();
+    const scopedPayslips = filterPayslipsByScope(req.hrAccess, createdPayslips);
+    const scopedValidationIssues = filterValidationIssuesByScope(
+      req.hrAccess,
+      calculation.validationIssues
+    );
+    const cycleObj = newCycle.toObject ? newCycle.toObject() : newCycle;
+    const shapedCycle = shapePayrollCycleForHrAccess(
+      req.hrAccess,
+      { ...cycleObj, validationIssues: calculation.validationIssues },
+      scopedPayslips
+    );
+
     res.status(201).json({
       success: true,
-      cycle: newCycle,
-      data: newCycle,
-      employeeCount: calculation.cycleSummary.employeeCount,
-      validationIssues: calculation.validationIssues,
+      cycle: shapedCycle,
+      data: shapedCycle,
+      payslips: scopedPayslips,
+      employeeCount: shapedCycle.employeeCount,
+      validationIssues: scopedValidationIssues,
       message: `Payroll cycle for ${month}/${year} created and draft calculated.`,
     });
   } catch (error) {
@@ -143,14 +174,17 @@ export async function getPayrollCycleDetails(req, res, next) {
       throw new HttpError(404, "Payroll cycle not found.");
     }
 
-    const payslips = await Payslip.find({ payrollCycleId: cycleId })
+    let payslips = await Payslip.find({ payrollCycleId: cycleId })
       .populate("employeeId", "fullName employeeCode email avatar job")
       .sort({ "employeeSnapshot.fullName": 1 })
       .lean();
 
+    payslips = filterPayslipsByScope(req.hrAccess, payslips);
+    const shapedCycle = shapePayrollCycleForHrAccess(req.hrAccess, cycle, payslips);
+
     const cycleData = {
-      ...cycle,
-      totalDeductions: cycle.totalEmployeeDeductions,
+      ...shapedCycle,
+      totalDeductions: shapedCycle.totalEmployeeDeductions,
       register: payslips.map((p) => ({
         ...p,
         employeeNumber: p.employeeSnapshot?.employeeCode || "",
@@ -160,7 +194,7 @@ export async function getPayrollCycleDetails(req, res, next) {
 
     res.status(200).json({
       success: true,
-      cycle,
+      cycle: shapedCycle,
       payslips,
       data: cycleData,
     });
@@ -175,6 +209,7 @@ export async function getPayrollCycleDetails(req, res, next) {
  */
 export async function recalculatePayrollCycle(req, res, next) {
   try {
+    assertHrCompanyWidePayrollMutation(req.hrAccess);
     const { PayrollCycle, Payslip } = req.auth.models;
     const { cycleId } = req.params;
 
@@ -222,12 +257,24 @@ export async function recalculatePayrollCycle(req, res, next) {
       .sort({ "employeeSnapshot.fullName": 1 })
       .lean();
 
+    const scopedPayslips = filterPayslipsByScope(req.hrAccess, updatedPayslips);
+    const scopedValidationIssues = filterValidationIssuesByScope(
+      req.hrAccess,
+      calculation.validationIssues
+    );
+    const cycleObj = cycle.toObject ? cycle.toObject() : cycle;
+    const shapedCycle = shapePayrollCycleForHrAccess(
+      req.hrAccess,
+      { ...cycleObj, validationIssues: calculation.validationIssues },
+      scopedPayslips
+    );
+
     res.status(200).json({
       success: true,
-      cycle,
-      data: cycle,
-      payslips: updatedPayslips,
-      validationIssues: calculation.validationIssues,
+      cycle: shapedCycle,
+      data: shapedCycle,
+      payslips: scopedPayslips,
+      validationIssues: scopedValidationIssues,
       message: "Payroll draft recalculated successfully.",
     });
   } catch (error) {
@@ -241,6 +288,7 @@ export async function recalculatePayrollCycle(req, res, next) {
  */
 export async function finalizePayrollCycle(req, res, next) {
   try {
+    assertHrCompanyWidePayrollMutation(req.hrAccess);
     const { PayrollCycle, Payslip, AuditLog } = req.auth.models;
     const { cycleId } = req.params;
 
@@ -289,10 +337,14 @@ export async function finalizePayrollCycle(req, res, next) {
       });
     }
 
+    const cycleObj = cycle.toObject ? cycle.toObject() : cycle;
+    // Finalize remains company-wide; response aggregates redacted for CUSTOM scope
+    const shapedCycle = shapePayrollCycleForHrAccess(req.hrAccess, cycleObj, null);
+
     res.status(200).json({
       success: true,
-      cycle,
-      data: cycle,
+      cycle: shapedCycle,
+      data: shapedCycle,
       message: `Payroll cycle for ${cycle.periodMonth}/${cycle.periodYear} finalized successfully. Payslips are now available for employee access.`,
     });
   } catch (error) {
@@ -306,9 +358,10 @@ export async function finalizePayrollCycle(req, res, next) {
  */
 export async function recordCyclePayment(req, res, next) {
   try {
+    assertHrCompanyWidePayrollMutation(req.hrAccess);
     const { PayrollCycle, Payslip, AuditLog } = req.auth.models;
     const { cycleId } = req.params;
-    const { paymentDate, paymentMethod, referenceNumber, amount, amountPaid, remarks, notes } = req.body;
+    const { paymentDate, paymentMethod, referenceNumber, amount, amountPaid, remarks, notes } = req.body || {};
 
     const cycle = await PayrollCycle.findById(cycleId);
     if (!cycle) {
@@ -467,16 +520,28 @@ export async function downloadPayslipPdf(req, res, next) {
       throw new HttpError(404, "Payslip not found.");
     }
 
-    // Security ownership check:
-    // If the authenticated user is an Employee, they can ONLY access their own payslip!
-    if (req.auth.user.role === "EMPLOYEE") {
-      const employee = await Employee.findOne({
-        $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
-      });
+    // Fail closed: owner or HR_ADMIN only (non-EMPLOYEE identity roles cannot bypass).
+    const viewerEmployee = await Employee.findOne({
+      $or: [{ userId: req.auth.user._id }, { email: req.auth.user.email }],
+    });
+    assertCanAccessPayslip({
+      user: req.auth.user,
+      viewerEmployee,
+      payslip,
+    });
 
-      if (!employee || String(payslip.employeeId) !== String(employee._id)) {
-        throw new HttpError(403, "Access denied: You are not authorized to view or download this payslip.");
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+      // HR may download via ownership bypass; still require payroll.view + scope when enforced
+      if (!req.hrAccess) {
+        const { resolveHrAccessContext } = await import("../services/hrAccessEnforcementService.js");
+        req.hrAccess = await resolveHrAccessContext({
+          user: req.auth.user,
+          company: req.auth.company,
+          models: req.auth.models,
+        });
       }
+      assertHrPermission(req.hrAccess, "payroll.view");
+      assertEmployeeInScope(req.hrAccess, payslip.employeeId);
     }
 
     // Do not download unfinalized drafts

@@ -1,18 +1,104 @@
 import crypto from "node:crypto";
 import mongoose from "mongoose";
 import { HttpError } from "../utils/httpError.js";
+import {
+  assertEmployeeInScope,
+  hasHrPermission,
+  mergeEmployeeScopeFilter,
+  redactOutOfScopeManagerIdentity,
+} from "../services/hrAccessEnforcementService.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
+import Company from "../models/Company.js";
+import { DEFAULT_OFFER_CLAUSES } from "../services/offerTemplateService.js";
 import {
-  DEFAULT_OFFER_CLAUSES,
-  renderOfferLetterHtml,
-} from "../services/offerTemplateService.js";
-import { generateOfferLetterPdf } from "../services/pdfService.js";
+  getIssuedPdfDownload,
+  storeIssuedPdfIfNeeded,
+  streamIssuedPdfToResponse,
+} from "../services/offerDocumentService.js";
+import {
+  appendSignatureBlockToHtml,
+  buildOfferDataFromSources,
+  buildSignedOfferHtml,
+  pdfBufferFromHtml,
+  renderStandardOfferHtml,
+} from "../services/offerStandardRenderService.js";
+import { getStorageFileId } from "../services/offerGridFsStorageService.js";
+import { loadCompanySignature } from "../services/offerTemplateRenderService.js";
+import { getOrCreateSignedPdf } from "../services/offerSignedPdfService.js";
+import { getConversionStatus } from "../services/docxConversionService.js";
 import { emailService } from "../services/emailService.js";
-import { signOfferSigningToken } from "../utils/onboardingToken.js";
+import {
+  signOfferSigningToken,
+  verifyOfferSigningToken,
+} from "../utils/onboardingToken.js";
+import { encryptSecret, decryptSecret } from "../utils/secretCrypto.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
+
+/**
+ * Resolve the candidate review JWT for send/resend.
+ * Reuses an unexpired stored token when possible; otherwise mints a new one.
+ * Callers must persist hash/encrypted/expiry only after SMTP accepts.
+ */
+function resolveOfferSigningTokenForSend({
+  offerLetter,
+  companyId,
+  candidateEmail,
+  validityDays,
+}) {
+  const now = Date.now();
+  const existingExpiry = offerLetter.signingTokenExpiresAt
+    ? new Date(offerLetter.signingTokenExpiresAt).getTime()
+    : 0;
+  const hasUnexpired =
+    Boolean(offerLetter.signingTokenHash) &&
+    Boolean(offerLetter.signingTokenEncrypted) &&
+    existingExpiry > now;
+
+  if (hasUnexpired) {
+    try {
+      const plaintext = decryptSecret(offerLetter.signingTokenEncrypted);
+      const payload = verifyOfferSigningToken(plaintext);
+      const hash = crypto.createHash("sha256").update(plaintext).digest("hex");
+      const sameOffer = String(payload.offerId) === String(offerLetter._id);
+      const sameEmail =
+        String(payload.sub || "").toLowerCase() ===
+        String(candidateEmail || "").trim().toLowerCase();
+      const sameCompany = String(payload.companyId) === String(companyId);
+      if (
+        sameOffer &&
+        sameEmail &&
+        sameCompany &&
+        hash === offerLetter.signingTokenHash
+      ) {
+        return {
+          signingToken: plaintext,
+          tokenHash: offerLetter.signingTokenHash,
+          tokenExpiresAt: offerLetter.signingTokenExpiresAt,
+          reused: true,
+        };
+      }
+    } catch {
+      // Fall through and mint a replacement token.
+    }
+  }
+
+  const signingToken = signOfferSigningToken({
+    companyId,
+    offerId: offerLetter._id,
+    email: candidateEmail,
+  });
+  const tokenHash = crypto.createHash("sha256").update(signingToken).digest("hex");
+  const tokenExpiresAt = new Date(now + validityDays * 24 * 60 * 60 * 1000);
+  return {
+    signingToken,
+    tokenHash,
+    tokenExpiresAt,
+    reused: false,
+  };
+}
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -31,6 +117,66 @@ async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   } catch (err) {
     console.error("[offerLetterController] Audit log error:", err.message);
   }
+}
+
+/**
+ * Company document used for rendering standard offers. Re-fetches letterhead/contact fields
+ * so the render always sees current settings (logo bytes are loaded by the renderer itself).
+ */
+async function loadOfferRenderCompany(req) {
+  const base = req.auth?.company;
+  if (!base?._id) return base;
+  try {
+    const fresh = await Company.findById(base._id)
+      .select(
+        "companyName slug primaryContact letterhead.address letterhead.website letterhead.signatoryName letterhead.signatoryTitle letterhead.signatureMethod letterhead.signatureMimeType letterhead.signatureTypedText letterhead.signatureUpdatedAt +letterhead.signatureData branding.logoMimeType"
+      )
+      .lean();
+    if (!fresh) return base;
+    return { ...fresh, name: fresh.companyName };
+  } catch {
+    return base;
+  }
+}
+
+export const HR_SIGNATURE_REQUIRED_MESSAGE =
+  "Save your electronic signature in Settings before sending offer letters.";
+
+/**
+ * True when the company has a usable HR e-signature for PDF embedding:
+ * stored image bytes that can be loaded, or TYPE with typed text (server can render SVG).
+ */
+export async function companyHasHrSignature(companyId) {
+  if (!companyId) return false;
+  const loaded = await loadCompanySignature({ _id: companyId });
+  if (loaded?.dataUrl) return true;
+  return (
+    String(loaded?.method || "").toUpperCase() === "TYPE" &&
+    Boolean(String(loaded?.typedText || "").trim())
+  );
+}
+
+/** Never expose the frozen HR signature data URL (or candidate image bytes) in API payloads. */
+function sanitizeOfferForResponse(offer) {
+  if (!offer || typeof offer !== "object") return offer;
+  const out = { ...offer };
+  if (out.offerDataSnapshot && typeof out.offerDataSnapshot === "object") {
+    out.offerDataSnapshot = { ...out.offerDataSnapshot };
+    delete out.offerDataSnapshot.hrSignatureDataUrl;
+  }
+  if (out.signature && typeof out.signature === "object") {
+    out.signature = { ...out.signature };
+    delete out.signature.imageData;
+    delete out.signature.imageDataUrl;
+  }
+  return out;
+}
+
+function signatoryExtras(body = {}) {
+  const extras = {};
+  if (typeof body.signatoryName === "string") extras.signatoryName = body.signatoryName;
+  if (typeof body.signatoryTitle === "string") extras.signatoryTitle = body.signatoryTitle;
+  return extras;
 }
 
 function escapeRegex(text) {
@@ -65,7 +211,10 @@ export async function getOfferRecipients(req, res, next) {
   try {
     const { Employee, EmployeeCompensation } = req.auth.models;
 
-    const employees = await Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE })
+    const includeSalary = hasHrPermission(req.hrAccess, "payroll.view");
+    const employees = await Employee.find(
+      mergeEmployeeScopeFilter(req.hrAccess, { status: EMPLOYEE_STATUSES.ACTIVE })
+    )
       .select("fullName email employeeCode job status")
       .populate("job.reportingManagerId", "fullName employeeCode")
       .sort({ fullName: 1 })
@@ -73,7 +222,7 @@ export async function getOfferRecipients(req, res, next) {
 
     const employeeIds = employees.map((emp) => emp._id);
     let compensations = [];
-    if (EmployeeCompensation && employeeIds.length > 0) {
+    if (includeSalary && EmployeeCompensation && employeeIds.length > 0) {
       compensations = await EmployeeCompensation.find({
         employeeId: { $in: employeeIds },
       })
@@ -96,20 +245,26 @@ export async function getOfferRecipients(req, res, next) {
       }
     }
 
-    const recipients = employees.map((emp) => ({
-      _id: emp._id,
-      fullName: emp.fullName,
-      email: emp.email,
-      employeeCode: emp.employeeCode,
-      position: emp.job?.jobTitle || "",
-      department: emp.job?.department || "",
-      workLocation: emp.job?.workLocation || "",
-      employmentType: emp.job?.employmentType || "Full-time Permanent",
-      joiningDate: emp.job?.joiningDate || null,
-      reportingManager: emp.job?.reportingManagerId?.fullName || "",
-      monthlySalary: compensationMap.get(String(emp._id)) ?? null,
-      status: emp.status,
-    }));
+    const recipients = employees.map((emp) => {
+      const row = {
+        _id: emp._id,
+        fullName: emp.fullName,
+        email: emp.email,
+        employeeCode: emp.employeeCode,
+        position: emp.job?.jobTitle || "",
+        department: emp.job?.department || "",
+        workLocation: emp.job?.workLocation || "",
+        employmentType: emp.job?.employmentType || "Full-time Permanent",
+        joiningDate: emp.job?.joiningDate || null,
+        reportingManager:
+          redactOutOfScopeManagerIdentity(req.hrAccess, emp.job?.reportingManagerId)?.fullName || "",
+        status: emp.status,
+      };
+      if (includeSalary) {
+        row.monthlySalary = compensationMap.get(String(emp._id)) ?? null;
+      }
+      return row;
+    });
 
     res.json({
       success: true,
@@ -142,6 +297,7 @@ export async function getOfferSummary(req, res, next) {
       sent: 0,
       accepted: 0,
       rejected: 0,
+      withdrawn: 0,
     };
 
     for (const item of counts) {
@@ -150,6 +306,7 @@ export async function getOfferSummary(req, res, next) {
       else if (item._id === OFFER_LETTER_STATUSES.SENT) summary.sent = item.count;
       else if (item._id === OFFER_LETTER_STATUSES.ACCEPTED) summary.accepted = item.count;
       else if (item._id === OFFER_LETTER_STATUSES.REJECTED) summary.rejected = item.count;
+      else if (item._id === OFFER_LETTER_STATUSES.WITHDRAWN) summary.withdrawn = item.count;
     }
 
     res.json({
@@ -160,6 +317,32 @@ export async function getOfferSummary(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * Fields required by the Offer Letters list UI.
+ * Excludes large HTML (content/issuedContent), clauses, snapshots, signatures and PDF bodies.
+ * Full document remains available via GET /offer-letters/:id and preview/PDF endpoints.
+ */
+export const OFFER_LETTER_LIST_SELECT = [
+  "candidate",
+  "position",
+  "department",
+  "workLocation",
+  "employmentType",
+  "monthlySalary",
+  "annualSalary",
+  "joiningDate",
+  "status",
+  "emailedAt",
+  "emailDelivery",
+  "issuedAt",
+  "decisionAt",
+  "withdrawal",
+  "employeeId",
+  "signedPdf.fileId",
+  "createdAt",
+  "updatedAt",
+].join(" ");
 
 /**
  * List offer letters with status filters, search, and pagination
@@ -177,6 +360,9 @@ export async function getOfferLetters(req, res, next) {
 
     if (status && Object.values(OFFER_LETTER_STATUSES).includes(status)) {
       query.status = status;
+    } else {
+      // Active list default: hide withdrawn offers unless HR filters for WITHDRAWN explicitly.
+      query.status = { $ne: OFFER_LETTER_STATUSES.WITHDRAWN };
     }
 
     if (search) {
@@ -192,8 +378,8 @@ export async function getOfferLetters(req, res, next) {
     const [total, offers] = await Promise.all([
       OfferLetter.countDocuments(query),
       OfferLetter.find(query)
+        .select(OFFER_LETTER_LIST_SELECT)
         .populate("employeeId", "fullName employeeCode email status")
-        .populate("createdBy", "email role")
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -215,6 +401,15 @@ export async function getOfferLetters(req, res, next) {
       emailDelivery: offer.emailDelivery || null,
       issuedAt: offer.issuedAt || null,
       decisionAt: offer.decisionAt || null,
+      candidateSigned: offer.status === OFFER_LETTER_STATUSES.ACCEPTED,
+      hasSignedPdf: Boolean(offer.signedPdf?.fileId),
+      withdrawal: offer.withdrawal
+        ? {
+            reason: offer.withdrawal.reason || "",
+            withdrawnAt: offer.withdrawal.withdrawnAt || null,
+            withdrawnByEmail: offer.withdrawal.withdrawnByEmail || "",
+          }
+        : null,
       employeeId: offer.employeeId?._id || offer.employeeId || null,
       employee: offer.employeeId && typeof offer.employeeId === "object"
         ? {
@@ -252,6 +447,7 @@ export async function getOfferLetterById(req, res, next) {
     const { id } = req.params;
 
     const offerLetter = await OfferLetter.findById(id)
+      .select("+signature.imageData")
       .populate("employeeId", "fullName employeeCode email job status")
       .populate("createdBy", "email role")
       .lean();
@@ -260,9 +456,24 @@ export async function getOfferLetterById(req, res, next) {
       throw new HttpError(404, "Offer letter not found.");
     }
 
+    // Preview shows what the candidate actually received (frozen issuedContent), plus the
+    // candidate signature once ACCEPTED. The live draft `content` is only used before first send.
+    try {
+      if (offerLetter.status === "ACCEPTED" && offerLetter.signature?.signedAt && offerLetter.issuedContent) {
+        offerLetter.content = buildSignedOfferHtml({
+          issuedContent: offerLetter.issuedContent,
+          signature: offerLetter.signature,
+        }).html;
+      } else if (offerLetter.issuedContent) {
+        offerLetter.content = offerLetter.issuedContent;
+      }
+    } catch (renderErr) {
+      console.warn("[offerLetter] Could not build signed preview HTML:", renderErr.message);
+    }
+
     res.json({
       success: true,
-      offerLetter,
+      offerLetter: sanitizeOfferForResponse(offerLetter),
     });
   } catch (error) {
     next(error);
@@ -318,13 +529,19 @@ export async function previewOfferLetter(req, res, next) {
       joiningDate: joiningDate ? new Date(joiningDate) : new Date(),
       clauses: validatedClauses,
       createdAt: new Date(),
+      ...signatoryExtras(req.body),
     };
 
-    const renderedHtml = renderOfferLetterHtml(offerData, req.auth.company);
+    const company = await loadOfferRenderCompany(req);
+    const renderedHtml = await renderStandardOfferHtml({ offerData, company });
 
     res.json({
       success: true,
       html: renderedHtml,
+      hasHrSignature: await companyHasHrSignature(company?._id),
+      conversion: getConversionStatus(),
+      templateId: null,
+      templateType: null,
     });
   } catch (error) {
     next(error);
@@ -420,9 +637,12 @@ export async function createOfferLetter(req, res, next) {
       joiningDate: new Date(joiningDate),
       clauses: validatedClauses,
       createdAt: new Date(),
+      ...signatoryExtras(req.body),
     };
 
-    const renderedHtml = renderOfferLetterHtml(offerData, req.auth.company);
+    // Single standard HRMS template: templateId from clients (if any) is ignored.
+    const company = await loadOfferRenderCompany(req);
+    const renderedHtml = await renderStandardOfferHtml({ offerData, company });
 
     const newOffer = await OfferLetter.create({
       ...offerData,
@@ -430,6 +650,10 @@ export async function createOfferLetter(req, res, next) {
       content: renderedHtml,
       status: OFFER_LETTER_STATUSES.DRAFT,
       createdBy: req.auth.user._id,
+      templateId: null,
+      templateVersion: null,
+      templateType: null,
+      offerDataSnapshot: offerData,
     });
 
     if (AuditLog) {
@@ -440,6 +664,7 @@ export async function createOfferLetter(req, res, next) {
         monthlySalary: salaryNum,
         joiningDate: newOffer.joiningDate,
         status: newOffer.status,
+        templateId: null,
       });
     }
 
@@ -564,9 +789,31 @@ export async function updateOfferLetter(req, res, next) {
       }));
     }
 
-    // Re-render HTML content deterministically
-    const renderedHtml = renderOfferLetterHtml(offerLetter, req.auth.company);
-    offerLetter.content = renderedHtml;
+    // Re-render with the single standard template from current fields + optional signatory overrides
+    const refreshedData = buildOfferDataFromSources(offerLetter, signatoryExtras(req.body));
+    const company = await loadOfferRenderCompany(req);
+    offerLetter.content = await renderStandardOfferHtml({ offerData: refreshedData, company });
+    offerLetter.offerDataSnapshot = refreshedData;
+    offerLetter.markModified("offerDataSnapshot");
+    offerLetter.templateId = null;
+    offerLetter.templateVersion = null;
+    offerLetter.templateType = null;
+    // A DRAFT may carry a frozen document from a failed first send; editing invalidates it
+    // (the old GridFS blob is left untouched, only the pointer is cleared).
+    if (offerLetter.issuedContent) offerLetter.issuedContent = "";
+    if (offerLetter.generatedPdf?.fileId) {
+      offerLetter.generatedPdf = {
+        provider: "",
+        bucket: "",
+        fileId: null,
+        key: "",
+        filename: "",
+        contentType: "",
+        byteSize: 0,
+        checksumSha256: "",
+        generatedAt: null,
+      };
+    }
     offerLetter.updatedAt = new Date();
 
     await offerLetter.save();
@@ -591,7 +838,8 @@ export async function updateOfferLetter(req, res, next) {
 }
 
 /**
- * Manually update status of an offer letter (DRAFT -> SENT, ACCEPTED, REJECTED)
+ * Manually update status of an offer letter (DRAFT -> SENT, ACCEPTED, REJECTED).
+ * Withdrawal must use POST /:id/withdraw — not this endpoint.
  */
 export async function updateOfferStatus(req, res, next) {
   try {
@@ -600,10 +848,24 @@ export async function updateOfferStatus(req, res, next) {
     const { status, decisionNotes } = req.body || {};
 
     const cleanStatus = String(status || "").toUpperCase().trim();
-    if (!Object.values(OFFER_LETTER_STATUSES).includes(cleanStatus)) {
+    // SENT is not settable here — offers become SENT only via POST /:id/send, which
+    // requires an HR signature, freezes issuedContent, generates the PDF, and emails it.
+    const allowedManual = [
+      OFFER_LETTER_STATUSES.DRAFT,
+      OFFER_LETTER_STATUSES.ACCEPTED,
+      OFFER_LETTER_STATUSES.REJECTED,
+    ];
+    if (cleanStatus === OFFER_LETTER_STATUSES.SENT) {
       throw new HttpError(
         400,
-        `Invalid status '${status}'. Must be DRAFT, SENT, ACCEPTED, or REJECTED.`
+        "Use Send email to issue an offer. Manual Mark as Sent is disabled so unsigned offers cannot bypass the HR signature requirement.",
+        { code: "HR_SIGNATURE_REQUIRED" }
+      );
+    }
+    if (!allowedManual.includes(cleanStatus)) {
+      throw new HttpError(
+        400,
+        `Invalid status '${status}'. Must be DRAFT, ACCEPTED, or REJECTED. Use Send email to issue, or the withdraw endpoint to withdraw.`
       );
     }
 
@@ -613,6 +875,10 @@ export async function updateOfferStatus(req, res, next) {
     }
 
     const oldStatus = offerLetter.status;
+
+    if (oldStatus === OFFER_LETTER_STATUSES.WITHDRAWN) {
+      throw new HttpError(400, "Cannot change status of a withdrawn offer letter.");
+    }
 
     // Disallow moving backward from issued or decided states to DRAFT
     if (cleanStatus === OFFER_LETTER_STATUSES.DRAFT && oldStatus !== OFFER_LETTER_STATUSES.DRAFT) {
@@ -624,9 +890,7 @@ export async function updateOfferStatus(req, res, next) {
 
     offerLetter.status = cleanStatus;
 
-    if (cleanStatus === OFFER_LETTER_STATUSES.SENT) {
-      offerLetter.issuedAt = new Date();
-    } else if (
+    if (
       cleanStatus === OFFER_LETTER_STATUSES.ACCEPTED ||
       cleanStatus === OFFER_LETTER_STATUSES.REJECTED
     ) {
@@ -658,33 +922,245 @@ export async function updateOfferStatus(req, res, next) {
 }
 
 /**
+ * Withdraw a sent, unsigned offer. Preserves document, PDF, email history.
+ * Atomically transitions SENT -> WITHDRAWN so concurrent accept cannot also succeed.
+ */
+export async function withdrawOfferLetter(req, res, next) {
+  try {
+    const { OfferLetter, AuditLog } = req.auth.models;
+    const { id } = req.params;
+    const reason = String(req.body?.reason || "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new HttpError(400, "Invalid offer letter ID.");
+    }
+
+    if (!reason || reason.length < 3) {
+      throw new HttpError(400, "A withdrawal reason is required (at least 3 characters).");
+    }
+    if (reason.length > 2000) {
+      throw new HttpError(400, "Withdrawal reason must be 2000 characters or fewer.");
+    }
+
+    const existing = await OfferLetter.findById(id).lean();
+    if (!existing) {
+      throw new HttpError(404, "Offer letter not found.");
+    }
+
+    if (existing.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+      return res.json({
+        success: true,
+        message: "This offer letter has already been withdrawn.",
+        offerLetter: existing,
+        alreadyWithdrawn: true,
+      });
+    }
+
+    if (existing.status === OFFER_LETTER_STATUSES.DRAFT) {
+      throw new HttpError(
+        400,
+        "Draft offers cannot be withdrawn. Delete the draft instead if it is no longer needed."
+      );
+    }
+
+    if (existing.status === OFFER_LETTER_STATUSES.ACCEPTED) {
+      throw new HttpError(
+        400,
+        "Accepted/signed offers cannot be withdrawn through this action."
+      );
+    }
+
+    if (existing.status === OFFER_LETTER_STATUSES.REJECTED) {
+      throw new HttpError(
+        400,
+        "Rejected offers cannot be withdrawn. History is preserved as rejected."
+      );
+    }
+
+    if (existing.status !== OFFER_LETTER_STATUSES.SENT) {
+      throw new HttpError(
+        400,
+        `Cannot withdraw an offer letter with status '${existing.status}'. Only sent, unsigned offers can be withdrawn.`
+      );
+    }
+
+    if (existing.employeeId) {
+      throw new HttpError(
+        400,
+        "This offer is linked to an employee record and cannot be withdrawn."
+      );
+    }
+
+    if (existing.signature?.signedAt) {
+      throw new HttpError(
+        400,
+        "This offer has a recorded signature and cannot be withdrawn."
+      );
+    }
+
+    const withdrawnAt = new Date();
+    const actorId = req.auth?.user?._id || req.auth?.userId || null;
+    const actorEmail = String(req.auth?.user?.email || req.auth?.email || "").trim().toLowerCase();
+
+    const offerLetter = await OfferLetter.findOneAndUpdate(
+      {
+        _id: id,
+        status: OFFER_LETTER_STATUSES.SENT,
+        employeeId: null,
+      },
+      {
+        $set: {
+          status: OFFER_LETTER_STATUSES.WITHDRAWN,
+          decisionAt: withdrawnAt,
+          withdrawal: {
+            reason,
+            withdrawnAt,
+            withdrawnBy: actorId,
+            withdrawnByEmail: actorEmail,
+          },
+          signingTokenHash: null,
+          signingTokenEncrypted: null,
+          signingTokenExpiresAt: null,
+          updatedAt: withdrawnAt,
+        },
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!offerLetter) {
+      const current = await OfferLetter.findById(id).lean();
+      if (!current) {
+        throw new HttpError(404, "Offer letter not found.");
+      }
+      if (current.status === OFFER_LETTER_STATUSES.WITHDRAWN) {
+        return res.json({
+          success: true,
+          message: "This offer letter has already been withdrawn.",
+          offerLetter: current,
+          alreadyWithdrawn: true,
+        });
+      }
+      if (current.status === OFFER_LETTER_STATUSES.ACCEPTED) {
+        throw new HttpError(
+          409,
+          "The candidate signed this offer before withdrawal could complete. Withdrawal was not applied."
+        );
+      }
+      throw new HttpError(
+        409,
+        `Unable to withdraw offer in status '${current.status}'. Refresh and try again if still eligible.`
+      );
+    }
+
+    if (AuditLog) {
+      await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_WITHDRAWN, offerLetter._id, {
+        reason,
+        withdrawnAt,
+        previousStatus: OFFER_LETTER_STATUSES.SENT,
+        candidateEmail: offerLetter.candidate?.email,
+        position: offerLetter.position,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Offer letter withdrawn. The candidate can no longer sign this offer.",
+      offerLetter,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * Download offer letter as PDF
  */
 export async function downloadOfferLetterPdf(req, res, next) {
   try {
-    const { OfferLetter } = req.auth.models;
+    const { OfferLetter, connection } = req.auth.models;
     const { id } = req.params;
+    const asDocx = String(req.query.format || "").toLowerCase() === "docx";
+
+    if (asDocx) {
+      throw new HttpError(400, "DOCX download is no longer available. Use the PDF download.");
+    }
 
     const offerLetter = await OfferLetter.findById(id).lean();
     if (!offerLetter) {
       throw new HttpError(404, "Offer letter not found.");
     }
 
-    // Generate real PDF buffer using server-side Puppeteer renderer
-    let htmlContent = offerLetter.content;
-    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED) {
-      htmlContent = renderOfferLetterHtml(offerLetter, req.auth.company);
-    }
-    const pdfBuffer = await generateOfferLetterPdf(htmlContent);
-
     const safeName = (offerLetter.candidate?.fullName || "Candidate")
       .replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filename = `Offer_Letter_${safeName}.pdf`;
+
+    // Accepted offers: serve the signed PDF (HR + candidate signatures). The issued PDF stays untouched.
+    if (offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED && offerLetter.signature?.signedAt) {
+      const signed = await getOrCreateSignedPdf({
+        OfferLetter,
+        offerLetterId: offerLetter._id,
+        connection,
+      });
+      if (signed?.buffer?.length) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="Offer_Letter_${safeName}_signed.pdf"`
+        );
+        res.setHeader("Content-Length", signed.buffer.length);
+        return res.end(signed.buffer);
+      }
+    }
+
+    // Prefer immutable issued PDF from GridFS; if the blob is missing, fall through and regenerate.
+    if (getStorageFileId(offerLetter.generatedPdf)) {
+      try {
+        const streamed = await streamIssuedPdfToResponse({
+          offerLetter,
+          connection,
+          res,
+          downloadName: `Offer_Letter_${safeName}.pdf`,
+        });
+        if (streamed) return;
+      } catch (storedErr) {
+        if (!(storedErr instanceof HttpError && storedErr.status === 404)) {
+          throw storedErr;
+        }
+        console.warn(
+          "[offerLetterController] Issued PDF missing on download; regenerating:",
+          storedErr.message
+        );
+      }
+    }
+
+    // Never re-render from live master/company after issue: use frozen issuedContent
+    // (DRAFT offers fall back to the current draft content).
+    let htmlContent = offerLetter.issuedContent || offerLetter.content || "";
+    let signatureAppended = false;
+    if (
+      offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED &&
+      offerLetter.signature?.signerName
+    ) {
+      htmlContent = appendSignatureBlockToHtml(htmlContent, offerLetter.signature);
+      signatureAppended = true;
+    }
+    if (!htmlContent) {
+      throw new HttpError(400, "Offer letter has no rendered content to export.");
+    }
+    const pdfBuffer = await pdfBufferFromHtml(htmlContent);
+
+    // Persist issued PDF for sent (unsigned) offers; never store a signed variant as the issued PDF.
+    if (offerLetter.status !== OFFER_LETTER_STATUSES.DRAFT && !signatureAppended) {
+      await storeIssuedPdfIfNeeded({
+        OfferLetter,
+        offerLetter,
+        pdfBuffer,
+        connection,
+      });
+    }
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="Offer_Letter_${safeName}.pdf"`);
     res.setHeader("Content-Length", pdfBuffer.length);
-
     res.end(pdfBuffer);
   } catch (error) {
     next(error);
@@ -759,6 +1235,12 @@ export async function linkEmployeeToOffer(req, res, next) {
       throw new HttpError(404, "Employee record not found.");
     }
 
+    assertEmployeeInScope(
+      req.hrAccess,
+      employee._id,
+      "You do not have access to link this employee."
+    );
+
     offerLetter.employeeId = employee._id;
     offerLetter.updatedAt = new Date();
     await offerLetter.save();
@@ -792,21 +1274,41 @@ export async function sendOfferLetterEmail(req, res, next) {
       throw new HttpError(400, "Invalid offer letter ID.");
     }
 
-    const offerLetter = await OfferLetter.findById(id);
+    const offerLetter = await OfferLetter.findById(id).select("+signingTokenEncrypted");
     if (!offerLetter) {
       throw new HttpError(404, "Offer letter not found.");
     }
 
-    // Terminal state protection
+    // Terminal state protection — never alter signature / decision state via send
     if (
       offerLetter.status === OFFER_LETTER_STATUSES.ACCEPTED ||
-      offerLetter.status === OFFER_LETTER_STATUSES.REJECTED
+      offerLetter.status === OFFER_LETTER_STATUSES.REJECTED ||
+      offerLetter.status === OFFER_LETTER_STATUSES.WITHDRAWN
     ) {
       throw new HttpError(
         400,
-        `Cannot send an offer letter with status '${offerLetter.status}'. Candidate has already recorded a decision.`
+        `Cannot send an offer letter with status '${offerLetter.status}'. This offer is no longer open for delivery.`
       );
     }
+
+    // An HR electronic signature must be saved in Settings before any offer goes out so the
+    // frozen issuedContent / issued PDF carries it. Re-check immediately before send/resend.
+    const companyIdForSig = req.auth.company?._id;
+    if (!(await companyHasHrSignature(companyIdForSig))) {
+      throw new HttpError(400, HR_SIGNATURE_REQUIRED_MESSAGE, { code: "HR_SIGNATURE_REQUIRED" });
+    }
+    const hrSigProbe = await loadCompanySignature({ _id: companyIdForSig });
+    if (!hrSigProbe?.dataUrl && !(hrSigProbe?.method === "TYPE" && hrSigProbe?.typedText)) {
+      throw new HttpError(400, HR_SIGNATURE_REQUIRED_MESSAGE, { code: "HR_SIGNATURE_REQUIRED" });
+    }
+
+    const priorStatus = offerLetter.status;
+    const priorSignature = offerLetter.signature
+      ? JSON.parse(JSON.stringify(offerLetter.signature))
+      : undefined;
+    const priorTokenHash = offerLetter.signingTokenHash || null;
+    const priorTokenExpiry = offerLetter.signingTokenExpiresAt || null;
+    const priorTokenEncrypted = offerLetter.signingTokenEncrypted || null;
 
     const candidateEmail = offerLetter.candidate?.email?.trim();
     if (!candidateEmail || !isValidEmail(candidateEmail)) {
@@ -817,57 +1319,127 @@ export async function sendOfferLetterEmail(req, res, next) {
       throw new HttpError(400, "Offer letter details are incomplete and cannot be sent.");
     }
 
-    // Ensure content is rendered
-    if (!offerLetter.content) {
-      offerLetter.content = renderOfferLetterHtml(offerLetter, req.auth.company);
+    const { connection } = req.auth.models;
+
+    // Freeze the legal document on first send. Resends reuse issuedContent verbatim and
+    // never re-render from the live master or current company letterhead.
+    if (!offerLetter.issuedContent) {
+      if (
+        offerLetter.status === OFFER_LETTER_STATUSES.SENT &&
+        String(offerLetter.content || "").trim()
+      ) {
+        // Legacy already-sent offer (pre-freeze): preserve the exact document the candidate received.
+        offerLetter.issuedContent = offerLetter.content;
+      } else {
+        const company = await loadOfferRenderCompany(req);
+        // Freeze the HR signature into the snapshot + issuedContent. It is never re-read from
+        // the live company afterwards (later settings changes cannot alter an issued offer).
+        const hrSig = await loadCompanySignature(company);
+        if (!hrSig?.dataUrl && !(hrSig?.method === "TYPE" && hrSig?.typedText)) {
+          throw new HttpError(400, HR_SIGNATURE_REQUIRED_MESSAGE, { code: "HR_SIGNATURE_REQUIRED" });
+        }
+        const signatoryName =
+          String(company?.letterhead?.signatoryName || "").trim() ||
+          String(offerLetter?.offerDataSnapshot?.signatoryName || "").trim() ||
+          String(company?.primaryContact?.fullName || "").trim();
+        const frozenData = {
+          ...buildOfferDataFromSources(offerLetter),
+          ...(signatoryName ? { signatoryName } : {}),
+          hrSignatureDataUrl: hrSig.dataUrl || "",
+          hrTypedSignature: hrSig.dataUrl ? "" : hrSig.typedText || "",
+        };
+        const html = await renderStandardOfferHtml({ offerData: frozenData, company });
+        // Prove the signature is actually in the HTML that will be frozen/PDF'd — not just a DB flag.
+        const hasEmbeddedSig =
+          html.includes('class="sig-img"') ||
+          html.includes('class="sig-typed"') ||
+          (hrSig.dataUrl && html.includes("data:image/"));
+        if (!hasEmbeddedSig) {
+          throw new HttpError(
+            500,
+            "Offer PDF could not embed the HR signature. Re-save the signature in Settings and try again.",
+            { code: "HR_SIGNATURE_EMBED_FAILED" }
+          );
+        }
+        offerLetter.content = html;
+        offerLetter.issuedContent = html;
+        offerLetter.offerDataSnapshot = frozenData;
+        offerLetter.markModified("offerDataSnapshot");
+        offerLetter.templateId = null;
+        offerLetter.templateVersion = null;
+        offerLetter.templateType = null;
+      }
       await offerLetter.save();
     }
 
-    // Generate PDF attachment using existing pdfService
-    let pdfBuffer;
+    // Prefer previously issued PDF (immutable). If GridFS ref is stale/missing, regenerate
+    // from the frozen issuedContent. Status eligibility: ACCEPTED / REJECTED / WITHDRAWN blocked above.
+    let pdfBuffer = null;
+    const docxAttachment = null;
     try {
-      pdfBuffer = await generateOfferLetterPdf(offerLetter.content);
+      if (getStorageFileId(offerLetter.generatedPdf)) {
+        try {
+          const stored = await getIssuedPdfDownload({
+            offerLetter,
+            connection,
+          });
+          pdfBuffer = stored?.buffer || null;
+        } catch (storedErr) {
+          console.warn(
+            "[offerLetterController] Issued PDF unavailable for send/resend; regenerating:",
+            storedErr.message
+          );
+          pdfBuffer = null;
+        }
+      }
+      if (!pdfBuffer) {
+        pdfBuffer = await pdfBufferFromHtml(offerLetter.issuedContent || offerLetter.content);
+      }
     } catch (pdfErr) {
       console.error("[offerLetterController] PDF generation error:", pdfErr.message);
       throw new HttpError(500, `Failed to generate offer letter PDF attachment: ${pdfErr.message}`);
     }
 
-    if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+    if ((!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) && !docxAttachment) {
       throw new HttpError(500, "Offer letter PDF attachment is missing or empty.");
+    }
+
+    if (pdfBuffer && !getStorageFileId(offerLetter.generatedPdf)) {
+      await storeIssuedPdfIfNeeded({
+        OfferLetter,
+        offerLetter,
+        pdfBuffer,
+        connection,
+      });
+      const refreshed = await OfferLetter.findById(offerLetter._id).lean();
+      if (refreshed?.generatedPdf) offerLetter.generatedPdf = refreshed.generatedPdf;
     }
 
     const companyName = req.auth.company?.companyName || req.auth.company?.name || "Company";
 
-    // Generate secure, expiring candidate review and signing token
-    const signingToken = signOfferSigningToken({
-      companyId: req.auth.company._id,
-      offerId: offerLetter._id,
-      email: candidateEmail,
-    });
-    const tokenHash = crypto.createHash("sha256").update(signingToken).digest("hex");
-    offerLetter.signingTokenHash = tokenHash;
     const { CompanyHrPolicy } = req.auth.models;
     const policy = CompanyHrPolicy ? await getActiveCompanyHrPolicy(CompanyHrPolicy) : null;
     const validityDays = policy?.recruitmentRules?.offerValidityDays || 7;
-    offerLetter.signingTokenExpiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
 
-    const clientUrl = process.env.CLIENT_URL || process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
-    const reviewLink = `${clientUrl}/offers/review/${signingToken}`;
-
-    // Dispatch email
-    const emailResult = await emailService.sendOfferLetter({
-      companyName,
-      candidateName: offerLetter.candidate.fullName,
+    const {
+      signingToken,
+      tokenHash,
+      tokenExpiresAt,
+      reused: tokenReused,
+    } = resolveOfferSigningTokenForSend({
+      offerLetter,
+      companyId: req.auth.company._id,
       candidateEmail,
-      position: offerLetter.position,
-      pdfBuffer,
-      joiningDate: offerLetter.joiningDate,
-      monthlySalary: offerLetter.monthlySalary,
-      reviewLink,
-      company: req.auth.company,
+      validityDays,
     });
 
-    // Initialize delivery record if missing
+    const clientUrl =
+      process.env.CLIENT_URL ||
+      process.env.APP_BASE_URL ||
+      `${req.protocol}://${req.get("host")}`;
+    const reviewLink = `${clientUrl}/offers/review/${signingToken}`;
+
+    // Initialize delivery record if missing (needed for attempt diagnostics before SMTP)
     if (!offerLetter.emailDelivery) {
       offerLetter.emailDelivery = {
         status: "NOT_SENT",
@@ -875,13 +1447,51 @@ export async function sendOfferLetterEmail(req, res, next) {
         history: [],
       };
     }
+    const nextAttempt = (offerLetter.emailDelivery.attempts || 0) + 1;
+    const sendStartedAt = Date.now();
+
+    // Dispatch email (PDF preferred; filled DOCX when LibreOffice convert is not configured)
+    const emailResult = await emailService.sendOfferLetter({
+      companyName,
+      candidateName: offerLetter.candidate.fullName,
+      candidateEmail,
+      position: offerLetter.position,
+      pdfBuffer,
+      docxBuffer: docxAttachment,
+      joiningDate: offerLetter.joiningDate,
+      monthlySalary: offerLetter.monthlySalary,
+      reviewLink,
+      company: req.auth.company,
+      attempt: nextAttempt,
+    });
+
+    if (process.env.NODE_ENV !== "test") {
+      console.log(
+        "[offerLetterController] send/resend SMTP result",
+        JSON.stringify({
+          tenantId: String(req.auth.company?._id || ""),
+          offerId: String(offerLetter._id),
+          attempt: nextAttempt,
+          tokenReused: Boolean(tokenReused),
+          success: Boolean(emailResult?.success),
+          messageId: emailResult?.messageId || null,
+          responseCode: emailResult?.responseCode ?? null,
+          durationMs: emailResult?.durationMs ?? Date.now() - sendStartedAt,
+          error: emailResult?.success ? null : emailResult?.error || null,
+        })
+      );
+    }
+
+    const safeDeliveryError = emailResult.success
+      ? ""
+      : String(emailResult.error || "Email delivery failed").slice(0, 500);
 
     const attemptRecord = {
       sentAt: new Date(),
       recipient: candidateEmail,
       status: emailResult.success ? "SENT" : "DELIVERY_FAILED",
       messageId: emailResult.messageId || "",
-      error: emailResult.error || "",
+      error: safeDeliveryError,
     };
 
     offerLetter.emailDelivery.attempts = (offerLetter.emailDelivery.attempts || 0) + 1;
@@ -889,25 +1499,48 @@ export async function sendOfferLetterEmail(req, res, next) {
     offerLetter.emailDelivery.history.push(attemptRecord);
 
     if (!emailResult.success) {
+      // Restore prior signing link — never invalidate a working token on SMTP failure
+      offerLetter.signingTokenHash = priorTokenHash;
+      offerLetter.signingTokenExpiresAt = priorTokenExpiry;
+      offerLetter.signingTokenEncrypted = priorTokenEncrypted;
+      offerLetter.status = priorStatus;
+      if (priorSignature !== undefined) {
+        offerLetter.signature = priorSignature;
+      }
       offerLetter.emailDelivery.status = "DELIVERY_FAILED";
-      offerLetter.emailDelivery.error = emailResult.error || "Email delivery failed";
+      offerLetter.emailDelivery.error = safeDeliveryError;
       await offerLetter.save();
 
       if (AuditLog) {
         await recordAuditLog(AuditLog, req, AUDIT_ACTIONS.OFFER_LETTER_SEND_FAILED, offerLetter._id, {
           candidateEmail,
-          error: emailResult.error,
+          error: safeDeliveryError,
+          responseCode: emailResult.responseCode ?? null,
         });
       }
 
       return res.status(502).json({
         success: false,
-        message: `Failed to deliver offer letter email to ${candidateEmail}: ${emailResult.error}`,
+        message: `Failed to deliver offer letter email to ${candidateEmail}: ${safeDeliveryError}`,
         offerLetter,
       });
     }
 
-    // Mark as SENT
+    // Commit signing token only after SMTP acceptance
+    offerLetter.signingTokenHash = tokenHash;
+    offerLetter.signingTokenExpiresAt = tokenExpiresAt;
+    try {
+      offerLetter.signingTokenEncrypted = encryptSecret(signingToken);
+    } catch (encErr) {
+      console.error(
+        "[offerLetterController] Failed to encrypt signing token for reuse:",
+        encErr.message
+      );
+      // Hash/expiry still committed so the emailed link works; reuse on next resend may mint new.
+      offerLetter.signingTokenEncrypted = priorTokenEncrypted;
+    }
+
+    // Mark as SENT (do not create duplicate offers; leave signature untouched)
     offerLetter.status = OFFER_LETTER_STATUSES.SENT;
     offerLetter.emailedAt = new Date();
     offerLetter.issuedAt = offerLetter.issuedAt || new Date();
@@ -924,6 +1557,7 @@ export async function sendOfferLetterEmail(req, res, next) {
         candidateEmail,
         messageId: emailResult.messageId,
         sentAt: offerLetter.emailDelivery.sentAt,
+        tokenReused: Boolean(tokenReused),
       });
     }
 
@@ -933,6 +1567,7 @@ export async function sendOfferLetterEmail(req, res, next) {
       offerLetter,
       reviewLink,
       signingToken,
+      tokenReused: Boolean(tokenReused),
     });
   } catch (error) {
     next(error);

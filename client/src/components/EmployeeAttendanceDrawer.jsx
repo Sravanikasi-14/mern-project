@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppModal from "./AppModal";
 import MonthCalendar from "./MonthCalendar";
@@ -82,6 +82,7 @@ export default function EmployeeAttendanceDrawer({
   const [holidays, setHolidays] = useState([]);
   const [officeStart, setOfficeStart] = useState("09:30");
   const [graceMinutes, setGraceMinutes] = useState(15);
+  const fetchGenerationRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +108,7 @@ export default function EmployeeAttendanceDrawer({
 
   const fetchEmployeeData = useCallback(async () => {
     if (!employeeId) return;
+    const generation = ++fetchGenerationRef.current;
     try {
       setLoading(true);
       setError("");
@@ -121,6 +123,7 @@ export default function EmployeeAttendanceDrawer({
         const res = await api.get(`/admin/attendance/employee/${employeeId}`, {
           params: { startDate, endDate, limit: 100 },
         });
+        if (generation !== fetchGenerationRef.current) return;
         if (res.data?.success) {
           setEmployeeInfo(res.data.employee);
           setHistoryRecords(res.data.records || []);
@@ -131,6 +134,7 @@ export default function EmployeeAttendanceDrawer({
       }
 
       const empRes = await api.get(`/employees/${employeeId}`);
+      if (generation !== fetchGenerationRef.current) return;
       const emp = empRes.data;
       setEmployeeInfo({
         _id: emp._id,
@@ -156,9 +160,12 @@ export default function EmployeeAttendanceDrawer({
           }))
       );
     } catch (err) {
+      if (generation !== fetchGenerationRef.current) return;
       setError(err.response?.data?.message || "Failed to load employee attendance history.");
     } finally {
-      setLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }, [employeeId, calMonth.year, calMonth.month]);
 
@@ -168,7 +175,13 @@ export default function EmployeeAttendanceDrawer({
 
   useEffect(() => {
     setSelectedDay("");
-  }, [employeeId, calMonth.year, calMonth.month]);
+    // Drop stale fetched profile so header falls back to roster snapshot instantly.
+    setEmployeeInfo(null);
+  }, [employeeId]);
+
+  useEffect(() => {
+    setSelectedDay("");
+  }, [calMonth.year, calMonth.month]);
 
   const holidaySet = useMemo(() => {
     const set = new Set();
@@ -312,10 +325,18 @@ export default function EmployeeAttendanceDrawer({
 
   const selectedMeta = selectedDay ? dayStatuses[selectedDay] : null;
   const totalEmployees = employeeList.length;
+
+  // Prefer roster snapshot immediately so header size is stable before fetch completes.
+  const listEmployee = useMemo(() => {
+    if (currentIndex >= 0 && employeeList[currentIndex]) return employeeList[currentIndex];
+    return employeeList.find((e) => String(e._id || e.id) === String(employeeId)) || null;
+  }, [employeeList, currentIndex, employeeId]);
+
+  const displayEmployee = employeeInfo || listEmployee;
   const subtitle = [
-    employeeInfo?.employeeCode || "#EMP",
-    employeeInfo?.jobTitle || "Team Member",
-    employeeInfo?.department || "General",
+    displayEmployee?.employeeCode || "—",
+    displayEmployee?.jobTitle || displayEmployee?.role || "Team Member",
+    displayEmployee?.department || "General",
   ].join(" · ");
 
   const legend = (
@@ -367,7 +388,8 @@ export default function EmployeeAttendanceDrawer({
       open={Boolean(employeeId)}
       onClose={onClose}
       size="xl"
-      title={employeeInfo?.fullName || "Employee attendance"}
+      className="att-employee-drawer"
+      title={displayEmployee?.fullName || "Employee attendance"}
       subtitle={subtitle}
       headerExtra={pager}
       footer={
@@ -380,41 +402,56 @@ export default function EmployeeAttendanceDrawer({
         </button>
       }
     >
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "36px 12px", color: "var(--muted)" }}>
-          <div className="spinner" style={{ margin: "0 auto 12px" }} />
-          <p style={{ margin: 0, fontSize: 13.5 }}>Loading attendance…</p>
+      {/* Stable shell: same structure for loading, error, and loaded states */}
+      <div className="att-drawer-layout" aria-busy={loading}>
+        <div className="att-drawer-calendar-wrap">
+          {error && !loading ? (
+            <div className="att-drawer-state att-drawer-state--error" role="alert">
+              {error}
+            </div>
+          ) : loading ? (
+            <div className="att-drawer-state att-drawer-state--loading" aria-live="polite">
+              <div className="att-drawer-skeleton-header">
+                <div className="skeleton-shimmer att-drawer-skel-title" />
+                <div className="skeleton-shimmer att-drawer-skel-nav" />
+              </div>
+              <div className="att-drawer-skeleton-legend">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <span key={i} className="skeleton-shimmer att-drawer-skel-chip" />
+                ))}
+              </div>
+              <div className="att-drawer-skeleton-grid" aria-hidden="true">
+                {Array.from({ length: 42 }).map((_, i) => (
+                  <span key={i} className="skeleton-shimmer att-drawer-skel-cell" />
+                ))}
+              </div>
+              <p className="att-drawer-loading-label">Loading attendance…</p>
+            </div>
+          ) : (
+            <MonthCalendar
+              mode="attendance"
+              year={calMonth.year}
+              month={calMonth.month}
+              timeZone={timeZone}
+              dayStatuses={dayStatuses}
+              selectedDate={selectedDay}
+              heading={monthTitle(calMonth.year, calMonth.month)}
+              onMonthChange={setCalMonth}
+              onDaySelect={(dateStr) => setSelectedDay(dateStr)}
+              legend={legend}
+            />
+          )}
         </div>
-      ) : error ? (
-        <div className="error" style={{ padding: 14, borderRadius: 10, textAlign: "center" }}>
-          {error}
-        </div>
-      ) : (
-        <>
-          <MonthCalendar
-            mode="attendance"
-            year={calMonth.year}
-            month={calMonth.month}
-            timeZone={timeZone}
-            dayStatuses={dayStatuses}
-            selectedDate={selectedDay}
-            heading={monthTitle(calMonth.year, calMonth.month)}
-            onMonthChange={setCalMonth}
-            onDaySelect={(dateStr) => setSelectedDay(dateStr)}
-            legend={legend}
-          />
 
-          {selectedDay && selectedMeta ? (
-            <div
-              style={{
-                marginTop: 16,
-                padding: 14,
-                borderRadius: 10,
-                border: "1px solid var(--hair)",
-                background: "#f8faf8",
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: 8, color: "var(--ink)" }}>
+        <div className="att-drawer-day-panel">
+          {loading ? (
+            <div className="att-drawer-day-skeleton">
+              <div className="skeleton-shimmer att-drawer-skel-line" />
+              <div className="skeleton-shimmer att-drawer-skel-line is-short" />
+            </div>
+          ) : selectedDay && selectedMeta ? (
+            <>
+              <div className="att-drawer-day-title">
                 {selectedDay} — {selectedMeta.label}
               </div>
               {selectedMeta.record &&
@@ -429,18 +466,16 @@ export default function EmployeeAttendanceDrawer({
                   notes={selectedMeta.record.notes}
                 />
               ) : (
-                <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", whiteSpace: "pre-line" }}>
-                  {selectedMeta.tooltip}
-                </p>
+                <p className="att-drawer-day-note">{selectedMeta.tooltip}</p>
               )}
-            </div>
+            </>
           ) : (
-            <p style={{ margin: "14px 0 0", fontSize: 13, color: "var(--muted)" }}>
-              Hover or tap a date for punch details. Missing punches are explained — times are never invented.
+            <p className="att-drawer-day-note">
+              Select a date for punch details. Missing punches are explained — times are never invented.
             </p>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </AppModal>
   );
 }

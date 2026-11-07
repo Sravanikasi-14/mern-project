@@ -5,6 +5,8 @@ export const OFFER_LETTER_STATUSES = Object.freeze({
   SENT: "SENT",
   ACCEPTED: "ACCEPTED",
   REJECTED: "REJECTED",
+  /** HR revoked a sent, unsigned offer. Preserves document + email history; signing link invalidated. */
+  WITHDRAWN: "WITHDRAWN",
 });
 
 export const ClauseItemSchema = new mongoose.Schema(
@@ -150,10 +152,32 @@ export function createOfferLetterSchema() {
         trim: true,
         default: "",
       },
+      /**
+       * HR withdrawal metadata (WITHDRAWN status). Never expose reason to candidates.
+       */
+      withdrawal: {
+        reason: { type: String, trim: true, default: "" },
+        withdrawnAt: { type: Date, default: null },
+        withdrawnBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          default: null,
+        },
+        withdrawnByEmail: { type: String, trim: true, lowercase: true, default: "" },
+      },
       signingTokenHash: {
         type: String,
         default: null,
         index: true,
+      },
+      /**
+       * Encrypted recoverable signing JWT so resend can reuse an unexpired link.
+       * Never expose via API (stripped in toJSON).
+       */
+      signingTokenEncrypted: {
+        type: String,
+        default: null,
+        select: false,
       },
       signingTokenExpiresAt: {
         type: Date,
@@ -167,6 +191,50 @@ export function createOfferLetterSchema() {
         userAgent: { type: String, default: "" },
         documentHash: { type: String, default: "" },
         legalStatement: { type: String, default: "" },
+        /** Candidate e-signature capture (image bytes excluded from default queries). */
+        method: { type: String, enum: ["", "DRAW", "UPLOAD", "TYPE"], default: "" },
+        typedText: { type: String, default: "" },
+        imageMimeType: { type: String, default: "" },
+        imageData: { type: Buffer, default: undefined, select: false },
+        hasImage: { type: Boolean, default: false },
+      },
+      // --- Offer template system (all optional; legacy offers keep working) ---
+      templateId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "OfferTemplate",
+        default: null,
+        index: true,
+      },
+      templateVersion: { type: Number, default: null },
+      templateType: {
+        type: String,
+        enum: ["DEFAULT_BUILDER", "UPLOADED_DOCX", null],
+        default: null,
+      },
+      /** Frozen copy of the offer inputs used to render the issued document. */
+      offerDataSnapshot: { type: mongoose.Schema.Types.Mixed, default: undefined },
+      generatedPdf: {
+        provider: { type: String, default: "" },
+        bucket: { type: String, default: "" },
+        fileId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        key: { type: String, default: "" },
+        filename: { type: String, default: "" },
+        contentType: { type: String, default: "" },
+        byteSize: { type: Number, default: 0 },
+        checksumSha256: { type: String, default: "" },
+        generatedAt: { type: Date, default: null },
+      },
+      /** Final signed PDF (HR + candidate signatures). Never overwrites generatedPdf (issued copy). */
+      signedPdf: {
+        provider: { type: String, default: "" },
+        bucket: { type: String, default: "" },
+        fileId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        key: { type: String, default: "" },
+        filename: { type: String, default: "" },
+        contentType: { type: String, default: "" },
+        byteSize: { type: Number, default: 0 },
+        checksumSha256: { type: String, default: "" },
+        generatedAt: { type: Date, default: null },
       },
       onboardingId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -218,6 +286,15 @@ export function createOfferLetterSchema() {
   offerLetterSchema.set("toJSON", {
     transform(_doc, ret) {
       delete ret.signingTokenHash;
+      delete ret.signingTokenEncrypted;
+      if (ret.signature) {
+        delete ret.signature.imageData;
+        delete ret.signature.imageDataUrl;
+      }
+      if (ret.offerDataSnapshot && typeof ret.offerDataSnapshot === "object") {
+        ret.offerDataSnapshot = { ...ret.offerDataSnapshot };
+        delete ret.offerDataSnapshot.hrSignatureDataUrl;
+      }
       delete ret.__v;
       return ret;
     },

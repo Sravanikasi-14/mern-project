@@ -23,6 +23,7 @@ export function getStatusCategory(statusRaw) {
     s === "PAID" ||
     s === "COMPLETED" ||
     s === "ON_FILE" ||
+    s === "ACTIVATED" ||
     s === "CONFIRMED" ||
     s === "AVAILABLE" ||
     s === "ACKNOWLEDGED"
@@ -39,6 +40,7 @@ export function getStatusCategory(statusRaw) {
     s === "DELIVERY_FAILED" ||
     s === "FAILED" ||
     s === "CANCELLED" ||
+    s === "WITHDRAWN" ||
     s === "ABSENT" ||
     s === "TERMINATED" ||
     s === "LOST"
@@ -59,13 +61,16 @@ export function getStatusCategory(statusRaw) {
     s === "UNDER_MAINTENANCE" ||
     s === "UNPAID" ||
     s === "PARTIAL" ||
-    s === "CHANGES_REQUESTED"
+    s === "CHANGES_REQUESTED" ||
+    s === "CORRECTION_REQUESTED" ||
+    s === "ACCOUNT_SETUP_PENDING" ||
+    s === "PENDING_REVIEW"
   ) {
     return "warning";
   }
 
   // Info
-  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "IN_PROGRESS" || s === "FINALIZED" || s === "SUBMITTED") {
+  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "IN_PROGRESS" || s === "FINALIZED" || s === "SUBMITTED" || s === "PROCESSING_APPROVAL" || s === "ACCOUNT_SETUP_SENT" || s === "RESUBMITTED") {
     return "info";
   }
 
@@ -112,10 +117,18 @@ export function formatStatusLabel(statusRaw, customLabel) {
     SENT: "Sent",
     ACCEPTED: "Accepted",
     DECLINED: "Declined",
+    WITHDRAWN: "Withdrawn",
     CHANGES_REQUESTED: "Updates Requested",
     SUBMITTED: "Under Review",
     VERIFIED: "Verified",
     COMPLETED: "Completed",
+    PROCESSING_APPROVAL: "Approving…",
+    ACCOUNT_SETUP_SENT: "Account Setup Sent",
+    ACCOUNT_SETUP_PENDING: "Setup Email Pending",
+    ACTIVATED: "Activated",
+    PENDING_REVIEW: "Awaiting Review",
+    CORRECTION_REQUESTED: "Correction Requested",
+    RESUBMITTED: "Resubmitted",
   };
 
   if (map[upper]) return map[upper];

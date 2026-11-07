@@ -9,6 +9,23 @@ export async function getNotifications(req, res, next) {
     const { user, models } = req.auth;
     const { Notification, LeaveRequest, Task, Employee } = models;
 
+    const {
+      resolveHrAccessContext,
+      mergeEmployeeIdScopeFilter,
+      isEmployeeIdInScope,
+      assertHrPermission,
+    } = await import("../services/hrAccessEnforcementService.js");
+    const { USER_ROLES } = await import("../models/User.js");
+
+    let hrAccess = req.hrAccess;
+    if (!hrAccess && user.role === USER_ROLES.HR_ADMIN) {
+      hrAccess = await resolveHrAccessContext({
+        user,
+        company: req.auth.company,
+        models,
+      });
+    }
+
     const userReadIds = new Set(
       (user.preferences?.readNotificationIds || []).map((id) => String(id))
     );
@@ -32,6 +49,16 @@ export async function getNotifications(req, res, next) {
         .lean();
 
       for (const notif of persisted) {
+        // When ENFORCED, drop role-broadcast notifications that name an out-of-scope employee
+        if (
+          user.role === USER_ROLES.HR_ADMIN &&
+          hrAccess?.enforced &&
+          notif.employeeId &&
+          !isEmployeeIdInScope(hrAccess, notif.employeeId)
+        ) {
+          continue;
+        }
+
         const isRead =
           notif.isRead ||
           (notif.readBy && notif.readBy.some((uid) => String(uid) === String(user._id))) ||
@@ -50,22 +77,40 @@ export async function getNotifications(req, res, next) {
       }
     }
 
-    // 2. Fetch live data for HR_ADMIN
-    if (user.role === "HR_ADMIN") {
-      if (LeaveRequest) {
-        const pendingLeaves = await LeaveRequest.find({ status: "PENDING" })
+    // 2. Fetch live data for HR_ADMIN (scoped + permission-gated when ENFORCED)
+    if (user.role === USER_ROLES.HR_ADMIN) {
+      let canViewLeave = true;
+      let canViewPeople = true;
+      try {
+        assertHrPermission(hrAccess, "leave.view");
+      } catch {
+        canViewLeave = false;
+      }
+      try {
+        assertHrPermission(hrAccess, "people.view");
+      } catch {
+        canViewPeople = false;
+      }
+
+      if (LeaveRequest && canViewLeave) {
+        const leaveQuery = mergeEmployeeIdScopeFilter(hrAccess, { status: "PENDING" });
+        const pendingLeaves = await LeaveRequest.find(leaveQuery)
           .sort({ createdAt: -1 })
           .limit(10)
           .lean();
 
-        // Populate employee names if possible
         const empIds = pendingLeaves.map((l) => l.employeeId).filter(Boolean);
         const empMap = new Map();
         if (Employee && empIds.length > 0) {
           const emps = await Employee.find({ _id: { $in: empIds } })
-            .select("firstName lastName")
+            .select("fullName firstName lastName")
             .lean();
-          emps.forEach((e) => empMap.set(String(e._id), `${e.firstName || ""} ${e.lastName || ""}`.trim()));
+          emps.forEach((e) =>
+            empMap.set(
+              String(e._id),
+              e.fullName || `${e.firstName || ""} ${e.lastName || ""}`.trim()
+            )
+          );
         }
 
         for (const lr of pendingLeaves) {
@@ -84,8 +129,9 @@ export async function getNotifications(req, res, next) {
         }
       }
 
-      if (Task) {
-        const reviewTasks = await Task.find({ status: "IN_REVIEW" })
+      if (Task && canViewPeople) {
+        const taskQuery = mergeEmployeeIdScopeFilter(hrAccess, { status: "IN_REVIEW" }, "assigneeId");
+        const reviewTasks = await Task.find(taskQuery)
           .sort({ updatedAt: -1 })
           .limit(5)
           .lean();
@@ -187,15 +233,19 @@ export async function markNotificationRead(req, res, next) {
 
     const cleanId = rawId.replace(/^(leave|task)-/, "");
 
-    // If valid MongoDB ObjectId, update Notification document if it exists
+    // Scope to notifications this user is allowed to see. Never flip global
+    // isRead on shared/role broadcasts — that would mark them read for everyone.
     if (mongoose.Types.ObjectId.isValid(cleanId) && Notification) {
-      await Notification.findByIdAndUpdate(cleanId, {
-        isRead: true,
-        $addToSet: { readBy: user._id },
-      });
+      await Notification.findOneAndUpdate(
+        {
+          _id: cleanId,
+          $or: [{ userId: user._id }, { role: user.role }, { role: null }],
+        },
+        { $addToSet: { readBy: user._id } }
+      );
     }
 
-    // Persist to user's readNotificationIds preferences
+    // Persist per-user read state (synthetic leave-/task- ids and DB ids)
     if (User) {
       await User.findByIdAndUpdate(user._id, {
         $addToSet: { "preferences.readNotificationIds": cleanId },
@@ -220,6 +270,7 @@ export async function markAllNotificationsRead(req, res, next) {
     const now = new Date();
 
     if (Notification) {
+      // Per-user read tracking only — do not flip shared/role notifications globally.
       await Notification.updateMany(
         {
           $or: [
@@ -229,7 +280,6 @@ export async function markAllNotificationsRead(req, res, next) {
           ],
         },
         {
-          isRead: true,
           $addToSet: { readBy: user._id },
         }
       );

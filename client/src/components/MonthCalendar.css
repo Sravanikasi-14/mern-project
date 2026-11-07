@@ -183,10 +183,30 @@
   color: var(--muted, #646d67);
 }
 
-/* Attendance status calendar */
+/* Attendance status calendar — full month visible without modal scroll */
+.mc-card--attendance {
+  padding: 10px 12px 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mc-card--attendance .mc-header {
+  margin-bottom: 8px;
+}
+
+.mc-card--attendance .mc-title {
+  font-size: 15px;
+}
+
+.mc-card--attendance .mc-weekday {
+  padding: 4px 2px;
+  font-size: 10px;
+}
+
 .mc-card--attendance .mc-cell--status {
   position: relative;
-  min-height: 64px;
+  min-height: 42px;
+  padding: 3px 2px;
   align-items: center;
   justify-content: flex-start;
   border: none;
@@ -194,6 +214,15 @@
   font: inherit;
   text-align: left;
   width: 100%;
+}
+
+.mc-card--attendance .mc-legend {
+  margin-top: 8px;
+  gap: 6px 10px;
+}
+
+.mc-card--attendance .mc-legend li {
+  font-size: 11px;
 }
 
 .mc-cell--status:disabled {

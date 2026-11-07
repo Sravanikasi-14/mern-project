@@ -77,6 +77,16 @@ export function createEmployeeSchema() {
           trim: true,
           default: "",
         },
+        /**
+         * Phase A3 optional stable Department ref. Legacy job.department string is preserved.
+         * Not mandatory until backfill reconciliation completes.
+         */
+        departmentId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Department",
+          default: null,
+          index: true,
+        },
         jobGrade: {
           type: String,
           trim: true,
@@ -115,6 +125,15 @@ export function createEmployeeSchema() {
             type: String,
             enum: ["MANDATE", "RETAIL", "BENCH", "INTERNAL", ""],
             default: "",
+          },
+          /**
+           * Phase A3 optional stable Project ref for the primary embedded project.
+           * Multi-project membership lives in ProjectMembership. Legacy strings preserved.
+           */
+          projectId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Project",
+            default: null,
           },
         },
       },
@@ -268,7 +287,9 @@ export function createEmployeeSchema() {
   employeeSchema.index({ status: 1, createdAt: -1 });
   employeeSchema.index({ "job.reportingManagerId": 1 });
   employeeSchema.index({ "job.department": 1, status: 1 });
+  employeeSchema.index({ "job.departmentId": 1, status: 1 });
   employeeSchema.index({ "job.project.projectName": 1, status: 1 });
+  employeeSchema.index({ "job.project.projectId": 1, status: 1 });
   employeeSchema.index({ fullName: 1 });
   employeeSchema.index({ skills: 1 });
   employeeSchema.index(

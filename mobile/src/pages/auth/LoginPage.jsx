@@ -4,15 +4,15 @@ import { useAuth } from "../../app/AuthContext";
 import { classifyLoginError } from "../../services/api";
 import { LeafIcon } from "../../components/Icon";
 import SessionBoot from "../../components/SessionBoot";
-
-function homeForRole(role) {
-  return role === "HR_ADMIN" ? "/admin/dashboard" : "/app";
-}
+import { homeForRole } from "../../utils/navigation";
 
 function destinationForLogin(returnUrl, role) {
   const home = homeForRole(role);
   if (!returnUrl || returnUrl === "/login" || returnUrl.startsWith("/login")) {
     return home;
+  }
+  if (role === "COMPANY_ADMIN") {
+    return returnUrl.startsWith("/company") ? returnUrl : home;
   }
   if (role === "HR_ADMIN") {
     return returnUrl.startsWith("/admin") ? returnUrl : home;

@@ -77,6 +77,7 @@ export function createLiveTrackingSessionSchema() {
       },
       deviceInfo: {
         userAgent: { type: String, default: "" },
+        clientPlatform: { type: String, default: "web" },
       },
       schemaVersion: {
         type: Number,

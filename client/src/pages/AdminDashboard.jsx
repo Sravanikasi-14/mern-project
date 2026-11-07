@@ -6,6 +6,7 @@ import SoftRefresh from "../components/SoftRefresh";
 import { IconArrowLeft, IconArrowRight } from "../components/Icons";
 import MobileExpandable from "../components/mobile/MobileExpandable";
 import { getCompanyBrandName } from "../utils/companyBrand";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
 import { parseCivilDate, weekdaySunday0 } from "../utils/dateUtils";
 import {
   useAdminDashboardQuery,
@@ -73,8 +74,19 @@ const PASTEL_AVATAR_COLORS = [
   { bg: "#fed7aa", text: "#7c2d12" },
 ];
 
+function MetricCard({ linked, to, className, title, children }) {
+  if (!linked) return <div className={className}>{children}</div>;
+  return <Link to={to} className={className} title={title}>{children}</Link>;
+}
+
 export default function AdminDashboard() {
   const { user, company } = useAuth();
+  const canPeople = hrPortalAllows(user, company, "people.view");
+  const canAttendance = hrPortalAllows(user, company, "attendance.view");
+  const canLeave = hrPortalAllows(user, company, "leave.view");
+  const canHiring = hrPortalAllows(user, company, "hiring.view");
+  const canPayroll = hrPortalAllows(user, company, "payroll.view");
+  const canPolicies = hrPortalAllows(user, company, "policies.view");
 
   // Month & Year Filter states
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
@@ -145,7 +157,10 @@ export default function AdminDashboard() {
   const summary = data?.summary || {};
   const funnel = data?.recruitmentFunnel || {};
   const payrollCycle = data?.payrollCycleSummary || {};
-  const recentLeaves = data?.recentLeaves || [];
+  const payrollRestricted = payrollCycle.restricted === true || data?.salaryExpenses?.restricted === true;
+  const leaveRestricted = data?.recentLeaves?.restricted === true;
+  const attendanceRestricted = data?.attendanceCalendar?.restricted === true;
+  const recentLeaves = Array.isArray(data?.recentLeaves) ? data.recentLeaves : [];
   const upcomingHolidays = data?.upcomingHolidays || [];
   const projectTeams = data?.projectTeams || {};
   const salaryExpenses = useMemo(() => {
@@ -166,11 +181,16 @@ export default function AdminDashboard() {
 
   // Genuine Pending HR Actions
   const pendingLeaves = useMemo(() => {
+    if (leaveRestricted) return [];
     return recentLeaves.filter((l) => l.status === "PENDING");
-  }, [recentLeaves]);
+  }, [leaveRestricted, recentLeaves]);
 
-  const pendingOffersCount = funnel.pending || 0;
-  const hasPayrollAction = payrollCycle.status !== "PAID" && payrollCycle.status !== "CANCELLED";
+  const pendingOffersCount = funnel.restricted ? 0 : funnel.pending || 0;
+  const hasPayrollAction =
+    !payrollRestricted &&
+    Boolean(payrollCycle.status) &&
+    payrollCycle.status !== "PAID" &&
+    payrollCycle.status !== "CANCELLED";
   const totalPendingActions = pendingLeaves.length + pendingOffersCount + (hasPayrollAction ? 1 : 0);
 
   // 7-day capsule bar data for Weekly Attendance Chart
@@ -284,6 +304,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Primary Action Button */}
+          {canPeople ? (
           <Link to="/admin" className="btn--primary-fern">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -291,6 +312,7 @@ export default function AdminDashboard() {
             </svg>
             <span>Add Employee</span>
           </Link>
+          ) : null}
 
           <SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />
 
@@ -330,7 +352,7 @@ export default function AdminDashboard() {
             ROW 1: WORKFORCE OVERVIEW (4 COMPACT KPI CARDS, SPAN 3 EACH)
             ==================================================================== */}
         {/* Card 1: Total Workforce (Hero Deep Green Gradient) */}
-        <Link to="/admin" className="card stat stat--hero stat-kpi">
+        <MetricCard linked={canPeople} to="/admin" className="card stat stat--hero stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title"><span className="m-title-full">Total Workforce</span><span className="m-title-short">Team</span></h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -341,39 +363,51 @@ export default function AdminDashboard() {
           <p className="stat__note">
             <span className="trend-badge is-green">Active</span>
           </p>
-        </Link>
+        </MetricCard>
 
         {/* Card 2: Present Today */}
-        <Link to="/admin/attendance?filter=PRESENT" className="card stat stat-kpi">
+        <MetricCard linked={canAttendance} to="/admin/attendance?filter=PRESENT" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title"><span className="m-title-full">Present Today</span><span className="m-title-short">Present</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
-          <p className="stat__num">{summary.todayPresent ?? 0}</p>
+          <p className="stat__num">{attendanceRestricted ? "—" : (summary.todayPresent ?? 0)}</p>
           <p className="stat__note">
-            <span className="trend-badge is-green">{attendanceRate}%</span>
-            <span>present</span>
+            {attendanceRestricted ? (
+              <span>Unavailable for this access</span>
+            ) : (
+              <>
+                <span className="trend-badge is-green">{attendanceRate}%</span>
+                <span>present</span>
+              </>
+            )}
           </p>
-        </Link>
+        </MetricCard>
 
         {/* Card 3: Absent / Late / On Leave */}
-        <Link to="/admin/leave" className="card stat stat-kpi">
+        <MetricCard linked={canLeave} to="/admin/leave" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title"><span className="m-title-full">On Leave & Exceptions</span><span className="m-title-short">Time off</span></h2>
             <span className="stat__arrow" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M7 17l10-10M7 7h10v10"/></svg>
             </span>
           </div>
-          <p className="stat__num">{(summary.onLeave ?? 0) + (summary.todayLate ?? 0)}</p>
-          <p className="stat__note">
-            <span>{summary.onLeave ?? 0} on leave · {summary.todayLate ?? 0} late</span>
+          <p className="stat__num">
+            {summary.onLeave == null && summary.todayLate == null
+              ? "—"
+              : (summary.onLeave ?? 0) + (summary.todayLate ?? 0)}
           </p>
-        </Link>
+          <p className="stat__note">
+            <span>
+              {summary.onLeave == null ? "—" : summary.onLeave} on leave · {summary.todayLate == null ? "—" : summary.todayLate} late
+            </span>
+          </p>
+        </MetricCard>
 
         {/* Card 4: Pending HR Actions */}
-        <Link to="/admin/leave?status=PENDING" className="card stat stat-kpi">
+        <MetricCard linked={canLeave} to="/admin/leave?status=PENDING" className="card stat stat-kpi">
           <div className="stat__head">
             <h2 className="stat__title"><span className="m-title-full">Pending HR Actions</span><span className="m-title-short">To review</span></h2>
             <span className="stat__arrow" aria-hidden="true">
@@ -384,7 +418,7 @@ export default function AdminDashboard() {
           <p className="stat__note">
             <span className="trend-badge is-amber">Review</span>
           </p>
-        </Link>
+        </MetricCard>
 
         {/* ====================================================================
             ROW 2: ASYMMETRIC 8 / 4 SPLIT
@@ -424,20 +458,26 @@ export default function AdminDashboard() {
                 </button>
               </div>
 
+              {canAttendance ? (
               <Link to="/admin/attendance?tab=tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
                 <span className="pulse-dot" />
                 <span>Live Tracking</span>
               </Link>
-              <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance Hub">
+              ) : null}
+              {canAttendance ? (
+              <Link to="/admin/attendance?tab=records" className="card-shortcut-link" title="Open Attendance">
                 <span>Attendance Hub</span>
                 <span aria-hidden="true">→</span>
               </Link>
+              ) : null}
             </div>
           </div>
 
           {/* Fernly Signature Capsule Bar Chart */}
           <div className="capsule-bars-container" role="img" aria-label="Weekly attendance capsule bars">
-            {weeklyBars.map((bar, idx) => {
+            {attendanceRestricted ? (
+              <p className="activity-empty">Attendance counts are unavailable for this access level.</p>
+            ) : weeklyBars.map((bar, idx) => {
               const isPeak = bar.pct >= 90 && !bar.isWeekend;
               const isLight = bar.pct < 70 && !bar.isWeekend;
               const barClass = bar.isWeekend
@@ -476,19 +516,19 @@ export default function AdminDashboard() {
             <div className="attendance-legend-group">
               <span className="legend-item">
                 <span className="legend-dot dot-present" />
-                <span>Present: <b>{hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0)}</b></span>
+                <span>Present: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0))}</b></span>
               </span>
               <span className="legend-item">
                 <span className="legend-dot dot-late" />
-                <span>Late: <b>{hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0)}</b></span>
+                <span>Late: <b>{summary.todayLate == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0))}</b></span>
               </span>
               <span className="legend-item">
                 <span className="legend-dot dot-absent" />
-                <span>Absent: <b>{hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0)}</b></span>
+                <span>Absent: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0))}</b></span>
               </span>
               <span className="legend-item">
                 <span className="legend-dot dot-leave" />
-                <span>On Leave: <b>{hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0)}</b></span>
+                <span>On Leave: <b>{summary.onLeave == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0))}</b></span>
               </span>
             </div>
 
@@ -506,15 +546,17 @@ export default function AdminDashboard() {
             </div>
             <div className="analytics-toolbar">
               <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% accepted</span>
-              <Link to="/admin/offers" className="card-shortcut-link">
+              {canHiring ? (
+              <Link to="/admin/hiring" className="card-shortcut-link">
                 <span>View</span>
                 <span aria-hidden="true">→</span>
               </Link>
+              ) : null}
             </div>
           </div>
 
           <div className="funnel-process-row">
-            <Link to="/admin/offers" className="funnel-stage-tile" title="View all generated offers">
+            <MetricCard linked={canHiring} to="/admin/hiring" className="funnel-stage-tile">
               <div className="stage-top">
                 <span className="stage-dot dot-dark" />
                 <span className="stage-name">Offers Generated</span>
@@ -523,9 +565,9 @@ export default function AdminDashboard() {
               <div className="stage-meter">
                 <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
               </div>
-            </Link>
+            </MetricCard>
 
-            <Link to="/admin/offers?status=SENT" className="funnel-stage-tile" title="View pending candidate offers">
+            <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
               <div className="stage-top">
                 <span className="stage-dot dot-amber" />
                 <span className="stage-name">Pending Review</span>
@@ -534,9 +576,9 @@ export default function AdminDashboard() {
               <div className="stage-meter">
                 <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
               </div>
-            </Link>
+            </MetricCard>
 
-            <Link to="/admin/offers?status=ACCEPTED" className="funnel-stage-tile" title="View accepted offers">
+            <MetricCard linked={canHiring} to="/admin/hiring?stage=ONBOARDING" className="funnel-stage-tile">
               <div className="stage-top">
                 <span className="stage-dot dot-green" />
                 <span className="stage-name">Accepted</span>
@@ -545,9 +587,9 @@ export default function AdminDashboard() {
               <div className="stage-meter">
                 <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
               </div>
-            </Link>
+            </MetricCard>
 
-            <Link to="/admin/offers?status=REJECTED" className="funnel-stage-tile" title="View declined offers">
+            <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
               <div className="stage-top">
                 <span className="stage-dot dot-rose" />
                 <span className="stage-name">Declined</span>
@@ -556,7 +598,7 @@ export default function AdminDashboard() {
               <div className="stage-meter">
                 <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
               </div>
-            </Link>
+            </MetricCard>
           </div>
         </section>
 
@@ -565,10 +607,12 @@ export default function AdminDashboard() {
             <div>
               <h2 className="card__title">Workforce Allocation</h2>
             </div>
+            {canPeople ? (
             <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
               <span>Directory</span>
               <span aria-hidden="true">→</span>
             </Link>
+            ) : null}
           </div>
           <WorkforceAllocation
             hideTitle
@@ -588,11 +632,12 @@ export default function AdminDashboard() {
               <h2 className="card__title"><span className="m-title-full">Action Center</span><span className="m-title-short">Needs you</span></h2>
             </div>
             <span className="pending-count-chip">{totalPendingActions} pending</span>
-            <Link to="/admin/leave" className="m-view-all">View all</Link>
+            {canLeave ? <Link to="/admin/leave" className="m-view-all">View all</Link> : null}
           </div>
 
           <div className="pending-task-list">
             {/* 1. Leave Approval */}
+            {canLeave ? (
             <Link to="/admin/leave?status=PENDING" className="pending-task-item" title="Approve pending leaves">
               <div className="task-icon-circle icon-leave">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
@@ -605,9 +650,11 @@ export default function AdminDashboard() {
               </div>
               <span className={`task-action-pill ${pendingLeaves.length > 0 ? "is-urgent" : ""}`}>Review</span>
             </Link>
+            ) : null}
 
             {/* 2. Offer Letters */}
-            <Link to="/admin/offers?status=SENT" className="pending-task-item" title="Review candidate offers">
+            {canHiring ? (
+            <Link to="/admin/hiring?stage=OFFERS" className="pending-task-item" title="Review candidate offers">
               <div className="task-icon-circle icon-offer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
               </div>
@@ -617,9 +664,10 @@ export default function AdminDashboard() {
               </div>
               <span className="task-action-pill">Track</span>
             </Link>
+            ) : null}
 
-            {/* 3. Candidate Onboarding */}
-            <Link to="/admin/onboarding" className="pending-task-item" title="Onboarding checks">
+            {canHiring ? (
+            <Link to="/admin/hiring?stage=HR_REVIEW" className="pending-task-item" title="Onboarding checks">
               <div className="task-icon-circle icon-onboard">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
               </div>
@@ -629,18 +677,20 @@ export default function AdminDashboard() {
               </div>
               <span className="task-action-pill">Verify</span>
             </Link>
+            ) : null}
 
-            {/* 4. Payroll Cycle Action */}
+            {canPayroll ? (
             <Link to="/admin/payroll" className="pending-task-item" title="Monthly payroll register">
               <div className="task-icon-circle icon-payroll">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="7" cy="15" r="1.5"/></svg>
               </div>
               <div className="task-details">
-                <p className="task-title">Payroll ({payrollCycle.statusLabel || "Draft"})</p>
-                <p className="task-desc">{payrollCycle.pendingAction || "Open this month’s register"}</p>
+                <p className="task-title">Payroll ({payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")})</p>
+                <p className="task-desc">{payrollRestricted ? "Payroll amounts are unavailable for this access level." : (payrollCycle.pendingAction || "Open this month’s register")}</p>
               </div>
               <span className="task-action-pill">Process</span>
             </Link>
+            ) : null}
           </div>
         </section>
 
@@ -651,23 +701,29 @@ export default function AdminDashboard() {
               <h2 className="card__title">Payroll</h2>
               <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear}</p>
             </div>
+            {canPayroll ? (
             <Link to="/admin/payroll" className="card-shortcut-link">
               <span>Open</span>
               <span aria-hidden="true">→</span>
             </Link>
+            ) : null}
           </div>
 
           <div className="payroll-cycle-box">
             <div>
               <span className="payroll-net-amount">
-                {formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll, currencySym)}
+                {payrollRestricted
+                  ? "Restricted"
+                  : formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll, currencySym)}
               </span>
               <p className="payroll-sub-info">
-                {payrollCycle.employeeCount || 0} of {totalEmployees} active employees in register
+                {payrollRestricted
+                  ? "Payroll amounts are hidden for this access level."
+                  : `${payrollCycle.employeeCount || 0} of ${totalEmployees} active employees in register`}
               </p>
             </div>
-            <span className={`payroll-status-pill status-${(payrollCycle.status || "draft").toLowerCase()}`}>
-              {payrollCycle.statusLabel || "Draft"}
+            <span className={`payroll-status-pill status-${payrollRestricted ? "draft" : (payrollCycle.status || "draft").toLowerCase()}`}>
+              {payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")}
             </span>
           </div>
 
@@ -690,7 +746,11 @@ export default function AdminDashboard() {
               })}
             </div>
           ) : (
-            <p className="payroll-history-empty">No processed payroll history for {selectedYear}.</p>
+            <p className="payroll-history-empty">
+              {payrollRestricted
+                ? "Payroll amounts are unavailable for this access level."
+                : `No processed payroll history for ${selectedYear}.`}
+            </p>
           )}
         </section>
         </MobileExpandable>
@@ -706,28 +766,31 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="insight-metrics-grid">
-            <Link
+            <MetricCard
+              linked={canAttendance}
               to="/admin/attendance?filter=PRESENT"
               className="insight-metric-tile"
-              title="Open attendance overview"
+              title="Open attendance"
             >
               <span className="insight-metric-label">Late arrivals today</span>
               <span className="insight-metric-value">
-                {data?.insightMetrics?.lateArrivalsToday ?? summary.todayLate ?? 0}
+                {data?.insightMetrics?.lateArrivalsToday ?? summary.todayLate ?? "—"}
               </span>
-            </Link>
-            <Link
+            </MetricCard>
+            <MetricCard
+              linked={canLeave}
               to="/admin/leave?tab=leave&status=PENDING"
               className="insight-metric-tile"
               title="Review pending leave"
             >
               <span className="insight-metric-label">Pending leave requests</span>
               <span className="insight-metric-value">
-                {data?.insightMetrics?.pendingLeaveRequests ?? summary.pendingLeaveRequests ?? pendingLeaves.length}
+                {data?.insightMetrics?.pendingLeaveRequests ?? summary.pendingLeaveRequests ?? (leaveRestricted ? "—" : pendingLeaves.length)}
               </span>
-            </Link>
-            <Link
-              to="/admin/offers?status=SENT"
+            </MetricCard>
+            <MetricCard
+              linked={canHiring}
+              to="/admin/hiring?stage=OFFERS"
               className="insight-metric-tile"
               title="Pending offer responses"
             >
@@ -735,8 +798,9 @@ export default function AdminDashboard() {
               <span className="insight-metric-value">
                 {data?.insightMetrics?.pendingOfferResponses ?? pendingOffersCount}
               </span>
-            </Link>
-            <Link
+            </MetricCard>
+            <MetricCard
+              linked={canPeople}
               to="/admin?status=INACTIVE"
               className="insight-metric-tile"
               title="Employee directory — inactive this month"
@@ -745,7 +809,7 @@ export default function AdminDashboard() {
               <span className="insight-metric-value">
                 {data?.insightMetrics?.monthlyExits ?? summary.monthlyExits ?? 0}
               </span>
-            </Link>
+            </MetricCard>
           </div>
         </section>
 
@@ -755,14 +819,20 @@ export default function AdminDashboard() {
             <div>
               <h2 className="card__title">Recent Activity</h2>
             </div>
+            {canPeople ? (
             <Link to="/admin" className="card-shortcut-link">
               <span>Directory</span>
               <span aria-hidden="true">→</span>
             </Link>
+            ) : null}
           </div>
 
           <div className="activity-list">
-            {recentLeaves.length === 0 ? (
+            {leaveRestricted ? (
+              <p className="activity-empty">
+                Leave activity is unavailable for this access level.
+              </p>
+            ) : recentLeaves.length === 0 ? (
               <p className="activity-empty">
                 No recent activity recorded for this period.
               </p>
@@ -810,10 +880,12 @@ export default function AdminDashboard() {
         <section className="card holidays-strip-card">
           <div className="card__head" style={{ marginBottom: 8 }}>
             <h3 className="card__title" style={{ fontSize: "15px" }}>Holidays</h3>
+            {canPolicies ? (
             <Link to="/admin/policies" className="card-shortcut-link">
               <span>Policy Calendar</span>
               <span aria-hidden="true">→</span>
             </Link>
+            ) : null}
           </div>
 
           <div className="holidays-strip-row" role="list" aria-label="Upcoming holidays list">

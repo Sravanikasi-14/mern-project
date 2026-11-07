@@ -1,4 +1,3 @@
-import puppeteer from "puppeteer";
 import { HttpError } from "../utils/httpError.js";
 
 function escapePdfText(str) {
@@ -37,7 +36,6 @@ function stripHtmlToTextLines(html) {
       }
       continue;
     }
-    // Word wrap long lines at ~80 characters
     if (trimmed.length <= 80) {
       lines.push(trimmed);
     } else {
@@ -124,24 +122,52 @@ export function generatePureJsPdf(htmlContent) {
   return Buffer.from(finalOut, "utf8");
 }
 
+function isServerlessRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
 /**
- * Generate a PDF Buffer from rendered HTML string using Puppeteer with pure-JS fallback
+ * Resolve a Puppeteer-compatible browser launcher + launch options.
+ * - Local / non-serverless: full `puppeteer` (bundled Chrome) unless PUPPETEER_EXECUTABLE_PATH is set.
+ * - Vercel / Lambda: `puppeteer-core` + `@sparticuz/chromium` so HTML/CSS layout is preserved.
  */
-export async function generateOfferLetterPdf(htmlContent) {
-  if (!htmlContent || typeof htmlContent !== "string") {
-    throw new HttpError(400, "HTML content is required to generate PDF.");
+async function resolveBrowserLaunch() {
+  const executableOverride = process.env.PUPPETEER_EXECUTABLE_PATH || "";
+
+  if (isServerlessRuntime()) {
+    const [{ default: puppeteerCore }, chromium] = await Promise.all([
+      import("puppeteer-core"),
+      import("@sparticuz/chromium"),
+    ]);
+    try {
+      chromium.default.setGraphicsMode = false;
+    } catch {
+      /* older builds may not expose setGraphicsMode */
+    }
+    const remotePack = process.env.CHROMIUM_REMOTE_EXECUTABLE_PATH || "";
+    const executablePath = executableOverride
+      ? executableOverride
+      : remotePack
+        ? await chromium.default.executablePath(remotePack)
+        : await chromium.default.executablePath();
+    return {
+      puppeteer: puppeteerCore,
+      launchOptions: {
+        args: chromium.default.args,
+        defaultViewport: chromium.default.defaultViewport,
+        executablePath,
+        headless: chromium.default.headless ?? "shell",
+        ignoreHTTPSErrors: true,
+      },
+    };
   }
 
-  // In serverless environments (e.g. Vercel) without a custom Chromium binary,
-  // skip attempting native Chrome launch and use the built-in pure-JS PDF generator directly.
-  if ((process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) && !process.env.PUPPETEER_EXECUTABLE_PATH) {
-    return generatePureJsPdf(htmlContent);
-  }
-
-  let browser = null;
-  try {
-    browser = await puppeteer.launch({
+  const { default: puppeteer } = await import("puppeteer");
+  return {
+    puppeteer,
+    launchOptions: {
       headless: true,
+      executablePath: executableOverride || undefined,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -151,35 +177,56 @@ export async function generateOfferLetterPdf(htmlContent) {
         "--no-zygote",
         "--disable-extensions",
       ],
-    });
+    },
+  };
+}
+
+/**
+ * Generate a PDF Buffer from rendered HTML string using Puppeteer with pure-JS fallback.
+ * Pure-JS is a last-resort safety net only (layout not preserved).
+ */
+export async function generateOfferLetterPdf(htmlContent) {
+  if (!htmlContent || typeof htmlContent !== "string") {
+    throw new HttpError(400, "HTML content is required to generate PDF.");
+  }
+
+  let browser = null;
+  try {
+    const { puppeteer, launchOptions } = await resolveBrowserLaunch();
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
-
-    // Set HTML content
     await page.setContent(htmlContent, {
       waitUntil: ["load", "networkidle0"],
       timeout: 30000,
     });
 
-    // Generate A4 PDF buffer with consistent margins and footer page numbers
-    const rawPdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: "16mm",
-        bottom: "18mm",
-        left: "16mm",
-        right: "16mm",
-      },
-      displayHeaderFooter: true,
-      headerTemplate: "<div></div>",
-      footerTemplate: `
+    // Current master (marked data-offer-layout="letter"): Letter size; the template sets
+    // `@page { size: Letter; margin: 0 }` and handles its own ~0.85in padding in CSS, so Puppeteer
+    // margins stay at zero (preferCSSPageSize). No header/footer overlay (reference has no page numbers).
+    // Previously issued documents (frozen with the older A4 master) keep their original page setup.
+    const isLetterLayout = /data-offer-layout=["']letter["']/.test(htmlContent);
+    const rawPdf = isLetterLayout
+      ? await page.pdf({
+          format: "Letter",
+          printBackground: true,
+          preferCSSPageSize: true,
+          margin: { top: "0", bottom: "0", left: "0", right: "0" },
+          displayHeaderFooter: false,
+        })
+      : await page.pdf({
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+          margin: { top: "16mm", bottom: "18mm", left: "16mm", right: "16mm" },
+          displayHeaderFooter: true,
+          headerTemplate: "<div></div>",
+          footerTemplate: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 8.5px; color: #94a3b8; width: 100%; display: flex; justify-content: flex-end; padding-right: 16mm;">
           Page&nbsp;<span class="pageNumber"></span>&nbsp;of&nbsp;<span class="totalPages"></span>
         </div>
       `,
-    });
+        });
 
     const pdfBuffer = Buffer.isBuffer(rawPdf) ? rawPdf : Buffer.from(rawPdf);
     if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {

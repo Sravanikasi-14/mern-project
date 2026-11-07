@@ -1,6 +1,14 @@
 import { USER_ROLES } from "../models/User.js";
 import { getCompanyBusinessDate } from "../services/attendanceService.js";
 import { addCivilDays, parseCivilDate, formatCivilDate, weekdaySunday0 } from "../utils/companyTime.js";
+import {
+  filterPayslipsByScope,
+  hasHrPermission,
+  mergeEmployeeIdScopeFilter,
+  mergeEmployeeScopeFilter,
+  shapePayrollCycleForHrAccess,
+} from "../services/hrAccessEnforcementService.js";
+import { HR_SCOPE_MODES } from "../constants/hrAccessCatalog.js";
 
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return null;
@@ -39,11 +47,18 @@ function toDateString(date) {
 
 export async function getAdminOverview(req, res, next) {
   try {
-    const { User } = req.auth.models;
-    const [hrAdminCount, employeeCount] = await Promise.all([
-      User.countDocuments({ role: USER_ROLES.HR_ADMIN }),
-      User.countDocuments({ role: USER_ROLES.EMPLOYEE }),
-    ]);
+    const { User, Employee } = req.auth.models;
+    const hrAdminCount = await User.countDocuments({ role: USER_ROLES.HR_ADMIN });
+
+    // Employee operational visibility follows HR scope (User counts alone can overstate).
+    let employeeCount;
+    if (Employee) {
+      employeeCount = await Employee.countDocuments(
+        mergeEmployeeScopeFilter(req.hrAccess, { status: "ACTIVE" })
+      );
+    } else {
+      employeeCount = await User.countDocuments({ role: USER_ROLES.EMPLOYEE });
+    }
 
     res.json({
       companyName: req.auth.company.companyName,
@@ -71,6 +86,7 @@ export async function getAdminDashboard(req, res, next) {
       EmployeeCompensation,
       CompanyHrPolicy,
       PayrollCycle,
+      Payslip,
     } = req.auth.models;
 
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
@@ -83,6 +99,15 @@ export async function getAdminDashboard(req, res, next) {
     const targetYear = parseInt(req.query.year || tYearStr, 10);
     const targetMonth = parseInt(req.query.month || tMonthStr, 10);
     const departmentFilter = req.query.department || "ALL";
+    const isCustomHr =
+      req.hrAccess?.enforced &&
+      req.auth?.user?.role === USER_ROLES.HR_ADMIN &&
+      req.hrAccess.configured &&
+      req.hrAccess.scopeMode === HR_SCOPE_MODES.CUSTOM;
+    const hiringVisible = hasHrPermission(req.hrAccess, "hiring.view");
+    const payrollVisible = hasHrPermission(req.hrAccess, "payroll.view");
+    const leaveVisible = hasHrPermission(req.hrAccess, "leave.view");
+    const attendanceVisible = hasHrPermission(req.hrAccess, "attendance.view");
 
     // 1. Fetch active HR Policy for attendance & payroll rules
     const targetDateObj = new Date(`${targetDate}T23:59:59.999Z`);
@@ -115,16 +140,32 @@ export async function getAdminDashboard(req, res, next) {
     const policyHolidays = activePolicy?.holidays || [];
 
     // 2. Fetch Active Employees (and collect all departments for dropdown)
-    const empBaseFilter = { status: "ACTIVE" };
+    // Apply HR employee scope before aggregates so limited HR cannot see company-wide metrics.
+    const empBaseFilter = mergeEmployeeScopeFilter(req.hrAccess, { status: "ACTIVE" });
     const empQueryFilter = { ...empBaseFilter };
     if (departmentFilter && departmentFilter !== "ALL") {
-      empQueryFilter["job.department"] = departmentFilter;
+      // Preserve existing department filter while keeping scope ($and when needed)
+      const deptClause = { "job.department": departmentFilter };
+      if (empQueryFilter.$and) {
+        empQueryFilter.$and = [...empQueryFilter.$and, deptClause];
+      } else if (empQueryFilter.$or || Object.keys(empQueryFilter).some((k) => k !== "status")) {
+        const { status, ...rest } = empQueryFilter;
+        Object.keys(rest).forEach((k) => delete empQueryFilter[k]);
+        empQueryFilter.status = status || "ACTIVE";
+        empQueryFilter.$and = [rest, deptClause];
+      } else {
+        empQueryFilter["job.department"] = departmentFilter;
+      }
     }
 
     const [activeEmployees, allDistinctDepartments] = await Promise.all([
       Employee.find(empQueryFilter)
-        // Avoid pulling large customFields blobs unless needed for legacy punch fallback
-        .select("_id employeeCode fullName email job avatar status dateOfBirth customFields.attendanceLogs")
+        // Keep projection narrow, but include the customFields used by payroll + assets
+        // (monthlySalary/salary fallback and legacy assignedAssets). Omitting them
+        // under-counted payroll and employeesWithAssets.
+        .select(
+          "_id employeeCode fullName email job avatar status dateOfBirth customFields.attendanceLogs customFields.monthlySalary customFields.salary customFields.assignedAssets"
+        )
         .lean(),
       Employee.distinct("job.department", empBaseFilter),
     ]);
@@ -243,7 +284,7 @@ export async function getAdminDashboard(req, res, next) {
       acceptanceRate: "0.0",
     };
 
-    if (OfferLetter) {
+    if (OfferLetter && hiringVisible) {
       const offerCounts = await OfferLetter.aggregate([
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]);
@@ -406,7 +447,7 @@ export async function getAdminDashboard(req, res, next) {
     }
 
     // 9. Recent Leaves (latest 10)
-    const recentLeavesDocs = await LeaveRequest.find({})
+    const recentLeavesDocs = await LeaveRequest.find(mergeEmployeeIdScopeFilter(req.hrAccess, {}))
       .sort({ createdAt: -1 })
       .limit(10)
       .populate("employeeId", "fullName employeeCode email avatar job")
@@ -443,7 +484,7 @@ export async function getAdminDashboard(req, res, next) {
     // 11. Salary expenses by processed payroll cycles (not projected CTC)
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const processedPayrollStatuses = ["FINALIZED", "PARTIALLY_PAID", "PAID"];
-    const processedCycles = PayrollCycle
+    const processedCycles = !isCustomHr && PayrollCycle
       ? await PayrollCycle.find({
           periodYear: targetYear,
           status: { $in: processedPayrollStatuses },
@@ -453,11 +494,33 @@ export async function getAdminDashboard(req, res, next) {
       : [];
 
     const cycleTotalsByMonth = new Map();
-    for (const cycle of processedCycles) {
-      const monthNumber = Number(cycle.periodMonth);
-      if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) continue;
-      const amount = Number(cycle.totalNetPayable || cycle.totalNetSalary || 0);
-      cycleTotalsByMonth.set(monthNumber, (cycleTotalsByMonth.get(monthNumber) || 0) + (Number.isFinite(amount) ? amount : 0));
+    if (isCustomHr && PayrollCycle && Payslip) {
+      const cycleDocs = await PayrollCycle.find({
+        periodYear: targetYear,
+        status: { $in: processedPayrollStatuses },
+      })
+        .select("_id periodMonth")
+        .lean();
+      for (const cycle of cycleDocs) {
+        const monthNumber = Number(cycle.periodMonth);
+        if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) continue;
+        const rows = await Payslip.find({ payrollCycleId: cycle._id })
+          .select("employeeId netPayable netSalary")
+          .lean();
+        const scoped = filterPayslipsByScope(req.hrAccess, rows);
+        let add = 0;
+        for (const payslip of scoped) {
+          add += Number(payslip.netPayable ?? payslip.netSalary ?? 0) || 0;
+        }
+        cycleTotalsByMonth.set(monthNumber, (cycleTotalsByMonth.get(monthNumber) || 0) + add);
+      }
+    } else {
+      for (const cycle of processedCycles) {
+        const monthNumber = Number(cycle.periodMonth);
+        if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) continue;
+        const amount = Number(cycle.totalNetPayable || cycle.totalNetSalary || 0);
+        cycleTotalsByMonth.set(monthNumber, (cycleTotalsByMonth.get(monthNumber) || 0) + (Number.isFinite(amount) ? amount : 0));
+      }
     }
 
     const salaryExpenses = monthNames.map((name, idx) => {
@@ -719,6 +782,91 @@ export async function getAdminDashboard(req, res, next) {
           totalEmployeesCount,
         };
       }
+
+      // CUSTOM-scoped HR: never expose company-wide payroll salary totals / counts
+      const hrAccess = req.hrAccess;
+      if (isCustomHr) {
+        async function scopedPayslipsForCycle(cycleDoc) {
+          if (!cycleDoc?._id || !Payslip) return [];
+          const rows = await Payslip.find({ payrollCycleId: cycleDoc._id }).lean();
+          return filterPayslipsByScope(hrAccess, rows);
+        }
+
+        if (cycle && payrollCycleSummary.exists) {
+          const scopedPayslips = await scopedPayslipsForCycle(cycle);
+          const shaped = shapePayrollCycleForHrAccess(hrAccess, cycle, scopedPayslips);
+          const scopedPaidCount = scopedPayslips.filter(
+            (p) => String(p.paymentStatus || "").toUpperCase() === "PAID"
+          ).length;
+          const scopedEmpCount = shaped.employeeCount ?? scopedPayslips.length;
+          const scopedNet = shaped.totalNetPayable ?? shaped.totalNetSalary;
+          const scopedGross = shaped.totalGrossEarnings;
+          payrollCycleSummary = {
+            ...payrollCycleSummary,
+            totalNetSalary: scopedNet,
+            totalGrossSalary: scopedGross,
+            totalPaidAmount: null,
+            employeeCount: scopedEmpCount,
+            eligibleEmployeeCount: activeCount,
+            employeesAwaitingProcessing: Math.max(0, activeCount - scopedEmpCount),
+            pendingPaymentAmount:
+              payrollCycleSummary.isPaymentPending && scopedNet != null
+                ? Math.max(0, Number(scopedNet) || 0)
+                : payrollCycleSummary.isPaymentPending
+                  ? null
+                  : 0,
+            paidEmployeesCount: scopedPaidCount,
+            totalEmployeesCount: scopedEmpCount,
+            _aggregatesRestricted: true,
+          };
+        }
+
+        if (lastCompletedCycle && lastCompletedDoc) {
+          const scopedPaidPayslips = await scopedPayslipsForCycle(lastCompletedDoc);
+          const shapedLast = shapePayrollCycleForHrAccess(
+            hrAccess,
+            lastCompletedDoc,
+            scopedPaidPayslips
+          );
+          lastCompletedCycle = {
+            ...lastCompletedCycle,
+            totalNetSalary: shapedLast.totalNetPayable ?? shapedLast.totalNetSalary,
+            totalPaidAmount: null,
+            employeeCount: shapedLast.employeeCount ?? scopedPaidPayslips.length,
+            _aggregatesRestricted: true,
+          };
+        }
+      } else if (
+        hrAccess?.enforced &&
+        req.auth?.user?.role === USER_ROLES.HR_ADMIN &&
+        !hrAccess.configured
+      ) {
+        // Fail closed: redact salary aggregates when access is not configured
+        if (payrollCycleSummary.exists) {
+          payrollCycleSummary = {
+            ...payrollCycleSummary,
+            totalNetSalary: null,
+            totalGrossSalary: null,
+            totalPaidAmount: null,
+            employeeCount: 0,
+            eligibleEmployeeCount: 0,
+            employeesAwaitingProcessing: 0,
+            pendingPaymentAmount: null,
+            paidEmployeesCount: 0,
+            totalEmployeesCount: 0,
+            _aggregatesRestricted: true,
+          };
+        }
+        if (lastCompletedCycle) {
+          lastCompletedCycle = {
+            ...lastCompletedCycle,
+            totalNetSalary: null,
+            totalPaidAmount: null,
+            employeeCount: 0,
+            _aggregatesRestricted: true,
+          };
+        }
+      }
     }
 
     const payrollActionCentre = {
@@ -733,21 +881,24 @@ export async function getAdminDashboard(req, res, next) {
 
     // 17. Recent Offer Letters (latest 5)
     let recentOffers = [];
-    if (OfferLetter) {
+    if (OfferLetter && hiringVisible) {
       const recentOfferDocs = await OfferLetter.find({})
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(5)
         .lean();
       recentOffers = recentOfferDocs.map((o) => ({
         id: o._id,
-        candidateName: o.candidate?.fullName || "Candidate",
-        candidateEmail: o.candidate?.email || "",
+        candidateName: hiringVisible ? o.candidate?.fullName || "Candidate" : null,
+        candidateEmail: hiringVisible ? o.candidate?.email || "" : null,
         position: o.position || "Role",
         department: o.department || "",
         status: o.status || "DRAFT",
-        monthlySalary: o.monthlySalary || 0,
+        monthlySalary: hiringVisible ? o.monthlySalary || 0 : null,
         updatedAt: o.updatedAt || o.createdAt,
       }));
+    }
+    if (!hiringVisible) {
+      recruitmentFunnel = { restricted: true };
     }
 
     // 18. Upcoming Holidays (next 5 from today onwards)
@@ -762,11 +913,15 @@ export async function getAdminDashboard(req, res, next) {
       }));
 
     const [pendingLeaveRequests, monthlyExits] = await Promise.all([
-      LeaveRequest.countDocuments({ status: "PENDING" }),
-      Employee.countDocuments({
-        status: { $ne: "ACTIVE" },
-        updatedAt: { $gte: monthStart, $lte: monthEnd },
-      }),
+      LeaveRequest.countDocuments(
+        mergeEmployeeIdScopeFilter(req.hrAccess, { status: "PENDING" })
+      ),
+      Employee.countDocuments(
+        mergeEmployeeScopeFilter(req.hrAccess, {
+          status: { $ne: "ACTIVE" },
+          updatedAt: { $gte: monthStart, $lte: monthEnd },
+        })
+      ),
     ]);
 
     // 19. Assemble Final Dashboard Payload
@@ -788,56 +943,68 @@ export async function getAdminDashboard(req, res, next) {
       },
       summary: {
         activeEmployees: activeCount,
-        todayPresent,
-        todayAbsent,
-        todayLate,
-        onLeave: onLeaveCount,
-        monthlyPayroll: totalMonthlyPayroll,
-        isPayrollEstimate: true,
-        payrollStatus: payrollCycleSummary.statusLabel,
-        payrollCycle: payrollCycleSummary,
-        pendingLeaveRequests,
-        pendingOfferResponses: recruitmentFunnel.pending || 0,
+        todayPresent: attendanceVisible ? todayPresent : null,
+        todayAbsent: attendanceVisible ? todayAbsent : null,
+        todayLate: attendanceVisible ? todayLate : null,
+        onLeave: leaveVisible ? onLeaveCount : null,
+        monthlyPayroll: payrollVisible ? totalMonthlyPayroll : null,
+        isPayrollEstimate: payrollVisible ? true : null,
+        payrollStatus: payrollVisible ? payrollCycleSummary.statusLabel : null,
+        payrollCycle: payrollVisible ? payrollCycleSummary : { restricted: true },
+        pendingLeaveRequests: leaveVisible ? pendingLeaveRequests : null,
+        pendingOfferResponses: hiringVisible ? recruitmentFunnel.pending || 0 : null,
         monthlyExits,
       },
       insightMetrics: {
-        lateArrivalsToday: todayLate,
-        pendingLeaveRequests,
-        pendingOfferResponses: recruitmentFunnel.pending || 0,
+        lateArrivalsToday: attendanceVisible ? todayLate : null,
+        pendingLeaveRequests: leaveVisible ? pendingLeaveRequests : null,
+        pendingOfferResponses: hiringVisible ? recruitmentFunnel.pending || 0 : null,
         monthlyExits,
       },
-      payrollCycleSummary,
-      payrollActionCentre,
-      lastCompletedCycle,
+      payrollCycleSummary: payrollVisible ? payrollCycleSummary : { restricted: true },
+      payrollActionCentre: payrollVisible ? payrollActionCentre : { restricted: true },
+      lastCompletedCycle: payrollVisible ? lastCompletedCycle : null,
       recruitmentFunnel,
-      attendanceCalendar: {
-        month: targetMonth,
-        year: targetYear,
-        firstDayWeekday,
-        daysInMonth,
-        days: calendarDays,
-      },
-      recentLeaves,
+      attendanceCalendar: attendanceVisible
+        ? {
+            month: targetMonth,
+            year: targetYear,
+            firstDayWeekday,
+            daysInMonth,
+            days: calendarDays,
+          }
+        : { restricted: true },
+      recentLeaves: leaveVisible ? recentLeaves : { restricted: true },
       recentOffers,
       upcomingHolidays,
-      monthlyAttendanceMix: attendanceMix,
-      salaryExpenses: {
-        year: targetYear,
-        currencySymbol,
-        months: salaryExpenses,
-      },
-      attendanceOverview: {
-        period: "This Week",
-        days: weeklyOverview,
-      },
+      monthlyAttendanceMix: attendanceVisible
+        ? leaveVisible
+          ? attendanceMix
+          : { ...attendanceMix, leave: null }
+        : { restricted: true },
+      salaryExpenses: payrollVisible
+        ? {
+            year: targetYear,
+            currencySymbol,
+            months: salaryExpenses,
+          }
+        : { restricted: true },
+      attendanceOverview: attendanceVisible
+        ? {
+            period: "This Week",
+            days: weeklyOverview,
+          }
+        : { restricted: true },
       companyAssets,
       workforce: {
         departments: workforceDepartments,
       },
-      payrollAllocation: {
-        totalMonthly: totalMonthlyPayroll,
-        departments: payrollAllocation,
-      },
+      payrollAllocation: payrollVisible
+        ? {
+            totalMonthly: totalMonthlyPayroll,
+            departments: payrollAllocation,
+          }
+        : { restricted: true },
       projectTeams,
     });
   } catch (error) {

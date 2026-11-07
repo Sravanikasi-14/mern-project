@@ -1,0 +1,192 @@
+/* Unified HRMS module toolbar — single source of layout/sizing */
+
+.module-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.module-toolbar-left,
+.module-toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.module-toolbar-left {
+  flex: 1 1 auto;
+}
+
+.module-toolbar-right {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+
+.module-toolbar .module-search {
+  flex: 1 1 240px;
+  min-width: 200px;
+  max-width: 360px;
+  height: 40px;
+}
+
+.module-toolbar-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted, #646d67);
+}
+
+.module-toolbar-field > span {
+  white-space: nowrap;
+}
+
+.module-toolbar-control,
+.module-toolbar .filter-select,
+.module-toolbar .ap-select,
+.module-toolbar .wm-select,
+.module-toolbar .ol-select,
+.module-toolbar input[type="date"],
+.module-toolbar-filters-panel .filter-select,
+.module-toolbar-filters-panel .ap-select,
+.module-toolbar-filters-panel .wm-select,
+.module-toolbar-filters-panel .ol-select,
+.module-toolbar-filters-panel select,
+.module-toolbar-filters-panel input[type="date"] {
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+
+.module-toolbar .btn-primary,
+.module-toolbar .btn-secondary {
+  min-height: 40px;
+  height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.module-toolbar-filters {
+  position: relative;
+}
+
+.module-toolbar-filters-btn.is-active {
+  border-color: rgba(39, 134, 90, 0.45);
+  color: var(--g-950, #0d3a23);
+  background: var(--g-100, #e3f2e9);
+}
+
+.module-toolbar-filters-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--g-800, #155a37);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.module-toolbar-filters-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(19, 26, 21, 0.14);
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.module-toolbar-filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.module-toolbar-filters-body > label,
+.module-toolbar-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted, #646d67);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.module-toolbar-filters-body select,
+.module-toolbar-filters-body input,
+.module-toolbar-filter-field select,
+.module-toolbar-filter-field input {
+  width: 100%;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink, #131a15);
+}
+
+.module-toolbar-filters-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hair, #e3e7e4);
+}
+
+.module-toolbar-filters-footer .btn-primary,
+.module-toolbar-filters-footer .btn-secondary {
+  min-height: 36px;
+  height: 36px;
+}
+
+.module-toolbar-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .module-toolbar .module-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .module-toolbar-right {
+    width: 100%;
+  }
+
+  .module-toolbar-filters-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}

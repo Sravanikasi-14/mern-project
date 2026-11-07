@@ -1,15 +1,25 @@
-import { useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import { IconClose } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
+import ModuleToolbar from "../components/ModuleToolbar";
+import OnboardingSectionReviewBar, {
+  FINAL_APPROVED_STATUSES,
+  SECTION_LABELS,
+  allSectionsApproved,
+} from "../components/OnboardingSectionReviewBar";
 import api from "../services/api";
 
 const STATUS_BADGES = {
   SUBMITTED: { label: "Under Review", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   CHANGES_REQUESTED: { label: "Updates Requested", bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
-  APPROVED: { label: "Approved", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  APPROVED: { label: "Approved - Invite Issued", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  ACCOUNT_SETUP_SENT: { label: "Account Setup Sent", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  ACCOUNT_SETUP_PENDING: { label: "Invite Not Delivered", bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  ACTIVATED: { label: "Activated", bg: "#ecfeff", color: "#0e7490", border: "#a5f3fc" },
+  PROCESSING_APPROVAL: { label: "Processing Approval", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   DRAFT: { label: "Draft in Progress", bg: "#f4f4f5", color: "#52525b", border: "#e4e4e7" },
   REJECTED: { label: "Rejected", bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
 };
@@ -18,14 +28,39 @@ const FILTER_TABS = [
   { key: "ALL", label: "All" },
   { key: "SUBMITTED", label: "Under Review" },
   { key: "CHANGES_REQUESTED", label: "Updates Requested" },
-  { key: "APPROVED", label: "Approved" },
+  { key: "APPROVED", label: "Approved - Invite Issued" },
+  { key: "ACCOUNT_SETUP_SENT", label: "Account Setup Sent" },
+  { key: "ACCOUNT_SETUP_PENDING", label: "Invite Not Delivered" },
+  { key: "ACTIVATED", label: "Activated" },
   { key: "REJECTED", label: "Rejected" },
 ];
 
+const SECTION_DECISION_COPY = {
+  REQUEST_CORRECTION: {
+    title: "Request Section Correction",
+    help: "Tell the candidate exactly what to fix. They are emailed a secure link and can edit only this section.",
+    submit: "Send Correction Request",
+    color: "#d97706",
+    placeholder: "e.g. Emergency contact phone must be a 10-digit number.",
+  },
+  REJECT: {
+    title: "Reject Section",
+    help: "The candidate must resubmit this section. Other approved sections stay locked.",
+    submit: "Reject Section",
+    color: "#b91c1c",
+    placeholder: "e.g. ID proof is unreadable; upload a clear scan.",
+  },
+};
+
 export default function AdminOnboardingReview() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkOfferId = (searchParams.get("offerId") || "").trim();
+  const deepLinkHandledRef = useRef("");
+
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deepLinkMessage, setDeepLinkMessage] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,6 +103,16 @@ export default function AdminOnboardingReview() {
   // Resend activation state
   const [resending, setResending] = useState(false);
 
+  // Section-wise review state
+  const [sectionBusy, setSectionBusy] = useState(false);
+  const [sectionNoteModal, setSectionNoteModal] = useState(null); // { section, decision }
+  const [sectionNote, setSectionNote] = useState("");
+
+  // Live-update refs (SSE handler must always see the latest filters / selection)
+  const selectedIdRef = useRef(null);
+  const refetchRef = useRef({ list: () => {}, detail: () => {} });
+  const [liveConnected, setLiveConnected] = useState(false);
+
   // Mask / Reveal sensitive bank and tax data
   const [showSensitiveData, setShowSensitiveData] = useState(false);
 
@@ -79,13 +124,14 @@ export default function AdminOnboardingReview() {
     return () => clearTimeout(handler);
   }, [searchTerm]);
 
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = async ({ silent = false } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError("");
       const params = new URLSearchParams();
       if (statusFilter !== "ALL") params.append("status", statusFilter);
       if (debouncedSearch.trim()) params.append("search", debouncedSearch.trim());
+      if (deepLinkOfferId) params.append("offerId", deepLinkOfferId);
 
       const res = await api.get(`/onboarding/submissions?${params.toString()}`);
       setSubmissions(res.data.submissions || []);
@@ -98,7 +144,107 @@ export default function AdminOnboardingReview() {
 
   useEffect(() => {
     fetchSubmissions();
-  }, [statusFilter, debouncedSearch]);
+  }, [statusFilter, debouncedSearch, deepLinkOfferId]);
+
+  // Silent refetch of the open submission (used by live updates and after section actions)
+  const refreshSelectedDetail = async (id) => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/onboarding/submissions/${id}`);
+      setSelectedSubmission((current) =>
+        current && String(current._id) === String(id) ? res.data.submission : current
+      );
+    } catch {
+      // Keep the current view on transient errors
+    }
+  };
+
+  useEffect(() => {
+    selectedIdRef.current = selectedSubmission?._id ? String(selectedSubmission._id) : null;
+  }, [selectedSubmission?._id]);
+
+  // Always point the SSE handler at the latest closures (filters change over time)
+  refetchRef.current = {
+    list: () => fetchSubmissions({ silent: true }),
+    detail: (id) => refreshSelectedDetail(id),
+  };
+
+  // Live HR updates via Server-Sent Events (same pattern as leave management)
+  useEffect(() => {
+    const baseURL = api.defaults.baseURL || "/api";
+    const eventsUrl = `${baseURL.replace(/\/$/, "")}/onboarding/events`;
+
+    let eventSource = null;
+    let debounceTimer = null;
+    try {
+      eventSource = new EventSource(eventsUrl, { withCredentials: true });
+      eventSource.onopen = () => setLiveConnected(true);
+      eventSource.onerror = () => setLiveConnected(false);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (!payload || payload.type === "CONNECTED") {
+            setLiveConnected(true);
+            return;
+          }
+          // Coalesce bursts of events into a single refetch
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            refetchRef.current.list();
+            if (payload.submissionId && selectedIdRef.current === String(payload.submissionId)) {
+              refetchRef.current.detail(payload.submissionId);
+            }
+          }, 250);
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      clearTimeout(debounceTimer);
+      if (eventSource) eventSource.close();
+    };
+  }, []);
+
+  const openSectionDecision = (section, decision) => {
+    if (decision === "APPROVE") {
+      submitSectionDecision(section, "APPROVE", "");
+      return;
+    }
+    setActionError("");
+    setSectionNote("");
+    setSectionNoteModal({ section, decision });
+  };
+
+  const submitSectionDecision = async (section, decision, note) => {
+    if (!selectedSubmission?._id) return;
+    try {
+      setSectionBusy(true);
+      setActionError("");
+      setActionSuccess("");
+      const res = await api.post(
+        `/onboarding/submissions/${selectedSubmission._id}/sections/${section}/review`,
+        { decision, note }
+      );
+      setActionSuccess(res.data.message || "Section updated.");
+      setSectionNoteModal(null);
+      setSectionNote("");
+      await refreshSelectedDetail(selectedSubmission._id);
+      fetchSubmissions({ silent: true });
+    } catch (err) {
+      setActionError(err.response?.data?.message || "Failed to update section review.");
+    } finally {
+      setSectionBusy(false);
+    }
+  };
+
+  const handleSectionNoteSubmit = (e) => {
+    e.preventDefault();
+    if (!sectionNote.trim()) {
+      setActionError("A note is required when rejecting a section or requesting a correction.");
+      return;
+    }
+    submitSectionDecision(sectionNoteModal.section, sectionNoteModal.decision, sectionNote.trim());
+  };
 
   const handleOpenDetail = async (sub) => {
     try {
@@ -112,6 +258,38 @@ export default function AdminOnboardingReview() {
     } finally {
       setLoadingDetail(false);
     }
+  };
+
+  // Deep-link from Offer Letters "Onboard" → open matching candidate submission
+  useEffect(() => {
+    if (!deepLinkOfferId || loading) return;
+    if (deepLinkHandledRef.current === deepLinkOfferId) return;
+    deepLinkHandledRef.current = deepLinkOfferId;
+
+    const match = submissions.find((sub) => {
+      const offerRef = sub.offerLetterId;
+      const id = offerRef?._id || offerRef;
+      return id && String(id) === String(deepLinkOfferId);
+    });
+
+    if (match) {
+      setDeepLinkMessage("");
+      handleOpenDetail(match);
+    } else {
+      setDeepLinkMessage(
+        "No candidate onboarding record was found for this offer yet. The candidate must sign the offer in the portal before HR review can begin. Legacy offers accepted outside the portal will not appear here."
+      );
+      setSelectedSubmission(null);
+    }
+  }, [deepLinkOfferId, loading, submissions]);
+
+  const clearOfferDeepLink = () => {
+    if (!deepLinkOfferId) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("offerId");
+    setSearchParams(next, { replace: true });
+    setDeepLinkMessage("");
+    deepLinkHandledRef.current = "";
   };
 
   const handleRequestCorrections = async (e) => {
@@ -137,7 +315,8 @@ export default function AdminOnboardingReview() {
         correctionReason: correctionReason.trim(),
         reviewedAt: new Date().toISOString(),
       });
-      fetchSubmissions();
+      refreshSelectedDetail(selectedSubmission._id);
+      fetchSubmissions({ silent: true });
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to request corrections.");
     } finally {
@@ -151,17 +330,17 @@ export default function AdminOnboardingReview() {
       setActionError("");
       const res = await api.post(`/onboarding/submissions/${selectedSubmission._id}/approve`);
 
-      const employeeCode = res.data.employee?.employeeCode || "Active";
       setActionSuccess(
-        `Onboarding approved successfully! Employee record created (${employeeCode}) and activation email dispatched.`
+        res.data.message ||
+          "Onboarding approved. Account setup invitation sent; the employee profile is created when the candidate activates their account."
       );
       setShowApproveModal(false);
       setSelectedSubmission({
         ...selectedSubmission,
-        status: "APPROVED",
-        employeeId: res.data.employee,
+        ...(res.data.onboarding ? { status: res.data.onboarding.status } : { status: "APPROVED" }),
       });
-      fetchSubmissions();
+      await refreshSelectedDetail(selectedSubmission._id);
+      fetchSubmissions({ silent: true });
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to approve onboarding.");
     } finally {
@@ -201,14 +380,15 @@ export default function AdminOnboardingReview() {
   };
 
   const handleResendActivation = async () => {
-    const employeeId = selectedSubmission.employeeId?._id || selectedSubmission.employeeId;
-    if (!employeeId) return;
+    if (!selectedSubmission?._id) return;
 
     try {
       setResending(true);
       setActionError("");
       const res = await api.post(`/onboarding/submissions/${selectedSubmission._id}/resend-activation`);
-      setActionSuccess(res.data.message || "Activation email resent successfully.");
+      setActionSuccess(res.data.message || "Account setup invitation resent successfully.");
+      refreshSelectedDetail(selectedSubmission._id);
+      fetchSubmissions({ silent: true });
     } catch (err) {
       setActionError(err.response?.data?.message || "Failed to resend activation email.");
     } finally {
@@ -278,11 +458,27 @@ export default function AdminOnboardingReview() {
     submissions.forEach((s) => {
       if (s.status === "SUBMITTED") summary.submitted++;
       else if (s.status === "CHANGES_REQUESTED") summary.changes++;
-      else if (s.status === "APPROVED") summary.approved++;
+      else if (FINAL_APPROVED_STATUSES.includes(s.status)) summary.approved++;
       else if (s.status === "REJECTED") summary.rejected++;
     });
     return summary;
   }, [submissions]);
+
+  const sectionReviews = selectedSubmission?.sectionReviews || {};
+  const isFinalApproved = Boolean(selectedSubmission && FINAL_APPROVED_STATUSES.includes(selectedSubmission.status));
+  const canReviewSections = Boolean(
+    selectedSubmission && ["SUBMITTED", "CHANGES_REQUESTED"].includes(selectedSubmission.status)
+  );
+  const everySectionApproved = allSectionsApproved(sectionReviews);
+  const renderSectionBar = (section) => (
+    <OnboardingSectionReviewBar
+      section={section}
+      review={sectionReviews[section]}
+      canReview={canReviewSections}
+      busy={sectionBusy}
+      onDecision={openSectionDecision}
+    />
+  );
 
   return (
     <div className="container-wide">
@@ -318,69 +514,44 @@ export default function AdminOnboardingReview() {
         </span>
         <span style={{ color: "#d4d4d8" }}>•</span>
         <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Approved Hires: <strong style={{ color: "var(--g-800, #155a37)" }}>{counts.approved}</strong>
+          Approved: <strong style={{ color: "var(--g-800, #155a37)" }}>{counts.approved}</strong>
         </span>
         <span style={{ color: "#d4d4d8" }}>•</span>
         <span style={{ color: "var(--text-muted, #646d67)" }}>
           Rejected: <strong style={{ color: counts.rejected > 0 ? "#b91c1c" : "var(--muted)" }}>{counts.rejected}</strong>
         </span>
+        <span
+          title={liveConnected ? "Live updates connected" : "Live updates reconnecting"}
+          style={{ marginLeft: "auto", fontSize: 11, color: liveConnected ? "#047857" : "#94a3b8" }}
+        >
+          ● {liveConnected ? "Live" : "Offline"}
+        </span>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div
-        style={{
-          background: "var(--card)",
-          padding: "8px 14px",
-          borderRadius: "10px",
-          border: "1px solid var(--hair)",
-          boxShadow: "var(--shadow-sm)",
-          marginBottom: "14px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "10px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {FILTER_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setStatusFilter(tab.key)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                fontWeight: "600",
-                border: statusFilter === tab.key ? "1px solid rgba(39, 134, 90, 0.3)" : "1px solid var(--hair)",
-                background: statusFilter === tab.key ? "var(--g-100)" : "transparent",
-                color: statusFilter === tab.key ? "var(--g-800)" : "var(--text-muted)",
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
+      <ModuleToolbar
+        searchValue={searchTerm}
+        onSearchChange={(e) => setSearchTerm(e.target.value)}
+        searchPlaceholder="Search candidate name or email..."
+        searchAriaLabel="Search onboarding candidates"
+        filterCount={statusFilter !== "ALL" ? 1 : 0}
+        onFiltersClear={() => setStatusFilter("ALL")}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Status
+            <select
+              className="filter-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
             >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ width: "260px" }}>
-          <input
-            type="text"
-            placeholder="Search candidate name or email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "7px 12px",
-              fontSize: "13px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "6px",
-            }}
-          />
-        </div>
-      </div>
+              {FILTER_TABS.map((tab) => (
+                <option key={tab.key} value={tab.key}>
+                  {tab.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
 
       {error && (
         <div
@@ -395,6 +566,44 @@ export default function AdminOnboardingReview() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {deepLinkOfferId && (
+        <div
+          style={{
+            background: deepLinkMessage ? "#fffbeb" : "#eff6ff",
+            border: `1px solid ${deepLinkMessage ? "#fde68a" : "#bfdbfe"}`,
+            padding: "12px 18px",
+            borderRadius: "6px",
+            color: deepLinkMessage ? "#92400e" : "#1e40af",
+            fontSize: "13px",
+            marginBottom: "16px",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+          }}
+        >
+          <span>
+            {deepLinkMessage ||
+              "Opened from Offer Letters — showing the onboarding record linked to this offer."}
+          </span>
+          <button
+            type="button"
+            onClick={clearOfferDeepLink}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "inherit",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Clear filter
+          </button>
         </div>
       )}
 
@@ -682,8 +891,8 @@ export default function AdminOnboardingReview() {
                 </div>
               )}
 
-              {/* Status Banner: APPROVED */}
-              {selectedSubmission.status === "APPROVED" && (
+              {/* Status Banner: HR final approval -> account setup -> activated */}
+              {isFinalApproved && (
                 <div
                   style={{
                     background: "#f0fdf4",
@@ -694,15 +903,26 @@ export default function AdminOnboardingReview() {
                   }}
                 >
                   <span style={{ fontSize: "11px", color: "#166534", fontWeight: "700", textTransform: "uppercase" }}>
-                    Active Employee Profile Created
+                    {selectedSubmission.status === "ACTIVATED"
+                      ? "Account Activated - Employee Profile Created"
+                      : selectedSubmission.status === "ACCOUNT_SETUP_PENDING"
+                      ? "Approved - Account Setup Invitation Not Delivered"
+                      : "Approved - Awaiting Account Setup"}
                   </span>
-                  <div style={{ fontSize: "15px", fontWeight: "700", color: "#14532d", marginTop: "4px" }}>
-                    Employee Code: {selectedSubmission.employeeId?.employeeCode || "Active Employee Profile"}
-                  </div>
-                  <p style={{ fontSize: "12px", color: "#15803d", margin: "4px 0 12px" }}>
-                    This candidate has been approved and created as an active employee record in the company directory.
-                  </p>
-                  <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                  {selectedSubmission.status === "ACTIVATED" ? (
+                    <div style={{ fontSize: "15px", fontWeight: "700", color: "#14532d", marginTop: "4px" }}>
+                      Employee Code: {selectedSubmission.employeeId?.employeeCode || "Active Employee Profile"}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "12px", color: "#15803d", margin: "6px 0 12px" }}>
+                      HR approval is frozen. An account setup invitation was issued
+                      {selectedSubmission.invitationSentAt
+                        ? ` on ${new Date(selectedSubmission.invitationSentAt).toLocaleString("en-IN")}`
+                        : ""}
+                      . The employee profile is created only after the candidate activates their account.
+                    </p>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", marginTop: 8 }}>
                     {selectedSubmission.employeeId?._id && (
                       <Link
                         to={`/admin/employees/${selectedSubmission.employeeId._id}`}
@@ -711,22 +931,24 @@ export default function AdminOnboardingReview() {
                         View in People Management →
                       </Link>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleResendActivation}
-                      disabled={resending}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "#475569",
-                        fontSize: "12px",
-                        cursor: resending ? "not-allowed" : "pointer",
-                        textDecoration: "underline",
-                        padding: 0,
-                      }}
-                    >
-                      {resending ? "Resending..." : "Resend Activation Link"}
-                    </button>
+                    {selectedSubmission.status !== "ACTIVATED" && (
+                      <button
+                        type="button"
+                        onClick={handleResendActivation}
+                        disabled={resending}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#475569",
+                          fontSize: "12px",
+                          cursor: resending ? "not-allowed" : "pointer",
+                          textDecoration: "underline",
+                          padding: 0,
+                        }}
+                      >
+                        {resending ? "Resending..." : "Resend Account Setup Invitation"}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -815,7 +1037,8 @@ export default function AdminOnboardingReview() {
 
               {/* Personal Details */}
               <div style={{ marginBottom: "18px" }}>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 10px" }}>Personal Details</h4>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 10px" }}>{SECTION_LABELS.personalDetails}</h4>
+                {renderSectionBar("personalDetails")}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
                   <div>Full Name: <strong>{selectedSubmission.personalDetails?.fullName || selectedSubmission.candidate?.fullName}</strong></div>
                   <div>Phone: <strong>{selectedSubmission.personalDetails?.phoneNumber || "N/A"}</strong></div>
@@ -833,7 +1056,8 @@ export default function AdminOnboardingReview() {
 
               {/* Address */}
               <div style={{ marginBottom: "18px" }}>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>Residential Address</h4>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>{SECTION_LABELS.residentialAddress}</h4>
+                {renderSectionBar("residentialAddress")}
                 <div style={{ fontSize: "12px", color: "#334155", lineHeight: "1.5" }}>
                   {selectedSubmission.residentialAddress?.street || "Address not provided"}
                   {selectedSubmission.residentialAddress?.city ? `, ${selectedSubmission.residentialAddress.city}` : ""}
@@ -844,7 +1068,8 @@ export default function AdminOnboardingReview() {
 
               {/* Emergency Contact */}
               <div style={{ marginBottom: "18px" }}>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>Emergency Contact</h4>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>{SECTION_LABELS.emergencyContact}</h4>
+                {renderSectionBar("emergencyContact")}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
                   <div>Name: <strong>{selectedSubmission.emergencyContact?.name || "N/A"}</strong></div>
                   <div>Relationship: <strong>{selectedSubmission.emergencyContact?.relationship || "N/A"}</strong></div>
@@ -873,6 +1098,7 @@ export default function AdminOnboardingReview() {
                     {showSensitiveData ? "Mask Numbers" : "Reveal Numbers"}
                   </button>
                 </div>
+                {renderSectionBar("bankAndTax")}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
                   <div>Bank Name: <strong>{selectedSubmission.bankDetails?.bankName || "N/A"}</strong></div>
                   <div>
@@ -904,6 +1130,7 @@ export default function AdminOnboardingReview() {
                 <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a", margin: "0 0 10px" }}>
                   Uploaded Documents ({selectedSubmission.documents?.length || 0})
                 </h4>
+                {renderSectionBar("documents")}
                 {selectedSubmission.documents?.length === 0 ? (
                   <span style={{ fontSize: "12px", color: "#94a3b8" }}>No documents uploaded.</span>
                 ) : (
@@ -1067,22 +1294,28 @@ export default function AdminOnboardingReview() {
 
                     <button
                       type="button"
+                      disabled={!everySectionApproved}
+                      title={
+                        everySectionApproved
+                          ? "Freeze approval and send the account setup email"
+                          : "Approve every section first"
+                      }
                       onClick={() => {
                         setActionError("");
                         setShowApproveModal(true);
                       }}
                       style={{
                         padding: "8px 20px",
-                        background: "#16a34a",
+                        background: everySectionApproved ? "#16a34a" : "#a7d7b8",
                         border: "none",
                         borderRadius: "6px",
                         color: "#ffffff",
                         fontSize: "13px",
                         fontWeight: "600",
-                        cursor: "pointer",
+                        cursor: everySectionApproved ? "pointer" : "not-allowed",
                       }}
                     >
-                      Approve Onboarding
+                      Final Approve & Send Account Setup
                     </button>
                   </div>
                 </>
@@ -1139,10 +1372,12 @@ export default function AdminOnboardingReview() {
                 </>
               )}
 
-              {selectedSubmission.status === "APPROVED" && (
+              {isFinalApproved && (
                 <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "12px", color: "#166534", fontWeight: "600" }}>
-                    Approved Employee: {selectedSubmission.employeeId?.employeeCode || "Active Record"}
+                    {selectedSubmission.status === "ACTIVATED"
+                      ? `Employee: ${selectedSubmission.employeeId?.employeeCode || "Active Record"}`
+                      : "Approved - employee profile is created when the candidate activates their account"}
                   </span>
                   {selectedSubmission.employeeId?._id && (
                     <Link
@@ -1177,7 +1412,8 @@ export default function AdminOnboardingReview() {
 
               {selectedSubmission.status !== "SUBMITTED" &&
                 selectedSubmission.status !== "CHANGES_REQUESTED" &&
-                selectedSubmission.status !== "APPROVED" &&
+                !isFinalApproved &&
+                selectedSubmission.status !== "PROCESSING_APPROVAL" &&
                 selectedSubmission.status !== "REJECTED" && (
                   <div style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "12px", color: "#64748b" }}>
@@ -1206,6 +1442,125 @@ export default function AdminOnboardingReview() {
                   </div>
                 )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section decision (reject / request correction) note modal */}
+      {sectionNoteModal && selectedSubmission && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15, 23, 42, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1100,
+            padding: "16px",
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={SECTION_DECISION_COPY[sectionNoteModal.decision].title}
+            style={{
+              background: "#ffffff",
+              padding: "28px",
+              borderRadius: "12px",
+              maxWidth: "480px",
+              width: "100%",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+            }}
+          >
+            <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#0f172a", margin: "0 0 4px" }}>
+              {SECTION_DECISION_COPY[sectionNoteModal.decision].title}
+            </h3>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: 8 }}>
+              {SECTION_LABELS[sectionNoteModal.section]}
+            </div>
+            <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px", lineHeight: "1.5" }}>
+              {SECTION_DECISION_COPY[sectionNoteModal.decision].help}
+            </p>
+            <form onSubmit={handleSectionNoteSubmit}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#334155", marginBottom: "6px" }}>
+                Note for candidate <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <textarea
+                value={sectionNote}
+                onChange={(e) => setSectionNote(e.target.value)}
+                placeholder={SECTION_DECISION_COPY[sectionNoteModal.decision].placeholder}
+                rows={4}
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  fontSize: "13px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                  marginBottom: 14,
+                }}
+                required
+              />
+              {actionError && (
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    color: "#b91c1c",
+                    fontSize: "12px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {actionError}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSectionNoteModal(null);
+                    setActionError("");
+                  }}
+                  disabled={sectionBusy}
+                  style={{
+                    padding: "8px 14px",
+                    background: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    color: "#475569",
+                    fontSize: "12px",
+                    cursor: sectionBusy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sectionBusy}
+                  style={{
+                    padding: "8px 18px",
+                    background: SECTION_DECISION_COPY[sectionNoteModal.decision].color,
+                    border: "none",
+                    borderRadius: "6px",
+                    color: "#ffffff",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    cursor: sectionBusy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {sectionBusy ? "Saving..." : SECTION_DECISION_COPY[sectionNoteModal.decision].submit}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1336,10 +1691,11 @@ export default function AdminOnboardingReview() {
             }}
           >
             <h3 style={{ fontSize: "17px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>
-              Approve Onboarding & Create Employee
+              Final Approval & Account Setup Invitation
             </h3>
             <p style={{ fontSize: "13px", color: "#475569", lineHeight: "1.5", margin: "0 0 16px" }}>
-              Are you sure you want to approve onboarding for <strong>{selectedSubmission.candidate?.fullName}</strong>?
+              Give final approval for <strong>{selectedSubmission.candidate?.fullName}</strong>? All sections are
+              approved. This freezes the submission.
             </p>
 
             <div
@@ -1354,9 +1710,9 @@ export default function AdminOnboardingReview() {
                 lineHeight: "1.6",
               }}
             >
-              <div>• Official employee profile will be generated in company directory.</div>
-              <div>• Compensation structure will be recorded from accepted offer terms.</div>
-              <div>• Employee will receive account activation email with secure password link.</div>
+              <div>• An account setup email with a secure password link is sent to the candidate.</div>
+              <div>• The employee profile is NOT created yet.</div>
+              <div>• It is created, with compensation from the accepted offer, only after the candidate activates their account.</div>
             </div>
 
             {actionError && (
@@ -1407,7 +1763,7 @@ export default function AdminOnboardingReview() {
                   cursor: approving ? "not-allowed" : "pointer",
                 }}
               >
-                {approving ? "Creating Profile..." : "Confirm & Create Employee"}
+                {approving ? "Sending Invitation..." : "Confirm & Send Account Setup Email"}
               </button>
             </div>
           </div>

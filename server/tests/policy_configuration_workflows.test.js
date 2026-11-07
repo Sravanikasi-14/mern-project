@@ -9,6 +9,9 @@ import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES } from "../models/User.js";
 import { getAuthCookieName } from "../utils/authCookie.js";
 import { hashPassword } from "../utils/password.js";
+import { emailService } from "../services/emailService.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
+import { seedCompanyHrSignature } from "./helpers/offerSignature.js";
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-chars";
@@ -43,7 +46,24 @@ before(async () => {
     slug: "nexus",
     databaseName: "company_nexus_policies_workflow_test",
     status: COMPANY_STATUSES.ACTIVE,
+    // Offer send requires configured tenant SMTP; mock the transport below.
+    emailSettings: {
+      fromName: "Nexus HR",
+      fromEmail: "hr@nexus.test",
+      smtpHost: "smtp.nexus.test",
+      smtpPort: 587,
+      smtpSecure: false,
+      appPasswordEncrypted: encryptSecret("mock-nexus-smtp-pass"),
+      isConfigured: true,
+      lastVerifiedAt: new Date(),
+    },
   });
+
+  emailService.setTransporter({
+    sendMail: async () => ({ messageId: `policy_workflow_${Date.now()}` }),
+    verify: async () => true,
+  });
+  emailService.setSimulateFailure(false);
 
   const { User, Employee, CompanyHrPolicy } = await getCompanyModels(company);
 
@@ -141,6 +161,8 @@ before(async () => {
 });
 
 after(async () => {
+  emailService.setSimulateFailure(false);
+  emailService.setTransporter(null);
   await disconnectAll();
   if (mongo) await mongo.stop();
 });
@@ -280,6 +302,8 @@ describe("HR Policies Configuration & Real Downstream Workflows Integration", ()
 
   it("5. Downstream Integration: Offer Letter expiration dynamically honors policy offerValidityDays", async () => {
     const { OfferLetter } = await getCompanyModels(company);
+    // Sending requires an HR e-signature saved in Settings.
+    await seedCompanyHrSignature(Company, company._id);
 
     // Create an offer letter draft
     const createRes = await request(app)

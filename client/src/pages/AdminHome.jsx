@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
@@ -9,15 +9,23 @@ import { IconClose, IconCheck } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import ColumnChooser from "../components/ColumnChooser";
-import {
-  useEmployeesSummaryQuery,
+import { useEmployeesSummaryQuery,
   useEmployeesPoolQuery,
   useEmployeesQuery,
 } from "../hooks/useAdminQueries";
 import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import { invalidateEmployees } from "../lib/queryKeys";
+import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import DepartmentSelect from "../components/DepartmentSelect";
+import { departmentPayload } from "../components/departmentAssignment";
+import DesignationFields from "../components/organization-workspace/DesignationFields";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import "./PeopleManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
+import ModuleToolbar from "../components/ModuleToolbar";
+import ReportingManagerSelect from "../components/ReportingManagerSelect";
+import DateRangePicker from "../components/DateRangePicker";
 
 const PAGE_SIZE_OPTIONS = [8, 12, 24, 48, 100];
 
@@ -28,6 +36,7 @@ const AVAILABLE_COLUMNS = [
   { id: "phoneNumber", label: "Phone", defaultVisible: false },
   { id: "jobTitle", label: "Designation", defaultVisible: true },
   { id: "department", label: "Department", defaultVisible: true },
+  { id: "manager", label: "Manager", defaultVisible: true },
   { id: "project", label: "Project", defaultVisible: false },
   { id: "status", label: "Status", essential: true },
   { id: "invitation", label: "Invitation", defaultVisible: false },
@@ -36,8 +45,57 @@ const AVAILABLE_COLUMNS = [
   { id: "actions", label: "Actions", essential: true },
 ];
 
+const SEARCH_PLACEHOLDER =
+  "Search by name, preferred name, ID, email, phone, designation, department, project or location…";
+
+const INVITATION_STATUS_OPTIONS = [
+  { value: "PENDING", label: "Invite pending" },
+  { value: "ACCEPTED", label: "Invite accepted" },
+  { value: "EXPIRED", label: "Invite expired" },
+  { value: "DELIVERY_FAILED", label: "Delivery failed" },
+];
+
+const PROJECT_TYPE_OPTIONS = [
+  { value: "MANDATE", label: "Mandate" },
+  { value: "RETAIL", label: "Retail" },
+  { value: "BENCH", label: "Bench" },
+  { value: "INTERNAL", label: "Internal" },
+];
+
+function parseManagerFilterParam(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  if (!v) return null;
+  if (["none", "null", "unassigned"].includes(v.toLowerCase())) return "none";
+  return v;
+}
+
+function invitationStatusLabel(value) {
+  return INVITATION_STATUS_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+function projectTypeLabel(value) {
+  return PROJECT_TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+function ManagerCell({ employee }) {
+  const mgr = employee?.job?.reportingManagerId;
+  if (!mgr || typeof mgr !== "object" || !mgr.fullName) {
+    return <span className="pm-mgr-none">No manager</span>;
+  }
+  return (
+    <span className="pm-mgr-cell">
+      <span className="pm-mgr-name">{mgr.fullName}</span>
+      {mgr.job?.jobTitle ? <span className="pm-mgr-title">{mgr.job.jobTitle}</span> : null}
+    </span>
+  );
+}
+
 export default function AdminHome() {
   const navigate = useNavigate();
+  const { user, company } = useAuth();
+  const canCreatePeople = hrPortalAllows(user, company, "people.create");
+  const canImportPeople = hrPortalAllows(user, company, "people.import");
   const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -46,7 +104,30 @@ export default function AdminHome() {
 
   // Selected project state: null = Projects Overview (Ref 1), string = Project Details (Ref 2)
   const [selectedProject, setSelectedProject] = useState(projectParam || "ALL");
-  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState(
+    () => searchParams.get("department") || ""
+  );
+  const [jobTitleFilter, setJobTitleFilter] = useState(() => searchParams.get("jobTitle") || "");
+  /** null = all; "none" = unassigned; ObjectId = direct reports of that manager */
+  const [managerFilter, setManagerFilter] = useState(() =>
+    parseManagerFilterParam(searchParams.get("reportingManagerId"))
+  );
+  const [employmentTypeFilter, setEmploymentTypeFilter] = useState(
+    () => searchParams.get("employmentType") || ""
+  );
+  const [workLocationFilter, setWorkLocationFilter] = useState(
+    () => searchParams.get("workLocation") || ""
+  );
+  const [invitationStatusFilter, setInvitationStatusFilter] = useState(() => {
+    const raw = (searchParams.get("invitationStatus") || "").toUpperCase();
+    return INVITATION_STATUS_OPTIONS.some((o) => o.value === raw) ? raw : "";
+  });
+  const [joiningFrom, setJoiningFrom] = useState(() => searchParams.get("joiningFrom") || "");
+  const [joiningTo, setJoiningTo] = useState(() => searchParams.get("joiningTo") || "");
+  const [projectTypeFilter, setProjectTypeFilter] = useState(() => {
+    const raw = (searchParams.get("projectType") || "").toUpperCase();
+    return PROJECT_TYPE_OPTIONS.some((o) => o.value === raw) ? raw : "";
+  });
 
   const [search, setSearch] = useState(() => searchParams.get("q") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") || "");
@@ -88,15 +169,18 @@ export default function AdminHome() {
     employeeCode: "",
     email: "",
     jobTitle: "",
+    jobGrade: "",
     department: "",
+    departmentId: "",
     employmentType: "Full-time",
     joiningDate: "",
     projectName: "",
     monthlySalary: "",
+    reportingManagerId: null,
     offerLetterId: null,
   });
 
-  // Keep URL searchParams synchronized with selectedProject
+  // Project overview drill-down: clear free-text search so the project view starts clean.
   const handleSelectProject = (projName) => {
     const next = projName || "ALL";
     setSelectedProject(next);
@@ -113,6 +197,12 @@ export default function AdminHome() {
     setSearchParams(searchParams, { replace: true });
   };
 
+  // Filter-panel project change: keep search + other filters intact.
+  const applyProjectFilter = (projName) => {
+    setSelectedProject(projName || "ALL");
+    setCurrentPage(1);
+  };
+
   // Persist directory list state so Back from employee details restores filters/pagination.
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -122,6 +212,25 @@ export default function AdminHome() {
     else next.delete("status");
     if (debouncedSearch.trim()) next.set("q", debouncedSearch.trim());
     else next.delete("q");
+    if (selectedDepartment.trim()) next.set("department", selectedDepartment.trim());
+    else next.delete("department");
+    if (jobTitleFilter.trim()) next.set("jobTitle", jobTitleFilter.trim());
+    else next.delete("jobTitle");
+    if (managerFilter === "none") next.set("reportingManagerId", "none");
+    else if (managerFilter) next.set("reportingManagerId", String(managerFilter));
+    else next.delete("reportingManagerId");
+    if (employmentTypeFilter.trim()) next.set("employmentType", employmentTypeFilter.trim());
+    else next.delete("employmentType");
+    if (workLocationFilter.trim()) next.set("workLocation", workLocationFilter.trim());
+    else next.delete("workLocation");
+    if (invitationStatusFilter) next.set("invitationStatus", invitationStatusFilter);
+    else next.delete("invitationStatus");
+    if (joiningFrom) next.set("joiningFrom", joiningFrom);
+    else next.delete("joiningFrom");
+    if (joiningTo) next.set("joiningTo", joiningTo);
+    else next.delete("joiningTo");
+    if (projectTypeFilter) next.set("projectType", projectTypeFilter);
+    else next.delete("projectType");
     if (sortBy && sortBy !== "createdAt") next.set("sortBy", sortBy);
     else next.delete("sortBy");
     if (sortOrder && sortOrder !== "desc") next.set("sortOrder", sortOrder);
@@ -136,6 +245,15 @@ export default function AdminHome() {
     selectedProject,
     statusFilter,
     debouncedSearch,
+    selectedDepartment,
+    jobTitleFilter,
+    managerFilter,
+    employmentTypeFilter,
+    workLocationFilter,
+    invitationStatusFilter,
+    joiningFrom,
+    joiningTo,
+    projectTypeFilter,
     sortBy,
     sortOrder,
     pageSize,
@@ -167,12 +285,15 @@ export default function AdminHome() {
             employeeCode: "",
             email: offer.candidate?.email || "",
             jobTitle: offer.position || "",
+            jobGrade: "",
             department: offer.department || "",
+            departmentId: "",
             employmentType: "Full-time",
             workLocation: offer.workLocation || "",
             joiningDate: offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : "",
             projectName: "",
             monthlySalary: offer.monthlySalary ? String(offer.monthlySalary) : "",
+            reportingManagerId: null,
             offerLetterId: offer._id,
           });
           setShowAddModal(true);
@@ -190,10 +311,15 @@ export default function AdminHome() {
     };
   }, [onboardOfferId]);
 
-  // Debounce search
+  // Debounce search (skip page reset on initial URL hydration)
+  const searchHydratedRef = useRef(true);
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(search);
+      if (searchHydratedRef.current) {
+        searchHydratedRef.current = false;
+        return;
+      }
       setCurrentPage(1);
     }, 300);
     return () => clearTimeout(handler);
@@ -210,6 +336,14 @@ export default function AdminHome() {
     status: statusFilter,
     project: selectedProject,
     department: selectedDepartment,
+    jobTitle: jobTitleFilter,
+    reportingManagerId: managerFilter || "",
+    employmentType: employmentTypeFilter,
+    workLocation: workLocationFilter,
+    invitationStatus: invitationStatusFilter,
+    joiningFrom,
+    joiningTo,
+    projectType: projectTypeFilter,
   });
 
   const summary = summaryQuery.data?.summary || summaryQuery.data || null;
@@ -302,9 +436,81 @@ export default function AdminHome() {
 
     const leadsList = Array.from(leadsMap.values()).slice(0, 4);
 
-    return { projectList, deptList, leadsList };
+    const designationSet = new Set();
+    const employmentTypeSet = new Set();
+    const workLocationSet = new Set();
+    allEmployeesPool.forEach((emp) => {
+      const title = emp.job?.jobTitle?.trim();
+      if (title) designationSet.add(title);
+      const empType = emp.job?.employmentType?.trim();
+      if (empType) employmentTypeSet.add(empType);
+      const loc = emp.job?.workLocation?.trim();
+      if (loc) workLocationSet.add(loc);
+    });
+    const designationList = Array.from(designationSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    const employmentTypeList = Array.from(employmentTypeSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    const workLocationList = Array.from(workLocationSet).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+    return {
+      projectList,
+      deptList,
+      leadsList,
+      designationList,
+      employmentTypeList,
+      workLocationList,
+    };
   }, [allEmployeesPool]);
 
+  const peopleFilterCount =
+    (statusFilter !== "ALL" ? 1 : 0) +
+    (sortBy !== "createdAt" || sortOrder !== "desc" ? 1 : 0) +
+    (selectedProject && selectedProject !== "ALL" ? 1 : 0) +
+    (selectedDepartment.trim() ? 1 : 0) +
+    (jobTitleFilter.trim() ? 1 : 0) +
+    (managerFilter ? 1 : 0) +
+    (employmentTypeFilter.trim() ? 1 : 0) +
+    (workLocationFilter.trim() ? 1 : 0) +
+    (invitationStatusFilter ? 1 : 0) +
+    (joiningFrom || joiningTo ? 1 : 0) +
+    (projectTypeFilter ? 1 : 0) +
+    (debouncedSearch.trim() ? 1 : 0);
+
+  const hasChipFilters =
+    Boolean(selectedDepartment.trim()) ||
+    Boolean(jobTitleFilter.trim()) ||
+    Boolean(managerFilter) ||
+    Boolean(employmentTypeFilter.trim()) ||
+    Boolean(workLocationFilter.trim()) ||
+    Boolean(invitationStatusFilter) ||
+    Boolean(joiningFrom || joiningTo) ||
+    Boolean(projectTypeFilter) ||
+    (selectedProject && selectedProject !== "ALL") ||
+    statusFilter !== "ALL" ||
+    Boolean(debouncedSearch.trim());
+
+  const clearPeopleFilters = () => {
+    setStatusFilter("ALL");
+    setSortBy("createdAt");
+    setSortOrder("desc");
+    setSelectedProject("ALL");
+    setJobTitleFilter("");
+    setManagerFilter(null);
+    setSelectedDepartment("");
+    setEmploymentTypeFilter("");
+    setWorkLocationFilter("");
+    setInvitationStatusFilter("");
+    setJoiningFrom("");
+    setJoiningTo("");
+    setProjectTypeFilter("");
+    setSearch("");
+    setDebouncedSearch("");
+    setCurrentPage(1);
+  };
 
   const handleViewDetails = (empId) => {
     navigate(`/admin/employees/${empId}`, {
@@ -360,11 +566,18 @@ export default function AdminHome() {
     setSavingAdd(true);
 
     try {
+      const { department, departmentId, ...employeeFields } = newEmployee;
       const response = await api.post("/employees", {
-        ...newEmployee,
+        ...employeeFields,
+        ...departmentPayload({
+          departmentId,
+          legacyName: department,
+          submitLegacy: !departmentId,
+        }),
         fullName: newEmployee.fullName.trim(),
         employeeCode: newEmployee.employeeCode.trim(),
         email: newEmployee.email.trim(),
+        reportingManagerId: newEmployee.reportingManagerId || null,
         offerLetterId: newEmployee.offerLetterId || undefined,
       });
 
@@ -378,8 +591,6 @@ export default function AdminHome() {
     } catch (err) {
       if (!err.response || err.code === "ERR_NETWORK" || err.response.status >= 500) {
         setAddError("We're unable to connect right now. Please try again in a moment.");
-      } else if (err.response.status === 403) {
-        setAddError("Account creation blocked: you lack permission or the company workspace is unavailable.");
       } else {
         const backendMessage = err.response.data?.message || "Unable to create employee.";
         const backendErrors = err.response.data?.errors || {};
@@ -420,11 +631,14 @@ export default function AdminHome() {
       employeeCode: "",
       email: "",
       jobTitle: "",
+      jobGrade: "",
       department: "",
+      departmentId: "",
       employmentType: "Full-time",
       joiningDate: "",
       projectName: "",
       monthlySalary: "",
+      reportingManagerId: null,
       offerLetterId: null,
     });
     if (onboardOfferId) {
@@ -614,6 +828,8 @@ export default function AdminHome() {
                   </svg>
                   <span>All Employees</span>
                 </button>
+                {(!canImportPeople || !canCreatePeople) ? <AccessRestrictedInline /> : null}
+                {canImportPeople ? (
                 <button
                   type="button"
                   className="btn-secondary"
@@ -622,6 +838,8 @@ export default function AdminHome() {
                 >
                   Import
                 </button>
+                ) : null}
+                {canCreatePeople ? (
                 <button
                   type="button"
                   className="btn-primary"
@@ -633,6 +851,7 @@ export default function AdminHome() {
                 >
                   <span>+</span> <span>Add Employee</span>
                 </button>
+                ) : null}
               </div>
             }
           />
@@ -855,6 +1074,8 @@ export default function AdminHome() {
             actions={
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <SoftRefresh active={listFetching} />
+                {(!canImportPeople || !canCreatePeople) ? <AccessRestrictedInline /> : null}
+                {canImportPeople ? (
                 <button
                   type="button"
                   className="btn-secondary"
@@ -862,6 +1083,8 @@ export default function AdminHome() {
                 >
                   Import
                 </button>
+                ) : null}
+                {canCreatePeople ? (
                 <button
                   type="button"
                   className="btn-primary"
@@ -879,6 +1102,7 @@ export default function AdminHome() {
                   </svg>
                   Add Employee
                 </button>
+                ) : null}
               </div>
             }
           />
@@ -912,15 +1136,9 @@ export default function AdminHome() {
           <MobileFilterBar
             search={search}
             onSearchChange={(e) => setSearch(e.target.value)}
-            searchPlaceholder="Search by name or role"
-            filterCount={(statusFilter !== "ALL" ? 1 : 0) + (selectedProject && selectedProject !== "ALL" ? 1 : 0)}
-            onReset={() => {
-              setStatusFilter("ALL");
-              setSortBy("createdAt");
-              setSortOrder("desc");
-              setSelectedProject("ALL");
-              setCurrentPage(1);
-            }}
+            searchPlaceholder={SEARCH_PLACEHOLDER}
+            filterCount={peopleFilterCount}
+            onReset={clearPeopleFilters}
           >
             <label>
               Status
@@ -937,6 +1155,133 @@ export default function AdminHome() {
                 <option value="INACTIVE">Inactive</option>
               </select>
             </label>
+            <label>
+              Designation
+              <select
+                value={jobTitleFilter}
+                onChange={(e) => {
+                  setJobTitleFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="">All designations</option>
+                {jobTitleFilter &&
+                !projectsData.designationList.includes(jobTitleFilter) ? (
+                  <option value={jobTitleFilter}>{jobTitleFilter}</option>
+                ) : null}
+                {projectsData.designationList.map((title) => (
+                  <option key={title} value={title}>
+                    {title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="pm-manager-filter">
+              <ReportingManagerSelect
+                filterMode
+                compact
+                label="Reporting manager"
+                value={managerFilter}
+                onChange={(next) => {
+                  setManagerFilter(next);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <label>
+              Employment type
+              <select
+                value={employmentTypeFilter}
+                onChange={(e) => {
+                  setEmploymentTypeFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="">All types</option>
+                {employmentTypeFilter &&
+                !projectsData.employmentTypeList.includes(employmentTypeFilter) ? (
+                  <option value={employmentTypeFilter}>{employmentTypeFilter}</option>
+                ) : null}
+                {projectsData.employmentTypeList.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Work location
+              <select
+                value={workLocationFilter}
+                onChange={(e) => {
+                  setWorkLocationFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="">All locations</option>
+                {workLocationFilter &&
+                !projectsData.workLocationList.includes(workLocationFilter) ? (
+                  <option value={workLocationFilter}>{workLocationFilter}</option>
+                ) : null}
+                {projectsData.workLocationList.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Invitation status
+              <select
+                value={invitationStatusFilter}
+                onChange={(e) => {
+                  setInvitationStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="">All invitation statuses</option>
+                {INVITATION_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Project type
+              <select
+                value={projectTypeFilter}
+                onChange={(e) => {
+                  setProjectTypeFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="filter-select"
+              >
+                <option value="">All project types</option>
+                {PROJECT_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="pm-joining-filter">
+              <DateRangePicker
+                label="Joining date"
+                placeholder="Any joining dates"
+                startDate={joiningFrom}
+                endDate={joiningTo}
+                onChange={({ startDate, endDate }) => {
+                  setJoiningFrom(startDate || "");
+                  setJoiningTo(endDate || "");
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
             <label>
               Sort by
               <select
@@ -957,7 +1302,7 @@ export default function AdminHome() {
               Project
               <select
                 value={selectedProject}
-                onChange={(e) => handleSelectProject(e.target.value)}
+                onChange={(e) => applyProjectFilter(e.target.value)}
                 className="filter-select"
               >
                 <option value="ALL">All projects</option>
@@ -970,97 +1315,381 @@ export default function AdminHome() {
             </label>
           </MobileFilterBar>
 
-          {/* Reference 2 Toolbar: Search, Filters, Sorting, View Toggle */}
-          <div className="pm-cards-toolbar">
-            <div className="pm-toolbar-left">
-              {/* Search by name/position */}
-              <div style={{ position: "relative", minWidth: "260px" }}>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by name, role, email..."
-                  className="search-input"
-                  style={{ width: "100%", paddingLeft: "34px" }}
-                />
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ position: "absolute", left: "11px", top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-              </div>
-
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="filter-select"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-
-              {/* Sort By Dropdown */}
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  setSortBy(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="filter-select"
-              >
-                <option value="createdAt">Sort by: Date Added</option>
-                <option value="fullName">Sort by: Name (A-Z)</option>
-                <option value="joiningDate">Sort by: Joining Date</option>
-                <option value="employeeCode">Sort by: Employee Code</option>
-              </select>
-
-              {/* Sort Order */}
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
-                title="Toggle Sort Direction"
-              >
-                {sortOrder === "asc" ? "Asc ↑" : "Desc ↓"}
-              </button>
-            </div>
-
-            <div className="pm-toolbar-right">
-              <select
-                value={selectedProject}
-                onChange={(e) => handleSelectProject(e.target.value)}
-                className="filter-select"
-                aria-label="Filter by project"
-              >
-                <option value="ALL">All projects</option>
-                {projectsData.projectList.map((proj) => (
-                  <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
-                    {proj.name}
-                  </option>
-                ))}
-              </select>
+          <ModuleToolbar
+            searchValue={search}
+            onSearchChange={(e) => setSearch(e.target.value)}
+            searchPlaceholder={SEARCH_PLACEHOLDER}
+            searchAriaLabel="Search employees by name, ID, email, phone, designation, department, project or location"
+            actions={
               <ColumnChooser
                 columns={peopleCols.columns}
                 visible={peopleCols.visible}
                 onToggle={peopleCols.toggle}
                 onReset={peopleCols.reset}
               />
+            }
+            filterCount={peopleFilterCount}
+            onFiltersClear={clearPeopleFilters}
+            filters={
+              <>
+                <label className="module-toolbar-filter-field">
+                  Status
+                  <select
+                    className="filter-select"
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Designation
+                  <select
+                    className="filter-select"
+                    value={jobTitleFilter}
+                    onChange={(e) => {
+                      setJobTitleFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All designations</option>
+                    {jobTitleFilter &&
+                    !projectsData.designationList.includes(jobTitleFilter) ? (
+                      <option value={jobTitleFilter}>{jobTitleFilter}</option>
+                    ) : null}
+                    {projectsData.designationList.map((title) => (
+                      <option key={title} value={title}>
+                        {title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="module-toolbar-filter-field pm-manager-filter">
+                  <ReportingManagerSelect
+                    filterMode
+                    compact
+                    label="Reporting manager"
+                    value={managerFilter}
+                    onChange={(next) => {
+                      setManagerFilter(next);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+                <label className="module-toolbar-filter-field">
+                  Employment type
+                  <select
+                    className="filter-select"
+                    value={employmentTypeFilter}
+                    onChange={(e) => {
+                      setEmploymentTypeFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All types</option>
+                    {employmentTypeFilter &&
+                    !projectsData.employmentTypeList.includes(employmentTypeFilter) ? (
+                      <option value={employmentTypeFilter}>{employmentTypeFilter}</option>
+                    ) : null}
+                    {projectsData.employmentTypeList.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Work location
+                  <select
+                    className="filter-select"
+                    value={workLocationFilter}
+                    onChange={(e) => {
+                      setWorkLocationFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All locations</option>
+                    {workLocationFilter &&
+                    !projectsData.workLocationList.includes(workLocationFilter) ? (
+                      <option value={workLocationFilter}>{workLocationFilter}</option>
+                    ) : null}
+                    {projectsData.workLocationList.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Invitation status
+                  <select
+                    className="filter-select"
+                    value={invitationStatusFilter}
+                    onChange={(e) => {
+                      setInvitationStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All invitation statuses</option>
+                    {INVITATION_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Project type
+                  <select
+                    className="filter-select"
+                    value={projectTypeFilter}
+                    onChange={(e) => {
+                      setProjectTypeFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All project types</option>
+                    {PROJECT_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="module-toolbar-filter-field pm-joining-filter">
+                  <DateRangePicker
+                    label="Joining date"
+                    placeholder="Any joining dates"
+                    startDate={joiningFrom}
+                    endDate={joiningTo}
+                    onChange={({ startDate, endDate }) => {
+                      setJoiningFrom(startDate || "");
+                      setJoiningTo(endDate || "");
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+                <label className="module-toolbar-filter-field">
+                  Sort by
+                  <select
+                    className="filter-select"
+                    value={sortBy}
+                    onChange={(e) => {
+                      setSortBy(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="createdAt">Date Added</option>
+                    <option value="fullName">Name (A-Z)</option>
+                    <option value="joiningDate">Joining Date</option>
+                    <option value="employeeCode">Employee Code</option>
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Sort order
+                  <select
+                    className="filter-select"
+                    value={sortOrder}
+                    onChange={(e) => {
+                      setSortOrder(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Project
+                  <select
+                    className="filter-select"
+                    value={selectedProject}
+                    onChange={(e) => applyProjectFilter(e.target.value)}
+                  >
+                    <option value="ALL">All projects</option>
+                    {projectsData.projectList.map((proj) => (
+                      <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
+                        {proj.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            }
+          />
+
+          {hasChipFilters ? (
+            <div className="pm-active-filters" aria-label="Active people filters">
+              <div className="pm-filter-chip-row">
+                {debouncedSearch.trim() ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setSearch("");
+                      setDebouncedSearch("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Search: {debouncedSearch.trim()}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {statusFilter !== "ALL" ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setStatusFilter("ALL");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Status: {statusFilter}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {selectedDepartment.trim() ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setSelectedDepartment("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Department: {selectedDepartment.trim()}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {selectedProject && selectedProject !== "ALL" ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setSelectedProject("ALL");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Project: {selectedProject}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {jobTitleFilter.trim() ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setJobTitleFilter("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Designation: {jobTitleFilter.trim()}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {managerFilter === "none" ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setManagerFilter(null);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Manager: Unassigned
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {managerFilter && managerFilter !== "none" ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setManagerFilter(null);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Manager: Direct reports
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {employmentTypeFilter.trim() ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setEmploymentTypeFilter("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Type: {employmentTypeFilter.trim()}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {workLocationFilter.trim() ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setWorkLocationFilter("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Location: {workLocationFilter.trim()}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {invitationStatusFilter ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setInvitationStatusFilter("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Invitation: {invitationStatusLabel(invitationStatusFilter)}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {joiningFrom || joiningTo ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setJoiningFrom("");
+                      setJoiningTo("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Joined: {[joiningFrom, joiningTo].filter(Boolean).join(" → ")}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+                {projectTypeFilter ? (
+                  <button
+                    type="button"
+                    className="pm-filter-chip"
+                    onClick={() => {
+                      setProjectTypeFilter("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    Project type: {projectTypeLabel(projectTypeFilter)}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+              </div>
+              <button type="button" className="pm-filter-chip-clear" onClick={clearPeopleFilters}>
+                Clear all
+              </button>
             </div>
-          </div>
+          ) : null}
 
           {/* Feedback messages */}
           {successMsg && <div className="success-alert">{successMsg}</div>}
@@ -1081,6 +1710,16 @@ export default function AdminHome() {
             </div>
           )}
 
+          <div className="pm-results-meta" aria-live="polite">
+            <strong>{pagination.totalEmployees}</strong>
+            {" "}
+            result{pagination.totalEmployees === 1 ? "" : "s"}
+            {hasChipFilters ? " matching current filters" : ""}
+            {pagination.totalPages > 1
+              ? ` · Page ${pagination.page || currentPage} of ${pagination.totalPages}`
+              : ""}
+          </div>
+
           {/* -------------------------------------------------------------------
               REFERENCE 2: RESPONSIVE EMPLOYEE PROFILE CARDS GRID
               ------------------------------------------------------------------- */}
@@ -1095,25 +1734,20 @@ export default function AdminHome() {
                 <div className="pm-empty-box">
                   <h4>No employees found</h4>
                   <p>
-                    {debouncedSearch || statusFilter !== "ALL"
+                    {hasChipFilters
                       ? "No employees match your search or filter criteria."
                       : "No employees on this project yet."}
                   </p>
-                  {(debouncedSearch || statusFilter !== "ALL") && (
+                  {hasChipFilters ? (
                     <button
                       type="button"
                       className="btn-secondary"
                       style={{ marginTop: "12px" }}
-                      onClick={() => {
-                        setSearch("");
-                        setDebouncedSearch("");
-                        setStatusFilter("ALL");
-                        setCurrentPage(1);
-                      }}
+                      onClick={clearPeopleFilters}
                     >
                       Clear Filters
                     </button>
-                  )}
+                  ) : null}
                 </div>
               ) : (
                 <div className="pm-emp-grid">
@@ -1173,9 +1807,9 @@ export default function AdminHome() {
                             </span>
                           </div>
                           <div className="pm-emp-meta-col">
-                            <span className="pm-emp-meta-lbl">DATE OF JOINING</span>
+                            <span className="pm-emp-meta-lbl">MANAGER</span>
                             <span className="pm-emp-meta-val">
-                              {formatDate(emp.job?.joiningDate)}
+                              <ManagerCell employee={emp} />
                             </span>
                           </div>
                         </div>
@@ -1252,10 +1886,20 @@ export default function AdminHome() {
                 <div className="table-empty-state">
                   <h3>No employees found</h3>
                   <p>
-                    {debouncedSearch || statusFilter !== "ALL" || selectedDepartment
-                      ? "No employees match the current filters."
+                    {hasChipFilters
+                      ? "No employees match the current filters. Try clearing a filter or broadening your search."
                       : "Add the first employee to start the directory."}
                   </p>
+                  {hasChipFilters ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ marginTop: 12 }}
+                      onClick={clearPeopleFilters}
+                    >
+                      Clear all filters
+                    </button>
+                  ) : null}
                 </div>
               ) : (
               <table className="data-table">
@@ -1267,6 +1911,7 @@ export default function AdminHome() {
                     {visibleColumns.phoneNumber && <th>Phone</th>}
                     {visibleColumns.jobTitle && <th>Designation</th>}
                     {visibleColumns.department && <th>Department</th>}
+                    {visibleColumns.manager && <th>Manager</th>}
                     {visibleColumns.project && <th>Project</th>}
                     {visibleColumns.status && <th>Status</th>}
                     {visibleColumns.invitation && <th>Invitation</th>}
@@ -1300,6 +1945,11 @@ export default function AdminHome() {
                       {visibleColumns.phoneNumber && <td>{emp.phoneNumber || "—"}</td>}
                       {visibleColumns.jobTitle && <td>{emp.job?.jobTitle || "—"}</td>}
                       {visibleColumns.department && <td>{emp.job?.department || "General"}</td>}
+                      {visibleColumns.manager && (
+                        <td>
+                          <ManagerCell employee={emp} />
+                        </td>
+                      )}
                       {visibleColumns.project && <td>{emp.job?.project?.projectName || "—"}</td>}
                       {visibleColumns.status && <td><StatusBadge status={emp.status} /></td>}
                       {visibleColumns.invitation && (
@@ -1576,29 +2226,25 @@ export default function AdminHome() {
                       <span className="field-error">{addFieldErrors.email}</span>
                     )}
                   </label>
-                  <label>
-                    Job Title
-                    <input
-                      value={newEmployee.jobTitle}
-                      onChange={(e) =>
-                        setNewEmployee({ ...newEmployee, jobTitle: e.target.value })
-                      }
-                      placeholder="e.g. Senior Software Engineer"
-                    />
-                  </label>
+                  <DesignationFields
+                    jobTitle={newEmployee.jobTitle}
+                    jobGrade={newEmployee.jobGrade}
+                    onJobTitleChange={(jobTitle) => setNewEmployee((prev) => ({ ...prev, jobTitle }))}
+                    onJobGradeChange={(jobGrade) => setNewEmployee((prev) => ({ ...prev, jobGrade }))}
+                  />
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <label>
-                    Department
-                    <input
-                      value={newEmployee.department}
-                      onChange={(e) =>
-                        setNewEmployee({ ...newEmployee, department: e.target.value })
-                      }
-                      placeholder="e.g. Engineering"
-                    />
-                  </label>
+                  <DepartmentSelect
+                    departmentId={newEmployee.departmentId}
+                    departmentName={newEmployee.department}
+                    linked={Boolean(newEmployee.departmentId)}
+                    onChange={(next) => setNewEmployee((prev) => ({
+                      ...prev,
+                      departmentId: next.departmentId,
+                      department: next.clearDepartment ? "" : next.departmentName || prev.department,
+                    }))}
+                  />
                   <label>
                     Employment Type
                     <select
@@ -1667,6 +2313,21 @@ export default function AdminHome() {
                   <div style={{ fontSize: 12.5, color: "var(--muted)", alignSelf: "end", paddingBottom: 10 }}>
                     After creation you will get an activation link to share. The employee sets their own password.
                   </div>
+                </div>
+
+                <div style={{ marginTop: 4 }}>
+                  <ReportingManagerSelect
+                    value={newEmployee.reportingManagerId}
+                    disabled={savingAdd}
+                    error={addFieldErrors.reportingManagerId || ""}
+                    onChange={(nextId) => {
+                      setNewEmployee((prev) => ({ ...prev, reportingManagerId: nextId }));
+                      if (addFieldErrors.reportingManagerId) {
+                        setAddFieldErrors((prev) => ({ ...prev, reportingManagerId: "" }));
+                      }
+                      if (addError) setAddError("");
+                    }}
+                  />
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "16px" }}>

@@ -7,6 +7,12 @@ import Modal from "../../components/Modal";
 import MonthNav, { monthYearLabel } from "../../components/MonthNav";
 import Icon from "../../components/Icon";
 import api from "../../services/api";
+import {
+  blobFromAxiosResponse,
+  documentErrorMessage,
+  openDocument,
+  saveDocument,
+} from "../../services/documents";
 import { formatDisplayDate } from "../../utils/dateUtils";
 import { usePayslipsQuery, useSettlementQuery } from "../../hooks/useEmployeeQueries";
 
@@ -165,10 +171,12 @@ export default function EmployeePayslipsPage() {
   const showSummary = latest && earnings != null && deductions != null && net != null;
   const takeHomePct = showSummary && earnings > 0 ? Math.min(100, Math.max(0, (net / earnings) * 100)) : null;
 
-  const download = async (payslip) => {
+  const download = async (payslip, mode = "save") => {
     const id = slipId(payslip);
-    if (!id || payslip?.isPersisted === false) {
-      setActionError("This payslip cannot be downloaded.");
+    if (!id || payslip?.isPersisted === false || downloading) {
+      if (!id || payslip?.isPersisted === false) {
+        setActionError("This payslip cannot be downloaded.");
+      }
       return;
     }
     try {
@@ -180,18 +188,17 @@ export default function EmployeePayslipsPage() {
       } catch {
         response = await api.get(`/employees/me/payslips/${id}/download`, { responseType: "blob" });
       }
-      const contentType = String(response.headers?.["content-type"] || response.data?.type || "");
-      if (contentType && !contentType.includes("pdf") && !contentType.includes("octet-stream")) {
-        throw new Error("Payslip PDF was not returned.");
+      const file = await blobFromAxiosResponse(
+        response,
+        `${payslip.payslipNumber || "payslip"}.pdf`
+      );
+      if (mode === "open") {
+        await openDocument(file);
+      } else {
+        await saveDocument(file);
       }
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${payslip.payslipNumber || "payslip"}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
     } catch (err) {
-      setActionError(err.response?.data?.message || err.message || "Could not download this payslip.");
+      setActionError(documentErrorMessage(err, "Could not download this payslip."));
     } finally {
       setDownloading(false);
     }
@@ -419,14 +426,24 @@ export default function EmployeePayslipsPage() {
         onClose={() => setSelected(null)}
         title={selected ? monthLabel(selected) : "Payslip"}
         footer={
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={downloading || !selected || !slipId(selected)}
-            onClick={() => download(selected)}
-          >
-            {downloading ? "Downloading..." : "Download payslip"}
-          </button>
+          <div className="stack" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={downloading || !selected || !slipId(selected)}
+              onClick={() => download(selected, "save")}
+            >
+              {downloading ? "Preparing…" : "Download / share"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={downloading || !selected || !slipId(selected)}
+              onClick={() => download(selected, "open")}
+            >
+              {downloading ? "Opening…" : "View PDF"}
+            </button>
+          </div>
         }
       >
         {selected ? (

@@ -432,6 +432,11 @@
   color: #b91c1c;
 }
 
+.ol-pill-withdrawn {
+  background: #f4f4f5;
+  color: #52525b;
+}
+
 .ol-pill-failed {
   background: #fee2e2;
   color: #b91c1c;

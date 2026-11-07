@@ -10,6 +10,12 @@ import Icon from "../../components/Icon";
 import { useToast } from "../../components/Toast";
 import { initialsFrom } from "../../components/SummaryRow";
 import api from "../../services/api";
+import {
+  blobFromAxiosResponse,
+  documentErrorMessage,
+  openDocument,
+  saveDocument,
+} from "../../services/documents";
 import { formatDisplayDate } from "../../utils/dateUtils";
 import { useProfileQuery } from "../../hooks/useEmployeeQueries";
 import { invalidateProfile } from "../../app/queryKeys";
@@ -87,6 +93,7 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState("");
+  const [docActionError, setDocActionError] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadCategory, setUploadCategory] = useState("ID_PROOF");
   const [uploadFile, setUploadFile] = useState(null);
@@ -109,6 +116,7 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
   const job = profile?.job || {};
   const manager = job.reportingManagerId;
   const managerName = typeof manager === "object" ? manager?.fullName : "";
+  const managerTitle = typeof manager === "object" ? manager?.job?.jobTitle || "" : "";
 
   const setTabAndUrl = (next) => {
     setTab(next);
@@ -144,7 +152,6 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
     if (Object.keys(errors).length) return;
     try {
       setSaving(true);
-      setError("");
       await api.patch("/employees/me", {
         preferredName: form.preferredName.trim(),
         personalEmail: form.personalEmail.trim(),
@@ -210,24 +217,25 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
     }
   };
 
-  const downloadDoc = async (doc) => {
+  const downloadDoc = async (doc, mode = "save") => {
     const id = doc._id || doc.id;
-    if (!id) return;
+    if (!id || downloading) return;
     try {
       setDownloading(id);
+      setDocActionError("");
       const response = await api.get(`/employees/me/documents/${id}/download`, { responseType: "blob" });
-      const type = response.headers["content-type"] || "";
-      if (type.includes("application/json")) {
-        throw new Error("Could not download this document.");
+      const file = await blobFromAxiosResponse(
+        response,
+        doc.fileName || doc.title || "document"
+      );
+      if (mode === "open") {
+        await openDocument(file);
+      } else {
+        await saveDocument(file);
+        toast.push("Document ready — use Save or Share.");
       }
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = doc.fileName || doc.title || "document";
-      link.click();
-      URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || "Could not download this document.");
+      setDocActionError(documentErrorMessage(err, "Could not download this document."));
     } finally {
       setDownloading("");
     }
@@ -439,9 +447,18 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
                 <span>
                   <small>Reporting manager</small>
                   <strong>{managerName}</strong>
+                  {managerTitle ? <em style={{ display: "block", fontSize: 12, fontStyle: "normal", color: "var(--muted)" }}>{managerTitle}</em> : null}
                 </span>
               </div>
-            ) : null}
+            ) : (
+              <div className="pf-row">
+                <span className="pf-row-icon"><Icon name="profile" size={16} /></span>
+                <span>
+                  <small>Reporting manager</small>
+                  <strong>No reporting manager</strong>
+                </span>
+              </div>
+            )}
             {job.joiningDate ? (
               <div className="pf-row">
                 <span className="pf-row-icon"><Icon name="leave" size={16} /></span>
@@ -475,6 +492,7 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
 
       {tab === "documents" ? (
         <>
+          {docActionError ? <div className="alert alert-error">{docActionError}</div> : null}
           <form className="form-grid" onSubmit={uploadDoc}>
             {uploadError ? <div className="alert alert-error">{uploadError}</div> : null}
             <label>
@@ -516,7 +534,11 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
                   key={doc._id || doc.title}
                   type="button"
                   className="pf-row"
-                  onClick={() => downloadDoc(doc)}
+                  onClick={() => downloadDoc(doc, "open")}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    downloadDoc(doc, "save");
+                  }}
                   disabled={Boolean(downloading)}
                 >
                   <span className="pf-row-icon"><Icon name="documents" size={16} /></span>
@@ -524,7 +546,9 @@ export default function EmployeeProfilePage({ documentsOnly = false }) {
                     <strong>{doc.title || doc.fileName || doc.category || "Document"}</strong>
                     <small>{doc.status || doc.category || ""}</small>
                   </span>
-                  <em className="pf-download">{downloading === (doc._id || doc.id) ? "..." : "Download"}</em>
+                  <em className="pf-download">
+                    {downloading === (doc._id || doc.id) ? "…" : "Open"}
+                  </em>
                 </button>
               ))}
             </div>

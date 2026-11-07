@@ -1,0 +1,273 @@
+/* Organization Explorer shell + group views (Reporting still uses Organization.css). */
+
+.oe-page .app-header {
+  margin-bottom: 12px;
+}
+
+.oe-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface-2, #eef2ef) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #d5ddd6) 90%, transparent);
+  border-radius: 14px;
+}
+
+.oe-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted, #5c6b60);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.oe-tab:hover {
+  color: var(--text, #132015);
+  background: color-mix(in srgb, #fff 70%, transparent);
+}
+
+.oe-tab.is-active {
+  background: #fff;
+  color: var(--brand, #155a37);
+  box-shadow: 0 1px 3px rgba(19, 26, 21, 0.08);
+}
+
+.oe-view-panel {
+  min-height: 320px;
+}
+
+.oe-reporting-panel .org-header {
+  margin-top: 0;
+}
+
+.oe-empty-config {
+  margin-top: 24px;
+}
+
+.oe-config-stale {
+  margin-bottom: 12px;
+}
+
+.oe-group-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.oe-group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oe-group-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.oe-count {
+  font-size: 13px;
+  color: var(--text-muted, #5c6b60);
+}
+
+.oe-split {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.oe-group-list,
+.oe-group-detail {
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--border, #d5ddd6) 90%, transparent);
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 280px;
+}
+
+.oe-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
+.oe-group-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--surface-2, #eef2ef) 55%, #fff);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+
+.oe-group-card:hover {
+  border-color: color-mix(in srgb, var(--brand, #155a37) 28%, transparent);
+}
+
+.oe-group-card.is-selected {
+  border-color: var(--brand, #155a37);
+  background: color-mix(in srgb, var(--brand, #155a37) 8%, #fff);
+}
+
+.oe-group-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--brand, #155a37) 12%, #fff);
+  color: var(--brand, #155a37);
+}
+
+.oe-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.oe-group-body strong {
+  font-size: 14px;
+  color: var(--text, #132015);
+}
+
+.oe-group-body span {
+  font-size: 12.5px;
+  color: var(--text-muted, #5c6b60);
+}
+
+.oe-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.oe-detail-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.oe-detail-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted, #5c6b60);
+}
+
+.oe-person-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.oe-person-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--border, #d5ddd6) 90%, transparent);
+  border-left: 3px solid var(--dept-accent, var(--brand, #155a37));
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+
+.oe-person-card:hover,
+.oe-person-card.is-selected {
+  border-color: color-mix(in srgb, var(--brand, #155a37) 35%, transparent);
+  box-shadow: 0 2px 8px rgba(19, 26, 21, 0.06);
+}
+
+.oe-person-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.oe-person-body strong {
+  font-size: 13.5px;
+}
+
+.oe-person-body span {
+  font-size: 12px;
+  color: var(--text-muted, #5c6b60);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oe-team-section {
+  margin-top: 16px;
+}
+
+.oe-team-section h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #5c6b60);
+}
+
+.oe-team-inactive {
+  opacity: 0.92;
+}
+
+@media (max-width: 900px) {
+  .oe-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .oe-tab {
+    flex: 0 0 auto;
+  }
+
+  .oe-split {
+    grid-template-columns: 1fr;
+  }
+
+  .oe-split:not(.has-detail) .oe-group-detail {
+    display: none;
+  }
+
+  .oe-split.has-detail .oe-group-list {
+    display: none;
+  }
+
+  .oe-group-list,
+  .oe-group-detail {
+    max-height: none;
+  }
+}

@@ -5,6 +5,7 @@
 
 /** Role-aware home paths */
 export function homeForRole(role) {
+  if (role === "COMPANY_ADMIN") return "/admin/dashboard";
   if (role === "HR_ADMIN") return "/admin/dashboard";
   if (role === "EMPLOYEE") return "/app/dashboard";
   return "/login";
@@ -25,6 +26,9 @@ export function resolveDesktopFallback(pathname = "", search = "") {
   }
   if (path === "/admin/payroll" && params.get("settlementId")) {
     return "/admin/payroll?tab=ff_settlements";
+  }
+  if (path.startsWith("/company")) {
+    return "/company";
   }
   if (path.startsWith("/admin/")) {
     if (path === "/admin" || path === "/admin/dashboard") return "/admin/dashboard";

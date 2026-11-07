@@ -298,3 +298,76 @@ export function useNotificationsQuery(options = {}) {
     ...options,
   });
 }
+
+/** Company-wide organization chart for employees (Phase 3B backend). */
+export function useEmployeeOrganizationViewQuery(options = {}) {
+  return useQuery({
+    queryKey: qk.organizationView(),
+    queryFn: async () => {
+      const res = await api.get("/employees/organization-view");
+      return {
+        employees: Array.isArray(res.data?.employees) ? res.data.employees : [],
+        rootIds: Array.isArray(res.data?.rootIds) ? res.data.rootIds : [],
+        hierarchyRootIds: Array.isArray(res.data?.hierarchyRootIds)
+          ? res.data.hierarchyRootIds
+          : [],
+        unassignedIds: Array.isArray(res.data?.unassignedIds) ? res.data.unassignedIds : [],
+        childrenByManagerId: res.data?.childrenByManagerId || {},
+        meta: res.data?.meta || {},
+      };
+    },
+    staleTime: STALE.employees,
+    ...options,
+  });
+}
+
+/** Company-wide People Directory (Phase 2 backend). */
+export function useEmployeeDirectoryQuery(params = {}, options = {}) {
+  const normalized = {
+    page: params.page || 1,
+    limit: params.limit || 20,
+    search: typeof params.search === "string" ? params.search.trim() : "",
+  };
+  return useQuery({
+    queryKey: qk.directory(normalized),
+    queryFn: async () => {
+      const queryParams = {
+        page: String(normalized.page),
+        limit: String(normalized.limit),
+      };
+      if (normalized.search) queryParams.search = normalized.search;
+      const res = await api.get("/employees/directory", { params: queryParams });
+      return {
+        data: Array.isArray(res.data?.data) ? res.data.data : [],
+        pagination: res.data?.pagination || {
+          page: normalized.page,
+          limit: normalized.limit,
+          totalEmployees: 0,
+          totalPages: 0,
+        },
+      };
+    },
+    staleTime: STALE.employees,
+    placeholderData: (previousData) => previousData,
+    ...options,
+  });
+}
+
+/** Relationship-scoped profile for directory popup (Phase 1 backend). */
+export function useVisibleEmployeeProfileQuery(employeeId, options = {}) {
+  const id = employeeId ? String(employeeId) : "";
+  return useQuery({
+    queryKey: qk.visibleProfile(id),
+    queryFn: async () => {
+      const res = await api.get(`/employees/${id}/visible-profile`);
+      return {
+        relationship: res.data?.relationship || null,
+        visibilityTier: res.data?.visibilityTier || null,
+        employee: res.data?.employee || null,
+      };
+    },
+    enabled: Boolean(id),
+    staleTime: STALE.employeeDetail,
+    ...options,
+  });
+}

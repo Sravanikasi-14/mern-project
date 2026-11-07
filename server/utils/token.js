@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 
 function requiredSecret() {
@@ -13,6 +14,8 @@ export function signAuthToken({ userId, companyId }) {
     {
       sub: String(userId),
       companyId: String(companyId),
+      // Unique per issuance so logout+re-login never collides with a revoked AuthSession row.
+      jti: crypto.randomUUID(),
     },
     requiredSecret(),
     {

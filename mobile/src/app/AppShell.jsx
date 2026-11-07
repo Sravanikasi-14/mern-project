@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import AskAiSheet from "../components/AskAiSheet";
 import BottomNav from "../components/BottomNav";
 import NotificationSheet from "../components/NotificationSheet";
+import RouteErrorBoundary from "../components/RouteErrorBoundary";
 import { useAndroidBackButton } from "../hooks/useAndroidBackButton";
 import { AskAiContext } from "./askAiContext";
 import { NotifyContext } from "./notifyContext";
@@ -17,7 +18,9 @@ export default function AppShell() {
       <NotifyContext.Provider value={() => setNotifyOpen(true)}>
         <div className="app-shell">
           <div className="app-body">
-            <Outlet />
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
           </div>
           <BottomNav />
           <AskAiSheet open={askOpen} onClose={() => setAskOpen(false)} />

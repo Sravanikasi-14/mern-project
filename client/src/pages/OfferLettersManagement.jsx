@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   IconClose,
@@ -18,10 +18,17 @@ import {
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import ColumnChooser from "../components/ColumnChooser";
-import api from "../services/api";
+import api, {
+  isRequestTimeoutError,
+  postOfferLetterSend,
+} from "../services/api";
 import AppHeader from "../components/AppHeader";
+import ModuleToolbar from "../components/ModuleToolbar";
 import { useColumnPreferences } from "../hooks/useColumnPreferences";
 import "./OfferLetters.css";
+
+const HR_SIGNATURE_REQUIRED_MESSAGE =
+  "Save your electronic signature in Settings before sending offer letters.";
 
 const OFFER_TABLE_COLUMNS = [
   { id: "candidate", label: "Candidate", essential: true },
@@ -49,6 +56,10 @@ const STATUS_CONFIG = {
   REJECTED: {
     label: "Rejected",
     pillClass: "ol-pill-rejected",
+  },
+  WITHDRAWN: {
+    label: "Withdrawn",
+    pillClass: "ol-pill-withdrawn",
   },
 };
 
@@ -151,7 +162,18 @@ const DEFAULT_CLAUSES_PRESET = [
   },
 ];
 
-export default function OfferLettersManagement() {
+/**
+ * Offer draft composition + legacy list UI.
+ * When `embedded` is true, this mounts inside Hiring & Onboarding (same route) for create/edit
+ * without a separate hiring-stage page. Pipeline filters stay on HiringOnboardingPage only.
+ */
+export default function OfferLettersManagement({
+  embedded = false,
+  autoCreate = false,
+  editOfferId = null,
+  onBack = null,
+  onSaved = null,
+} = {}) {
   const navigate = useNavigate();
 
   // Data states
@@ -162,6 +184,7 @@ export default function OfferLettersManagement() {
     sent: 0,
     accepted: 0,
     rejected: 0,
+    withdrawn: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -173,7 +196,9 @@ export default function OfferLettersManagement() {
   const [searchParams] = useSearchParams();
   const initialStatus = (searchParams.get("status") || "ALL").toUpperCase();
   const [statusFilter, setStatusFilter] = useState(
-    ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED"].includes(initialStatus) ? initialStatus : "ALL"
+    ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED", "WITHDRAWN"].includes(initialStatus)
+      ? initialStatus
+      : "ALL"
   );
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -186,7 +211,7 @@ export default function OfferLettersManagement() {
   // Action states
   const [downloadingId, setDownloadingId] = useState(null);
   const [sendingOfferId, setSendingOfferId] = useState(null);
-  const [confirmModal, setConfirmModal] = useState(null); // { type: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'DELETE' | 'SEND_EMAIL', offer: obj, notes: '' }
+  const [confirmModal, setConfirmModal] = useState(null); // { type: 'SENT' | 'ACCEPTED' | 'REJECTED' | 'DELETE' | 'SEND_EMAIL' | 'WITHDRAW', offer: obj, notes: '' }
   const [modalError, setModalError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
@@ -212,6 +237,7 @@ export default function OfferLettersManagement() {
   // Request sequencing refs to prevent out-of-order responses overwriting newer data
   const previewRequestIdRef = useRef(0);
   const fetchOffersRequestIdRef = useRef(0);
+  const sendInFlightRef = useRef(false);
 
   // Editor Form Fields
   const [formData, setFormData] = useState({
@@ -229,6 +255,21 @@ export default function OfferLettersManagement() {
 
   // Live preview HTML state
   const [livePreviewHtml, setLivePreviewHtml] = useState("");
+
+  // HR e-signature status (null = unknown / still loading). Sending is blocked server-side without it.
+  const [hrSignatureSaved, setHrSignatureSaved] = useState(null);
+  const refreshHrSignatureStatus = useCallback(async () => {
+    try {
+      const res = await api.get("/settings/company");
+      const c = res.data?.company || res.data?.data || {};
+      setHrSignatureSaved(Boolean(c.letterhead?.hasSignature));
+    } catch {
+      setHrSignatureSaved(null);
+    }
+  }, []);
+  useEffect(() => {
+    refreshHrSignatureStatus();
+  }, [refreshHrSignatureStatus]);
 
   // Debounce search
   useEffect(() => {
@@ -302,7 +343,13 @@ export default function OfferLettersManagement() {
       if (requestId === fetchOffersRequestIdRef.current && listRes.data?.success) {
         setOffers(listRes.data.offerLetters || []);
         if (listRes.data.pagination) {
-          setPagination(listRes.data.pagination);
+          const p = listRes.data.pagination;
+          setPagination({
+            page: p.page ?? 1,
+            limit: p.limit ?? 10,
+            totalPages: p.totalPages ?? 1,
+            totalOffers: p.totalOffers ?? p.total ?? 0,
+          });
         }
       }
     } catch (err) {
@@ -431,7 +478,7 @@ export default function OfferLettersManagement() {
   };
 
   // Handle Opening Create Modal
-  const handleOpenCreate = () => {
+  const handleOpenCreate = async () => {
     setEditorMode("create");
     setEditingOfferId(null);
     setSelectedRecipientId("");
@@ -496,6 +543,19 @@ export default function OfferLettersManagement() {
       setError("Failed to fetch offer details for editing.");
     }
   };
+
+  // Embedded: open create/edit once without requiring a separate hiring-stage route.
+  const embeddedBootRef = useRef(false);
+  useEffect(() => {
+    if (!embedded || embeddedBootRef.current) return;
+    embeddedBootRef.current = true;
+    if (editOfferId) {
+      handleOpenEdit({ _id: editOfferId, status: "DRAFT" });
+    } else if (autoCreate) {
+      handleOpenCreate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once per mount
+  }, [embedded, autoCreate, editOfferId]);
 
   // Clause manipulation helpers
   const handleToggleClause = (index) => {
@@ -619,12 +679,39 @@ export default function OfferLettersManagement() {
       }
 
       if (mode === "send" && savedOffer?._id) {
-        try {
-          const sendRes = await api.post(`/offer-letters/${savedOffer._id}/send`);
-          setSuccessMsg(sendRes.data?.message || `Offer letter sent to ${savedOffer.candidate?.email}.`);
-        } catch (sendErr) {
-          const sendErrMsg = sendErr.response?.data?.message || "Offer saved as draft, but email delivery failed.";
-          setError(sendErrMsg);
+        if (hrSignatureSaved !== true) {
+          setError(HR_SIGNATURE_REQUIRED_MESSAGE);
+        } else if (sendInFlightRef.current) {
+          setError("A send is already in progress. Check delivery status before retrying.");
+        } else {
+          sendInFlightRef.current = true;
+          setSendingOfferId(savedOffer._id);
+          try {
+            const sendRes = await postOfferLetterSend(savedOffer._id);
+            if (!sendRes.data?.success) {
+              throw new Error(
+                sendRes.data?.message ||
+                  `Failed to deliver offer letter email to ${savedOffer.candidate?.email}.`
+              );
+            }
+            setSuccessMsg(
+              sendRes.data?.message || `Offer letter sent to ${savedOffer.candidate?.email}.`
+            );
+          } catch (sendErr) {
+            if (isRequestTimeoutError(sendErr)) {
+              setError(
+                "The send request timed out while waiting for the mail server. The email may still have been sent — refresh and check the offer's email delivery status before retrying."
+              );
+            } else {
+              const sendErrMsg =
+                sendErr.response?.data?.message ||
+                "Offer saved as draft, but email delivery failed.";
+              setError(sendErrMsg);
+            }
+          } finally {
+            sendInFlightRef.current = false;
+            setSendingOfferId(null);
+          }
         }
       } else if (mode === "download" && savedOffer?._id) {
         setSuccessMsg(editorMode === "create" ? "Offer letter created." : "Offer letter updated.");
@@ -635,6 +722,11 @@ export default function OfferLettersManagement() {
 
       setShowEditorModal(false);
       await Promise.all([fetchOffers(), fetchSummary()]);
+      if (typeof onSaved === "function") onSaved(savedOffer);
+      if (embedded && typeof onBack === "function") {
+        onBack();
+        return;
+      }
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
       const msg = err.response?.data?.message || "Couldn't save offer letter. Please try again.";
@@ -696,7 +788,7 @@ export default function OfferLettersManagement() {
 
   // Status Transition Executer
   const handleExecuteStatusChange = async () => {
-    if (!confirmModal) return;
+    if (!confirmModal || actionLoading) return;
 
     setActionLoading(true);
     setModalError("");
@@ -706,10 +798,41 @@ export default function OfferLettersManagement() {
       if (type === "DELETE") {
         await api.delete(`/offer-letters/${offer._id}`);
         setSuccessMsg("Draft offer letter deleted successfully.");
+      } else if (type === "WITHDRAW") {
+        const reason = String(notes || "").trim();
+        if (reason.length < 3) {
+          throw new Error("Enter a withdrawal reason (at least 3 characters).");
+        }
+        const withdrawRes = await api.post(`/offer-letters/${offer._id}/withdraw`, { reason });
+        if (!withdrawRes.data?.success) {
+          throw new Error(withdrawRes.data?.message || "Failed to withdraw offer letter.");
+        }
+        setSuccessMsg(
+          withdrawRes.data.message ||
+            "Offer withdrawn. The candidate can no longer sign this offer."
+        );
       } else if (type === "SEND_EMAIL") {
+        if (hrSignatureSaved !== true) {
+          throw new Error(HR_SIGNATURE_REQUIRED_MESSAGE);
+        }
+        if (sendInFlightRef.current || sendingOfferId) {
+          throw new Error(
+            "A send is already in progress. Refresh and check email delivery status before retrying."
+          );
+        }
+        sendInFlightRef.current = true;
         setSendingOfferId(offer._id);
-        const sendRes = await api.post(`/offer-letters/${offer._id}/send`);
-        setSuccessMsg(sendRes.data?.message || `Offer letter sent to ${offer.candidate?.email}.`);
+        const sendRes = await postOfferLetterSend(offer._id);
+        if (!sendRes.data?.success) {
+          throw new Error(
+            sendRes.data?.message ||
+              `Failed to deliver offer letter email to ${offer.candidate?.email}.`
+          );
+        }
+        setSuccessMsg(
+          sendRes.data.message ||
+            `Offer letter successfully sent to ${offer.candidate?.email}.`
+        );
       } else {
         await api.patch(`/offer-letters/${offer._id}/status`, {
           status: type,
@@ -727,19 +850,55 @@ export default function OfferLettersManagement() {
       await Promise.all([fetchOffers(), fetchSummary()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch (err) {
-      const errText = err.response?.data?.message || err.message || "Failed to update offer letter status.";
+      let errText = err.response?.data?.message || err.message || "Failed to update offer letter status.";
+      if (confirmModal?.type === "SEND_EMAIL" && isRequestTimeoutError(err)) {
+        errText =
+          "The send request timed out while waiting for the mail server. The email may still have been sent — refresh and check the offer's email delivery status before retrying.";
+      }
       setModalError(errText);
       setError(errText);
-      setTimeout(() => setError(""), 8000);
+      // Always refresh after send attempts so delivery status is visible before retry
+      if (confirmModal?.type === "SEND_EMAIL") {
+        await Promise.all([fetchOffers(), fetchSummary()]).catch(() => {});
+      }
+      setTimeout(() => setError(""), 10000);
     } finally {
       setActionLoading(false);
       setSendingOfferId(null);
+      sendInFlightRef.current = false;
     }
   };
 
   return (
-    <main className="container-wide ol-page">
-      <AppHeader title="Offer Letters" />
+    <main className={`container-wide ol-page${embedded ? " ol-page-embedded" : ""}`}>
+      {embedded ? (
+        <div className="hw-compose-bar" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <button
+            type="button"
+            className="hw-btn"
+            onClick={() => {
+              if (typeof onBack === "function") onBack();
+              else navigate("/admin/hiring");
+            }}
+          >
+            ← Back to Hiring & Onboarding
+          </button>
+          <strong style={{ fontSize: 16 }}>Offer draft editor</strong>
+        </div>
+      ) : (
+        <AppHeader title="Offer Letters" />
+      )}
+
+      {hrSignatureSaved === false && (
+        <div className="ol-alert ol-alert-error" role="alert" style={{ marginBottom: 12 }}>
+          <span>
+            {HR_SIGNATURE_REQUIRED_MESSAGE}{" "}
+            <a href="/admin/settings" onClick={(e) => { e.preventDefault(); navigate("/admin/settings"); }} style={{ fontWeight: 700, textDecoration: "underline" }}>
+              Open Settings
+            </a>
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="ol-alert ol-alert-error" role="alert" style={{ marginBottom: 12 }}>
@@ -760,6 +919,7 @@ export default function OfferLettersManagement() {
       )}
 
       {/* Compact Inline Offer Statistics Strip */}
+      <>
       <div
         style={{
           display: "flex",
@@ -795,80 +955,63 @@ export default function OfferLettersManagement() {
         </span>
       </div>
 
-      <div className="ol-toolbar">
-        <div className="ol-toolbar-left">
-          <div className="ol-search">
-            <span className="ol-search-icon">
-              <IconSearch size={14} />
-            </span>
-            <input
-              type="text"
-              placeholder="Search candidate or role…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+      <ModuleToolbar
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        searchPlaceholder="Search candidate or role…"
+        searchAriaLabel="Search candidate or role"
+        actions={
+          <>
+            <ColumnChooser
+              columns={offerCols.columns}
+              visible={offerCols.visible}
+              onToggle={offerCols.toggle}
+              onReset={offerCols.reset}
             />
-          </div>
-          <select
-            className="ol-select"
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            aria-label="Filter by status"
-          >
-            <option value="ALL">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="SENT">Sent</option>
-            <option value="ACCEPTED">Accepted</option>
-            <option value="REJECTED">Rejected</option>
-          </select>
-          {(search || statusFilter !== "ALL") && (
             <button
               type="button"
-              className="ol-btn ol-btn-ghost ol-btn-sm"
+              className="btn-secondary"
               onClick={() => {
-                setSearch("");
-                setStatusFilter("ALL");
+                fetchOffers();
+                fetchSummary();
+              }}
+              title="Refresh list"
+            >
+              <IconRefresh size={16} />
+              <span>Refresh</span>
+            </button>
+            <button type="button" className="btn-primary" onClick={handleOpenCreate}>
+              <span aria-hidden="true">+</span>
+              <span>Add offer</span>
+            </button>
+          </>
+        }
+        filterCount={statusFilter !== "ALL" ? 1 : 0}
+        onFiltersClear={() => {
+          setStatusFilter("ALL");
+          setCurrentPage(1);
+        }}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Status
+            <select
+              className="filter-select"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
                 setCurrentPage(1);
               }}
             >
-              Clear
-            </button>
-          )}
-        </div>
-
-        <div className="ol-toolbar-right" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ColumnChooser
-            columns={offerCols.columns}
-            visible={offerCols.visible}
-            onToggle={offerCols.toggle}
-            onReset={offerCols.reset}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              fetchOffers();
-              fetchSummary();
-            }}
-            title="Refresh list"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", fontSize: 12.5 }}
-          >
-            <IconRefresh size={13} />
-            <span>Refresh</span>
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleOpenCreate}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", fontSize: 12.5 }}
-          >
-            <span aria-hidden="true">+</span>
-            <span>Add offer</span>
-          </button>
-        </div>
-      </div>
+              <option value="ALL">All statuses</option>
+              <option value="DRAFT">Draft</option>
+              <option value="SENT">Sent</option>
+              <option value="ACCEPTED">Accepted</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="WITHDRAWN">Withdrawn</option>
+            </select>
+          </label>
+        }
+      />
 
       <div className="ol-table-card">
         <div className="ol-table-wrap table-wrapper-relative">
@@ -976,6 +1119,11 @@ export default function OfferLettersManagement() {
                             Onboarded
                           </div>
                         )}
+                        {isAccepted && (offer.candidateSigned || offer.hasSignedPdf) && (
+                          <div className="ol-cell-sub" style={{ color: "#047857", marginTop: 4 }}>
+                            Signed by candidate
+                          </div>
+                        )}
                       </td>
                       )}
                       {offerCols.isVisible("created") && (
@@ -999,6 +1147,18 @@ export default function OfferLettersManagement() {
                           {isSent && (
                             <button
                               type="button"
+                              className="ol-btn ol-btn-sm ol-btn-secondary"
+                              onClick={() =>
+                                setConfirmModal({ type: "SEND_EMAIL", offer, notes: "" })
+                              }
+                              disabled={sendingOfferId === offer._id}
+                            >
+                              {sendingOfferId === offer._id ? "…" : "Resend"}
+                            </button>
+                          )}
+                          {isSent && (
+                            <button
+                              type="button"
                               className="ol-btn ol-btn-sm ol-btn-primary"
                               onClick={() =>
                                 setConfirmModal({ type: "ACCEPTED", offer, notes: "" })
@@ -1011,7 +1171,7 @@ export default function OfferLettersManagement() {
                             <button
                               type="button"
                               className="ol-btn ol-btn-sm ol-btn-primary"
-                              onClick={() => navigate(`/admin?onboardOfferId=${offer._id}`)}
+                              onClick={() => navigate(`/admin/onboarding?offerId=${offer._id}`)}
                             >
                               Onboard
                             </button>
@@ -1102,6 +1262,19 @@ export default function OfferLettersManagement() {
                                     Mark rejected
                                   </button>
                                 )}
+                                {isSent && !isLinked && (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="is-danger"
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setConfirmModal({ type: "WITHDRAW", offer, notes: "" });
+                                    }}
+                                  >
+                                    Withdraw offer
+                                  </button>
+                                )}
                                 {isDraft && (
                                   <button
                                     type="button"
@@ -1140,6 +1313,7 @@ export default function OfferLettersManagement() {
           />
         )}
       </div>
+      </>
 
       {/* CREATE / EDIT OFFER LETTER MODAL (SPLIT SCREEN) */}
       {showEditorModal && (
@@ -1831,6 +2005,11 @@ export default function OfferLettersManagement() {
                 >
                   {STATUS_CONFIG[previewModalOffer.status]?.label || previewModalOffer.status}
                 </span>
+                {previewModalOffer.status === "ACCEPTED" && previewModalOffer.signature?.signedAt && (
+                  <span style={{ marginLeft: 10, fontSize: 12, color: "#86efac" }}>
+                    Signed by candidate {new Date(previewModalOffer.signature.signedAt).toLocaleDateString("en-IN")}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1935,6 +2114,7 @@ export default function OfferLettersManagement() {
               {confirmModal.type === "SENT" && "Mark as sent"}
               {confirmModal.type === "ACCEPTED" && "Mark accepted"}
               {confirmModal.type === "REJECTED" && "Mark rejected"}
+              {confirmModal.type === "WITHDRAW" && "Withdraw offer"}
               {confirmModal.type === "DELETE" && "Delete draft"}
             </h3>
 
@@ -1967,6 +2147,16 @@ export default function OfferLettersManagement() {
                   declined this offer.
                 </>
               )}
+              {confirmModal.type === "WITHDRAW" && (
+                <>
+                  Withdraw the offer for{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.candidate?.fullName}</strong>
+                  {" "}as{" "}
+                  <strong style={{ color: "#111827" }}>{confirmModal.offer.position}</strong>.
+                  The candidate will no longer be able to sign. This does not permanently delete the
+                  offer, issued PDF, or email history.
+                </>
+              )}
               {confirmModal.type === "DELETE" && (
                 <>
                   Delete the draft for{" "}
@@ -1976,7 +2166,33 @@ export default function OfferLettersManagement() {
               )}
             </p>
 
-            {confirmModal.type !== "DELETE" && confirmModal.type !== "SEND_EMAIL" && (
+            {confirmModal.type === "WITHDRAW" && (
+              <div style={{ marginBottom: "18px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#6b7280" }}>
+                  Withdrawal reason <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Why is this offer being withdrawn?"
+                  value={confirmModal.notes}
+                  onChange={(e) => setConfirmModal({ ...confirmModal, notes: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #e5e7eb",
+                    fontSize: "13.5px",
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+            )}
+
+            {confirmModal.type !== "DELETE" &&
+              confirmModal.type !== "SEND_EMAIL" &&
+              confirmModal.type !== "WITHDRAW" && (
               <div style={{ marginBottom: "18px" }}>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "6px", color: "#6b7280" }}>
                   Notes (optional)
@@ -2022,7 +2238,10 @@ export default function OfferLettersManagement() {
                 disabled={actionLoading}
                 onClick={handleExecuteStatusChange}
                 style={{
-                  background: confirmModal.type === "DELETE" || confirmModal.type === "REJECTED"
+                  background:
+                    confirmModal.type === "DELETE" ||
+                    confirmModal.type === "REJECTED" ||
+                    confirmModal.type === "WITHDRAW"
                     ? "#dc2626"
                     : confirmModal.type === "ACCEPTED"
                     ? "#059669"
@@ -2041,6 +2260,8 @@ export default function OfferLettersManagement() {
                   ? "Send"
                   : confirmModal.type === "DELETE"
                   ? "Delete"
+                  : confirmModal.type === "WITHDRAW"
+                  ? "Withdraw"
                   : "Confirm"}
               </button>
             </div>

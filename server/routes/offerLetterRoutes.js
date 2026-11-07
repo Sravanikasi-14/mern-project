@@ -13,34 +13,36 @@ import {
   sendOfferLetterEmail,
   updateOfferLetter,
   updateOfferStatus,
+  withdrawOfferLetter,
 } from "../controllers/offerLetterController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
+import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
 import { emailSendLimiter } from "../middleware/emailLimiter.js";
 import { USER_ROLES } from "../models/User.js";
 
 const router = express.Router();
 
-// Enforce authentication and HR_ADMIN authorization on all offer letter operations
-router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN));
+router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN), loadHrAccessContext);
 
-router.get("/clauses", getDefaultClauses);
-router.get("/clauses/defaults", getDefaultClauses);
-router.get("/summary", getOfferSummary);
-router.get("/recipients", getOfferRecipients);
-router.post("/preview", previewOfferLetter);
+router.get("/clauses", requireHrPermission("hiring.view"), getDefaultClauses);
+router.get("/clauses/defaults", requireHrPermission("hiring.view"), getDefaultClauses);
+router.get("/summary", requireHrPermission("hiring.view"), getOfferSummary);
+router.get("/recipients", requireHrPermission("hiring.view"), getOfferRecipients);
+router.post("/preview", requireHrPermission("hiring.view"), previewOfferLetter);
 
-router.get("/", getOfferLetters);
-router.post("/", createOfferLetter);
+router.get("/", requireHrPermission("hiring.view"), getOfferLetters);
+router.post("/", requireHrPermission("hiring.create"), createOfferLetter);
 
-router.get("/:id", getOfferLetterById);
-router.put("/:id", updateOfferLetter);
-router.delete("/:id", deleteOfferLetter);
+router.get("/:id", requireHrPermission("hiring.view"), getOfferLetterById);
+router.put("/:id", requireHrPermission("hiring.edit"), updateOfferLetter);
+router.delete("/:id", requireHrPermission("hiring.delete"), deleteOfferLetter);
 
-router.post("/:id/send", emailSendLimiter, sendOfferLetterEmail);
-router.patch("/:id/status", updateOfferStatus);
-router.post("/:id/status", updateOfferStatus);
-router.get("/:id/pdf", downloadOfferLetterPdf);
-router.post("/:id/link-employee", linkEmployeeToOffer);
+router.post("/:id/send", requireHrPermission("hiring.send"), emailSendLimiter, sendOfferLetterEmail);
+router.post("/:id/withdraw", requireHrPermission("hiring.withdraw"), withdrawOfferLetter);
+router.patch("/:id/status", requireHrPermission("hiring.edit"), updateOfferStatus);
+router.post("/:id/status", requireHrPermission("hiring.edit"), updateOfferStatus);
+router.get("/:id/pdf", requireHrPermission("hiring.view"), downloadOfferLetterPdf);
+router.post("/:id/link-employee", requireHrPermission("hiring.edit"), linkEmployeeToOffer);
 
 export default router;

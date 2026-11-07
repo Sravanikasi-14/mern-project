@@ -14,6 +14,10 @@ import {
 } from "../services/backupRecommendationService.js";
 import { emitLeaveEvent } from "../services/leaveEventsService.js";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/companyTime.js";
+import {
+  assertEmployeeInScope,
+  mergeEmployeeIdScopeFilter,
+} from "../services/hrAccessEnforcementService.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -47,15 +51,20 @@ export async function getLeaveSummary(req, res, next) {
 
     const todayDate = parseDateOnly(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company)));
 
+    const pendingQ = mergeEmployeeIdScopeFilter(req.hrAccess, { status: "PENDING" });
+    const approvedQ = mergeEmployeeIdScopeFilter(req.hrAccess, { status: "APPROVED" });
+    const rejectedQ = mergeEmployeeIdScopeFilter(req.hrAccess, { status: "REJECTED" });
+    const onLeaveQ = mergeEmployeeIdScopeFilter(req.hrAccess, {
+      status: "APPROVED",
+      fromDate: { $lte: todayDate },
+      toDate: { $gte: todayDate },
+    });
+
     const [pending, approved, rejected, onLeaveTodayIds] = await Promise.all([
-      LeaveRequest.countDocuments({ status: "PENDING" }),
-      LeaveRequest.countDocuments({ status: "APPROVED" }),
-      LeaveRequest.countDocuments({ status: "REJECTED" }),
-      LeaveRequest.distinct("employeeId", {
-        status: "APPROVED",
-        fromDate: { $lte: todayDate },
-        toDate: { $gte: todayDate },
-      }),
+      LeaveRequest.countDocuments(pendingQ),
+      LeaveRequest.countDocuments(approvedQ),
+      LeaveRequest.countDocuments(rejectedQ),
+      LeaveRequest.distinct("employeeId", onLeaveQ),
     ]);
 
     res.json({
@@ -134,6 +143,8 @@ export async function getLeaveRequests(req, res, next) {
       query.employeeId = { $in: employeeIds };
     }
 
+    const scopedQuery = mergeEmployeeIdScopeFilter(req.hrAccess, query);
+
     const todayDate = parseDateOnly(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(req.auth.company)));
     // Calendar / range fetches skip expensive global summary counts (use /summary instead)
     const includeSummary =
@@ -141,8 +152,8 @@ export async function getLeaveRequests(req, res, next) {
       !(fromDateParam && toDateParam);
 
     const listQueries = [
-      LeaveRequest.countDocuments(query),
-      LeaveRequest.find(query)
+      LeaveRequest.countDocuments(scopedQuery),
+      LeaveRequest.find(scopedQuery)
         .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status")
         .populate("decision.decidedBy", "email role")
         .sort({ createdAt: -1 })
@@ -152,14 +163,17 @@ export async function getLeaveRequests(req, res, next) {
     ];
     if (includeSummary) {
       listQueries.push(
-        LeaveRequest.countDocuments({ status: "PENDING" }),
-        LeaveRequest.countDocuments({ status: "APPROVED" }),
-        LeaveRequest.countDocuments({ status: "REJECTED" }),
-        LeaveRequest.distinct("employeeId", {
-          status: "APPROVED",
-          fromDate: { $lte: todayDate },
-          toDate: { $gte: todayDate },
-        })
+        LeaveRequest.countDocuments(mergeEmployeeIdScopeFilter(req.hrAccess, { status: "PENDING" })),
+        LeaveRequest.countDocuments(mergeEmployeeIdScopeFilter(req.hrAccess, { status: "APPROVED" })),
+        LeaveRequest.countDocuments(mergeEmployeeIdScopeFilter(req.hrAccess, { status: "REJECTED" })),
+        LeaveRequest.distinct(
+          "employeeId",
+          mergeEmployeeIdScopeFilter(req.hrAccess, {
+            status: "APPROVED",
+            fromDate: { $lte: todayDate },
+            toDate: { $gte: todayDate },
+          })
+        )
       );
     }
 
@@ -235,6 +249,11 @@ export async function getLeaveRequestById(req, res, next) {
     }
 
     const employee = leaveRequest.employeeId;
+    assertEmployeeInScope(
+      req.hrAccess,
+      employee?._id || leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
     let leaveBalance = null;
     const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
     if (employee && employee._id) {
@@ -300,6 +319,11 @@ export async function getLeaveImpactAnalysis(req, res, next) {
     if (!leaveRequest) {
       throw new HttpError(404, "Leave request not found");
     }
+    assertEmployeeInScope(
+      req.hrAccess,
+      leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
 
     const impact = await analyzeLeaveImpact(
       {
@@ -330,10 +354,22 @@ export async function getLeaveImpactAnalysis(req, res, next) {
  */
 export async function getLeaveBackupRecommendations(req, res, next) {
   try {
+    const { LeaveRequest } = req.auth.models;
+    const leaveRequest = await LeaveRequest.findById(req.params.id).select("employeeId").lean();
+    if (!leaveRequest) {
+      throw new HttpError(404, "Leave request not found");
+    }
+    assertEmployeeInScope(
+      req.hrAccess,
+      leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
+
     const recommendations = await recommendBackupsForLeaveRequest(
       {
         models: req.auth.models,
         company: req.auth.company,
+        hrAccess: req.hrAccess,
       },
       req.params.id
     );
@@ -352,6 +388,24 @@ export async function saveLeaveBackupProposal(req, res, next) {
     const { taskId, backupEmployeeId = null, explanationSnapshot } = req.body || {};
     if (!taskId) {
       throw new HttpError(400, "taskId is required.");
+    }
+
+    const { LeaveRequest } = req.auth.models;
+    const leaveRequest = await LeaveRequest.findById(req.params.id).select("employeeId").lean();
+    if (!leaveRequest) {
+      throw new HttpError(404, "Leave request not found");
+    }
+    assertEmployeeInScope(
+      req.hrAccess,
+      leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
+    if (backupEmployeeId) {
+      assertEmployeeInScope(
+        req.hrAccess,
+        backupEmployeeId,
+        "You cannot assign a backup employee outside your access scope."
+      );
     }
 
     const result = await upsertLeaveBackupProposal(
@@ -390,7 +444,7 @@ export async function changeLeaveType(req, res, next) {
     const { newLeaveType, reason } = req.body || {};
 
     // 1. Authorization: Only HR_ADMIN users can change leave type
-    if (req.auth?.user?.role !== "HR_ADMIN") {
+    if (req.auth?.user?.role !== "HR_ADMIN" && req.auth?.user?.role !== "COMPANY_ADMIN") {
       throw new HttpError(403, "Access denied. Only HR administrators are authorized to change leave types.");
     }
 
@@ -405,6 +459,11 @@ export async function changeLeaveType(req, res, next) {
     if (!leaveRequest) {
       throw new HttpError(404, "Leave request not found");
     }
+    assertEmployeeInScope(
+      req.hrAccess,
+      leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
 
     // 4. Validate status is APPROVED
     if (leaveRequest.status !== "APPROVED") {
@@ -523,6 +582,12 @@ export async function decideLeaveRequest(req, res, next) {
     if (!leaveRequest) {
       throw new HttpError(404, "Leave request not found");
     }
+
+    assertEmployeeInScope(
+      req.hrAccess,
+      leaveRequest.employeeId,
+      "You do not have access to this leave request."
+    );
 
     if (leaveRequest.status !== "PENDING") {
       throw new HttpError(

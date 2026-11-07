@@ -28,7 +28,10 @@ export const queryClient = new QueryClient({
       gcTime: 10 * 60_000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      retry: 1,
+      retry: (failureCount, error) => {
+        if (error?.response?.status === 403 || error?.response?.status === 401) return false;
+        return failureCount < 1;
+      },
     },
   },
 });

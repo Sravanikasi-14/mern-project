@@ -4,6 +4,7 @@ import {
   PROVISIONING_SOURCES,
 } from "../services/employeeProvisioningService.js";
 import { HttpError } from "../utils/httpError.js";
+import { isImportDepartmentInHrScope } from "../services/hrAccessEnforcementService.js";
 
 export const EMPLOYEE_IMPORT_TEMPLATE_HEADERS = [
   "fullName",
@@ -71,10 +72,17 @@ export async function previewEmployeeImport(req, res, next) {
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i] || {};
-      const { valid, errors, normalized } = await validateImportRow(req.auth.models, row, {
+      let { valid, errors, normalized } = await validateImportRow(req.auth.models, row, {
         seenEmails,
         seenCodes,
       });
+      if (valid && !(await isImportDepartmentInHrScope(req.hrAccess, req.auth.models, normalized?.department))) {
+        valid = false;
+        errors = {
+          ...(errors || {}),
+          department: "This department is outside your employee scope.",
+        };
+      }
       results.push({
         rowIndex: i,
         valid,
@@ -152,10 +160,17 @@ export async function commitEmployeeImport(req, res, next) {
     const validated = [];
 
     for (let i = 0; i < rows.length; i += 1) {
-      const { valid, errors, normalized } = await validateImportRow(req.auth.models, rows[i] || {}, {
+      let { valid, errors, normalized } = await validateImportRow(req.auth.models, rows[i] || {}, {
         seenEmails,
         seenCodes,
       });
+      if (valid && !(await isImportDepartmentInHrScope(req.hrAccess, req.auth.models, normalized?.department))) {
+        valid = false;
+        errors = {
+          ...(errors || {}),
+          department: "This department is outside your employee scope.",
+        };
+      }
       validated.push({ rowIndex: i, valid, errors, normalized, raw: rows[i] });
     }
 

@@ -14,6 +14,7 @@ const FEATURES = [
   { id: "payslips", label: "My Payslips", path: "/app/payslips", icon: "payslips", color: "#e3f2e9", ink: "#155a37" },
   { id: "assets", label: "Company Assets", path: "/app/assets", icon: "assets", color: "#fdf3e2", ink: "#b06d0a" },
   { id: "policies", label: "HR Policies", path: "/app/policies", icon: "policies", color: "#e3f2e9", ink: "#1d7347" },
+  { id: "organization", label: "Organisation", path: "/app/organization", icon: "people", color: "#eff6ff", ink: "#2563eb" },
   { id: "profile", label: "My Profile", path: "/app/profile", icon: "profile", color: "#eff6ff", ink: "#2563eb" },
   { id: "documents", label: "Documents", path: "/app/documents", icon: "documents", color: "#e3f2e9", ink: "#155a37" },
   { id: "impact", label: "Impact Points", path: "/app/impact-points", icon: "impact", color: "#fdeceb", ink: "#c23b3b" },

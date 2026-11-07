@@ -363,6 +363,7 @@ button[type="submit"]:not(.btn-secondary):not(.wm-btn-primary):not(.wm-btn-secon
 
 .btn-sm {
   padding: 6px 12px;
+  min-height: 34px;
   font-size: 12.5px;
   border-radius: 8px;
 }
@@ -533,25 +534,272 @@ button[type="submit"]:not(.btn-secondary):not(.wm-btn-primary):not(.wm-btn-secon
   align-items: center;
 }
 
+/* Shared module toolbar pattern (Attendance, Leave, Payroll, Impact, etc.) */
+.module-toolbar,
+.pm-cards-toolbar,
+.ol-toolbar,
+.att-module-toolbar,
+.ap-toolbar.module-toolbar,
+.lm-toolbar.module-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.module-toolbar-left,
+.module-toolbar-right,
+.pm-toolbar-left,
+.pm-toolbar-right,
+.ol-toolbar-left,
+.ol-toolbar-right,
+.ap-toolbar-left,
+.ap-toolbar-right,
+.lm-toolbar-left,
+.lm-toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.module-toolbar-left,
+.pm-toolbar-left,
+.ol-toolbar-left,
+.ap-toolbar-left,
+.lm-toolbar-left {
+  flex: 1 1 auto;
+}
+
+.module-toolbar-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted, #646d67);
+}
+
+.module-toolbar-field > span {
+  white-space: nowrap;
+}
+
+.module-toolbar-control,
+.module-toolbar .filter-select,
+.module-toolbar .ap-select,
+.module-toolbar .wm-select,
+.module-toolbar .ol-select,
+.module-toolbar input[type="date"],
+.ol-toolbar .ol-select,
+.ol-toolbar .filter-select,
+.pm-cards-toolbar .filter-select,
+.att-module-toolbar .filter-select,
+.att-module-toolbar input[type="date"],
+.ap-toolbar .ap-select {
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+
+.module-toolbar .module-search,
+.ol-toolbar .module-search,
+.pm-cards-toolbar .module-search,
+.att-module-toolbar .module-search,
+.ap-toolbar .module-search,
+.lm-toolbar .module-search {
+  flex: 1 1 220px;
+  min-width: 200px;
+  max-width: 360px;
+  height: 40px;
+}
+
+.module-toolbar .btn-primary,
+.module-toolbar .btn-secondary,
+.ol-toolbar .btn-primary,
+.ol-toolbar .btn-secondary,
+.pm-cards-toolbar .btn-primary,
+.pm-cards-toolbar .btn-secondary,
+.att-module-toolbar .btn-primary,
+.att-module-toolbar .btn-secondary,
+.ap-toolbar .btn-primary,
+.ap-toolbar .btn-secondary {
+  min-height: 40px;
+  height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .module-toolbar .module-search,
+  .ol-toolbar .module-search,
+  .pm-cards-toolbar .module-search,
+  .att-module-toolbar .module-search,
+  .ap-toolbar .module-search,
+  .lm-toolbar .module-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+}
+
+/* Shared filter pill group (status / period toggles) */
+.ap-filter-pill-group {
+  display: inline-flex;
+  background: var(--panel, #f5f6f5);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--hair, #e3e7e4);
+  gap: 2px;
+}
+
+.ap-filter-pill {
+  padding: 5px 12px;
+  min-height: 32px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: none;
+  font-family: inherit;
+}
+
+.ap-filter-pill:hover {
+  color: var(--ink, #131a15);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ap-filter-pill.active {
+  color: var(--g-950, #0d3a23);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
 .search-input {
   min-width: 0;
   flex: 1;
   width: 100%;
   max-width: 360px;
-  padding: 9px 13px;
+  height: 40px;
+  padding: 0 13px;
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: 10px;
   background: var(--card, #fdfdfc);
   font-size: 13.5px;
+  font-weight: 500;
   color: var(--ink, #131a15);
   font-family: inherit;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
 }
 
 .search-input:focus {
   outline: none;
   border-color: var(--g-600, #27865a);
   box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
+}
+
+/* Standard module toolbar search */
+.module-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 360px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 10px;
+  background: var(--card, #fdfdfc);
+  box-sizing: border-box;
+}
+
+.module-search:focus-within {
+  border-color: var(--g-600, #27865a);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
+}
+
+.module-search-icon {
+  display: inline-flex;
+  color: var(--muted, #646d67);
+  flex-shrink: 0;
+}
+
+.module-search-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--ink, #131a15);
+  padding: 0;
+}
+
+.module-search-input::placeholder {
+  color: var(--muted, #646d67);
+  font-weight: 500;
+}
+
+/* Toolbar action button alignment */
+.toolbar-actions,
+.ap-toolbar-right,
+.wm-toolbar-actions,
+.ol-toolbar-left,
+.att-controls-right,
+.epv-header-actions,
+.epv-identity-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-actions .btn-primary,
+.toolbar-actions .btn-secondary,
+.ap-toolbar-right .btn-primary,
+.ap-toolbar-right .btn-secondary,
+.epv-header-actions .btn-primary,
+.epv-header-actions .btn-secondary {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.btn-danger,
+.btn-destructive {
+  padding: 9px 16px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid #b91c1c;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 600;
 }
 
 select.filter-select,

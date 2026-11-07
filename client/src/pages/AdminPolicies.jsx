@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AppHeader from "../components/AppHeader";
+import PoliciesSettingsNav from "../components/PoliciesSettingsNav";
 import {
   IconClose,
   IconCheck,
@@ -8,7 +9,12 @@ import {
   IconInfo,
 } from "../components/Icons";
 import Pagination, { useClientPagination } from "../components/Pagination";
+import ModuleToolbar from "../components/ModuleToolbar";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
+import { ACCESS_RESTRICTED_MESSAGE, announceAccessRestricted } from "../utils/accessNotice";
 import "./AdminPolicies.css";
 
 const MONTH_NAMES = [
@@ -175,6 +181,9 @@ const POLICY_CARDS = [
 ];
 
 export default function AdminPolicies() {
+  const { user, company } = useAuth();
+  const canEditPolicies = hrPortalAllows(user, company, "policies.edit");
+  const canCreatePolicies = hrPortalAllows(user, company, "policies.create");
   const [activePolicyCard, setActivePolicyCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingSection, setSavingSection] = useState(null); // category ID or "GLOBAL"
@@ -717,6 +726,13 @@ export default function AdminPolicies() {
 
   // Generic Save Handler for any section
   const handleSaveSection = async (sectionName = "GLOBAL") => {
+    if (!canEditPolicies) {
+      setSuccessMsg("");
+      setError(ACCESS_RESTRICTED_MESSAGE);
+      announceAccessRestricted();
+      setSavingSection(null);
+      return;
+    }
     try {
       setSavingSection(sectionName);
       setError("");
@@ -762,6 +778,10 @@ export default function AdminPolicies() {
   };
 
   const handleOpenEditLeaveType = (index) => {
+    if (!canEditPolicies) {
+      announceAccessRestricted();
+      return;
+    }
     setEditingLeaveTypeIndex(index);
     const item = leaveTypes[index];
     setLeaveTypeForm({
@@ -880,6 +900,10 @@ export default function AdminPolicies() {
   };
 
   const handleOpenEditHoliday = (index) => {
+    if (!canEditPolicies) {
+      announceAccessRestricted();
+      return;
+    }
     setEditingHolidayIndex(index);
     const item = holidays[index];
     setHolidayForm({
@@ -989,6 +1013,10 @@ export default function AdminPolicies() {
   };
 
   const handleOpenEditAllowance = (index) => {
+    if (!canEditPolicies) {
+      announceAccessRestricted();
+      return;
+    }
     setEditingAllowanceIndex(index);
     const item = salaryComponentRules.allowances[index];
     setAllowanceForm({
@@ -1096,6 +1124,10 @@ export default function AdminPolicies() {
   };
 
   const handleOpenEditDeduction = (index) => {
+    if (!canEditPolicies) {
+      announceAccessRestricted();
+      return;
+    }
     setEditingDeductionIndex(index);
     const item = salaryComponentRules.deductions[index];
     setDeductionForm({
@@ -1347,6 +1379,7 @@ export default function AdminPolicies() {
     return (
       <div className="container-wide">
         <AppHeader title="Policies" />
+        <PoliciesSettingsNav active="policies" />
         <div style={{ display: "flex", gap: 10, margin: "20px 0 24px" }}>
           {[1, 2, 3, 4, 5].map((n) => (
             <div key={n} className="skeleton-shimmer" style={{ width: 110, height: 38, borderRadius: 8 }} />
@@ -1368,6 +1401,7 @@ export default function AdminPolicies() {
     <div className="container-wide">
       {/* 3.A Page Header */}
       <AppHeader title="Policies" />
+      <PoliciesSettingsNav active="policies" />
 
       {/* Notifications */}
       {successMsg && (
@@ -1377,7 +1411,7 @@ export default function AdminPolicies() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 20,
+            marginBottom: 12,
           }}
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -1420,43 +1454,22 @@ export default function AdminPolicies() {
         </div>
       )}
 
-      {/* 3.B Policy Revision Toolbar */}
-      <div
-        style={{
-          background: "#ffffff",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 10,
-          padding: "12px 18px",
-          marginBottom: 14,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 12,
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted, #646d67)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Active Policy Revision
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+      {/* Compact revision controls */}
+      <div className="policies-revision-bar">
+        <div className="policies-revision-left">
+          <label className="policies-revision-label" htmlFor="policyRevisionSelect">
+            Revision
+          </label>
+          <div className="policies-revision-controls">
               <select
+                id="policyRevisionSelect"
                 value={selectedRevisionId || ""}
                 onChange={(e) => {
                   const target = revisions.find((r) => r._id === e.target.value);
                   if (target) loadPolicyIntoForm(target);
                 }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--hair, #e6ede8)",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  background: "#fcfcfd",
-                  minWidth: 240,
-                }}
+                className="filter-select"
+                style={{ minWidth: 220, height: 36, fontSize: 13, fontWeight: 600 }}
               >
                 {revisions.map((rev) => {
                   const d = rev.effectiveFromDate
@@ -1474,57 +1487,21 @@ export default function AdminPolicies() {
               </select>
 
               {currentRevisionStatus === "ACTIVE_NOW" && (
-                <span
-                  style={{
-                    background: "var(--g-100, #e3f2e9)",
-                    color: "var(--g-800, #155a37)",
-                    border: "1px solid rgba(39, 134, 90, 0.28)",
-                    padding: "3px 8px",
-                    borderRadius: 20,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                  }}
-                >
-                  ● Active Now
-                </span>
+                <span className="policies-rev-badge policies-rev-badge--active">Active</span>
               )}
 
               {currentRevisionStatus === "FUTURE_SCHEDULED" && (
-                <span
-                  style={{
-                    background: "#eff6ff",
-                    color: "#1d4ed8",
-                    border: "1px solid #bfdbfe",
-                    padding: "3px 8px",
-                    borderRadius: 20,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                  }}
-                >
-                  ✦ Scheduled for Future
-                </span>
+                <span className="policies-rev-badge policies-rev-badge--scheduled">Scheduled</span>
               )}
 
               {currentRevisionStatus === "HISTORICAL" && (
-                <span
-                  style={{
-                    background: "#f4f4f5",
-                    color: "#71717a",
-                    border: "1px solid #e4e4e7",
-                    padding: "3px 8px",
-                    borderRadius: 20,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                  }}
-                >
-                  Historical Revision
-                </span>
+                <span className="policies-rev-badge policies-rev-badge--historical">Historical</span>
               )}
-            </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="policies-revision-actions">
+          {canCreatePolicies ? (
           <button
             type="button"
             className="btn-secondary"
@@ -1534,45 +1511,38 @@ export default function AdminPolicies() {
               setNewRevisionError("");
               setShowNewRevisionModal(true);
             }}
-            style={{ fontSize: 12.5, padding: "7px 12px" }}
           >
             + Schedule New Revision
           </button>
+          ) : null}
 
           <button
             type="button"
             className="btn-secondary"
             onClick={handleReset}
-            disabled={Boolean(savingSection)}
-            style={{ fontSize: 12.5, padding: "7px 12px" }}
+            disabled={Boolean(savingSection) || !canEditPolicies}
           >
             Reset
           </button>
 
+          {canEditPolicies ? (
           <button
             type="button"
+            className="btn-primary"
             onClick={() => handleSaveSection("GLOBAL")}
             disabled={Boolean(savingSection)}
-            style={{
-              background: "var(--g-800, #155a37)",
-              borderColor: "var(--g-800, #155a37)",
-              fontSize: 12.5,
-              padding: "7px 14px",
-            }}
           >
             {savingSection === "GLOBAL" ? "Saving..." : "Save Policy Changes"}
           </button>
+          ) : (
+            <AccessRestrictedInline />
+          )}
         </div>
       </div>
 
-      {/* Policy overview (cards) or consolidated editor */}
+      {/* Policy cards or consolidated editor */}
       {!activePolicyCard ? (
         <div className="policies-overview">
-          <div className="policies-overview-intro">
-            <p className="policies-overview-desc">
-              Open a policy to review and edit its rules in one place. Changes save to the selected revision.
-            </p>
-          </div>
           <div className="policies-card-grid" role="list">
             {POLICY_CARDS.map((card) => (
               <button
@@ -2249,34 +2219,38 @@ export default function AdminPolicies() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    placeholder="Search holiday..."
-                    className="policies-input-control"
-                    style={{ width: 170, padding: "7px 12px", fontSize: 13 }}
-                    value={holidaySearch}
-                    onChange={(e) => setHolidaySearch(e.target.value)}
-                  />
-
-                  {availableYears.length > 1 && (
-                    <select
-                      className="policies-input-control"
-                      style={{ width: 120, padding: "7px 12px", fontSize: 13 }}
-                      value={holidayYearFilter}
-                      onChange={(e) => setHolidayYearFilter(e.target.value)}
-                    >
-                      <option value="ALL">All Years</option>
-                      {availableYears.map((y) => (
-                        <option key={y} value={y}>Year {y}</option>
-                      ))}
-                    </select>
-                  )}
-
-                  <button type="button" onClick={handleOpenAddHoliday} className="btn-secondary">
-                    + Add Holiday
-                  </button>
-                </div>
+                <ModuleToolbar
+                  searchValue={holidaySearch}
+                  onSearchChange={(e) => setHolidaySearch(e.target.value)}
+                  searchPlaceholder="Search holiday..."
+                  searchAriaLabel="Search holidays"
+                  actions={
+                    <button type="button" onClick={handleOpenAddHoliday} className="btn-secondary">
+                      + Add Holiday
+                    </button>
+                  }
+                  filterCount={holidayYearFilter !== "ALL" ? 1 : 0}
+                  onFiltersClear={() => setHolidayYearFilter("ALL")}
+                  filters={
+                    availableYears.length > 0 ? (
+                      <label className="module-toolbar-filter-field">
+                        Year
+                        <select
+                          className="filter-select"
+                          value={holidayYearFilter}
+                          onChange={(e) => setHolidayYearFilter(e.target.value)}
+                        >
+                          <option value="ALL">All Years</option>
+                          {availableYears.map((y) => (
+                            <option key={y} value={y}>
+                              Year {y}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null
+                  }
+                />
               </div>
 
               {filteredHolidays.length === 0 ? (
@@ -2608,7 +2582,10 @@ export default function AdminPolicies() {
                   onClick={handleDetectCurrentLocation}
                   style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
-                  <span>📍</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
                   <span>{gpsLoading ? "Detecting GPS..." : "Detect Current Location"}</span>
                 </button>
                 {gpsStatusMsg && (
@@ -3081,7 +3058,7 @@ export default function AdminPolicies() {
 
               {/* Legal Disclaimer Box */}
               <div style={{ marginTop: 20, padding: "14px 18px", borderRadius: 8, background: "#fefce8", border: "1px solid #fef08a", color: "#854d0e", fontSize: 12.5, lineHeight: 1.5 }}>
-                ⚠️ <strong>Statutory Disclaimer:</strong> Settings configured here represent corporate payroll deduction policies and do not constitute formal legal or taxation counsel. Please ensure your configuration aligns with local state labor laws.
+                <strong>Statutory Disclaimer:</strong> Settings configured here represent corporate payroll deduction policies and do not constitute formal legal or taxation counsel. Please ensure your configuration aligns with local state labor laws.
               </div>
 
               <div className="policies-save-bar">

@@ -1,5 +1,5 @@
 import { HttpError } from "../utils/httpError.js";
-import { USER_ROLES } from "../models/User.js";
+import { USER_ROLES, isHrPortalOperator } from "../models/User.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import {
   getAuthenticatedEmployee,
@@ -41,7 +41,7 @@ export async function getMyPointsSummary(req, res, next) {
 export async function getEmployeePointsSummary(req, res, next) {
   try {
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
     const targetEmployeeId = req.params.employeeId;
 
     if (!isHrAdmin) {
@@ -76,7 +76,7 @@ export async function getLeaderboard(req, res, next) {
   try {
     const { department = "ALL", period, startDate, endDate, limit = 50 } = req.query;
 
-    const leaderboard = await getLeaderboardService({
+    let leaderboard = await getLeaderboardService({
       models: req.auth.models,
       department,
       period,
@@ -84,6 +84,13 @@ export async function getLeaderboard(req, res, next) {
       endDate,
       limit,
     });
+
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN && req.hrAccess) {
+      const { isEmployeeIdInScope } = await import("../services/hrAccessEnforcementService.js");
+      leaderboard = leaderboard.filter((row) =>
+        isEmployeeIdInScope(req.hrAccess, row.employeeId || row._id || row.id)
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -113,6 +120,7 @@ export async function awardRecognition(req, res, next) {
       points,
       reason,
       ruleCode,
+      hrAccess: req.hrAccess,
     });
 
     res.status(201).json({
@@ -132,7 +140,7 @@ export async function awardRecognition(req, res, next) {
 export async function getTransactionLedger(req, res, next) {
   try {
     const { ImpactPointTransaction } = req.auth.models;
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -151,6 +159,12 @@ export async function getTransactionLedger(req, res, next) {
       query.employeeId = actorEmployee._id;
     } else if (employeeId) {
       query.employeeId = employeeId;
+    }
+
+    let finalQuery = query;
+    if (isHrAdmin && req.hrAccess) {
+      const { mergeEmployeeIdScopeFilter } = await import("../services/hrAccessEnforcementService.js");
+      finalQuery = mergeEmployeeIdScopeFilter(req.hrAccess, query);
     }
 
     if (department && department !== "ALL") {
@@ -173,8 +187,8 @@ export async function getTransactionLedger(req, res, next) {
     }
 
     const [total, transactions] = await Promise.all([
-      ImpactPointTransaction.countDocuments(query),
-      ImpactPointTransaction.find(query)
+      ImpactPointTransaction.countDocuments(finalQuery),
+      ImpactPointTransaction.find(finalQuery)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -226,6 +240,23 @@ export async function getTransactionLedger(req, res, next) {
 export async function reverseTransaction(req, res, next) {
   try {
     const { reason } = req.body;
+    const { ImpactPointTransaction } = req.auth.models;
+    const originalTx = await ImpactPointTransaction.findById(req.params.id).select(
+      "employeeId isReversed transactionType"
+    );
+    if (!originalTx) {
+      throw new HttpError(404, "Original transaction not found.");
+    }
+
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+      const { assertEmployeeInScope } = await import("../services/hrAccessEnforcementService.js");
+      assertEmployeeInScope(
+        req.hrAccess,
+        originalTx.employeeId,
+        "You do not have access to reverse this impact points transaction."
+      );
+    }
+
     const result = await reverseTransactionService({
       models: req.auth.models,
       user: req.auth.user,
@@ -265,7 +296,7 @@ export async function getImpactPointRules(req, res, next) {
 export async function updateImpactPointRules(req, res, next) {
   try {
     const { CompanyHrPolicy, AuditLog } = req.auth.models;
-    if (req.auth.user.role !== USER_ROLES.HR_ADMIN) {
+    if (req.auth.user.role !== USER_ROLES.HR_ADMIN && req.auth.user.role !== USER_ROLES.COMPANY_ADMIN) {
       throw new HttpError(403, "Only HR Administrators can configure Impact Points rules.");
     }
 

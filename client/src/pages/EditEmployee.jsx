@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { IconDocument } from "../components/Icons";
+import DepartmentSelect from "../components/DepartmentSelect";
+import { departmentPayload } from "../components/departmentAssignment";
+import ReportingManagerSelect from "../components/ReportingManagerSelect";
+import DesignationFields from "../components/organization-workspace/DesignationFields";
 import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
+
+function managerIdOf(emp) {
+  const m = emp?.job?.reportingManagerId;
+  if (!m) return null;
+  return typeof m === "object" ? String(m._id || "") || null : String(m);
+}
 
 export default function EditEmployee() {
   const { id } = useParams();
   const navigate = useNavigate();
   const goBack = useSmartBack(`/admin/employees/${id}`);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +39,10 @@ export default function EditEmployee() {
     emergencyContactRelationship: "",
     emergencyContactPhone: "",
     jobTitle: "",
-    department: "",
+    departmentId: "",
+    departmentName: "",
+    clearDepartment: false,
+    departmentTouched: false,
     jobGrade: "",
     employmentType: "Full-time Permanent",
     workLocation: "",
@@ -38,12 +50,14 @@ export default function EditEmployee() {
     projectName: "",
     projectType: "MANDATE",
     monthlySalary: "",
+    reportingManagerId: null,
     bankName: "",
     accountNumber: "",
     ifscCode: "",
     panNumber: "",
     taxRegime: "New Regime (Sec 115BAC)",
   });
+  const [initialManager, setInitialManager] = useState(null);
 
   const [documents, setDocuments] = useState([]);
   const [uploadCategory, setUploadCategory] = useState("OFFER_LETTER");
@@ -80,7 +94,10 @@ export default function EditEmployee() {
             emergencyContactRelationship: emp.emergencyContact?.relationship || "",
             emergencyContactPhone: emp.emergencyContact?.phone || "",
             jobTitle: emp.job?.jobTitle || "",
-            department: emp.job?.department || "",
+            departmentId: emp.job?.departmentId ? String(emp.job.departmentId) : "",
+            departmentName: emp.job?.department || "",
+            clearDepartment: false,
+            departmentTouched: false,
             jobGrade: emp.job?.jobGrade || "",
             employmentType: emp.job?.employmentType || "Full-time Permanent",
             workLocation: emp.job?.workLocation || "",
@@ -88,12 +105,18 @@ export default function EditEmployee() {
             projectName: emp.job?.project?.projectName || "",
             projectType: emp.job?.project?.projectType || "MANDATE",
             monthlySalary: emp.currentMonthlySalary != null ? String(emp.currentMonthlySalary) : "",
+            reportingManagerId: managerIdOf(emp),
             bankName: emp.bankDetails?.bankName || "",
             accountNumber: emp.bankDetails?.accountNumber || "",
             ifscCode: emp.bankDetails?.ifscCode || "",
             panNumber: emp.taxDetails?.panNumber || "",
             taxRegime: emp.taxDetails?.taxRegime || "New Regime (Sec 115BAC)",
           });
+          setInitialManager(
+            emp.job?.reportingManagerId && typeof emp.job.reportingManagerId === "object"
+              ? emp.job.reportingManagerId
+              : null
+          );
           setDocuments(emp.documents || []);
         }
       } catch (err) {
@@ -270,13 +293,17 @@ export default function EditEmployee() {
         phoneNumber: formData.phoneNumber.trim(),
         city: formData.city.trim(),
         jobTitle: formData.jobTitle.trim(),
-        department: formData.department.trim(),
+        ...departmentPayload({
+          clearDepartment: formData.departmentTouched && formData.clearDepartment,
+          departmentId: formData.departmentTouched && !formData.clearDepartment ? formData.departmentId : "",
+        }),
         jobGrade: formData.jobGrade.trim(),
         employmentType: formData.employmentType.trim(),
         workLocation: formData.workLocation.trim(),
         status: formData.status,
         projectName: formData.projectName.trim(),
         projectType: formData.projectType,
+        reportingManagerId: formData.reportingManagerId || null,
         emergencyContact: {
           name: formData.emergencyContactName.trim(),
           relationship: formData.emergencyContactRelationship.trim(),
@@ -306,6 +333,10 @@ export default function EditEmployee() {
         navigate(`/admin/employees/${id}`, { replace: true });
       }, 900);
     } catch (err) {
+      const backendErrors = err.response?.data?.errors || {};
+      if (backendErrors.reportingManagerId) {
+        setFieldErrors((prev) => ({ ...prev, reportingManagerId: backendErrors.reportingManagerId }));
+      }
       setError(err.response?.data?.message || "Unable to update employee. Please try again.");
     } finally {
       setSaving(false);
@@ -500,35 +531,47 @@ export default function EditEmployee() {
             </div>
           </div>
           <div className="profile-card-body edit-form-grid">
-            <label className="form-group">
-              Job Title
-              <input
-                type="text"
-                value={formData.jobTitle}
-                onChange={(e) => handleChange("jobTitle", e.target.value)}
-                placeholder="e.g. Lead Frontend Engineer"
-              />
-            </label>
+            <DesignationFields
+              jobTitle={formData.jobTitle}
+              jobGrade={formData.jobGrade}
+              onJobTitleChange={(value) => handleChange("jobTitle", value)}
+              onJobGradeChange={(value) => handleChange("jobGrade", value)}
+              titleLabel="Job title"
+              gradeLabel="Job grade"
+            />
 
-            <label className="form-group">
-              Department
-              <input
-                type="text"
-                value={formData.department}
-                onChange={(e) => handleChange("department", e.target.value)}
-                placeholder="e.g. Product Engineering"
-              />
-            </label>
+            <DepartmentSelect
+              departmentId={formData.clearDepartment ? "" : formData.departmentId}
+              departmentName={formData.clearDepartment ? "" : formData.departmentName}
+              linked={Boolean(formData.departmentId) && !formData.clearDepartment}
+              disabled={saving}
+              onChange={(next) => {
+                setFormData((prev) => ({
+                  ...prev,
+                  departmentId: next.departmentId,
+                  departmentName: next.departmentName,
+                  clearDepartment: next.clearDepartment && !next.departmentId,
+                  departmentTouched: true,
+                }));
+                setIsDirty(true);
+              }}
+            />
 
-            <label className="form-group">
-              Job Grade
-              <input
-                type="text"
-                value={formData.jobGrade}
-                onChange={(e) => handleChange("jobGrade", e.target.value)}
-                placeholder="e.g. Level L4"
+            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+              <ReportingManagerSelect
+                value={formData.reportingManagerId}
+                initialSelected={initialManager}
+                excludeEmployeeId={id}
+                disabled={saving}
+                error={fieldErrors.reportingManagerId || ""}
+                onChange={(nextId) => {
+                  handleChange("reportingManagerId", nextId);
+                  if (fieldErrors.reportingManagerId) {
+                    setFieldErrors((prev) => ({ ...prev, reportingManagerId: "" }));
+                  }
+                }}
               />
-            </label>
+            </div>
 
             <label className="form-group">
               Employment Type

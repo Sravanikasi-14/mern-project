@@ -53,15 +53,17 @@ export function closeTopOverlay() {
 /**
  * Centered mobile modal/popup. Replaces bottom-sheet / drawer interactions.
  */
-export default function Modal({ open, onClose, title, children, footer, size = "md" }) {
+export default function Modal({ open, onClose, title, children, footer, size = "md", locked = false }) {
   const titleId = useId();
   const panelRef = useRef(null);
   const lastFocus = useRef(null);
   const closedByPop = useRef(false);
   const onCloseRef = useRef(onClose);
+  const lockedRef = useRef(locked);
 
   useEffect(() => {
     onCloseRef.current = onClose;
+    lockedRef.current = locked;
   });
 
   useEffect(() => {
@@ -69,7 +71,9 @@ export default function Modal({ open, onClose, title, children, footer, size = "
     lastFocus.current = document.activeElement;
     closedByPop.current = false;
     const token = `modal-${titleId}`;
-    pushModalToken(token, () => onCloseRef.current());
+    pushModalToken(token, () => {
+      if (!lockedRef.current) onCloseRef.current();
+    });
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -80,7 +84,7 @@ export default function Modal({ open, onClose, title, children, footer, size = "
     const onKey = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (modalStack[modalStack.length - 1] === token) {
+        if (modalStack[modalStack.length - 1] === token && !lockedRef.current) {
           onCloseRef.current();
         }
         return;
@@ -138,9 +142,19 @@ export default function Modal({ open, onClose, title, children, footer, size = "
 
   if (!open) return null;
 
+  const requestClose = () => {
+    if (!lockedRef.current) onCloseRef.current?.();
+  };
+
   return (
     <div className="modal-root" role="presentation">
-      <button type="button" className="modal-backdrop" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="modal-backdrop"
+        aria-label="Close"
+        onClick={requestClose}
+        disabled={locked}
+      />
       <div
         ref={panelRef}
         className={`modal-panel modal-panel--${size}`}
@@ -152,7 +166,14 @@ export default function Modal({ open, onClose, title, children, footer, size = "
           <div className="modal-head-text">
             <h2 id={titleId}>{title}</h2>
           </div>
-          <button type="button" className="icon-btn" data-modal-close onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="icon-btn"
+            data-modal-close
+            onClick={requestClose}
+            disabled={locked}
+            aria-label="Close"
+          >
             ×
           </button>
         </div>

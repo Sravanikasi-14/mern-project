@@ -2,9 +2,10 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { IconAlertCircle, IconRefresh } from "./Icons";
 import SessionBoot from "./SessionBoot";
+import { firstAccessibleHrPath } from "../utils/hrPortalAccess";
 
 export default function ProtectedRoute({ children, roles }) {
-  const { loading, isAuthenticated, user, sessionError, restoreSession } = useAuth();
+  const { loading, isAuthenticated, user, company, sessionError, restoreSession } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -83,7 +84,13 @@ export default function ProtectedRoute({ children, roles }) {
   }
 
   if (roles && !roles.includes(user.role)) {
-    return <Navigate to={user.role === "HR_ADMIN" ? "/admin" : "/app"} replace />;
+    const fallback =
+      user.role === "COMPANY_ADMIN"
+        ? "/admin/dashboard"
+        : user.role === "HR_ADMIN"
+          ? firstAccessibleHrPath(user, company, `${location.pathname}${location.search || ""}`) || "/admin/dashboard"
+          : "/app";
+    return <Navigate to={fallback} replace />;
   }
 
   return children;

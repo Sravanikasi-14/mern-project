@@ -10,6 +10,45 @@ const DOCUMENT_TYPES = [
   { value: "OTHER", label: "Other Verification Document" },
 ];
 
+const READ_ONLY_STATUSES = [
+  "SUBMITTED",
+  "APPROVED",
+  "PROCESSING_APPROVAL",
+  "ACCOUNT_SETUP_SENT",
+  "ACCOUNT_SETUP_PENDING",
+  "ACTIVATED",
+  "REJECTED",
+];
+
+const SECTION_ORDER = ["personalDetails", "residentialAddress", "emergencyContact", "bankAndTax", "documents"];
+
+const SECTION_BADGES = {
+  PENDING_REVIEW: { label: "Awaiting HR review", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  RESUBMITTED: { label: "Resubmitted - awaiting HR review", bg: "#f5f3ff", color: "#6d28d9", border: "#ddd6fe" },
+  APPROVED: { label: "Approved by HR (locked)", bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  CORRECTION_REQUESTED: { label: "Correction requested", bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  REJECTED: { label: "Rejected - please resubmit", bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
+};
+
+/** Status badge + HR note for one onboarding section (hidden while the section is still a plain draft). */
+function SectionReviewNote({ review }) {
+  const badge = review && SECTION_BADGES[review.status];
+  if (!badge) return null;
+  const showNote = review.note && ["CORRECTION_REQUESTED", "REJECTED"].includes(review.status);
+  return (
+    <div style={{ margin: "0 0 14px" }}>
+      <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+        {badge.label}
+      </span>
+      {showNote && (
+        <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, fontSize: 12, lineHeight: 1.5, background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+          <strong>Note from HR:</strong> {review.note}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CandidateOnboardingPage() {
   const { token } = useParams();
 
@@ -157,19 +196,28 @@ export default function CandidateOnboardingPage() {
     };
   }, [token]);
 
+  // Only send sections the candidate may currently edit (approved / under-review sections are locked server-side).
+  const buildEditablePayload = () => {
+    const editable = data?.onboarding?.editableSections || {};
+    const allowed = (key) => editable[key] !== false;
+    const payload = {};
+    if (allowed("personalDetails")) payload.personalDetails = personalDetails;
+    if (allowed("residentialAddress")) payload.residentialAddress = residentialAddress;
+    if (allowed("emergencyContact")) payload.emergencyContact = emergencyContact;
+    if (allowed("bankAndTax")) {
+      payload.bankDetails = bankDetails;
+      payload.taxDetails = taxDetails;
+    }
+    return payload;
+  };
+
   const handleSaveDraft = async () => {
     try {
       setSaving(true);
       setActionSuccess("");
       setValidationErrors({});
 
-      const res = await api.put(`/candidate/onboarding/${encodeURIComponent(token)}/draft`, {
-        personalDetails,
-        residentialAddress,
-        emergencyContact,
-        bankDetails,
-        taxDetails,
-      });
+      const res = await api.put(`/candidate/onboarding/${encodeURIComponent(token)}/draft`, buildEditablePayload());
 
       setActionSuccess("Draft saved successfully. You can return to complete the form anytime.");
       if (res.data.onboarding) {
@@ -275,13 +323,7 @@ export default function CandidateOnboardingPage() {
     setValidationErrors({});
 
     try {
-      const res = await api.post(`/candidate/onboarding/${encodeURIComponent(token)}/submit`, {
-        personalDetails,
-        residentialAddress,
-        emergencyContact,
-        bankDetails,
-        taxDetails,
-      });
+      const res = await api.post(`/candidate/onboarding/${encodeURIComponent(token)}/submit`, buildEditablePayload());
 
       setData((prev) => ({
         ...prev,
@@ -325,7 +367,14 @@ export default function CandidateOnboardingPage() {
   }
 
   const { onboarding, offerDetails, company } = data;
-  const isReadOnly = onboarding.status === "SUBMITTED" || onboarding.status === "APPROVED";
+  // Whole form is read-only while under review or once HR final approval / account setup has happened.
+  const isReadOnly = READ_ONLY_STATUSES.includes(onboarding.status);
+  const sectionReviews = onboarding.sectionReviews || {};
+  const editableSections = onboarding.editableSections || {};
+  // Per-section lock: approved / pending-review sections are locked while HR requested changes elsewhere.
+  const sectionLocked = (key) => isReadOnly || editableSections[key] === false;
+  const documentsLocked = sectionLocked("documents");
+  const anyEditable = !isReadOnly && SECTION_ORDER.some((key) => !sectionLocked(key));
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "32px 16px" }}>
@@ -353,7 +402,7 @@ export default function CandidateOnboardingPage() {
                 Updates Requested by HR
               </span>
             )}
-            {onboarding.status === "APPROVED" && (
+            {["APPROVED", "PROCESSING_APPROVAL", "ACCOUNT_SETUP_SENT", "ACCOUNT_SETUP_PENDING", "ACTIVATED"].includes(onboarding.status) && (
               <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#ecfdf5", color: "#047857", fontSize: "13px", fontWeight: "600" }}>
                 Onboarding Approved
               </span>
@@ -368,7 +417,9 @@ export default function CandidateOnboardingPage() {
             <p style={{ fontSize: "13px", color: "#78350f", margin: "0 0 10px", lineHeight: "1.5" }}>
               {onboarding.correctionReason || "Please review the highlighted details or uploaded documents and resubmit."}
             </p>
-            <span style={{ fontSize: "12px", color: "#b45309" }}>Please update the required fields below and click "Resubmit for Review".</span>
+            <span style={{ fontSize: "12px", color: "#b45309" }}>
+              Update only the sections marked below, then submit again. Sections already approved by HR are locked.
+            </span>
           </div>
         )}
 
@@ -383,11 +434,13 @@ export default function CandidateOnboardingPage() {
         )}
 
         {/* Approved Callout */}
-        {onboarding.status === "APPROVED" && (
+        {["APPROVED", "PROCESSING_APPROVAL", "ACCOUNT_SETUP_SENT", "ACCOUNT_SETUP_PENDING", "ACTIVATED"].includes(onboarding.status) && (
           <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "18px 24px", borderRadius: "10px", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "14px", fontWeight: "700", color: "#065f46", margin: "0 0 6px" }}>Onboarding Approved</h3>
             <p style={{ fontSize: "13px", color: "#047857", margin: 0, lineHeight: "1.5" }}>
-              Your employee record has been created! Please check your email inbox for your portal account activation link.
+              {onboarding.status === "ACTIVATED"
+                ? "Your account is active. You can sign in to the employee portal."
+                : "HR has approved your onboarding. Please check your email inbox for your account setup link — your employee profile is created once you set your password."}
             </p>
           </div>
         )}
@@ -435,6 +488,7 @@ export default function CandidateOnboardingPage() {
           {/* Section 1: Personal Details */}
           <div style={{ background: "#ffffff", padding: "24px 28px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 16px" }}>1. Personal & Contact Details</h3>
+            <SectionReviewNote review={sectionReviews.personalDetails} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#334155", marginBottom: "4px" }}>
@@ -442,7 +496,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("personalDetails")}
                   value={personalDetails.fullName}
                   onChange={(e) => setPersonalDetails({ ...personalDetails, fullName: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -458,7 +512,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="tel"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("personalDetails")}
                   value={personalDetails.phoneNumber}
                   onChange={(e) => setPersonalDetails({ ...personalDetails, phoneNumber: e.target.value })}
                   placeholder="+91 98765 43210"
@@ -475,7 +529,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="date"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("personalDetails")}
                   value={personalDetails.dateOfBirth}
                   onChange={(e) => setPersonalDetails({ ...personalDetails, dateOfBirth: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -490,7 +544,7 @@ export default function CandidateOnboardingPage() {
                   Gender <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <select
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("personalDetails")}
                   value={personalDetails.gender}
                   onChange={(e) => setPersonalDetails({ ...personalDetails, gender: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -511,6 +565,10 @@ export default function CandidateOnboardingPage() {
           {/* Section 2: Residential Address & Emergency Contact */}
           <div style={{ background: "#ffffff", padding: "24px 28px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 16px" }}>2. Address & Emergency Contact</h3>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", margin: "0 0 6px" }}>Residential address</div>
+            <SectionReviewNote review={sectionReviews.residentialAddress} />
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", margin: "0 0 6px" }}>Emergency contact</div>
+            <SectionReviewNote review={sectionReviews.emergencyContact} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "16px" }}>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#334155", marginBottom: "4px" }}>
@@ -518,7 +576,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("residentialAddress")}
                   value={residentialAddress.street}
                   onChange={(e) => setResidentialAddress({ ...residentialAddress, street: e.target.value })}
                   placeholder="Flat/House No., Street Name, Area"
@@ -535,7 +593,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("residentialAddress")}
                   value={residentialAddress.city}
                   onChange={(e) => setResidentialAddress({ ...residentialAddress, city: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -551,7 +609,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("residentialAddress")}
                   value={residentialAddress.state}
                   onChange={(e) => setResidentialAddress({ ...residentialAddress, state: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -567,7 +625,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("residentialAddress")}
                   value={residentialAddress.postalCode}
                   onChange={(e) => setResidentialAddress({ ...residentialAddress, postalCode: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -585,7 +643,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("emergencyContact")}
                   value={emergencyContact.name}
                   onChange={(e) => setEmergencyContact({ ...emergencyContact, name: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -601,7 +659,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("emergencyContact")}
                   value={emergencyContact.relationship}
                   onChange={(e) => setEmergencyContact({ ...emergencyContact, relationship: e.target.value })}
                   placeholder="e.g. Spouse / Parent / Sibling"
@@ -615,7 +673,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="tel"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("emergencyContact")}
                   value={emergencyContact.phone}
                   onChange={(e) => setEmergencyContact({ ...emergencyContact, phone: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -630,6 +688,7 @@ export default function CandidateOnboardingPage() {
           {/* Section 3: Bank & Tax Information */}
           <div style={{ background: "#ffffff", padding: "24px 28px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 16px" }}>3. Bank & Tax Information</h3>
+            <SectionReviewNote review={sectionReviews.bankAndTax} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#334155", marginBottom: "4px" }}>
@@ -637,7 +696,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("bankAndTax")}
                   value={bankDetails.accountHolderName}
                   onChange={(e) => setBankDetails({ ...bankDetails, accountHolderName: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -653,7 +712,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("bankAndTax")}
                   value={bankDetails.bankName}
                   onChange={(e) => setBankDetails({ ...bankDetails, bankName: e.target.value })}
                   placeholder="e.g. HDFC Bank, ICICI Bank"
@@ -670,7 +729,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("bankAndTax")}
                   value={bankDetails.accountNumber}
                   onChange={(e) => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
                   style={{ width: "100%", padding: "8px 12px", fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px" }}
@@ -686,7 +745,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("bankAndTax")}
                   value={bankDetails.ifscCode}
                   onChange={(e) => setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() })}
                   placeholder="e.g. HDFC0001234"
@@ -703,7 +762,7 @@ export default function CandidateOnboardingPage() {
                 </label>
                 <input
                   type="text"
-                  disabled={isReadOnly}
+                  disabled={sectionLocked("bankAndTax")}
                   value={taxDetails.panNumber}
                   onChange={(e) => setTaxDetails({ ...taxDetails, panNumber: e.target.value.toUpperCase() })}
                   placeholder="e.g. ABCDE1234F"
@@ -719,6 +778,7 @@ export default function CandidateOnboardingPage() {
           {/* Section 4: Required Documents */}
           <div style={{ background: "#ffffff", padding: "24px 28px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "24px" }}>
             <h3 style={{ fontSize: "15px", fontWeight: "700", color: "#0f172a", margin: "0 0 8px" }}>4. Required Verification Documents</h3>
+            <SectionReviewNote review={sectionReviews.documents} />
             <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 16px" }}>
               Please upload clear copies of your ID proof, address proof, and educational/experience documents (PDF, PNG, JPG under 10 MB).
             </p>
@@ -769,7 +829,7 @@ export default function CandidateOnboardingPage() {
                           >
                             {isProcessing ? "Opening..." : "View"}
                           </button>
-                          {!isReadOnly && (
+                          {!documentsLocked && (
                             <button
                               type="button"
                               onClick={() => handleDeleteDocument(docId)}
@@ -787,7 +847,7 @@ export default function CandidateOnboardingPage() {
             </div>
 
             {/* Document Upload Sub-form */}
-            {!isReadOnly && (
+            {!documentsLocked && (
               <div style={{ background: "#f8fafc", padding: "16px 20px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
                 <h4 style={{ fontSize: "13px", fontWeight: "600", color: "#334155", margin: "0 0 12px" }}>Upload New Document</h4>
                 {uploadError && (
@@ -844,6 +904,11 @@ export default function CandidateOnboardingPage() {
           {/* Form Action Controls */}
           {!isReadOnly && (
             <div>
+              {!anyEditable && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "12px 18px", borderRadius: "6px", color: "#1e40af", fontSize: "13px", marginBottom: "16px" }}>
+                  All sections you can edit are up to date. HR is reviewing the rest.
+                </div>
+              )}
               {validationErrors.general && (
                 <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: "12px 18px", borderRadius: "6px", color: "#b91c1c", fontSize: "13px", marginBottom: "16px" }}>
                   {validationErrors.general}

@@ -4,6 +4,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import adminRoutes from "./routes/adminRoutes.js";
+import companyAdminRoutes from "./routes/companyAdminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
@@ -13,6 +14,7 @@ import settlementRoutes from "./routes/settlementRoutes.js";
 import candidateOfferRoutes from "./routes/candidateOfferRoutes.js";
 import candidateOnboardingRoutes from "./routes/candidateOnboardingRoutes.js";
 import onboardingReviewRoutes from "./routes/onboardingReviewRoutes.js";
+import hiringRoutes from "./routes/hiringRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import policyRoutes from "./routes/policyRoutes.js";
 import payrollRoutes from "./routes/payrollRoutes.js";
@@ -21,6 +23,11 @@ import taskRoutes from "./routes/taskRoutes.js";
 import impactPointRoutes from "./routes/impactPointRoutes.js";
 import chatbotRoutes from "./routes/chatbotRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import conversationRoutes from "./routes/conversationRoutes.js";
+import announcementRoutes from "./routes/announcementRoutes.js";
+import departmentRoutes from "./routes/departmentRoutes.js";
+import designationRoutes from "./routes/designationRoutes.js";
+import projectEntityRoutes from "./routes/projectEntityRoutes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -117,10 +124,12 @@ export function createApp() {
   // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api/company-admin", companyAdminRoutes);
   app.use("/api/employees", employeeRoutes);
   app.use("/api/leave-requests", leaveRoutes);
   app.use("/api/handovers", handoverRoutes);
   app.use("/api/offer-letters", offerLetterRoutes);
+  // Phase 4B: /api/offer-templates is unmounted; offers use the single standard renderer.
   app.use("/api/settlements", settlementRoutes);
 
   // Hiring pipeline: Candidate offer review & signing, onboarding form, and HR review
@@ -128,6 +137,7 @@ export function createApp() {
   app.use("/api/offers", candidateOfferRoutes);
   app.use("/api/candidate/onboarding", candidateOnboardingRoutes);
   app.use("/api/onboarding", onboardingReviewRoutes);
+  app.use("/api/hiring", hiringRoutes);
   app.use("/api/settings", settingsRoutes);
   app.use("/api/policies", policyRoutes);
   app.use("/api/payroll", payrollRoutes);
@@ -136,6 +146,12 @@ export function createApp() {
   app.use("/api/impact-points", impactPointRoutes);
   app.use("/api/chat", chatbotRoutes);
   app.use("/api/notifications", notificationRoutes);
+  app.use("/api/conversations", conversationRoutes);
+  app.use("/api/announcements", announcementRoutes);
+  // Batch 3: A1–A6 authz management mounts unmounted (route modules kept on disk).
+  app.use("/api/departments", departmentRoutes);
+  app.use("/api/designations", designationRoutes);
+  app.use("/api/projects", projectEntityRoutes);
 
   // Serve static assets from production client build (Single-Service Architecture)
   const distPath = path.resolve(__dirname, "../client/dist");

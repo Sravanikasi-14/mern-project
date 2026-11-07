@@ -39,6 +39,8 @@ export function getStatusCategory(statusRaw) {
     s === "DELIVERY_FAILED" ||
     s === "FAILED" ||
     s === "CANCELLED" ||
+    s === "WITHDRAWN" ||
+    s === "REVOKED" ||
     s === "ABSENT" ||
     s === "TERMINATED" ||
     s === "LOST"
@@ -59,6 +61,7 @@ export function getStatusCategory(statusRaw) {
     s === "UNDER_MAINTENANCE" ||
     s === "UNPAID" ||
     s === "PARTIAL" ||
+    s === "EXPIRED" ||
     s === "CHANGES_REQUESTED"
   ) {
     return "warning";
@@ -112,6 +115,10 @@ export function formatStatusLabel(statusRaw, customLabel) {
     SENT: "Sent",
     ACCEPTED: "Accepted",
     DECLINED: "Declined",
+    WITHDRAWN: "Withdrawn",
+    EXPIRED: "Expired",
+    REVOKED: "Revoked",
+
     CHANGES_REQUESTED: "Updates Requested",
     SUBMITTED: "Under Review",
     VERIFIED: "Verified",

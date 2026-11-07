@@ -3,6 +3,7 @@
  */
 
 export function homeForRole(role) {
+  if (role === "COMPANY_ADMIN") return "/company";
   if (role === "HR_ADMIN") return "/admin/dashboard";
   if (role === "EMPLOYEE") return "/app";
   return "/login";
@@ -40,6 +41,9 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/admin/settings") return "/admin/more";
   if (path === "/admin/reports") return "/admin/more";
   if (path === "/admin/assets") return "/admin/more";
+  if (path === "/admin/organization") return "/admin/more";
+  if (path === "/admin/hiring") return "/admin/more";
+  if (path === "/admin/hiring/offer-editor" || path.startsWith("/admin/hiring?")) return "/admin/hiring";
   if (path === "/admin/offers") return "/admin/more";
   if (path === "/admin/onboarding") return "/admin/more";
   if (path === "/admin/payroll") return "/admin/more";
@@ -53,6 +57,7 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/app/leave") return "/app/more";
   if (path === "/app/attendance") return "/app";
   if (path === "/app/profile") return "/app/more";
+  if (path === "/app/organization") return "/app/more";
   if (path === "/app/settings") return "/app/more";
   if (path === "/app/assets") return "/app/more";
   if (path === "/app/payslips") return "/app/more";
@@ -60,6 +65,7 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/app/impact-points" || path === "/app/work-impact") return "/app/more";
   if (path === "/app/tasks") return "/app";
 
+  if (path.startsWith("/company")) return "/company";
   if (path.startsWith("/admin/")) return "/admin/dashboard";
   if (path.startsWith("/app/")) return "/app";
   return "/";

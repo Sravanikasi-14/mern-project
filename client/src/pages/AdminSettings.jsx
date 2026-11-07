@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import PoliciesSettingsNav from "../components/PoliciesSettingsNav";
 import { useAuth } from "../context/AuthContext";
 import {
   IconClose,
@@ -15,6 +16,11 @@ import {
   IconAlertCircle,
 } from "../components/Icons";
 import api from "../services/api";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
+import { ACCESS_RESTRICTED_MESSAGE, announceAccessRestricted } from "../utils/accessNotice";
+import SignatureCapture, { isSignatureValueComplete } from "../components/SignatureCapture";
+import { CompanyAdminEmploymentCard } from "../components/PortalEmploymentProfileForm";
 
 const SETTINGS_TABS = [
   { id: "profile", label: "Profile", icon: IconUser, badge: null },
@@ -26,6 +32,7 @@ const SETTINGS_TABS = [
 
 export default function AdminSettings() {
   const { user, company, restoreSession, updateCompanyBranding } = useAuth();
+  const canEditSettings = hrPortalAllows(user, company, "settings.edit");
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,12 +65,26 @@ export default function AdminSettings() {
   const [currency, setCurrency] = useState("INR (₹)");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [letterheadAddress, setLetterheadAddress] = useState("");
+  const [letterheadWebsite, setLetterheadWebsite] = useState("");
+  const [signatoryName, setSignatoryName] = useState("");
+  const [signatoryTitle, setSignatoryTitle] = useState("");
   const [workingDays, setWorkingDays] = useState("Monday – Friday");
   const [logoPreview, setLogoPreview] = useState("");
   const [logoFile, setLogoFile] = useState(null);
   const [logoError, setLogoError] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
   const [hasSavedLogo, setHasSavedLogo] = useState(false);
+  // HR e-signature (embedded on every offer before it is sent)
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureMethod, setSignatureMethod] = useState("");
+  const [signatureUpdatedAt, setSignatureUpdatedAt] = useState(null);
+  const [signaturePreview, setSignaturePreview] = useState("");
+  const [signatureVersion, setSignatureVersion] = useState(0);
+  const [signatureEditing, setSignatureEditing] = useState(false);
+  const [signatureValue, setSignatureValue] = useState(null);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
 
   // 5. Email & SMTP Delivery State
   const [fromName, setFromName] = useState("");
@@ -109,8 +130,15 @@ export default function AdminSettings() {
         setCurrency(c.config?.currencyCode || c.currency || "INR");
         setContactEmail(c.primaryContact?.email || "");
         setContactPhone(c.primaryContact?.phoneNumber || "");
+        setLetterheadAddress(c.letterhead?.address || "");
+        setLetterheadWebsite(c.letterhead?.website || "");
+        setSignatoryName(c.letterhead?.signatoryName || "");
+        setSignatoryTitle(c.letterhead?.signatoryTitle || "");
         setWorkingDays(c.workingDays || "Monday – Friday");
         setHasSavedLogo(Boolean(c.branding?.logoUrl || company?.branding?.logoUrl));
+        setHasSignature(Boolean(c.letterhead?.hasSignature));
+        setSignatureMethod(c.letterhead?.signatureMethod || "");
+        setSignatureUpdatedAt(c.letterhead?.signatureUpdatedAt || null);
       }
 
       if (emailRes.status === "fulfilled") {
@@ -155,6 +183,90 @@ export default function AdminSettings() {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [hasSavedLogo, logoFile]);
+
+  // Load the saved HR signature preview (authenticated blob; bytes never come with settings JSON)
+  useEffect(() => {
+    let objectUrl = "";
+    let cancelled = false;
+    async function loadSignaturePreview() {
+      if (!hasSignature) {
+        setSignaturePreview("");
+        return;
+      }
+      try {
+        const res = await api.get("/settings/company/signature", { responseType: "blob" });
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(res.data);
+        setSignaturePreview(objectUrl);
+      } catch {
+        if (!cancelled) setSignaturePreview("");
+      }
+    }
+    loadSignaturePreview();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [hasSignature, signatureVersion]);
+
+  const handleSaveSignature = async () => {
+    if (!isSignatureValueComplete(signatureValue)) {
+      setSignatureError("Draw, upload, or type a signature first.");
+      return;
+    }
+    try {
+      setSignatureSaving(true);
+      setSignatureError("");
+      const res = await api.post("/settings/company/signature", {
+        method: signatureValue.method,
+        fileData: signatureValue.dataUrl || undefined,
+        typedText: signatureValue.method === "TYPE" ? signatureValue.typedText : undefined,
+      });
+      setHasSignature(Boolean(res.data?.hasSignature));
+      setSignatureMethod(res.data?.signatureMethod || signatureValue.method);
+      setSignatureUpdatedAt(res.data?.signatureUpdatedAt || new Date().toISOString());
+      setSignatureVersion((v) => v + 1);
+      setSignatureEditing(false);
+      setSignatureValue(null);
+      setSuccessMsg("HR signature saved. It will be embedded on offers you send from now on.");
+    } catch (err) {
+      const status = err.response?.status;
+      const data = err.response?.data;
+      const backendMsg =
+        (typeof data === "object" && data?.message) ||
+        (typeof data === "string" && data.includes("Cannot POST")
+          ? "Signature API is unavailable. Restart the backend server and try again."
+          : "");
+      setSignatureError(
+        backendMsg ||
+          (status === 404
+            ? "Signature API is unavailable (404). Restart the backend server and try again."
+            : null) ||
+          err.message ||
+          "Failed to save the HR signature."
+      );
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
+
+  const handleRemoveSignature = async () => {
+    try {
+      setSignatureSaving(true);
+      setSignatureError("");
+      await api.delete("/settings/company/signature");
+      setHasSignature(false);
+      setSignatureMethod("");
+      setSignatureUpdatedAt(null);
+      setSignaturePreview("");
+      setSignatureEditing(false);
+      setSuccessMsg("HR signature removed. Offers cannot be sent until a new one is saved.");
+    } catch (err) {
+      setSignatureError(err.response?.data?.message || "Failed to remove the HR signature.");
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
 
   // Handler: Save My Profile
   const handleSaveProfile = async (e) => {
@@ -247,6 +359,11 @@ export default function AdminSettings() {
   // Handler: Save Company Settings
   const handleSaveCompany = async (e) => {
     e.preventDefault();
+    if (!canEditSettings) {
+      setError(ACCESS_RESTRICTED_MESSAGE);
+      announceAccessRestricted();
+      return;
+    }
     try {
       setSaving(true);
       setError("");
@@ -262,6 +379,12 @@ export default function AdminSettings() {
         primaryContact: {
           email: contactEmail.trim(),
           phoneNumber: contactPhone.trim(),
+        },
+        letterhead: {
+          address: letterheadAddress.trim(),
+          website: letterheadWebsite.trim(),
+          signatoryName: signatoryName.trim(),
+          signatoryTitle: signatoryTitle.trim(),
         },
       });
 
@@ -418,9 +541,8 @@ export default function AdminSettings() {
 
   return (
     <main className="container-wide settings-page">
-      <AppHeader
-        title="Settings"
-      />
+      <AppHeader title="Policies" />
+      <PoliciesSettingsNav active="settings" />
 
       {/* Alert Notices */}
       {error && (
@@ -636,6 +758,7 @@ export default function AdminSettings() {
                   </button>
                 </div>
               </form>
+              {user?.role === "COMPANY_ADMIN" ? <CompanyAdminEmploymentCard /> : null}
             </div>
           )}
 
@@ -1024,6 +1147,9 @@ export default function AdminSettings() {
             <div>
               <div className="settings-panel-head">
                 <h2 className="settings-panel-title">Workspace</h2>
+                <p className="settings-panel-desc" style={{ marginTop: 4 }}>
+                  Company name, logo, and timezone live here. Handbook and conduct rules are managed under Policies.
+                </p>
               </div>
 
               {/* Operational Policies Cross-Link Banner */}
@@ -1044,6 +1170,7 @@ export default function AdminSettings() {
                 <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--g-950, #0d3a23)" }}>
                   Attendance, leave, and payroll policies are managed in Policies.
                 </div>
+                {hrPortalAllows(user, company, "policies.view") ? (
                 <Link
                   to="/admin/policies"
                   style={{
@@ -1062,6 +1189,7 @@ export default function AdminSettings() {
                   <span>Open Policies</span>
                   <span>→</span>
                 </Link>
+                ) : null}
               </div>
 
               {/* Company Defaults Form */}
@@ -1122,6 +1250,8 @@ export default function AdminSettings() {
                       PNG, JPEG, or WebP. Maximum 2 MB. Shown in the sidebar next to the company name.
                     </p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {canEditSettings ? (
+                      <>
                       <label className="btn-secondary btn-sm" style={{ cursor: "pointer", margin: 0 }}>
                         {logoPreview ? "Replace logo" : "Upload logo"}
                         <input
@@ -1140,6 +1270,10 @@ export default function AdminSettings() {
                         <button type="button" className="btn-secondary btn-sm" onClick={handleRemoveLogo} disabled={logoSaving}>
                           Remove
                         </button>
+                      )}
+                      </>
+                      ) : (
+                        <AccessRestrictedInline />
                       )}
                     </div>
                     {logoError && <p className="field-error" style={{ marginTop: 8 }}>{logoError}</p>}
@@ -1224,7 +1358,171 @@ export default function AdminSettings() {
                   </div>
                 </div>
 
+                <div style={{ marginBottom: "20px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", marginBottom: "10px" }}>
+                    Offer letter letterhead
+                  </div>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                      Company Address
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={letterheadAddress}
+                      onChange={(e) => setLetterheadAddress(e.target.value)}
+                      placeholder="Street, city, state, postal code"
+                      maxLength={1000}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--hair)",
+                        fontSize: "13.5px",
+                        resize: "vertical",
+                        fontFamily: "inherit",
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                        Website
+                      </label>
+                      <input
+                        type="text"
+                        value={letterheadWebsite}
+                        onChange={(e) => setLetterheadWebsite(e.target.value)}
+                        placeholder="https://www.company.com"
+                        style={{
+                          width: "100%",
+                          padding: "9px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid var(--hair)",
+                          fontSize: "13.5px",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                        Signatory Name
+                      </label>
+                      <input
+                        type="text"
+                        value={signatoryName}
+                        onChange={(e) => setSignatoryName(e.target.value)}
+                        placeholder="e.g. Jane Doe"
+                        style={{
+                          width: "100%",
+                          padding: "9px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid var(--hair)",
+                          fontSize: "13.5px",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                        Signatory Title
+                      </label>
+                      <input
+                        type="text"
+                        value={signatoryTitle}
+                        onChange={(e) => setSignatoryTitle(e.target.value)}
+                        placeholder="e.g. HR Director"
+                        style={{
+                          width: "100%",
+                          padding: "9px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid var(--hair)",
+                          fontSize: "13.5px",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: "20px",
+                    padding: "16px",
+                    border: "1px solid var(--hair)",
+                    borderRadius: "10px",
+                    background: hasSignature ? "#f8fafc" : "#fffbeb",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)" }}>HR electronic signature</div>
+                    <span
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        background: hasSignature ? "#dcfce7" : "#fef3c7",
+                        color: hasSignature ? "#15803d" : "#92400e",
+                      }}
+                    >
+                      {hasSignature ? "Saved" : "Required to send offers"}
+                    </span>
+                  </div>
+                  <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--muted)" }}>
+                    Shown above the signatory name on every offer letter. It is frozen into each offer when you send it, so later changes never alter an issued offer.
+                  </p>
+
+                  {hasSignature && !signatureEditing && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 200, minHeight: 72, padding: 8, border: "1px dashed var(--hair)", borderRadius: 8, background: "#fff", display: "flex", alignItems: "center" }}>
+                        {signaturePreview ? (
+                          <img src={signaturePreview} alt="Saved HR signature" style={{ maxHeight: 64, maxWidth: 240 }} />
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>Loading preview…</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {signatureMethod ? `Method: ${signatureMethod.charAt(0)}${signatureMethod.slice(1).toLowerCase()}` : ""}
+                          {signatureUpdatedAt ? ` · Updated ${new Date(signatureUpdatedAt).toLocaleDateString("en-IN")}` : ""}
+                        </span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          {canEditSettings ? (
+                          <>
+                          <button type="button" className="btn-secondary btn-sm" onClick={() => { setSignatureEditing(true); setSignatureValue(null); setSignatureError(""); }} disabled={signatureSaving}>
+                            Replace
+                          </button>
+                          <button type="button" className="btn-secondary btn-sm" onClick={handleRemoveSignature} disabled={signatureSaving}>
+                            Remove
+                          </button>
+                          </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {canEditSettings && (!hasSignature || signatureEditing) && (
+                    <div>
+                      <SignatureCapture onChange={setSignatureValue} disabled={signatureSaving} defaultTypedText={signatoryName} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={handleSaveSignature}
+                          disabled={signatureSaving || !isSignatureValueComplete(signatureValue)}
+                        >
+                          {signatureSaving ? "Saving..." : "Save signature"}
+                        </button>
+                        {signatureEditing && (
+                          <button type="button" className="btn-secondary btn-sm" onClick={() => { setSignatureEditing(false); setSignatureError(""); }} disabled={signatureSaving}>
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {signatureError && <p className="field-error" style={{ marginTop: 8 }}>{signatureError}</p>}
+                </div>
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  {canEditSettings ? (
                   <button
                     type="submit"
                     disabled={saving}
@@ -1241,6 +1539,9 @@ export default function AdminSettings() {
                   >
                     {saving ? "Saving..." : "Save Company Defaults"}
                   </button>
+                  ) : (
+                    <AccessRestrictedInline />
+                  )}
                 </div>
               </form>
             </div>

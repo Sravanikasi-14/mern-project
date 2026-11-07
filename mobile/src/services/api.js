@@ -28,14 +28,36 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor: attach Bearer token from localStorage when present.
-// withCredentials: true simultaneously transmits credentials cookies.
-api.interceptors.request.use((config) => {
+/** Send/resend can exceed the default 30s (SMTP alone is often 11–13s). */
+export const OFFER_LETTER_SEND_TIMEOUT_MS = 120000;
+
+export function postOfferLetterSend(offerId) {
+  return api.post(`/offer-letters/${offerId}/send`, null, {
+    timeout: OFFER_LETTER_SEND_TIMEOUT_MS,
+  });
+}
+
+export function isRequestTimeoutError(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "").toLowerCase();
+  return code === "ECONNABORTED" || message.includes("timeout");
+}
+
+// Request interceptor: attach Bearer token and native client proof headers.
+// Proof binds AuthSession.clientPlatform at login (allowWebTracking enforcement).
+api.interceptors.request.use(async (config) => {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("hrms_token");
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+  }
+  try {
+    const { buildNativeClientAuthHeaders } = await import("./nativeClientAuth.js");
+    const nativeHeaders = await buildNativeClientAuthHeaders();
+    Object.assign(config.headers, nativeHeaders);
+  } catch {
+    // Non-native or missing secret — leave as web session.
   }
   return config;
 });

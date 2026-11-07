@@ -430,6 +430,12 @@ describe("Work Management and Impact Points System Suite", () => {
     });
     assert.ok(recognitionTx);
 
+    const beforeSummary = await request(app)
+      .get("/api/impact-points/me")
+      .set("Cookie", employeeCookieA);
+    assert.equal(beforeSummary.status, 200);
+    const balanceBefore = beforeSummary.body.summary.balance;
+
     // Regular employee cannot reverse
     const empRev = await request(app)
       .post(`/api/impact-points/transactions/${recognitionTx._id}/reverse`)
@@ -448,11 +454,13 @@ describe("Work Management and Impact Points System Suite", () => {
     assert.equal(hrRev.body.reversalTransaction.points, -recognitionTx.points);
     assert.equal(hrRev.body.reversalTransaction.transactionType, "REVERSAL");
 
-    // Balance reflects the deduction
-    const summaryRes = await request(app)
+    const afterSummary = await request(app)
       .get("/api/impact-points/me")
       .set("Cookie", employeeCookieA);
-    assert.equal(summaryRes.body.summary.recentTransactions[0].transactionType, "REVERSAL");
+    assert.equal(afterSummary.status, 200);
+    assert.equal(afterSummary.body.summary.recentTransactions[0].transactionType, "REVERSAL");
+    // Single deduct only: balance drops by the original award, not twice
+    assert.equal(afterSummary.body.summary.balance, balanceBefore - recognitionTx.points);
   });
 
   it("14. HR Admin can configure Impact Points rules in CompanyHrPolicy", async () => {

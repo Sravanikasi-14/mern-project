@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSmartBack } from "../../hooks/useSmartBack";
 import {
   ChevronLeft,
@@ -7,6 +7,7 @@ import {
   MoreVertical,
   Plus,
   Receipt,
+  Handshake,
   Search,
   Wallet,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import {
   statusBucket,
 } from "../../utils/payrollUtils";
 import MonthNav from "../../components/MonthNav";
+import SettlementsPanel from "../../components/SettlementsPanel";
 
 function cycleMatchesPeriod(cycle, month, year) {
   return Number(cycle?.periodMonth) === Number(month) && Number(cycle?.periodYear) === Number(year);
@@ -48,7 +50,14 @@ export default function HrPayrollPage() {
   const [selectedId, setSelectedId] = useState("");
   const [selected, setSelected] = useState(null);
   const [payslips, setPayslips] = useState([]);
-  const [tab, setTab] = useState("payslips");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => {
+    const requested = searchParams.get("tab");
+    if (searchParams.get("settlementId") || requested === "ff_settlements" || requested === "settlements") {
+      return "settlements";
+    }
+    return "payslips";
+  });
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
@@ -236,7 +245,7 @@ export default function HrPayrollPage() {
     { value: "failed", label: "Failed", count: counts.failed },
   ];
 
-  if (loading) {
+  if (loading && tab !== "settlements") {
     return (
       <div className="st-pay">
         <header className="st-subhead">
@@ -250,7 +259,7 @@ export default function HrPayrollPage() {
     );
   }
 
-  if (error && cycles.length === 0) {
+  if (error && cycles.length === 0 && tab !== "settlements") {
     return (
       <div className="st-pay">
         <header className="st-subhead">
@@ -279,7 +288,7 @@ export default function HrPayrollPage() {
         </div>
       </header>
 
-      {error ? <div className="alert alert-error">{error}</div> : null}
+      {error && tab !== "settlements" ? <div className="alert alert-error">{error}</div> : null}
 
       <div className="st-pay-tabs" role="tablist" aria-label="Payroll views">
         <button
@@ -298,34 +307,48 @@ export default function HrPayrollPage() {
           <Wallet size={16} strokeWidth={2} aria-hidden="true" />
           Payroll Runs
         </button>
+        <button
+          type="button"
+          className={tab === "settlements" ? "is-active" : ""}
+          onClick={() => setTab("settlements")}
+        >
+          <Handshake size={16} strokeWidth={2} aria-hidden="true" />
+          F&amp;F
+        </button>
       </div>
 
-      <div className="st-pay-period-row">
-        <MonthNav
-          month={viewMonth}
-          year={viewYear}
-          onChange={goToPeriod}
-          label="Pay period"
-          className="st-pay-month-nav"
-        />
-        <span className="st-pay-count-pill">
-          <i aria-hidden="true" />
-          {payslips.length} records
-        </span>
-      </div>
+      {tab !== "settlements" ? (
+        <>
+          <div className="st-pay-period-row">
+            <MonthNav
+              month={viewMonth}
+              year={viewYear}
+              onChange={goToPeriod}
+              label="Pay period"
+              className="st-pay-month-nav"
+            />
+            <span className="st-pay-count-pill">
+              <i aria-hidden="true" />
+              {payslips.length} records
+            </span>
+          </div>
 
-      <section className="st-pay-kpi">
-        <div>
-          <span>Total disbursed</span>
-          <strong>{formatMoney(totalNet, symbol)}</strong>
-        </div>
-        <div className="st-pay-kpi-badge">
-          {selected?.paymentStatus || selected?.status || (selected ? "—" : "No cycle")}
-          {payslips.length ? ` · ${paidPct}% paid` : ""}
-        </div>
-      </section>
+          <section className="st-pay-kpi">
+            <div>
+              <span>Total disbursed</span>
+              <strong>{formatMoney(totalNet, symbol)}</strong>
+            </div>
+            <div className="st-pay-kpi-badge">
+              {selected?.paymentStatus || selected?.status || (selected ? "—" : "No cycle")}
+              {payslips.length ? ` · ${paidPct}% paid` : ""}
+            </div>
+          </section>
+        </>
+      ) : null}
 
-      {tab === "payslips" ? (
+      {tab === "settlements" ? (
+        <SettlementsPanel initialSettlementId={searchParams.get("settlementId") || ""} />
+      ) : tab === "payslips" ? (
         <>
           <div className="st-att-search">
             <Search size={18} strokeWidth={1.85} aria-hidden="true" />
@@ -524,10 +547,12 @@ export default function HrPayrollPage() {
         </div>
       )}
 
-      <button type="button" className="st-pay-fab" onClick={() => setCreateOpen(true)}>
-        <Plus size={18} strokeWidth={2.2} aria-hidden="true" />
-        Create cycle
-      </button>
+      {tab !== "settlements" ? (
+        <button type="button" className="st-pay-fab" onClick={() => setCreateOpen(true)}>
+          <Plus size={18} strokeWidth={2.2} aria-hidden="true" />
+          Create cycle
+        </button>
+      ) : null}
 
       <Modal
         open={createOpen}

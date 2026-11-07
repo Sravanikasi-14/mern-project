@@ -5,6 +5,7 @@ import MobileNav from "./MobileNav";
 import { IconClose, IconInfo } from "./Icons";
 import { EmployeeIcon } from "./EmployeeIcon";
 import ChatbotWidget from "./ChatbotWidget";
+import AccessRestrictedNotice from "./AccessRestrictedNotice";
 import { useAuth } from "../context/AuthContext";
 import "./Sidebar.css";
 
@@ -74,6 +75,7 @@ export default function AppLayout({ children }) {
 
       {/* Floating Gemini AI Assistant Chatbot */}
       <ChatbotWidget />
+      <AccessRestrictedNotice />
 
       {/* Toast Notification for un-implemented modules */}
       {toastMessage && (

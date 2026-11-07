@@ -2,8 +2,32 @@ import mongoose from "mongoose";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import { getCompanyBusinessDate } from "./attendanceService.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
-import { ONBOARDING_STATUSES } from "../models/User.js";
+import { ONBOARDING_STATUSES, USER_ROLES } from "../models/User.js";
 import { LEAVE_STATUSES } from "../models/LeaveRequest.js";
+import {
+  assertHrPermission,
+  hasHrPermission,
+  mergeEmployeeScopeFilter,
+  mergeEmployeeIdScopeFilter,
+  filterPayslipsByScope,
+  filterValidationIssuesByScope,
+  shapePayrollCycleForHrAccess,
+} from "./hrAccessEnforcementService.js";
+import { HR_SCOPE_MODES } from "../constants/hrAccessCatalog.js";
+
+/** Exact catalog permission required per analyst tool. */
+export const HR_ANALYST_TOOL_PERMISSIONS = Object.freeze({
+  analyzeAttendance: "attendance.view",
+  analyzeEmployeesAndOnboarding: "people.view",
+  analyzeLeaves: "leave.view",
+  analyzePayrollReadiness: "payroll.view",
+  analyzeRecruitmentAndOffers: "hiring.view",
+  getCrossModuleOverview: "dashboard.view",
+});
+
+function scopedEmployeeFilter(hrAccess, filter = {}) {
+  return mergeEmployeeScopeFilter(hrAccess, filter);
+}
 
 /**
  * Gemini Function Declarations for HR Analyst real-time tools.
@@ -143,6 +167,7 @@ function resolveDateString(dateInput, companyTimezone = "Asia/Kolkata") {
 async function runAttendanceAnalysis({
   models,
   company,
+  hrAccess = null,
   targetDate,
   comparePreviousWeek = false,
   checkIrregularities = false,
@@ -159,11 +184,12 @@ async function runAttendanceAnalysis({
   const [startH, startM] = officeStartTime.split(":").map(Number);
   const lateCutoffMinutes = (startH || 9) * 60 + (startM || 30) + gracePeriodMinutes;
 
-  // 2. Fetch Active Employees
-  const empFilter = { status: { $ne: "TERMINATED" } };
+  // 2. Fetch Active Employees (scoped when ENFORCED)
+  let empFilter = { status: { $ne: "TERMINATED" } };
   if (department && department !== "ALL") {
     empFilter["job.department"] = department;
   }
+  empFilter = scopedEmployeeFilter(hrAccess, empFilter);
 
   const employees = await Employee.find(empFilter)
     .select("_id employeeCode fullName email job status")
@@ -400,14 +426,14 @@ async function runAttendanceAnalysis({
 /**
  * Tool 2: Employee and Onboarding Analysis
  */
-async function runEmployeesAndOnboardingAnalysis({ models, focusArea = "ALL" }) {
+async function runEmployeesAndOnboardingAnalysis({ models, hrAccess = null, focusArea = "ALL" }) {
   const { Employee, User } = models;
 
   const result = {};
 
   // 1. Employee Directory & Profiles
   if (focusArea === "ALL" || focusArea === "PROFILES" || focusArea === "HEADCOUNT") {
-    const activeEmployees = await Employee.find({ status: "ACTIVE" })
+    const activeEmployees = await Employee.find(scopedEmployeeFilter(hrAccess, { status: "ACTIVE" }))
       .select("employeeCode fullName email job bankDetails emergencyContact taxDetails invitation createdAt")
       .lean();
 
@@ -549,15 +575,22 @@ async function runEmployeesAndOnboardingAnalysis({ models, focusArea = "ALL" }) 
 /**
  * Tool 3: Leave Analysis & Team Overlaps
  */
-async function runLeaveAnalysis({ models, includeOverlaps = true, urgentOnly = false, department }) {
+async function runLeaveAnalysis({
+  models,
+  hrAccess = null,
+  includeOverlaps = true,
+  urgentOnly = false,
+  department,
+}) {
   const { LeaveRequest, Employee } = models;
   const now = new Date();
   const threeDaysAhead = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-  const query = { status: LEAVE_STATUSES.PENDING };
+  let query = { status: LEAVE_STATUSES.PENDING };
   if (urgentOnly) {
     query.fromDate = { $lte: threeDaysAhead };
   }
+  query = mergeEmployeeIdScopeFilter(hrAccess, query);
 
   const pendingLeaves = await LeaveRequest.find(query)
     .populate("employeeId", "fullName employeeCode job email")
@@ -599,11 +632,13 @@ async function runLeaveAnalysis({ models, includeOverlaps = true, urgentOnly = f
   if (includeOverlaps) {
     // Look at upcoming leaves in the next 30 days
     const thirtyDaysAhead = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const upcomingLeaves = await LeaveRequest.find({
-      status: { $in: [LEAVE_STATUSES.PENDING, LEAVE_STATUSES.APPROVED] },
-      fromDate: { $lte: thirtyDaysAhead },
-      toDate: { $gte: now },
-    })
+    const upcomingLeaves = await LeaveRequest.find(
+      mergeEmployeeIdScopeFilter(hrAccess, {
+        status: { $in: [LEAVE_STATUSES.PENDING, LEAVE_STATUSES.APPROVED] },
+        fromDate: { $lte: thirtyDaysAhead },
+        toDate: { $gte: now },
+      })
+    )
       .populate("employeeId", "fullName employeeCode job")
       .lean();
 
@@ -655,19 +690,26 @@ async function runLeaveAnalysis({ models, includeOverlaps = true, urgentOnly = f
 /**
  * Tool 4: Payroll Readiness & Validation Analysis
  */
-async function runPayrollReadinessAnalysis({ models, compareHistoricalCycles = false }) {
-  const { PayrollCycle, Employee, EmployeeCompensation } = models;
+async function runPayrollReadinessAnalysis({
+  models,
+  hrAccess = null,
+  compareHistoricalCycles = false,
+}) {
+  const { PayrollCycle, Employee, EmployeeCompensation, Payslip } = models;
 
-  // 1. Check Active staff without compensation configuration
+  // 1. Check Active staff without compensation configuration (scoped)
+  const activeFilter = scopedEmployeeFilter(hrAccess, { status: "ACTIVE" });
   const [activeStaffCount, compEmployeeIds] = await Promise.all([
-    Employee.countDocuments({ status: "ACTIVE" }),
+    Employee.countDocuments(activeFilter),
     EmployeeCompensation.distinct("employeeId"),
   ]);
 
-  const activeStaffWithoutComp = await Employee.find({
-    status: "ACTIVE",
-    _id: { $nin: compEmployeeIds },
-  })
+  const activeStaffWithoutComp = await Employee.find(
+    scopedEmployeeFilter(hrAccess, {
+      status: "ACTIVE",
+      _id: { $nin: compEmployeeIds },
+    })
+  )
     .select("employeeCode fullName job.department")
     .lean();
 
@@ -676,15 +718,35 @@ async function runPayrollReadinessAnalysis({ models, compareHistoricalCycles = f
     .sort({ periodYear: -1, periodMonth: -1 })
     .lean();
 
+  const isCustomHr =
+    hrAccess?.enforced &&
+    hrAccess.role === USER_ROLES.HR_ADMIN &&
+    hrAccess.configured &&
+    hrAccess.scopeMode === HR_SCOPE_MODES.CUSTOM;
+
+  let scopedLatestIssues = filterValidationIssuesByScope(
+    hrAccess,
+    latestCycle?.validationIssues || []
+  );
+  let shapedLatest = latestCycle
+    ? shapePayrollCycleForHrAccess(hrAccess, latestCycle, null)
+    : null;
+
+  if (latestCycle && isCustomHr && Payslip) {
+    const cyclePayslips = await Payslip.find({ payrollCycleId: latestCycle._id }).lean();
+    const scopedPayslips = filterPayslipsByScope(hrAccess, cyclePayslips);
+    shapedLatest = shapePayrollCycleForHrAccess(hrAccess, latestCycle, scopedPayslips);
+  }
+
   const blockers = [];
   const warnings = [];
 
   if (!latestCycle) {
     blockers.push("No payroll cycle has been initiated yet.");
   } else {
-    if (latestCycle.validationIssues?.length > 0) {
+    if (scopedLatestIssues.length > 0) {
       blockers.push(
-        `${latestCycle.validationIssues.length} register calculation issue(s) detected in the current cycle.`
+        `${scopedLatestIssues.length} register calculation issue(s) detected in the current cycle.`
       );
     }
 
@@ -710,16 +772,19 @@ async function runPayrollReadinessAnalysis({ models, compareHistoricalCycles = f
       : "Payroll processing is blocked by outstanding setup or register issues.",
     blockers,
     warnings,
-    currentCycle: latestCycle
+    currentCycle: shapedLatest
       ? {
-          period: `${latestCycle.periodMonth}/${latestCycle.periodYear}`,
-          status: latestCycle.status,
-          paymentStatus: latestCycle.paymentStatus,
-          employeeCount: latestCycle.employeeCount,
-          totalGrossEarnings: latestCycle.totalGrossEarnings,
-          totalNetPayable: latestCycle.totalNetPayable,
-          validationIssuesCount: latestCycle.validationIssues?.length || 0,
-          validationIssues: (latestCycle.validationIssues || []).slice(0, 5),
+          period: `${shapedLatest.periodMonth}/${shapedLatest.periodYear}`,
+          status: shapedLatest.status,
+          paymentStatus: shapedLatest.paymentStatus,
+          employeeCount: shapedLatest.employeeCount,
+          totalGrossEarnings: shapedLatest.totalGrossEarnings,
+          totalNetPayable: shapedLatest.totalNetPayable,
+          validationIssuesCount: scopedLatestIssues.length,
+          validationIssues: scopedLatestIssues.slice(0, 5),
+          ...(shapedLatest._aggregatesRestricted
+            ? { _aggregatesRestricted: true }
+            : {}),
         }
       : null,
     unconfiguredStaffCount: activeStaffWithoutComp.length,
@@ -730,16 +795,28 @@ async function runPayrollReadinessAnalysis({ models, compareHistoricalCycles = f
     const historical = await PayrollCycle.find({ status: { $in: ["FINALIZED", "PAID"] } })
       .sort({ periodYear: -1, periodMonth: -1 })
       .limit(4)
-      .select("periodMonth periodYear totalGrossEarnings totalNetPayable employeeCount paymentStatus")
+      .select(
+        "periodMonth periodYear totalGrossEarnings totalNetPayable employeeCount paymentStatus"
+      )
       .lean();
 
-    result.historicalCycles = historical.map((c) => ({
-      period: `${c.periodMonth}/${c.periodYear}`,
-      totalNetPayable: c.totalNetPayable,
-      totalGrossEarnings: c.totalGrossEarnings,
-      employeeCount: c.employeeCount,
-      paymentStatus: c.paymentStatus,
-    }));
+    result.historicalCycles = [];
+    for (const c of historical) {
+      let scopedPayslips = null;
+      if (isCustomHr && Payslip) {
+        const rows = await Payslip.find({ payrollCycleId: c._id }).lean();
+        scopedPayslips = filterPayslipsByScope(hrAccess, rows);
+      }
+      const shaped = shapePayrollCycleForHrAccess(hrAccess, c, scopedPayslips);
+      result.historicalCycles.push({
+        period: `${shaped.periodMonth}/${shaped.periodYear}`,
+        totalNetPayable: shaped.totalNetPayable,
+        totalGrossEarnings: shaped.totalGrossEarnings,
+        employeeCount: shaped.employeeCount,
+        paymentStatus: shaped.paymentStatus,
+        ...(shaped._aggregatesRestricted ? { _aggregatesRestricted: true } : {}),
+      });
+    }
   }
 
   return result;
@@ -810,58 +887,76 @@ async function runRecruitmentAndOffersAnalysis({ models, checkBottlenecks = true
 /**
  * Tool 6: Cross-Module Operational Overview
  */
-async function runCrossModuleOverview({ models, company }) {
-  const [attendance, onboarding, leaves, payroll, hiring] = await Promise.all([
-    runAttendanceAnalysis({ models, company, targetDate: "today" }),
-    runEmployeesAndOnboardingAnalysis({ models, focusArea: "ALL" }),
-    runLeaveAnalysis({ models, includeOverlaps: true }),
-    runPayrollReadinessAnalysis({ models }),
-    runRecruitmentAndOffersAnalysis({ models, checkBottlenecks: true }),
+async function runCrossModuleOverview({ models, company, hrAccess = null }) {
+  const allow = (permission) => hasHrPermission(hrAccess, permission);
+  const [attendance, people, leaves, payroll, hiring] = await Promise.all([
+    allow("attendance.view")
+      ? runAttendanceAnalysis({ models, company, hrAccess, targetDate: "today" })
+      : null,
+    allow("people.view")
+      ? runEmployeesAndOnboardingAnalysis({ models, hrAccess, focusArea: "PROFILES" })
+      : null,
+    allow("leave.view")
+      ? runLeaveAnalysis({ models, hrAccess, includeOverlaps: true })
+      : null,
+    allow("payroll.view")
+      ? runPayrollReadinessAnalysis({ models, hrAccess })
+      : null,
+    allow("hiring.view")
+      ? runRecruitmentAndOffersAnalysis({ models, checkBottlenecks: true })
+      : null,
   ]);
 
   const operationalRisks = [];
   const recommendedActions = [];
 
   // Attendance Risk
-  const attRate = parseFloat(attendance.summary.attendanceRate) || 0;
-  if (attRate < 80) {
+  const attRate = attendance ? parseFloat(attendance.summary.attendanceRate) || 0 : null;
+  if (attendance && attRate < 80) {
     operationalRisks.push(`Low attendance today (${attendance.summary.attendanceRate}). ${attendance.summary.absentCount} employee(s) absent.`);
     recommendedActions.push("Review Attendance Overview to identify affected departments and regularize missing logs.");
   }
 
   // Late arrivals
-  if (attendance.summary.lateArrivalCount >= 3) {
+  if (attendance && attendance.summary.lateArrivalCount >= 3) {
     operationalRisks.push(`${attendance.summary.lateArrivalCount} employee(s) arrived past the official grace cutoff today.`);
     recommendedActions.push("Check Attendance logs for shift punctuality patterns.");
   }
 
   // Leave conflicts
-  if (leaves.hasTeamLeaveConflicts) {
+  if (leaves?.hasTeamLeaveConflicts) {
     operationalRisks.push(`Overlapping leaves detected in ${leaves.overlappingTeamLeaves.length} department(s), posing team understaffing risks.`);
     recommendedActions.push("Review Leave Management to resolve overlapping leave dates.");
   }
 
   // Payroll blockers
-  if (payroll.readinessStatus === "BLOCKED") {
+  if (payroll?.readinessStatus === "BLOCKED") {
     operationalRisks.push(`Payroll is blocked: ${payroll.blockers.join("; ")}.`);
     recommendedActions.push("Open Payroll Action Centre to configure missing compensation structures and resolve register errors.");
   }
 
-  // Onboarding reviews
-  if (onboarding.candidateOnboarding?.awaitingHrReviewCount > 0) {
-    operationalRisks.push(`${onboarding.candidateOnboarding.awaitingHrReviewCount} candidate onboarding submission(s) awaiting HR review.`);
-    recommendedActions.push("Open Candidate Onboarding Review to approve candidates and provision employee accounts.");
+  if (hiring && (hiring.bottlenecks || []).length > 0) {
+    operationalRisks.push(`${hiring.bottlenecks.length} recruitment bottleneck(s) need follow-up.`);
+    recommendedActions.push("Open Offer Letters to follow up with pending candidates.");
   }
 
   return {
-    asOfDate: attendance.date,
+    asOfDate: attendance?.date || null,
+    modulesIncluded: [
+      attendance ? "attendance" : null,
+      people ? "people" : null,
+      leaves ? "leave" : null,
+      payroll ? "payroll" : null,
+      hiring ? "hiring" : null,
+    ].filter(Boolean),
     healthOverview: {
-      attendanceRate: attendance.summary.attendanceRate,
-      activeStaffCount: onboarding.employeeDirectory?.totalActiveEmployees || 0,
-      pendingLeaveRequests: leaves.totalPendingLeaves,
-      payrollStatus: payroll.readinessStatus,
-      candidateSubmissionsPending: onboarding.candidateOnboarding?.awaitingHrReviewCount || 0,
-      offersAcceptedCount: hiring.funnel.ACCEPTED,
+      ...(attendance ? { attendanceRate: attendance.summary.attendanceRate } : {}),
+      ...(people
+        ? { activeStaffCount: people.employeeDirectory?.totalActiveEmployees || 0 }
+        : {}),
+      ...(leaves ? { pendingLeaveRequests: leaves.totalPendingLeaves } : {}),
+      ...(payroll ? { payrollStatus: payroll.readinessStatus } : {}),
+      ...(hiring ? { offersAcceptedCount: hiring.funnel?.ACCEPTED || 0 } : {}),
     },
     operationalRisks,
     recommendedActions,
@@ -879,13 +974,17 @@ async function runCrossModuleOverview({ models, company }) {
  * Master dispatcher for HR Analyst Tools.
  * Enforces tenant boundary through authenticated models and role checks.
  */
-export async function executeHrAnalystTool(toolName, args = {}, { models, company, user }) {
+export async function executeHrAnalystTool(
+  toolName,
+  args = {},
+  { models, company, user, hrAccess = null }
+) {
   if (!models || !user) {
     throw new Error("Unauthorized tool execution: missing tenant context or user credentials.");
   }
 
   // Strict Role Check: Company-wide analytical tools require HR_ADMIN
-  if (user.role !== "HR_ADMIN") {
+  if (user.role !== "HR_ADMIN" && user.role !== "COMPANY_ADMIN") {
     return {
       error: "ACCESS_DENIED",
       message:
@@ -893,11 +992,27 @@ export async function executeHrAnalystTool(toolName, args = {}, { models, compan
     };
   }
 
+  const requiredPermission = HR_ANALYST_TOOL_PERMISSIONS[toolName];
+  if (requiredPermission) {
+    try {
+      assertHrPermission(hrAccess, requiredPermission);
+    } catch (err) {
+      return {
+        error: err.code || "HR_PERMISSION_DENIED",
+        message:
+          err.message ||
+          "You do not have permission to run this analytical tool with your current HR access configuration.",
+        permission: requiredPermission,
+      };
+    }
+  }
+
   switch (toolName) {
     case "analyzeAttendance":
       return await runAttendanceAnalysis({
         models,
         company,
+        hrAccess,
         targetDate: args.targetDate,
         comparePreviousWeek: args.comparePreviousWeek,
         checkIrregularities: args.checkIrregularities,
@@ -907,12 +1022,14 @@ export async function executeHrAnalystTool(toolName, args = {}, { models, compan
     case "analyzeEmployeesAndOnboarding":
       return await runEmployeesAndOnboardingAnalysis({
         models,
+        hrAccess,
         focusArea: args.focusArea,
       });
 
     case "analyzeLeaves":
       return await runLeaveAnalysis({
         models,
+        hrAccess,
         includeOverlaps: args.includeOverlaps,
         urgentOnly: args.urgentOnly,
         department: args.department,
@@ -921,6 +1038,7 @@ export async function executeHrAnalystTool(toolName, args = {}, { models, compan
     case "analyzePayrollReadiness":
       return await runPayrollReadinessAnalysis({
         models,
+        hrAccess,
         compareHistoricalCycles: args.compareHistoricalCycles,
       });
 
@@ -931,7 +1049,7 @@ export async function executeHrAnalystTool(toolName, args = {}, { models, compan
       });
 
     case "getCrossModuleOverview":
-      return await runCrossModuleOverview({ models, company });
+      return await runCrossModuleOverview({ models, company, hrAccess });
 
     default:
       return {
@@ -1101,14 +1219,14 @@ ${compText}
     }
 
     case "getCrossModuleOverview": {
-      const h = data.healthOverview;
-      let text = `### HRMS Cross-Module Operational Health Check (${data.asOfDate})\n\n`;
-      text += `- **Today's Attendance Rate:** **${h.attendanceRate}**\n`;
-      text += `- **Active Workforce:** ${h.activeStaffCount} employees\n`;
-      text += `- **Pending Leave Applications:** ${h.pendingLeaveRequests}\n`;
-      text += `- **Payroll Readiness:** **${h.payrollStatus}**\n`;
-      text += `- **Pending Candidate Onboardings:** ${h.candidateSubmissionsPending}\n`;
-      text += `- **Offers Accepted:** ${h.offersAcceptedCount}\n\n`;
+      const h = data.healthOverview || {};
+      let text = `### HRMS Cross-Module Operational Health Check (${data.asOfDate || "today"})\n\n`;
+      if (h.attendanceRate != null) text += `- **Today's Attendance Rate:** **${h.attendanceRate}**\n`;
+      if (h.activeStaffCount != null) text += `- **Active Workforce:** ${h.activeStaffCount} employees\n`;
+      if (h.pendingLeaveRequests != null) text += `- **Pending Leave Applications:** ${h.pendingLeaveRequests}\n`;
+      if (h.payrollStatus != null) text += `- **Payroll Readiness:** **${h.payrollStatus}**\n`;
+      if (h.offersAcceptedCount != null) text += `- **Offers Accepted:** ${h.offersAcceptedCount}\n`;
+      text += "\n";
 
       if (data.operationalRisks?.length > 0) {
         text += `### Operational Risks Identified:\n` +

@@ -21,6 +21,16 @@ export function createAuthSessionSchema() {
         type: String,
         default: "",
       },
+      /**
+       * Server-validated client platform bound at session creation
+       * (web | android | ios). Used for allowWebTracking enforcement.
+       */
+      clientPlatform: {
+        type: String,
+        enum: ["web", "android", "ios"],
+        default: "web",
+        index: true,
+      },
       expiresAt: {
         type: Date,
         required: true,

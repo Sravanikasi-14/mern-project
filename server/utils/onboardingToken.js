@@ -25,6 +25,29 @@ export function signOnboardingToken({ companyId, email }) {
   );
 }
 
+/**
+ * Company Admin → HR Admin invitation (Phase CA3).
+ * Includes jti for single-use AuthToken rows (hashed at rest).
+ */
+export function signHrAdminInvitationToken({ companyId, userId, email }) {
+  return jwt.sign(
+    {
+      sub: email.trim().toLowerCase(),
+      companyId: String(companyId),
+      userId: String(userId),
+      role: "HR_ADMIN",
+      purpose: "hr_admin_invitation",
+      jti: crypto.randomUUID(),
+    },
+    requiredSecret(),
+    {
+      expiresIn: process.env.HR_ADMIN_INVITATION_EXPIRES_IN || process.env.ONBOARDING_TOKEN_EXPIRES_IN || "7d",
+      issuer: process.env.JWT_ISSUER || "hrms-platform",
+      audience: process.env.JWT_AUDIENCE || "hrms-company-users",
+    }
+  );
+}
+
 export function signEmployeeInvitationToken({ companyId, employeeId, email }) {
   return jwt.sign(
     {
@@ -141,16 +164,24 @@ export function verifyCandidateOnboardingToken(token) {
   return payload;
 }
 
+/**
+ * Account-setup / activation token.
+ * `employeeId` is optional: for the candidate onboarding pipeline the Employee record is created
+ * only upon successful activation, so the token is issued before any Employee exists.
+ */
 export function signEmployeeActivationToken({ companyId, employeeId, userId, email }) {
+  const payload = {
+    sub: email.trim().toLowerCase(),
+    companyId: String(companyId),
+    userId: String(userId),
+    purpose: "employee_activation",
+    jti: crypto.randomUUID(),
+  };
+  if (employeeId) {
+    payload.employeeId = String(employeeId);
+  }
   return jwt.sign(
-    {
-      sub: email.trim().toLowerCase(),
-      companyId: String(companyId),
-      employeeId: String(employeeId),
-      userId: String(userId),
-      purpose: "employee_activation",
-      jti: crypto.randomUUID(),
-    },
+    payload,
     requiredSecret(),
     {
       expiresIn: process.env.EMPLOYEE_ACTIVATION_EXPIRES_IN || "7d",
@@ -174,7 +205,6 @@ export function verifyEmployeeActivationToken(token) {
     payload.purpose !== "employee_activation" ||
     !payload.companyId ||
     !payload.sub ||
-    !payload.employeeId ||
     !payload.userId
   ) {
     throw new Error("Invalid employee activation token purpose or payload");
@@ -195,6 +225,7 @@ export function verifyOnboardingToken(token) {
 
   if (
     (payload.purpose !== "hr_admin_onboarding" &&
+      payload.purpose !== "hr_admin_invitation" &&
       payload.purpose !== "employee_onboarding" &&
       payload.purpose !== "candidate_onboarding" &&
       payload.purpose !== "employee_activation") ||

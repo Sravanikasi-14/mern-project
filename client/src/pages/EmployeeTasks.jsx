@@ -14,6 +14,7 @@ import {
   IconCalendar,
 } from "../components/EmployeeIcon";
 import AppModal from "../components/AppModal";
+import ModuleToolbar from "../components/ModuleToolbar";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -538,95 +539,75 @@ export default function EmployeeTasks() {
       <div className="wm-unified-grid">
         {/* Main Workspace (Left ~75%) */}
         <div className="wm-main-col">
-          {/* Consolidated Compact Toolbar: Tabs, Search & Filters in One Row */}
-          <div
-            className="wm-toolbar-card"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 10,
-              padding: "8px 14px",
-              marginBottom: 12,
-            }}
-          >
-            {/* Left: Task Tabs & Projects */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <div className="wm-tab-group">
+          <div className="wm-tab-strip" style={{ marginBottom: 10 }}>
+            <div className="wm-tab-group">
+              <button
+                type="button"
+                onClick={() => setActiveTab(EMPLOYEE_TABS.ALL)}
+                className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.ALL ? "active" : ""}`}
+              >
+                My Tasks
+              </button>
+              {meta.isManager && (
                 <button
                   type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.ALL)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.ALL ? "active" : ""}`}
+                  onClick={() => setActiveTab(EMPLOYEE_TABS.TEAM_QUEUE)}
+                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.TEAM_QUEUE ? "active" : ""}`}
                 >
-                  My Tasks
+                  Team Review Queue
                 </button>
-                {meta.isManager && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(EMPLOYEE_TABS.TEAM_QUEUE)}
-                    className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.TEAM_QUEUE ? "active" : ""}`}
-                  >
-                    Team Review Queue
-                  </button>
-                )}
-              </div>
-
-              {projectSummaries.length > 1 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className={`wm-tab-btn ${selectedProject === "ALL" ? "active" : ""}`}
-                    onClick={() => setSelectedProject("ALL")}
-                    style={{ fontSize: 11.5, padding: "3px 8px" }}
-                  >
-                    All Projects
-                  </button>
-                  {projectSummaries.slice(0, 3).map((p) => (
-                    <button
-                      key={p.name}
-                      type="button"
-                      className={`wm-tab-btn ${selectedProject === p.name ? "active" : ""}`}
-                      onClick={() => setSelectedProject(selectedProject === p.name ? "ALL" : p.name)}
-                      style={{ fontSize: 11.5, padding: "3px 8px" }}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
               )}
             </div>
-
-            {/* Right: Search & Priority Filter */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <form onSubmit={handleSearchSubmit} className="wm-search-wrapper" style={{ minWidth: 160 }}>
-                <span className="wm-search-icon">
-                  <IconSearch size={14} />
-                </span>
-                <input
-                  type="text"
-                  className="wm-input-search"
-                  style={{ height: 30, fontSize: 12, paddingLeft: 28 }}
-                  placeholder="Search tasks..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </form>
-
-              <select
-                className="wm-select"
-                style={{ height: 30, fontSize: 12, minHeight: 30 }}
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-              >
-                <option value="ALL">Priority: All</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
-            </div>
+            {projectSummaries.length > 1 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`wm-tab-btn ${selectedProject === "ALL" ? "active" : ""}`}
+                  onClick={() => setSelectedProject("ALL")}
+                  style={{ fontSize: 11.5, padding: "3px 8px" }}
+                >
+                  All Projects
+                </button>
+                {projectSummaries.slice(0, 3).map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    className={`wm-tab-btn ${selectedProject === p.name ? "active" : ""}`}
+                    onClick={() => setSelectedProject(selectedProject === p.name ? "ALL" : p.name)}
+                    style={{ fontSize: 11.5, padding: "3px 8px" }}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          <ModuleToolbar
+            searchValue={search}
+            onSearchChange={(e) => setSearch(e.target.value)}
+            onSearchSubmit={handleSearchSubmit}
+            searchPlaceholder="Search tasks..."
+            searchAriaLabel="Search tasks"
+            filterCount={priorityFilter !== "ALL" ? 1 : 0}
+            onFiltersClear={() => setPriorityFilter("ALL")}
+            filters={
+              <label className="module-toolbar-filter-field">
+                Priority
+                <select
+                  className="filter-select"
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                >
+                  <option value="ALL">All</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="CRITICAL">Critical</option>
+                </select>
+              </label>
+            }
+          />
 
           {/* Weekly Delivery Schedule Strip */}
           <div className="wm-timeline-card">
@@ -748,7 +729,7 @@ export default function EmployeeTasks() {
                                     {task.priority}
                                   </span>
                                   <span className="wm-points-tag">
-                                    ★ {task.priority === "CRITICAL" || task.priority === "HIGH" ? "+20" : "+10"}
+                                    +{task.priority === "CRITICAL" || task.priority === "HIGH" ? "20" : "10"}
                                   </span>
                                 </div>
                               </div>
@@ -987,7 +968,7 @@ export default function EmployeeTasks() {
                     <div>
                       <div style={{ color: "#64748b", fontWeight: 600 }}>Points Reward</div>
                       <div style={{ fontWeight: 700, color: "#059669", marginTop: 2 }}>
-                        ★ {selectedTask.priority === "CRITICAL" || selectedTask.priority === "HIGH" ? "+20 pts" : "+10 pts"}
+                        {selectedTask.priority === "CRITICAL" || selectedTask.priority === "HIGH" ? "+20 pts" : "+10 pts"}
                       </div>
                     </div>
                   </div>
@@ -1144,7 +1125,7 @@ export default function EmployeeTasks() {
                     {uploadingFile && <span style={{ fontSize: 11, color: "#155a37" }}>Uploading file...</span>}
                     {submitForm.files.map((f, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#155a37", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                        <span>📎 {f.fileName}</span>
+                        <span>{f.fileName}</span>
                       </div>
                     ))}
                   </div>

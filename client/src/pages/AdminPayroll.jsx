@@ -16,9 +16,14 @@ import {
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
+import AppModal from "../components/AppModal";
+import ModuleToolbar from "../components/ModuleToolbar";
+
 import "./AdminPayroll.css";
 
 function formatCurrency(amount) {
@@ -43,6 +48,13 @@ function formatDate(date) {
 
 export default function AdminPayroll() {
   const { user, company } = useAuth();
+  const canPayroll = hrPortalAllows(user, company, "payroll.view");
+  const canSettlements = hrPortalAllows(user, company, "settlements.view");
+  const canCreatePayroll = hrPortalAllows(user, company, "payroll.create");
+  const canCalculatePayroll = hrPortalAllows(user, company, "payroll.calculate");
+  const canFinalizePayroll = hrPortalAllows(user, company, "payroll.finalize");
+  const canPayPayroll = hrPortalAllows(user, company, "payroll.pay");
+  const canPaySettlement = hrPortalAllows(user, company, "settlements.pay");
   const location = useLocation();
   const navigate = useNavigate();
   const goBack = useSmartBack("/admin/payroll?tab=ff_settlements");
@@ -161,14 +173,22 @@ export default function AdminPayroll() {
     const params = new URLSearchParams(location.search);
     const sid = params.get("settlementId");
     const tab = params.get("tab");
-    if (sid) {
-      setSelectedSettlementId(sid);
+    if (sid || tab === "ff_settlements") {
+      if (sid) setSelectedSettlementId(sid);
       setActiveTab("ff_settlements");
-    } else if (tab === "payroll_registers" || tab === "registers" || tab === "cycles") {
+    } else if (tab === "payroll_registers" || tab === "registers" || tab === "cycles" || !tab) {
       setActiveTab("payroll_registers");
       setSelectedSettlementId(null);
     }
   }, [location.search]);
+
+  useEffect(() => {
+    if (activeTab === "payroll_registers" && !canPayroll && canSettlements) {
+      setActiveTab("ff_settlements");
+    } else if (activeTab === "ff_settlements" && !canSettlements && canPayroll) {
+      setActiveTab("payroll_registers");
+    }
+  }, [activeTab, canPayroll, canSettlements]);
 
   // Fetch list of settlements only when settlements tab is active
   useEffect(() => {
@@ -426,11 +446,11 @@ export default function AdminPayroll() {
       setSelectedCycle(res.data?.cycle || null);
       const fetchedPayslips = res.data?.payslips || [];
       setCyclePayslips(fetchedPayslips);
-      if (fetchedPayslips.length > 0) {
-        setSelectedBreakdownPayslip(fetchedPayslips[0]);
-      } else {
-        setSelectedBreakdownPayslip(null);
-      }
+      // Keep popup closed until the user explicitly selects a register row.
+      setSelectedBreakdownPayslip((prev) => {
+        if (!prev) return null;
+        return fetchedPayslips.find((p) => p._id === prev._id) || null;
+      });
     } catch (err) {
       setPayrollActionError(err.response?.data?.message || "Failed to load cycle details.");
     } finally {
@@ -440,10 +460,10 @@ export default function AdminPayroll() {
 
   // Fetch cycles when switching to payroll_registers tab
   useEffect(() => {
-    if (activeTab === "payroll_registers") {
+    if (activeTab === "payroll_registers" && canPayroll) {
       fetchPayrollCycles();
     }
-  }, [activeTab]);
+  }, [activeTab, canPayroll]);
 
   // Fetch cycle details when selected cycle changes
   useEffect(() => {
@@ -672,10 +692,14 @@ export default function AdminPayroll() {
   }, [filteredPayslips, registerPage, registerPageSize, registerTotalPages]);
 
   const activeBreakdownPayslip = useMemo(() => {
-    if (!filteredPayslips || filteredPayslips.length === 0) return null;
-    const found = filteredPayslips.find((p) => p._id === selectedBreakdownPayslip?._id);
-    return found || filteredPayslips[0];
+    if (!selectedBreakdownPayslip?._id) return null;
+    if (!filteredPayslips || filteredPayslips.length === 0) return selectedBreakdownPayslip;
+    return filteredPayslips.find((p) => p._id === selectedBreakdownPayslip._id) || selectedBreakdownPayslip;
   }, [filteredPayslips, selectedBreakdownPayslip]);
+
+  const closePayslipDetail = () => {
+    setSelectedBreakdownPayslip(null);
+  };
 
   return (
     <main className="container-wide admin-payroll-container">
@@ -699,28 +723,38 @@ export default function AdminPayroll() {
         }
       />
 
+      {(canPayroll || canSettlements) ? (
       <div className="module-tabs" style={{ marginBottom: 16 }}>
-        <button
-          type="button"
-          className={`module-tab ${activeTab === "payroll_registers" ? "is-active" : ""}`}
-          onClick={() => {
-            setActiveTab("payroll_registers");
-            setSelectedSettlementId(null);
-          }}
-        >
-          Payroll Registers
-        </button>
-        <button
-          type="button"
-          className={`module-tab ${activeTab === "ff_settlements" ? "is-active" : ""}`}
-          onClick={() => setActiveTab("ff_settlements")}
-        >
-          Final Settlements
-        </button>
+        {canPayroll ? (
+          <button
+            type="button"
+            className={`module-tab ${activeTab === "payroll_registers" ? "is-active" : ""}`}
+            onClick={() => {
+              setActiveTab("payroll_registers");
+              setSelectedSettlementId(null);
+              navigate("/admin/payroll", { replace: true });
+            }}
+          >
+            Payroll Registers
+          </button>
+        ) : null}
+        {canSettlements ? (
+          <button
+            type="button"
+            className={`module-tab ${activeTab === "ff_settlements" ? "is-active" : ""}`}
+            onClick={() => {
+              setActiveTab("ff_settlements");
+              navigate("/admin/payroll?tab=ff_settlements", { replace: true });
+            }}
+          >
+            Final Settlements
+          </button>
+        ) : null}
       </div>
+      ) : null}
 
       {/* TAB 1: FULL & FINAL SETTLEMENTS */}
-      {activeTab === "ff_settlements" && (
+      {activeTab === "ff_settlements" && canSettlements && (
         <>
           {/* VIEW A: SETTLEMENT DETAILS VIEW */}
           {selectedSettlementId && activeSettlement ? (
@@ -1373,6 +1407,7 @@ export default function AdminPayroll() {
                       >
                         Place On Hold
                       </button>
+                      {canPaySettlement ? (
                       <button
                         type="button"
                         className="btn-primary"
@@ -1380,6 +1415,9 @@ export default function AdminPayroll() {
                       >
                         Record Payment
                       </button>
+                      ) : (
+                        <AccessRestrictedInline />
+                      )}
                     </>
                   )}
 
@@ -1404,67 +1442,42 @@ export default function AdminPayroll() {
           ) : (
             /* VIEW B: SETTLEMENTS LIST TABLE */
             <div style={{ display: "grid", gap: 16 }}>
-              {/* Search and Filters */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 12,
-                  background: "#ffffff",
-                  padding: "16px 20px",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                }}
-              >
-                <div style={{ display: "flex", gap: 10, flex: 1, minWidth: 260 }}>
-                  <input
-                    type="search"
-                    placeholder="Search by employee name, ID, or exit reason..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{
-                      width: "100%",
-                      maxWidth: 360,
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #d4d4d8",
-                      fontSize: 13.5,
-                    }}
-                  />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #d4d4d8",
-                      fontSize: 13.5,
-                    }}
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="DRAFT">Draft</option>
-                    <option value="UNDER_REVIEW">Under Review</option>
-                    <option value="APPROVED">Approved</option>
-                    <option value="ON_HOLD">On Hold</option>
-                    <option value="PAID">Paid</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", gap: 10 }}>
+              <ModuleToolbar
+                searchValue={searchTerm}
+                onSearchChange={(e) => setSearchTerm(e.target.value)}
+                searchPlaceholder="Search by employee name, ID, or exit reason..."
+                searchAriaLabel="Search settlements"
+                actions={
                   <button
                     type="button"
-                    className="btn-secondary btn-sm"
+                    className="btn-secondary"
                     onClick={() => setRefreshKey((k) => k + 1)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                   >
-                    <IconRefresh size={14} />
+                    <IconRefresh size={16} />
                     <span>Refresh</span>
                   </button>
-                </div>
-              </div>
+                }
+                filterCount={statusFilter !== "ALL" ? 1 : 0}
+                onFiltersClear={() => setStatusFilter("ALL")}
+                filters={
+                  <label className="module-toolbar-filter-field">
+                    Status
+                    <select
+                      className="filter-select"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="DRAFT">Draft</option>
+                      <option value="UNDER_REVIEW">Under Review</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="ON_HOLD">On Hold</option>
+                      <option value="PAID">Paid</option>
+                      <option value="COMPLETED">Completed</option>
+                    </select>
+                  </label>
+                }
+              />
 
               {listError && (
                 <div role="alert" className="error">
@@ -1594,55 +1607,43 @@ export default function AdminPayroll() {
       )}
 
       {/* TAB 2: MONTHLY PAYROLL REGISTERS */}
-      {activeTab === "payroll_registers" && (
+      {activeTab === "payroll_registers" && canPayroll && (
         <div style={{ display: "grid", gap: 14 }}>
-          {/* Action Alerts */}
+          {/* Compact action alerts */}
           {payrollActionSuccess && (
-            <div role="status" style={{ padding: "12px 16px", background: "#f0fdf4", color: "#166534", borderRadius: 8, border: "1px solid #bbf7d0", fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
-              <IconCheck size={16} />
+            <div role="status" className="ap-alert ap-alert--success">
+              <IconCheck size={15} />
               <span>{payrollActionSuccess}</span>
             </div>
           )}
           {payrollActionError && (
-            <div role="alert" className="error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <IconAlertCircle size={16} />
+            <div role="alert" className="ap-alert ap-alert--error">
+              <IconAlertCircle size={15} />
               <span>{payrollActionError}</span>
             </div>
           )}
           {cyclesError && (
-            <div role="alert" className="error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <IconAlertCircle size={16} />
+            <div role="alert" className="ap-alert ap-alert--error">
+              <IconAlertCircle size={15} />
               <span>{cyclesError}</span>
             </div>
           )}
 
-          {/* Validation Issues Alert Banner */}
           {selectedCycle?.validationIssues?.length > 0 && (
-            <div
-              style={{
-                background: "#fffbeb",
-                border: "1px solid #fde68a",
-                borderRadius: 10,
-                padding: "12px 16px",
-                color: "#92400e",
-                fontSize: 13,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}>
-                <IconAlertTriangle size={16} />
+            <div className="ap-alert ap-alert--warn">
+              <div className="ap-alert-warn-title">
+                <IconAlertTriangle size={15} />
                 <span>
                   {selectedCycle.validationIssues.length} employee
                   {selectedCycle.validationIssues.length === 1 ? "" : "s"} skipped — monthly CTC is missing
                 </span>
               </div>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+              <ul className="ap-alert-warn-list">
                 {selectedCycle.validationIssues.map((v, i) => (
-                  <li key={v.employeeId || i} style={{ marginBottom: 4 }}>
+                  <li key={v.employeeId || i}>
                     <strong>{v.fullName} ({v.employeeCode}):</strong> {v.issue}{" "}
                     {v.employeeId && (
-                      <Link to={`/admin/employees/${v.employeeId}/edit`} style={{ fontWeight: 700 }}>
-                        Add compensation
-                      </Link>
+                      <Link to={`/admin/employees/${v.employeeId}/edit`}>Add compensation</Link>
                     )}
                   </li>
                 ))}
@@ -1673,143 +1674,132 @@ export default function AdminPayroll() {
             </div>
           </div>
 
-          {/* Payroll Control & Filter Toolbar */}
-          <div className="ap-toolbar">
-            <div className="ap-toolbar-left">
-              <label htmlFor="payrollCycleSelect" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
-                Period:
-              </label>
-              <select
-                id="payrollCycleSelect"
-                value={selectedCycleId}
-                onChange={(e) => setSelectedCycleId(e.target.value)}
-                className="ap-select"
-                style={{ fontWeight: 600, minWidth: 210 }}
-              >
-                {payrollCycles.length === 0 ? (
-                  <option value="">No cycles available</option>
-                ) : (
-                  payrollCycles.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {monthNamesList[c.periodMonth - 1]} {c.periodYear} ({c.status})
-                    </option>
-                  ))
-                )}
-              </select>
-
-              <div className="ap-filter-pill-group">
-                <button
-                  type="button"
-                  className={`ap-filter-pill ${payrollStatusFilter === "ALL" ? "active" : ""}`}
-                  onClick={() => setPayrollStatusFilter("ALL")}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  className={`ap-filter-pill ${payrollStatusFilter === "PAID" ? "active" : ""}`}
-                  onClick={() => setPayrollStatusFilter("PAID")}
-                >
-                  Paid
-                </button>
-                <button
-                  type="button"
-                  className={`ap-filter-pill ${payrollStatusFilter === "UNPAID" ? "active" : ""}`}
-                  onClick={() => setPayrollStatusFilter("UNPAID")}
-                >
-                  Pending
-                </button>
-              </div>
-
-              {departmentsList.length > 0 && (
+          <ModuleToolbar
+            searchValue={payrollSearch}
+            onSearchChange={(e) => setPayrollSearch(e.target.value)}
+            searchPlaceholder="Search employee or code..."
+            searchAriaLabel="Search employee or code"
+            leading={
+              <label htmlFor="payrollCycleSelect" className="module-toolbar-field">
+                <span>Period</span>
                 <select
-                  value={payrollDeptFilter}
-                  onChange={(e) => setPayrollDeptFilter(e.target.value)}
-                  className="ap-select"
-                  aria-label="Filter by department"
+                  id="payrollCycleSelect"
+                  value={selectedCycleId}
+                  onChange={(e) => setSelectedCycleId(e.target.value)}
+                  className="ap-select module-toolbar-control"
                 >
-                  <option value="ALL">All Departments</option>
-                  {departmentsList.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
+                  {payrollCycles.length === 0 ? (
+                    <option value="">No cycles available</option>
+                  ) : (
+                    payrollCycles.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {monthNamesList[c.periodMonth - 1]} {c.periodYear} ({c.status})
+                      </option>
+                    ))
+                  )}
                 </select>
-              )}
-            </div>
-
-            <div className="ap-toolbar-right">
-              <input
-                type="search"
-                placeholder="Search employee or code..."
-                value={payrollSearch}
-                onChange={(e) => setPayrollSearch(e.target.value)}
-                className="ap-search-input"
-              />
-
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setShowNewCycleModal(true)}
-                style={{ fontSize: 12.5 }}
-              >
-                + New Cycle
-              </button>
-
-              {selectedCycle && (
-                <>
-                  {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+              </label>
+            }
+            actions={
+              <>
+                {canCreatePayroll ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setShowNewCycleModal(true)}
+                >
+                  + New Cycle
+                </button>
+                ) : null}
+                {selectedCycle && (
+                  <>
+                    {canCalculatePayroll && selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={handleRecalculateCycle}
+                        disabled={cycleActionLoading}
+                        title="Recalculate earnings and attendance for this period"
+                      >
+                        Recalculate
+                      </button>
+                    )}
+                    {canFinalizePayroll && selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleFinalizeCycle}
+                        disabled={cycleActionLoading}
+                        title="Finalize payroll and unlock payslips for employees"
+                      >
+                        Finalize Payroll
+                      </button>
+                    )}
+                    {canPayPayroll && (selectedCycle.status === "FINALIZED" || selectedCycle.status === "PARTIALLY_PAID") && (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleOpenCyclePayModal}
+                        disabled={cycleActionLoading}
+                      >
+                        Record Payment
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="btn-secondary btn-sm"
-                      onClick={handleRecalculateCycle}
-                      disabled={cycleActionLoading}
-                      title="Recalculate earnings and attendance for this period"
-                      style={{ fontSize: 12.5 }}
+                      className="btn-secondary"
+                      onClick={handleExportRegisterCsv}
+                      disabled={cyclePayslips.length === 0}
+                      title="Download register as CSV spreadsheet"
                     >
-                      Recalculate
+                      Export CSV
                     </button>
-                  )}
-
-                  {selectedCycle.status !== "FINALIZED" && selectedCycle.status !== "PAID" && (
-                    <button
-                      type="button"
-                      className="btn-primary btn-sm"
-                      onClick={handleFinalizeCycle}
-                      disabled={cycleActionLoading}
-                      style={{ fontSize: 12.5, background: "var(--g-800)", borderColor: "var(--g-950)" }}
-                      title="Finalize payroll and unlock payslips for employees"
-                    >
-                      Finalize Payroll
-                    </button>
-                  )}
-
-                  {(selectedCycle.status === "FINALIZED" || selectedCycle.status === "PARTIALLY_PAID") && (
-                    <button
-                      type="button"
-                      className="btn-primary btn-sm"
-                      onClick={handleOpenCyclePayModal}
-                      disabled={cycleActionLoading}
-                      style={{ fontSize: 12.5, background: "var(--g-800)", borderColor: "var(--g-950)" }}
-                    >
-                      Record Payment
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={handleExportRegisterCsv}
-                    disabled={cyclePayslips.length === 0}
-                    title="Download register as CSV spreadsheet"
-                    style={{ fontSize: 12.5 }}
+                    {(!canCalculatePayroll || !canFinalizePayroll || !canPayPayroll) ? <AccessRestrictedInline /> : null}
+                  </>
+                )}
+              </>
+            }
+            filterCount={
+              (payrollStatusFilter !== "ALL" ? 1 : 0) + (payrollDeptFilter !== "ALL" ? 1 : 0)
+            }
+            onFiltersClear={() => {
+              setPayrollStatusFilter("ALL");
+              setPayrollDeptFilter("ALL");
+            }}
+            filters={
+              <>
+                <label className="module-toolbar-filter-field">
+                  Payment status
+                  <select
+                    className="filter-select"
+                    value={payrollStatusFilter}
+                    onChange={(e) => setPayrollStatusFilter(e.target.value)}
                   >
-                    Export CSV
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+                    <option value="ALL">All</option>
+                    <option value="PAID">Paid</option>
+                    <option value="UNPAID">Pending</option>
+                  </select>
+                </label>
+                {departmentsList.length > 0 && (
+                  <label className="module-toolbar-filter-field">
+                    Department
+                    <select
+                      className="filter-select"
+                      value={payrollDeptFilter}
+                      onChange={(e) => setPayrollDeptFilter(e.target.value)}
+                    >
+                      <option value="ALL">All Departments</option>
+                      {departmentsList.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            }
+          />
 
           {/* Master-Detail Payslip Workspace (Stitch Screen A) */}
           <div className="ap-workspace-grid">
@@ -1891,164 +1881,149 @@ export default function AdminPayroll() {
               )}
             </div>
 
-            {/* Right Column: Selected Employee Payslip Deep-Dive */}
-            <div className="ap-detail-panel">
-              {activeBreakdownPayslip ? (
-                <>
-                  {/* Detail Header */}
-                  <div className="ap-detail-header">
-                    <div className="ap-detail-title-group">
-                      <h2>
-                        {activeBreakdownPayslip.employeeSnapshot?.fullName}
-                      </h2>
-                      <div className="ap-detail-meta">
-                        <span><strong>Code:</strong> {activeBreakdownPayslip.employeeSnapshot?.employeeCode || "—"}</span>
-                        <span>•</span>
-                        <span><strong>Designation:</strong> {activeBreakdownPayslip.employeeSnapshot?.jobTitle || "—"}</span>
-                        <span>•</span>
-                        <span><strong>Department:</strong> {activeBreakdownPayslip.employeeSnapshot?.department || "—"}</span>
-                      </div>
-                    </div>
+            <p className="ap-register-hint">Select an employee row to open payslip details.</p>
+          </div>
+        </div>
+      )}
 
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {(selectedCycle?.status === "FINALIZED" || selectedCycle?.status === "PAID") && (
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          onClick={() => handleDownloadPayslipPdf(activeBreakdownPayslip)}
-                          style={{ fontSize: 12.5, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                        >
-                          <IconDownload size={14} />
-                          <span>Download PDF</span>
-                        </button>
-                      )}
-                    </div>
+      <AppModal
+        open={Boolean(selectedBreakdownPayslip)}
+        onClose={closePayslipDetail}
+        size="lg"
+        className="ap-payslip-modal"
+        title={activeBreakdownPayslip?.employeeSnapshot?.fullName || "Payslip detail"}
+        subtitle={
+          activeBreakdownPayslip
+            ? [
+                activeBreakdownPayslip.employeeSnapshot?.employeeCode,
+                activeBreakdownPayslip.employeeSnapshot?.jobTitle,
+                activeBreakdownPayslip.employeeSnapshot?.department,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : ""
+        }
+        footer={
+          activeBreakdownPayslip &&
+          (selectedCycle?.status === "FINALIZED" || selectedCycle?.status === "PAID") ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => handleDownloadPayslipPdf(activeBreakdownPayslip)}
+            >
+              <IconDownload size={14} />
+              <span>Download PDF</span>
+            </button>
+          ) : null
+        }
+      >
+        {activeBreakdownPayslip ? (
+          <div className="ap-detail-panel ap-detail-panel--modal">
+            {activeBreakdownPayslip.daysBreakdown && (
+              <div className="ap-attendance-bar">
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Total Days</span>
+                  <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.totalDaysInMonth ?? "—"}</span>
+                </div>
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Working Days</span>
+                  <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.workingDays ?? "—"}</span>
+                </div>
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Present</span>
+                  <span className="ap-att-val green">{activeBreakdownPayslip.daysBreakdown.presentDays ?? "—"}</span>
+                </div>
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Paid Leave</span>
+                  <span className="ap-att-val" style={{ color: "#2563eb" }}>{activeBreakdownPayslip.daysBreakdown.paidLeaveDays ?? 0}</span>
+                </div>
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Loss of Pay</span>
+                  <span className="ap-att-val red">{activeBreakdownPayslip.daysBreakdown.lossOfPayDays ?? 0}</span>
+                </div>
+                <div className="ap-att-item">
+                  <span className="ap-att-label">Payable Days</span>
+                  <span className="ap-att-val" style={{ fontWeight: 800 }}>{activeBreakdownPayslip.daysBreakdown.payableDays ?? "—"}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="ap-breakdown-grid">
+              <div className="ap-section-box">
+                <div className="ap-section-title earnings">Earnings & Allowances</div>
+                {(!activeBreakdownPayslip.earnings || activeBreakdownPayslip.earnings.length === 0) ? (
+                  <div className="ap-line-item">
+                    <span className="ap-line-name">Gross Base Salary</span>
+                    <span className="ap-line-amount">{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
                   </div>
-
-                  {/* Attendance & Days Summary Bar */}
-                  {activeBreakdownPayslip.daysBreakdown && (
-                    <div className="ap-attendance-bar">
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Total Days</span>
-                        <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.totalDaysInMonth ?? "—"}</span>
-                      </div>
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Working Days</span>
-                        <span className="ap-att-val">{activeBreakdownPayslip.daysBreakdown.workingDays ?? "—"}</span>
-                      </div>
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Present</span>
-                        <span className="ap-att-val green">{activeBreakdownPayslip.daysBreakdown.presentDays ?? "—"}</span>
-                      </div>
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Paid Leave</span>
-                        <span className="ap-att-val" style={{ color: "#2563eb" }}>{activeBreakdownPayslip.daysBreakdown.paidLeaveDays ?? 0}</span>
-                      </div>
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Loss of Pay</span>
-                        <span className="ap-att-val red">{activeBreakdownPayslip.daysBreakdown.lossOfPayDays ?? 0}</span>
-                      </div>
-                      <div className="ap-att-item">
-                        <span className="ap-att-label">Payable Days</span>
-                        <span className="ap-att-val" style={{ fontWeight: 800 }}>{activeBreakdownPayslip.daysBreakdown.payableDays ?? "—"}</span>
-                      </div>
+                ) : (
+                  activeBreakdownPayslip.earnings.map((e, idx) => (
+                    <div key={idx} className="ap-line-item">
+                      <span className="ap-line-name">{e.name}</span>
+                      <span className="ap-line-amount">{formatCurrency(e.amount)}</span>
                     </div>
-                  )}
+                  ))
+                )}
+                <div className="ap-section-total">
+                  <span>Total Gross Earnings</span>
+                  <span style={{ color: "var(--g-800)" }}>{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
+                </div>
+              </div>
 
-                  {/* Itemized Financial Breakdown (2-Column) */}
-                  <div className="ap-breakdown-grid">
-                    {/* Left: Earnings */}
-                    <div className="ap-section-box">
-                      <div className="ap-section-title earnings">
-                        Earnings & Allowances
-                      </div>
-                      {(!activeBreakdownPayslip.earnings || activeBreakdownPayslip.earnings.length === 0) ? (
-                        <div className="ap-line-item">
-                          <span className="ap-line-name">Gross Base Salary</span>
-                          <span className="ap-line-amount">{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
-                        </div>
-                      ) : (
-                        activeBreakdownPayslip.earnings.map((e, idx) => (
-                          <div key={idx} className="ap-line-item">
-                            <span className="ap-line-name">{e.name}</span>
-                            <span className="ap-line-amount">{formatCurrency(e.amount)}</span>
-                          </div>
-                        ))
-                      )}
-                      <div className="ap-section-total">
-                        <span>Total Gross Earnings</span>
-                        <span style={{ color: "var(--g-800)" }}>{formatCurrency(activeBreakdownPayslip.grossEarnings)}</span>
-                      </div>
-                    </div>
-
-                    {/* Right: Deductions */}
-                    <div className="ap-section-box">
-                      <div className="ap-section-title deductions">
-                        Statutory Deductions
-                      </div>
-                      {(!activeBreakdownPayslip.employeeDeductions || activeBreakdownPayslip.employeeDeductions.length === 0) ? (
-                        <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0", fontStyle: "italic" }}>
-                          No statutory deductions recorded
-                        </div>
-                      ) : (
-                        activeBreakdownPayslip.employeeDeductions.map((d, idx) => (
-                          <div key={idx} className="ap-line-item">
-                            <span className="ap-line-name">{d.name}</span>
-                            <span className="ap-line-amount deduct">-{formatCurrency(d.amount)}</span>
-                          </div>
-                        ))
-                      )}
-                      <div className="ap-section-total">
-                        <span>Total Deductions</span>
-                        <span style={{ color: "#b91c1c" }}>-{formatCurrency(activeBreakdownPayslip.totalDeductions)}</span>
-                      </div>
-                    </div>
+              <div className="ap-section-box">
+                <div className="ap-section-title deductions">Statutory Deductions</div>
+                {(!activeBreakdownPayslip.employeeDeductions || activeBreakdownPayslip.employeeDeductions.length === 0) ? (
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0", fontStyle: "italic" }}>
+                    No statutory deductions recorded
                   </div>
+                ) : (
+                  activeBreakdownPayslip.employeeDeductions.map((d, idx) => (
+                    <div key={idx} className="ap-line-item">
+                      <span className="ap-line-name">{d.name}</span>
+                      <span className="ap-line-amount deduct">-{formatCurrency(d.amount)}</span>
+                    </div>
+                  ))
+                )}
+                <div className="ap-section-total">
+                  <span>Total Deductions</span>
+                  <span style={{ color: "#b91c1c" }}>-{formatCurrency(activeBreakdownPayslip.totalDeductions)}</span>
+                </div>
+              </div>
+            </div>
 
-                  {/* Hero Net Take-Home Card */}
-                  <div className="ap-hero-netpay">
-                    <div>
-                      <div className="ap-hero-netpay-label">Net Take-Home Salary</div>
-                      <div className="ap-hero-netpay-amount">
-                        {formatCurrency(activeBreakdownPayslip.netPayable)}
-                      </div>
-                    </div>
-                    <div className="ap-hero-netpay-badge">
-                      {activeBreakdownPayslip.paymentStatus === "PAID" ? <IconCheck size={14} /> : <IconClock size={14} />}
-                      <span>{activeBreakdownPayslip.paymentStatus === "PAID" ? "Disbursed" : activeBreakdownPayslip.status || "Finalized"}</span>
-                    </div>
-                  </div>
+            <div className="ap-hero-netpay">
+              <div>
+                <div className="ap-hero-netpay-label">Net Take-Home Salary</div>
+                <div className="ap-hero-netpay-amount">
+                  {formatCurrency(activeBreakdownPayslip.netPayable)}
+                </div>
+              </div>
+              <div className="ap-hero-netpay-badge">
+                {activeBreakdownPayslip.paymentStatus === "PAID" ? <IconCheck size={14} /> : <IconClock size={14} />}
+                <span>{activeBreakdownPayslip.paymentStatus === "PAID" ? "Disbursed" : activeBreakdownPayslip.status || "Finalized"}</span>
+              </div>
+            </div>
 
-                  {/* Banking & Disbursal Footprint */}
-                  <div className="ap-banking-footer">
-                    <div>
-                      <strong>Account:</strong>{" "}
-                      {activeBreakdownPayslip.employeeSnapshot?.bankDetails?.accountNumber
-                        ? `•••• ${activeBreakdownPayslip.employeeSnapshot.bankDetails.accountNumber.slice(-4)} (${activeBreakdownPayslip.employeeSnapshot.bankDetails.bankName || "Salary A/C"})`
-                        : "Direct Bank Transfer on file"}
-                    </div>
-                    {activeBreakdownPayslip.payments?.[0]?.referenceNumber ? (
-                      <div>
-                        <strong>Transaction Ref (UTR):</strong> {activeBreakdownPayslip.payments[0].referenceNumber}
-                      </div>
-                    ) : (
-                      <div>
-                        <strong>Statement Reference:</strong> {activeBreakdownPayslip.payslipNumber || `PS-${selectedCycle?.periodYear || 2026}-${String(selectedCycle?.periodMonth || 10).padStart(2, "0")}`}
-                      </div>
-                    )}
-                  </div>
-                </>
+            <div className="ap-banking-footer">
+              <div>
+                <strong>Account:</strong>{" "}
+                {activeBreakdownPayslip.employeeSnapshot?.bankDetails?.accountNumber
+                  ? `•••• ${activeBreakdownPayslip.employeeSnapshot.bankDetails.accountNumber.slice(-4)} (${activeBreakdownPayslip.employeeSnapshot.bankDetails.bankName || "Salary A/C"})`
+                  : "Direct Bank Transfer on file"}
+              </div>
+              {activeBreakdownPayslip.payments?.[0]?.referenceNumber ? (
+                <div>
+                  <strong>Transaction Ref (UTR):</strong> {activeBreakdownPayslip.payments[0].referenceNumber}
+                </div>
               ) : (
-                <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--muted)" }}>
-                  <IconFileText size={40} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
-                  <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Select an employee record</div>
-                  <div>Choose an employee from the left register to inspect itemized allowances, deductions, and banking details.</div>
+                <div>
+                  <strong>Statement Reference:</strong> {activeBreakdownPayslip.payslipNumber || `PS-${selectedCycle?.periodYear || 2026}-${String(selectedCycle?.periodMonth || 10).padStart(2, "0")}`}
                 </div>
               )}
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </AppModal>
 
       {/* CREATE NEW PAYROLL CYCLE MODAL */}
       {showNewCycleModal && (
@@ -2094,7 +2069,7 @@ export default function AdminPayroll() {
             </div>
 
             <form onSubmit={handleCreateNewCycle} style={{ display: "grid", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="ap-form-stack">
                 <div>
                   <label htmlFor="newCycleMonthSelect" style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
                     Payroll Month <span style={{ color: "#ef4444" }}>*</span>
@@ -2164,7 +2139,7 @@ export default function AdminPayroll() {
                 <button
                   type="submit"
                   className="btn-primary"
-                  disabled={cycleActionLoading}
+                  disabled={cycleActionLoading || !canCalculatePayroll}
                 >
                   {cycleActionLoading ? "Calculating..." : "Create & Calculate Draft"}
                 </button>

@@ -1,5 +1,5 @@
 import { HttpError } from "../utils/httpError.js";
-import { USER_ROLES } from "../models/User.js";
+import { isHrPortalOperator } from "../models/User.js";
 import { TASK_STATUSES, TASK_PRIORITIES } from "../models/Task.js";
 import { saveDocumentFile, validateDocumentFile } from "../services/documentStorage.js";
 import {
@@ -19,7 +19,7 @@ export async function getWorkManagementMeta(req, res, next) {
   try {
     const { Employee } = req.auth.models;
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
 
     let directReports = [];
     if (actorEmployee) {
@@ -31,19 +31,27 @@ export async function getWorkManagementMeta(req, res, next) {
         .lean();
     }
 
-    // All active employees for HR Admin assignment
+    // All active employees for HR Admin assignment (CA4-C scoped)
     let assignableEmployees = directReports;
+    let distinctDepartments;
+    const departmentQuery = { "job.department": { $nin: ["", null] } };
     if (isHrAdmin) {
-      assignableEmployees = await Employee.find({ status: "ACTIVE" })
+      const { assertHrPermission, mergeEmployeeScopeFilter } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.view");
+      const empFilter = mergeEmployeeScopeFilter(req.hrAccess, { status: "ACTIVE" });
+      assignableEmployees = await Employee.find(empFilter)
         .select("_id fullName employeeCode email job.department job.jobTitle job.reportingManagerId")
         .sort({ fullName: 1 })
         .lean();
+      distinctDepartments = await Employee.distinct(
+        "job.department",
+        mergeEmployeeScopeFilter(req.hrAccess, { status: "ACTIVE", ...departmentQuery })
+      );
+    } else {
+      distinctDepartments = await Employee.distinct("job.department", departmentQuery);
     }
-
-    // Distinct departments
-    const distinctDepartments = await Employee.distinct("job.department", {
-      "job.department": { $nin: ["", null] },
-    });
 
     const metaPayload = {
       userRole: req.auth.user.role,
@@ -69,6 +77,16 @@ export async function getWorkManagementMeta(req, res, next) {
  */
 export async function createTask(req, res, next) {
   try {
+    if (isHrPortalOperator(req.auth.user.role)) {
+      const { assertHrPermission, assertEmployeeInScope } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.edit");
+      const assigneeId = req.body?.assigneeId || req.body?.assigneeEmployeeId;
+      if (assigneeId) {
+        assertEmployeeInScope(req.hrAccess, assigneeId, "You cannot assign tasks outside your employee scope.");
+      }
+    }
     const task = await createTaskService({
       models: req.auth.models,
       user: req.auth.user,
@@ -87,7 +105,7 @@ export async function getTasks(req, res, next) {
   try {
     const { Task } = req.auth.models;
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
@@ -100,6 +118,17 @@ export async function getTasks(req, res, next) {
     const isTeamTasks = rawScope === "team_tasks" || rawScope === "team";
     const isCovering = rawScope === "covering";
     const isAll = rawScope === "all";
+
+    // CA4-C: Work Management has no dedicated catalog module — company-wide HR views
+    // require people.view and are employee-scoped. Personal my_tasks remain self-service.
+    if (isHrAdmin && !isMyTasks && !isCovering) {
+      const { assertHrPermission, mergeEmployeeIdScopeFilter } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.view");
+      // Scope filter applied below via assigneeId when CUSTOM
+      req._hrTaskScopeFilter = mergeEmployeeIdScopeFilter(req.hrAccess, {}, "assigneeId");
+    }
 
     const conditions = [];
 
@@ -192,6 +221,10 @@ export async function getTasks(req, res, next) {
       });
     }
 
+    if (req._hrTaskScopeFilter && Object.keys(req._hrTaskScopeFilter).length) {
+      conditions.push(req._hrTaskScopeFilter);
+    }
+
     const query =
       conditions.length === 0
         ? {}
@@ -241,7 +274,7 @@ export async function getTaskById(req, res, next) {
   try {
     const { Task } = req.auth.models;
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
 
     const task = await Task.findById(req.params.id).lean();
     if (!task) {
@@ -273,6 +306,18 @@ export async function getTaskById(req, res, next) {
       return res.status(200).json({ success: true, task });
     }
 
+    if (isHrAdmin) {
+      const { assertHrPermission, assertEmployeeInScope } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.view");
+      assertEmployeeInScope(
+        req.hrAccess,
+        task.assigneeId,
+        "You do not have access to this task."
+      );
+    }
+
     res.status(200).json({ success: true, task });
   } catch (error) {
     next(error);
@@ -287,7 +332,7 @@ export async function updateTask(req, res, next) {
   try {
     const { Task, AuditLog } = req.auth.models;
     const actorEmployee = await getAuthenticatedEmployee(req.auth.models, req.auth.user);
-    const isHrAdmin = req.auth.user.role === USER_ROLES.HR_ADMIN;
+    const isHrAdmin = isHrPortalOperator(req.auth.user.role);
 
     const task = await Task.findById(req.params.id);
     if (!task) {
@@ -301,6 +346,18 @@ export async function updateTask(req, res, next) {
     const isAssigner = actorEmployee && task.assignedByEmployeeId && String(task.assignedByEmployeeId) === String(actorEmployee._id);
     if (!isHrAdmin && !isAssigner) {
       throw new HttpError(403, "Only the assigning manager or an HR Admin can update this task");
+    }
+
+    if (isHrAdmin) {
+      const { assertHrPermission, assertEmployeeInScope } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.edit");
+      assertEmployeeInScope(
+        req.hrAccess,
+        task.assigneeId,
+        "You do not have access to this task."
+      );
     }
 
     const { title, description, priority, deadline, acceptanceCriteria, projectName } = req.body;
@@ -347,6 +404,7 @@ export async function startTask(req, res, next) {
       models: req.auth.models,
       user: req.auth.user,
       taskId: req.params.id,
+      hrAccess: req.hrAccess,
     });
     res.status(200).json({ success: true, message: "Task started and marked In Progress", task });
   } catch (error) {
@@ -366,6 +424,7 @@ export async function submitEvidence(req, res, next) {
       taskId: req.params.id,
       deliverables,
       submissionNotes,
+      hrAccess: req.hrAccess,
     });
     res.status(200).json({ success: true, message: "Work deliverables submitted for review successfully", task });
   } catch (error) {
@@ -385,6 +444,7 @@ export async function reviewTask(req, res, next) {
       taskId: req.params.id,
       decision,
       comments,
+      hrAccess: req.hrAccess,
     });
 
     const actionText =

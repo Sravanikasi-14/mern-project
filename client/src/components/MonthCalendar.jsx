@@ -109,6 +109,7 @@ export default function MonthCalendar({
             const meta = dayStatuses[day.dateStr] || { statusKey: day.isOtherMonth ? "other" : "none" };
             const tip = meta.tooltip || meta.label || "";
             const isSelected = selectedDate === day.dateStr;
+            const tipId = `mc-tip-${day.dateStr}`;
             const showTip = tipDate === day.dateStr && tip;
 
             return (
@@ -119,8 +120,8 @@ export default function MonthCalendar({
                   day.isOtherMonth ? "is-muted" : ""
                 } ${day.isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
                 role="gridcell"
-                aria-label={`${day.dateStr}: ${meta.label || meta.statusKey}`}
-                title={tip}
+                aria-label={`${day.dateStr}: ${meta.label || meta.statusKey}${tip ? `. ${tip}` : ""}`}
+                aria-describedby={showTip ? tipId : undefined}
                 disabled={day.isOtherMonth}
                 onClick={() => {
                   if (day.isOtherMonth) return;
@@ -136,7 +137,11 @@ export default function MonthCalendar({
                 {!day.isOtherMonth && meta.shortLabel ? (
                   <span className="mc-status-label">{meta.shortLabel}</span>
                 ) : null}
-                {showTip ? <span className="mc-tooltip">{tip}</span> : null}
+                {showTip ? (
+                  <span id={tipId} role="tooltip" className="mc-tooltip">
+                    {tip}
+                  </span>
+                ) : null}
               </button>
             );
           }

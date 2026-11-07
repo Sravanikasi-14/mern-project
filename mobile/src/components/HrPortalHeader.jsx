@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { Bell, ChevronLeft } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
 import { useNotify } from "../app/notifyContext";
 import { companyHasLogo, getCompanyBrandName } from "../utils/companyBrand";
@@ -14,6 +14,8 @@ export default function HrPortalHeader({
   title = "Dashboard",
   eyebrow = "HR Admin Portal",
   showAvatar = true,
+  showBack = false,
+  onBack,
 }) {
   const { user, company } = useAuth();
   const notify = useNotify();
@@ -54,7 +56,16 @@ export default function HrPortalHeader({
   return (
     <header className="hr-portal-header">
       <div className="hr-portal-brand">
-        {showImage ? (
+        {showBack ? (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Go back"
+            onClick={() => (typeof onBack === "function" ? onBack() : navigate(-1))}
+          >
+            <ChevronLeft size={22} strokeWidth={1.85} aria-hidden="true" />
+          </button>
+        ) : showImage ? (
           <img
             src={logoSrc}
             alt=""

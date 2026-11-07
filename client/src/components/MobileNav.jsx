@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
 import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import "./MobileNav.css";
 
@@ -54,6 +55,11 @@ const ICONS = {
       <circle cx="5" cy="12" r="1.6" />
       <circle cx="12" cy="12" r="1.6" />
       <circle cx="19" cy="12" r="1.6" />
+    </Ico>
+  ),
+  messages: (
+    <Ico>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </Ico>
   ),
   pay: (
@@ -110,6 +116,8 @@ const EMP_TABS = [
 ];
 
 const EMP_MORE = [
+  { id: "messages", label: "Messages", path: "/app/messages", icon: "messages" },
+  { id: "directory", label: "Organization", path: "/app/directory", icon: "people" },
   { id: "payslips", label: "Payslips", path: "/app/payslips", icon: "pay" },
   { id: "assets", label: "My assets", path: "/app/assets", icon: "assets" },
   { id: "impact", label: "Impact Points", path: "/app/impact-points", icon: "star" },
@@ -118,44 +126,75 @@ const EMP_MORE = [
   { id: "settings", label: "Settings", path: "/app/settings", icon: "settings" },
 ];
 
-const HR_TABS = [
-  { id: "home", label: "Home", path: "/admin/dashboard", icon: "home" },
-  { id: "people", label: "People", path: "/admin", icon: "people", matchPrefix: "/admin/employees" },
-  { id: "attendance", label: "Attendance", path: "/admin/attendance", icon: "clock" },
-  { id: "leave", label: "Leave", path: "/admin/leave", icon: "calendar" },
-];
+const PORTAL_MOBILE_ICON = {
+  dashboard: "home",
+  "hr-management": "people",
+  people: "people",
+  attendance: "clock",
+  leave: "calendar",
+  payroll: "pay",
+  settlements: "pay",
+  hiring: "onboard",
+  assets: "assets",
+  organization: "people",
+  messages: "messages",
+  "policies-settings": "file",
+  reports: "file",
+  "impact-points": "star",
+  work: "tasks",
+};
 
-const HR_MORE = [
-  { id: "offers", label: "Offer letters", path: "/admin/offers", icon: "file" },
-  { id: "onboarding", label: "Onboarding", path: "/admin/onboarding", icon: "onboard" },
-  { id: "payroll", label: "Payroll", path: "/admin/payroll", icon: "pay" },
-  { id: "assets", label: "Assets", path: "/admin/assets", icon: "assets" },
-  { id: "work", label: "Work", path: "/admin/work-management", icon: "tasks" },
-  { id: "impact", label: "Impact Points", path: "/admin/impact-points", icon: "star" },
-  { id: "policies", label: "Policies", path: "/admin/policies", icon: "file" },
-  { id: "settings", label: "Settings", path: "/admin/settings", icon: "settings" },
-];
-
-function isActive(item, pathname) {
+function isActive(item, pathname, search = "") {
   if (item.match) return item.match.includes(pathname);
   if (item.id === "people") {
     return pathname === "/admin" || pathname.startsWith("/admin/employees");
   }
+  if (item.id === "payroll") {
+    return pathname === "/admin/payroll" && !isSettlementsLocation(pathname, search);
+  }
+  if (item.id === "settlements") {
+    return isSettlementsLocation(pathname, search);
+  }
+  if (item.id === "policies" || item.id === "policies-settings") {
+    return (
+      pathname === "/admin/policies" ||
+      pathname.startsWith("/admin/policies/") ||
+      pathname === "/admin/settings" ||
+      pathname.startsWith("/admin/settings/")
+    );
+  }
+  if (item.id === "work") {
+    return pathname.startsWith("/admin/work-management") || pathname.startsWith("/admin/work-impact");
+  }
   if (item.matchPrefix && pathname.startsWith(item.matchPrefix)) return true;
-  if (pathname === item.path) return true;
-  return item.path !== "/admin" && pathname.startsWith(`${item.path}/`);
+  const pathOnly = String(item.path || "").split("?")[0];
+  if (!pathOnly) return false;
+  if (pathname === pathOnly) return !String(item.path || "").includes("?");
+  return pathOnly !== "/admin" && pathname.startsWith(`${pathOnly}/`);
 }
 
 export default function MobileNav() {
-  const { user, logout } = useAuth();
+  const { user, company, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const isHr = user?.role === "HR_ADMIN";
-  const tabs = isHr ? HR_TABS : EMP_TABS;
-  const moreItems = isHr ? HR_MORE : EMP_MORE;
-  const moreActive = moreItems.some((item) => isActive(item, location.pathname));
+  const isHr = user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN";
+  const portalItems = visibleHrPortalModules(user, company).map((item) => ({
+    ...item,
+    icon: PORTAL_MOBILE_ICON[item.id] || "file",
+  }));
+  const tabs = isHr ? portalItems.slice(0, 4) : EMP_TABS;
+  const messageItem = {
+    id: "messages",
+    label: "Messages",
+    path: isHr ? "/admin/messages" : "/app/messages",
+    icon: "messages",
+  };
+  const moreItems = isHr
+    ? [messageItem, ...portalItems.slice(4).filter((item) => item.id !== "messages")]
+    : EMP_MORE;
+  const moreActive = moreItems.some((item) => isActive(item, location.pathname, location.search));
 
   useEffect(() => {
     setMoreOpen(false);
@@ -170,13 +209,14 @@ export default function MobileNav() {
     return () => window.removeEventListener("keydown", onKey);
   }, [moreOpen]);
 
-  if (!user || (user.role !== "HR_ADMIN" && user.role !== "EMPLOYEE")) {
+  if (!user || (user.role !== "HR_ADMIN" && user.role !== "COMPANY_ADMIN" && user.role !== "EMPLOYEE")) {
     return null;
   }
 
   const go = (path) => {
     setMoreOpen(false);
-    if (location.pathname !== path) navigate(path);
+    const current = `${location.pathname}${location.search || ""}`;
+    if (current !== path) navigate(path);
   };
 
   const handleLogout = async () => {
@@ -197,7 +237,7 @@ export default function MobileNav() {
     <>
       <nav className="mobile-tabbar" aria-label="Primary">
         {tabs.map((item) => {
-          const active = isActive(item, location.pathname);
+          const active = isActive(item, location.pathname, location.search);
           return (
             <button
               key={item.id}
@@ -231,13 +271,14 @@ export default function MobileNav() {
             <p className="mobile-more-title">{isHr ? "HR tools" : "More"}</p>
             <ul className="mobile-more-list">
               {moreItems.map((item) => {
-                const active = isActive(item, location.pathname);
+                const active = isActive(item, location.pathname, location.search);
                 return (
                   <li key={item.id}>
                     <button
                       type="button"
                       className={`mobile-more-item${active ? " is-active" : ""}`}
                       onClick={() => go(item.path)}
+                      aria-current={active ? "page" : undefined}
                     >
                       <span className="mobile-more-icon">
                         {isHr ? ICONS[item.icon] : <EmployeeIcon name={item.icon} size={20} strokeWidth={active ? 2.15 : 1.75} />}

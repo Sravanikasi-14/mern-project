@@ -12,6 +12,9 @@ import {
 } from "../components/Icons";
 import Pagination, { useClientPagination } from "../components/Pagination";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import {
   useAdminImpactLeaderboardQuery,
   useAdminImpactTransactionsQuery,
@@ -19,7 +22,7 @@ import {
 import { useTasksMetaQuery } from "../hooks/useEmployeeQueries";
 import { invalidateImpact } from "../lib/queryKeys";
 import "./WorkManagement.css";
-import MobileExpandable from "../components/mobile/MobileExpandable";
+import ModuleToolbar from "../components/ModuleToolbar";
 
 const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
@@ -30,6 +33,8 @@ const PERIOD_OPTIONS = [
 
 export default function AdminImpactPoints() {
   const queryClient = useQueryClient();
+  const { user, company } = useAuth();
+  const canManageImpact = hrPortalAllows(user, company, "impact.manage");
   const [activeTab, setActiveTab] = useState("LEADERBOARD"); // 'LEADERBOARD' | 'LEDGER'
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -37,6 +42,7 @@ export default function AdminImpactPoints() {
   // Leaderboard filters
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
+  const [leaderboardSearch, setLeaderboardSearch] = useState("");
 
   // Ledger filters
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -88,8 +94,18 @@ export default function AdminImpactPoints() {
     { enabled: activeTab === "LEDGER" }
   );
 
-  const leaderboard = Array.isArray(leaderboardQuery.data) ? leaderboardQuery.data : [];
-  const leaderboardLoading = leaderboardQuery.isLoading && leaderboard.length === 0;
+  const leaderboardRaw = Array.isArray(leaderboardQuery.data) ? leaderboardQuery.data : [];
+  const leaderboard = useMemo(() => {
+    const q = leaderboardSearch.trim().toLowerCase();
+    if (!q) return leaderboardRaw;
+    return leaderboardRaw.filter((row) => {
+      const name = String(row.name || row.fullName || "").toLowerCase();
+      const code = String(row.employeeCode || "").toLowerCase();
+      const dept = String(row.department || row.job?.department || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || dept.includes(q);
+    });
+  }, [leaderboardRaw, leaderboardSearch]);
+  const leaderboardLoading = leaderboardQuery.isLoading && leaderboardRaw.length === 0;
   const leaderboardPager = useClientPagination(leaderboard, 10);
 
   const transactions = Array.isArray(ledgerQuery.data?.transactions)
@@ -237,6 +253,7 @@ export default function AdminImpactPoints() {
                 (activeTab === "LEDGER" && ledgerQuery.isFetching && transactions.length > 0)
             )}
           />
+          {canManageImpact ? (
           <button
             className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
             onClick={toggleRecognizePanel}
@@ -244,6 +261,9 @@ export default function AdminImpactPoints() {
           >
             {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
           </button>
+          ) : (
+            <AccessRestrictedInline />
+          )}
         </div>
       </AppHeader>
 
@@ -341,98 +361,100 @@ export default function AdminImpactPoints() {
               </div>
             </div>
 
-            {/* Tab-Specific Filters */}
             {activeTab === "LEADERBOARD" && (
-              <MobileExpandable title="Leaderboard filters">
-              <div className="wm-filter-row">
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Department:</span>
-                  <select
-                    className="wm-select"
-                    value={departmentFilter}
-                    onChange={(e) => setDepartmentFilter(e.target.value)}
-                    style={{ minWidth: 160 }}
-                  >
-                    <option value="ALL">All Departments</option>
-                    {(meta?.departments || []).map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Timeframe:</span>
-                  <div style={{ display: "flex", gap: 3, background: "#e2e8f0", padding: 3, borderRadius: 8 }}>
-                    {PERIOD_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setPeriodFilter(opt.value)}
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          border: "none",
-                          background: periodFilter === opt.value ? "#ffffff" : "transparent",
-                          color: periodFilter === opt.value ? "#2563eb" : "#475569",
-                          boxShadow: periodFilter === opt.value ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
+              <ModuleToolbar
+                searchValue={leaderboardSearch}
+                onSearchChange={(e) => setLeaderboardSearch(e.target.value)}
+                searchPlaceholder="Search name or employee ID..."
+                searchAriaLabel="Search leaderboard"
+                filterCount={
+                  (departmentFilter !== "ALL" ? 1 : 0) + (periodFilter !== "all" ? 1 : 0)
+                }
+                onFiltersClear={() => {
+                  setDepartmentFilter("ALL");
+                  setPeriodFilter("all");
+                }}
+                filters={
+                  <>
+                    <label className="module-toolbar-filter-field">
+                      Department
+                      <select
+                        className="filter-select"
+                        value={departmentFilter}
+                        onChange={(e) => setDepartmentFilter(e.target.value)}
                       >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              </MobileExpandable>
+                        <option value="ALL">All Departments</option>
+                        {(meta?.departments || []).map((dept) => (
+                          <option key={dept} value={dept}>
+                            {dept}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="module-toolbar-filter-field">
+                      Timeframe
+                      <select
+                        className="filter-select"
+                        value={periodFilter}
+                        onChange={(e) => setPeriodFilter(e.target.value)}
+                      >
+                        {PERIOD_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                }
+              />
             )}
 
             {activeTab === "LEDGER" && (
-              <div className="wm-filter-row">
-                <form onSubmit={handleSearchLedgerSubmit} className="wm-search-wrapper">
-                  <span className="wm-search-icon">
-                    <IconSearch size={15} />
-                  </span>
-                  <input
-                    type="text"
-                    className="wm-input-search"
-                    placeholder="Search reason or employee..."
-                    value={searchLedger}
-                    onChange={(e) => setSearchLedger(e.target.value)}
-                  />
-                </form>
-
-                <MobileExpandable title="Ledger filters">
-                <div className="wm-filter-group">
-                  <select
-                    className="wm-select"
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value)}
-                  >
-                    <option value="ALL">Type: All</option>
-                    <option value="EARNED">Earned (+)</option>
-                    <option value="DEDUCTED">Deducted (-)</option>
-                    <option value="REVERSAL">Reversals</option>
-                  </select>
-
-                  <select
-                    className="wm-select"
-                    value={sourceFilter}
-                    onChange={(e) => setSourceFilter(e.target.value)}
-                  >
-                    <option value="ALL">Source: All</option>
-                    <option value="AUTOMATIC_TASK">Automatic Task</option>
-                    <option value="MANAGER_RECOGNITION">Recognition</option>
-                    <option value="MANUAL_HR">Manual HR</option>
-                  </select>
-                </div>
-                </MobileExpandable>
-              </div>
+              <ModuleToolbar
+                searchValue={searchLedger}
+                onSearchChange={(e) => setSearchLedger(e.target.value)}
+                onSearchSubmit={handleSearchLedgerSubmit}
+                searchPlaceholder="Search reason or employee..."
+                searchAriaLabel="Search reason or employee"
+                filterCount={
+                  (typeFilter !== "ALL" ? 1 : 0) + (sourceFilter !== "ALL" ? 1 : 0)
+                }
+                onFiltersClear={() => {
+                  setTypeFilter("ALL");
+                  setSourceFilter("ALL");
+                }}
+                filters={
+                  <>
+                    <label className="module-toolbar-filter-field">
+                      Type
+                      <select
+                        className="filter-select"
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value)}
+                      >
+                        <option value="ALL">All</option>
+                        <option value="EARNED">Earned (+)</option>
+                        <option value="DEDUCTED">Deducted (-)</option>
+                        <option value="REVERSAL">Reversals</option>
+                      </select>
+                    </label>
+                    <label className="module-toolbar-filter-field">
+                      Source
+                      <select
+                        className="filter-select"
+                        value={sourceFilter}
+                        onChange={(e) => setSourceFilter(e.target.value)}
+                      >
+                        <option value="ALL">All</option>
+                        <option value="AUTOMATIC_TASK">Automatic Task</option>
+                        <option value="MANAGER_RECOGNITION">Recognition</option>
+                        <option value="MANUAL_HR">Manual HR</option>
+                      </select>
+                    </label>
+                  </>
+                }
+              />
             )}
           </div>
 
@@ -615,7 +637,7 @@ export default function AdminImpactPoints() {
                             {tx.actor?.name || tx.actorSnapshot?.fullName || tx.actorSnapshot?.email || "System"}
                           </td>
                           <td style={{ textAlign: "right" }}>
-                            {tx.transactionType !== "REVERSAL" && (
+                            {canManageImpact && tx.transactionType !== "REVERSAL" && (
                               <button
                                 onClick={() => startReversal(tx)}
                                 className="wm-btn-table-action"

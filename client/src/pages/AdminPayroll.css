@@ -12,12 +12,65 @@
   box-sizing: border-box;
 }
 
+/* Compact alerts — stay visible without dominating vertical space */
+.ap-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ap-alert--success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.ap-alert--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.ap-alert--warn {
+  display: block;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 8px 12px;
+}
+
+.ap-alert-warn-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.ap-alert-warn-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  font-size: 12.5px;
+}
+
+.ap-alert-warn-list li {
+  margin-bottom: 2px;
+}
+
+.ap-alert-warn-list a {
+  font-weight: 700;
+}
+
 /* Metric Summary Row */
 .ap-metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 @media (max-width: 1024px) {
@@ -36,10 +89,12 @@
   background: var(--card, #ffffff);
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: 12px;
-  padding: 16px 20px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-height: 92px;
+  box-sizing: border-box;
   box-shadow: 0 1px 3px rgba(19, 26, 21, 0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -89,18 +144,18 @@
   margin-top: 2px;
 }
 
-/* Cycle & Filter Toolbar */
+/* Cycle & Filter Toolbar — single aligned row when width allows */
 .ap-toolbar {
   background: var(--card, #ffffff);
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: 12px;
-  padding: 12px 18px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 14px;
   box-shadow: 0 1px 2px rgba(19, 26, 21, 0.03);
 }
 
@@ -109,14 +164,18 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .ap-toolbar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
+
+/* Search / button sizing inherited from shared .module-toolbar rules in index.css */
 
 .ap-select {
   border-radius: 8px;
@@ -126,19 +185,87 @@
 }
 
 .ap-search-input {
-  padding: 7px 12px;
+  /* Prefer ModuleSearch; keep legacy class aligned to standard height */
+  height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--hair, #e3e7e4);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 10px;
+  font-size: 13.5px;
   background: #ffffff;
   color: var(--ink, #131a15);
   min-width: 200px;
   transition: border-color 0.15s ease;
+  box-sizing: border-box;
 }
 
 .ap-search-input:focus {
   outline: none;
   border-color: var(--g-700, #1d7347);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
+}
+
+.ap-register-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+.ap-form-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 520px) {
+  .ap-form-stack {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ap-detail-panel--modal {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+  gap: 12px;
+}
+
+.app-modal-panel.ap-payslip-modal {
+  max-height: min(94vh, 94dvh);
+}
+
+.app-modal-panel.ap-payslip-modal .app-modal-header {
+  padding: 12px 16px 10px;
+}
+
+.app-modal-panel.ap-payslip-modal .app-modal-body {
+  padding: 10px 16px 12px;
+}
+
+.app-modal-panel.ap-payslip-modal .app-modal-footer {
+  padding: 10px 16px;
+}
+
+.app-modal-panel.ap-payslip-modal .ap-attendance-bar {
+  padding: 8px 12px;
+  gap: 8px;
+}
+
+.app-modal-panel.ap-payslip-modal .ap-breakdown-grid {
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+.app-modal-panel.ap-payslip-modal .ap-hero-netpay {
+  padding: 14px 16px;
+}
+
+.app-modal-panel.ap-payslip-modal .ap-line-item {
+  padding: 4px 0;
+}
+
+.app-modal-panel.ap-payslip-modal .ap-detail-panel {
+  gap: 12px;
 }
 
 .ap-filter-pill-group {
@@ -174,10 +301,10 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-/* Master-Detail Layout Workspace */
+/* Register workspace — detail opens in modal (no persistent dual pane) */
 .ap-workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }

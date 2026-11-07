@@ -9,6 +9,7 @@ import { getAuditLogModel } from "../models/AuditLog.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getCompanyHrPolicyModel } from "../models/CompanyHrPolicy.js";
 import { getOfferLetterModel } from "../models/OfferLetter.js";
+import { getOfferTemplateModel } from "../models/OfferTemplate.js";
 import { getSettlementModel } from "../models/Settlement.js";
 import { getAttendanceModel } from "../models/Attendance.js";
 import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
@@ -18,7 +19,18 @@ import { getCompanyAssetModel } from "../models/CompanyAsset.js";
 import { getTaskModel } from "../models/Task.js";
 import { getImpactPointTransactionModel } from "../models/ImpactPointTransaction.js";
 import { getNotificationModel } from "../models/Notification.js";
+import { getConversationModel } from "../models/Conversation.js";
+import { getConversationMemberModel } from "../models/ConversationMember.js";
+import { getMessageModel } from "../models/Message.js";
+import { getChatFileModel } from "../models/ChatFile.js";
+import { getAnnouncementModel } from "../models/Announcement.js";
+import { getAnnouncementReadModel } from "../models/AnnouncementRead.js";
 import { getLeaveBackupProposalModel } from "../models/LeaveBackupProposal.js";
+import { getTeamModel } from "../models/Team.js";
+import { getDepartmentModel } from "../models/Department.js";
+import { getDesignationModel } from "../models/Designation.js";
+import { getProjectModel } from "../models/Project.js";
+import { getProjectMembershipModel } from "../models/ProjectMembership.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -133,6 +145,7 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     LeaveRequest: getLeaveRequestModel(connection),
     CompanyHrPolicy: getCompanyHrPolicyModel(connection),
     OfferLetter: getOfferLetterModel(connection),
+    OfferTemplate: getOfferTemplateModel(connection),
     Settlement: getSettlementModel(connection),
     Attendance: getAttendanceModel(connection),
     LiveTrackingSession: getLiveTrackingSessionModel(connection),
@@ -142,7 +155,18 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     Task: getTaskModel(connection),
     ImpactPointTransaction: getImpactPointTransactionModel(connection),
     Notification: getNotificationModel(connection),
+    Conversation: getConversationModel(connection),
+    ConversationMember: getConversationMemberModel(connection),
+    Message: getMessageModel(connection),
+    ChatFile: getChatFileModel(connection),
+    Announcement: getAnnouncementModel(connection),
+    AnnouncementRead: getAnnouncementReadModel(connection),
     LeaveBackupProposal: getLeaveBackupProposalModel(connection),
+    Team: getTeamModel(connection),
+    Department: getDepartmentModel(connection),
+    Designation: getDesignationModel(connection),
+    Project: getProjectModel(connection),
+    ProjectMembership: getProjectMembershipModel(connection),
   };
 }
 

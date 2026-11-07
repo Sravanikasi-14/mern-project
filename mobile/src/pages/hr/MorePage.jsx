@@ -14,15 +14,13 @@ const MODULES = [
   { id: "payroll", label: "Payroll", path: "/admin/payroll", icon: "payroll", color: "#e3f2e9", ink: "#155a37" },
   { id: "payslips", label: "Payslips", path: "/admin/payroll", icon: "payslips", color: "#eef2ff", ink: "#4f46e5" },
   { id: "assets", label: "Company Assets", path: "/admin/assets", icon: "assets", color: "#fdf3e2", ink: "#b06d0a" },
-  { id: "recruitment", label: "Recruitment", path: "/admin/offers?view=candidates", icon: "onboarding", color: "#eff6ff", ink: "#2563eb" },
-  { id: "offers", label: "Offer Letters", path: "/admin/offers?view=offers", icon: "offers", color: "#eef2ff", ink: "#4f46e5" },
-  { id: "onboarding", label: "Onboarding", path: "/admin/onboarding", icon: "onboarding", color: "#e3f2e9", ink: "#1d7347" },
+  { id: "organization", label: "Organization", path: "/admin/organization", icon: "people", color: "#e3f2e9", ink: "#155a37" },
+  { id: "hiring", label: "Hiring & Onboarding", path: "/admin/hiring", icon: "onboarding", color: "#e3f2e9", ink: "#1d7347" },
   { id: "work", label: "Work Management", path: "/admin/work-management", icon: "work", color: "#e3f2e9", ink: "#1d7347" },
   { id: "impact", label: "Impact Points", path: "/admin/impact-points", icon: "impact", color: "#fdeceb", ink: "#c23b3b" },
   { id: "reports", label: "Reports", path: "/admin/reports", icon: "reports", color: "#e3f2e9", ink: "#155a37" },
   { id: "policies", label: "HR Policies", path: "/admin/policies", icon: "policies", color: "#eef2ff", ink: "#4f46e5" },
   { id: "company", label: "Company Profile", path: "/admin/settings", icon: "profile", color: "#eff6ff", ink: "#2563eb" },
-  { id: "settings", label: "Settings", path: "/admin/settings", icon: "settings", color: "#e3f2e9", ink: "#155a37" },
 ];
 
 export default function HrMorePage() {

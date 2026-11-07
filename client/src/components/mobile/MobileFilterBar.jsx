@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ModuleSearch from "../ModuleSearch";
 import MobileSheet from "./MobileSheet";
 
 export default function MobileFilterBar({
@@ -15,13 +16,11 @@ export default function MobileFilterBar({
     <>
       <div className="m-filter-bar">
         {onSearchChange && (
-          <input
-            type="search"
-            className="search-input"
+          <ModuleSearch
             value={search}
             onChange={onSearchChange}
             placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
+            ariaLabel={searchPlaceholder}
           />
         )}
         <button

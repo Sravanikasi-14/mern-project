@@ -1,7 +1,79 @@
 import { HttpError } from "../utils/httpError.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import { getCompanyBusinessDate } from "../utils/companyTime.js";
+import {
+  CLIENT_PLATFORMS,
+  isWebClientPlatform,
+} from "../utils/clientPlatform.js";
 export { getCompanyBusinessDate };
+
+/**
+ * True when the employee is currently punched in (check-in present, no check-out)
+ * for the company business date. Uses Attendance first, then legacy customFields.
+ */
+export async function employeeHasActivePunchIn({
+  models,
+  employee,
+  companyTimezone = "Asia/Kolkata",
+}) {
+  const todayStr = getCompanyBusinessDate(new Date(), companyTimezone);
+  const attendance = await models.Attendance?.findOne({
+    employeeId: employee._id,
+    date: todayStr,
+  }).lean();
+
+  if (attendance?.checkIn && !attendance?.checkOut) {
+    return true;
+  }
+  if (attendance?.checkIn && attendance?.checkOut) {
+    return false;
+  }
+
+  const logs = employee.customFields?.attendanceLogs || [];
+  const todayLog = logs.find((l) => l.date === todayStr);
+  if (todayLog?.checkIn && !todayLog?.checkOut) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Stop all ACTIVE live-tracking sessions for an employee (idempotent).
+ * Prefer this for punch-out / logout cleanup.
+ */
+export async function stopActiveLiveTrackingSessions({
+  models,
+  employee,
+  reason = "",
+}) {
+  const { LiveTrackingSession } = models;
+  if (!LiveTrackingSession || !employee?._id) {
+    return { success: true, stoppedCount: 0, reason };
+  }
+
+  const stoppedAt = new Date();
+  const result = await LiveTrackingSession.updateMany(
+    { employeeId: employee._id, status: "ACTIVE" },
+    { $set: { status: "STOPPED", stoppedAt } }
+  );
+
+  const stoppedCount =
+    typeof result.modifiedCount === "number"
+      ? result.modifiedCount
+      : typeof result.nModified === "number"
+        ? result.nModified
+        : 0;
+
+  return {
+    success: true,
+    stoppedCount,
+    reason,
+    message:
+      stoppedCount > 0
+        ? "Active live tracking session(s) stopped."
+        : "No active tracking session to stop.",
+  };
+}
 
 /**
  * Validates browser geolocation coordinates and metadata.
@@ -261,9 +333,32 @@ export async function punchOutEmployee({
     await employee.save();
   }
 
+  // Server-side tracking cleanup: punch-out must stop ACTIVE sessions.
+  // Never reverse a successful punch-out if cleanup fails — surface a warning.
+  let trackingStop = { success: true, stoppedCount: 0 };
+  let trackingStopWarning = null;
+  try {
+    trackingStop = await stopActiveLiveTrackingSessions({
+      models,
+      employee,
+      reason: "punch-out",
+    });
+  } catch (err) {
+    console.error(
+      "[attendance] Failed to stop live tracking after punch-out:",
+      err?.message || err
+    );
+    trackingStop = { success: false, stoppedCount: 0 };
+    trackingStopWarning =
+      "Punch-out was recorded, but stopping the live tracking session failed. Please stop tracking manually or contact support.";
+  }
+
   return {
     success: true,
     message: "Punch-out recorded successfully.",
+    trackingStopped: trackingStop.success !== false,
+    trackingSessionsStopped: trackingStop.stoppedCount || 0,
+    ...(trackingStopWarning ? { trackingStopWarning } : {}),
     today: {
       date: todayStr,
       status: "CHECKED_OUT",
@@ -491,16 +586,44 @@ export async function getEmployeeAttendanceHistory({
 
 /**
  * Starts a time-bounded live tracking session for an employee.
+ * Requires an active punch-in. Enforces allowWebTracking for web AuthSessions.
  */
 export async function startLiveTrackingSession({
   models,
   employee,
   durationMinutes = 30,
   userAgent = "",
+  clientPlatform = CLIENT_PLATFORMS.WEB,
+  companyTimezone = "Asia/Kolkata",
 }) {
-  const { LiveTrackingSession } = models;
+  const { LiveTrackingSession, CompanyHrPolicy } = models;
 
-  // Clean up any existing active sessions
+  const checkedIn = await employeeHasActivePunchIn({
+    models,
+    employee,
+    companyTimezone,
+  });
+  if (!checkedIn) {
+    throw new HttpError(
+      400,
+      "Live tracking requires an active punch-in. Please punch in before starting tracking.",
+      { code: "TRACKING_REQUIRES_PUNCH_IN" }
+    );
+  }
+
+  if (CompanyHrPolicy) {
+    const policy = await getActiveCompanyHrPolicy(CompanyHrPolicy);
+    const allowWebTracking = policy?.locationRules?.allowWebTracking !== false;
+    if (!allowWebTracking && isWebClientPlatform(clientPlatform)) {
+      throw new HttpError(
+        403,
+        "Live tracking from the web application is disabled by company policy. Use the mobile app or contact HR.",
+        { code: "WEB_TRACKING_DISABLED" }
+      );
+    }
+  }
+
+  // Clean up any existing active sessions (no duplicate ACTIVE rows)
   await LiveTrackingSession.updateMany(
     { employeeId: employee._id, status: "ACTIVE" },
     { $set: { status: "STOPPED", stoppedAt: new Date() } }
@@ -509,13 +632,16 @@ export async function startLiveTrackingSession({
   const duration = Math.min(Math.max(parseInt(durationMinutes, 10) || 30, 5), 120);
   const startedAt = new Date();
   const expiresAt = new Date(startedAt.getTime() + duration * 60 * 1000);
+  const platform = isWebClientPlatform(clientPlatform)
+    ? CLIENT_PLATFORMS.WEB
+    : clientPlatform;
 
   const session = new LiveTrackingSession({
     employeeId: employee._id,
     status: "ACTIVE",
     startedAt,
     expiresAt,
-    deviceInfo: { userAgent },
+    deviceInfo: { userAgent, clientPlatform: platform },
   });
 
   await session.save();
@@ -540,6 +666,7 @@ export async function updateLiveTrackingLocation({
   models,
   employee,
   location,
+  companyTimezone = "Asia/Kolkata",
 }) {
   const { LiveTrackingSession } = models;
   const validatedLocation = validateLocationCoordinates(location);
@@ -559,6 +686,25 @@ export async function updateLiveTrackingLocation({
     session.stoppedAt = session.expiresAt;
     await session.save();
     throw new HttpError(400, "Live tracking session has expired. Please start a new session.");
+  }
+
+  // Refuse updates once punch-out has closed the attendance day (safety net).
+  const stillCheckedIn = await employeeHasActivePunchIn({
+    models,
+    employee,
+    companyTimezone,
+  });
+  if (!stillCheckedIn) {
+    await stopActiveLiveTrackingSessions({
+      models,
+      employee,
+      reason: "update-without-active-punch",
+    });
+    throw new HttpError(
+      400,
+      "Live tracking stopped because there is no active punch-in.",
+      { code: "TRACKING_REQUIRES_PUNCH_IN" }
+    );
   }
 
   // Throttle updates: sample if within 4 seconds of previous update
@@ -605,7 +751,7 @@ export async function updateLiveTrackingLocation({
 }
 
 /**
- * Stops an active live tracking session.
+ * Stops an active live tracking session (idempotent).
  */
 export async function stopLiveTrackingSession({
   models,
@@ -625,9 +771,12 @@ export async function stopLiveTrackingSession({
     };
   }
 
-  session.status = "STOPPED";
-  session.stoppedAt = new Date();
-  await session.save();
+  const stoppedAt = new Date();
+  // updateMany covers concurrent ACTIVE duplicates if any remain
+  await LiveTrackingSession.updateMany(
+    { employeeId: employee._id, status: "ACTIVE" },
+    { $set: { status: "STOPPED", stoppedAt } }
+  );
 
   return {
     success: true,
@@ -635,7 +784,7 @@ export async function stopLiveTrackingSession({
     session: {
       id: session._id,
       status: "STOPPED",
-      stoppedAt: session.stoppedAt,
+      stoppedAt,
     },
   };
 }
@@ -695,13 +844,18 @@ export async function getAdminAttendanceOverview({
   companyTimezone = "Asia/Kolkata",
   date,
   department,
+  hrAccess = null,
 }) {
   const { Attendance, Employee, LiveTrackingSession } = models;
   const targetDate = date || getCompanyBusinessDate(new Date(), companyTimezone);
 
-  const employeeFilter = { status: { $ne: "TERMINATED" } };
+  let employeeFilter = { status: { $ne: "TERMINATED" } };
   if (department && department !== "ALL") {
     employeeFilter["job.department"] = department;
+  }
+  if (hrAccess) {
+    const { mergeEmployeeScopeFilter } = await import("./hrAccessEnforcementService.js");
+    employeeFilter = mergeEmployeeScopeFilter(hrAccess, employeeFilter);
   }
 
   const employees = await Employee.find(employeeFilter)

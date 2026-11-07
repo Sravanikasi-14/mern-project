@@ -3,10 +3,58 @@ import fs from "node:fs";
 import mongoose from "mongoose";
 import { findCompanyById, getCompanyModels } from "../config/db.js";
 import { HttpError } from "../utils/httpError.js";
-import { ONBOARDING_STATUSES, ONBOARDING_DOCUMENT_TYPES } from "../models/User.js";
+import {
+  ONBOARDING_STATUSES,
+  ONBOARDING_DOCUMENT_TYPES,
+  ONBOARDING_FROZEN_STATUSES,
+  ONBOARDING_SECTION_KEYS,
+} from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
 import { verifyCandidateOnboardingToken } from "../utils/onboardingToken.js";
+import {
+  SECTION_KEY_LIST,
+  assertSectionsEditable,
+  backfillLegacySectionReviews,
+  isSectionEditableByCandidate,
+  mapChangedSections,
+  markSectionsOnSubmit,
+  resetSectionOnCandidateEdit,
+  serializeSectionReviews,
+} from "../services/onboardingSectionService.js";
+import { emitOnboardingEvent, ONBOARDING_EVENT_TYPES } from "../services/onboardingEventsService.js";
+
+/** Blocks any candidate mutation once onboarding is frozen (approved / account setup / activated / rejected). */
+function assertOnboardingMutable(onboarding, message) {
+  if (ONBOARDING_FROZEN_STATUSES.includes(onboarding.status)) {
+    throw new HttpError(
+      400,
+      message ||
+        (onboarding.status === ONBOARDING_STATUSES.REJECTED
+          ? "This candidate onboarding has been rejected."
+          : "Your onboarding has already been approved and cannot be edited.")
+    );
+  }
+}
+
+/** Applies approval invalidation for edited sections that were previously approved. */
+function invalidateEditedSections(onboarding, sectionKeys) {
+  const invalidated = [];
+  for (const key of sectionKeys) {
+    if (resetSectionOnCandidateEdit(onboarding, key)) {
+      invalidated.push(key);
+    }
+  }
+  return invalidated;
+}
+
+function serializeEditableSections(onboarding) {
+  const editable = {};
+  for (const key of SECTION_KEY_LIST) {
+    editable[key] = isSectionEditableByCandidate(onboarding, key);
+  }
+  return editable;
+}
 
 /**
  * Shared helper to resolve and strictly verify candidate onboarding token, tenant context,
@@ -119,6 +167,8 @@ export async function getCandidateOnboarding(req, res, next) {
           };
         }),
         correctionReason: user.onboarding.correctionReason || "",
+        sectionReviews: serializeSectionReviews(user.onboarding),
+        editableSections: serializeEditableSections(user.onboarding),
         submittedAt: user.onboarding.submittedAt || null,
         approvedAt: user.onboarding.approvedAt || null,
         history: user.onboarding.history || [],
@@ -156,9 +206,7 @@ export async function saveOnboardingDraft(req, res, next) {
     const { token } = req.params;
     const { user } = await resolveAndVerifyCandidateOnboarding(token, { lean: false });
 
-    if (user.onboarding.status === ONBOARDING_STATUSES.APPROVED) {
-      throw new HttpError(400, "Your onboarding has already been approved and cannot be edited.");
-    }
+    assertOnboardingMutable(user.onboarding);
 
     if (user.onboarding.status === ONBOARDING_STATUSES.SUBMITTED) {
       throw new HttpError(
@@ -166,6 +214,11 @@ export async function saveOnboardingDraft(req, res, next) {
         "Your onboarding has been submitted and is currently under review. Edits are disabled until HR requests changes."
       );
     }
+
+    // Section locks: while HR requested changes, only flagged sections may be edited.
+    const touchedSections = mapChangedSections(user.onboarding, req.body);
+    assertSectionsEditable(user.onboarding, touchedSections);
+    invalidateEditedSections(user.onboarding, touchedSections);
 
     const {
       personalDetails,
@@ -328,6 +381,8 @@ export async function saveOnboardingDraft(req, res, next) {
     const serialized = {
       _id: user._id,
       ...raw,
+      sectionReviews: serializeSectionReviews(user.onboarding),
+      editableSections: serializeEditableSections(user.onboarding),
     };
     if (serialized.personalDetails) {
       serialized.personalDetails.phone = serialized.personalDetails.phoneNumber;
@@ -364,9 +419,9 @@ export async function uploadOnboardingDocument(req, res, next) {
       throw new HttpError(400, "File name and file content are required.");
     }
 
-    if (user.onboarding.status === ONBOARDING_STATUSES.APPROVED) {
-      throw new HttpError(400, "Onboarding has already been approved.");
-    }
+    assertOnboardingMutable(user.onboarding, "Onboarding has already been approved.");
+    assertSectionsEditable(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
+    invalidateEditedSections(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
 
     // Save document to tenant isolated storage using candidate user namespace
     const saved = await saveDocumentFile({
@@ -410,9 +465,9 @@ export async function deleteOnboardingDocument(req, res, next) {
     const { token, docId } = req.params;
     const { user } = await resolveAndVerifyCandidateOnboarding(token, { lean: false });
 
-    if (user.onboarding.status === ONBOARDING_STATUSES.APPROVED) {
-      throw new HttpError(400, "Onboarding has already been approved.");
-    }
+    assertOnboardingMutable(user.onboarding, "Onboarding has already been approved.");
+    assertSectionsEditable(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
+    invalidateEditedSections(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
 
     const initialLen = user.onboarding.documents.length;
     user.onboarding.documents = user.onboarding.documents.filter(
@@ -482,10 +537,17 @@ export async function downloadOnboardingDocument(req, res, next) {
 export async function submitOnboarding(req, res, next) {
   try {
     const { token } = req.params;
-    const { models, user } = await resolveAndVerifyCandidateOnboarding(token, { lean: false });
+    const { company, models, user } = await resolveAndVerifyCandidateOnboarding(token, { lean: false });
 
-    if (user.onboarding.status === ONBOARDING_STATUSES.APPROVED) {
-      throw new HttpError(400, "Your onboarding has already been approved.");
+    assertOnboardingMutable(user.onboarding, "Your onboarding has already been approved.");
+
+    // Section locks apply to any inline edits sent with the final submission.
+    if (req.body && Object.keys(req.body).length > 0) {
+      const touchedSections = mapChangedSections(user.onboarding, req.body);
+      if (touchedSections.length > 0) {
+        assertSectionsEditable(user.onboarding, touchedSections);
+        invalidateEditedSections(user.onboarding, touchedSections);
+      }
     }
 
     // Optional field updates if passed in final submission
@@ -687,6 +749,8 @@ export async function submitOnboarding(req, res, next) {
     }
 
     const wasChangesRequested = user.onboarding.status === ONBOARDING_STATUSES.CHANGES_REQUESTED;
+    backfillLegacySectionReviews(user.onboarding);
+    const { resubmittedSections } = markSectionsOnSubmit(user.onboarding);
     user.onboarding.status = ONBOARDING_STATUSES.SUBMITTED;
     user.onboarding.submittedAt = new Date();
     user.onboarding.correctionReason = ""; // Clear correction request note
@@ -695,7 +759,11 @@ export async function submitOnboarding(req, res, next) {
       action: wasChangesRequested ? "RESUBMITTED" : "SUBMITTED",
       timestamp: new Date(),
       actorRole: "CANDIDATE",
-      notes: wasChangesRequested ? "Candidate resubmitted requested updates" : "Initial submission",
+      notes: wasChangesRequested
+        ? `Candidate resubmitted requested updates${
+            resubmittedSections.length ? ` (${resubmittedSections.join(", ")})` : ""
+          }`
+        : "Initial submission",
     });
 
     user.markModified("onboarding");
@@ -716,10 +784,19 @@ export async function submitOnboarding(req, res, next) {
       } catch {}
     }
 
+    emitOnboardingEvent({
+      type: wasChangesRequested ? ONBOARDING_EVENT_TYPES.RESUBMITTED : ONBOARDING_EVENT_TYPES.SUBMISSION,
+      companyId: company._id,
+      submissionId: user._id,
+      status: user.onboarding.status,
+    });
+
     const raw = user.onboarding.toObject ? user.onboarding.toObject() : user.onboarding;
     const serialized = {
       _id: user._id,
       ...raw,
+      sectionReviews: serializeSectionReviews(user.onboarding),
+      editableSections: serializeEditableSections(user.onboarding),
       candidateName: user.onboarding.candidate?.fullName || user.onboarding.personalDetails?.fullName || "",
       candidateEmail: user.onboarding.candidate?.email || user.email,
     };

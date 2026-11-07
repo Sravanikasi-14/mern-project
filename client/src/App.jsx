@@ -1,7 +1,10 @@
 import { Suspense, lazy } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { buildHiringRedirect } from "./utils/hiringStage";
+import { homeForRole } from "./utils/navigation";
 import { QueryClientProvider } from "@tanstack/react-query";
 import AppLayout from "./components/AppLayout";
+import HrModuleGate from "./components/HrModuleGate";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SessionBoot from "./components/SessionBoot";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -15,12 +18,13 @@ const EmployeeDashboard = lazy(() => import("./pages/EmployeeDashboard"));
 const EmployeeHome = lazy(() => import("./pages/EmployeeHome"));
 const EmployeeProfile = lazy(() => import("./pages/EmployeeProfile"));
 const Login = lazy(() => import("./pages/Login"));
-const OfferLettersManagement = lazy(() => import("./pages/OfferLettersManagement"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const HiringOnboardingPage = lazy(() => import("./pages/HiringOnboardingPage"));
+const OrganizationPage = lazy(() => import("./pages/OrganizationPage"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const AdminPayroll = lazy(() => import("./pages/AdminPayroll"));
 const CandidateOfferReview = lazy(() => import("./pages/CandidateOfferReview"));
 const CandidateOnboardingPage = lazy(() => import("./pages/CandidateOnboardingPage"));
-const AdminOnboardingReview = lazy(() => import("./pages/AdminOnboardingReview"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPolicies = lazy(() => import("./pages/AdminPolicies"));
 const AccountActivation = lazy(() => import("./pages/AccountActivation"));
@@ -36,6 +40,22 @@ const AdminImpactPoints = lazy(() => import("./pages/AdminImpactPoints"));
 const EmployeeTasks = lazy(() => import("./pages/EmployeeTasks"));
 const EmployeeImpactPoints = lazy(() => import("./pages/EmployeeImpactPoints"));
 const EmployeeSettings = lazy(() => import("./pages/EmployeeSettings"));
+const PeopleDirectory = lazy(() => import("./pages/PeopleDirectory"));
+const CompanyHrManagement = lazy(() => import("./pages/CompanyHrManagement"));
+const AdminReports = lazy(() => import("./pages/AdminReports"));
+const MessagesPage = lazy(() => import("./pages/MessagesPage"));
+
+const PORTAL_ROLES = ["HR_ADMIN", "COMPANY_ADMIN"];
+
+function Portal({ children }) {
+  return (
+    <ProtectedRoute roles={PORTAL_ROLES}>
+      <AppLayout>
+        <HrModuleGate>{children}</HrModuleGate>
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
 
 function RouteFallback() {
   return (
@@ -52,15 +72,20 @@ function RouteFallback() {
   );
 }
 
+function HiringRedirect({ context }) {
+  const location = useLocation();
+  return <Navigate to={buildHiringRedirect(location.search, context)} replace />;
+}
+
 function IndexRedirect() {
   const { isAuthenticated, user, loading } = useAuth();
   if (loading) {
     return <SessionBoot />;
   }
   if (isAuthenticated && user) {
-    return <Navigate to={user.role === "HR_ADMIN" ? "/admin/dashboard" : "/app/dashboard"} replace />;
+    return <Navigate to={homeForRole(user.role)} replace />;
   }
-  return <Navigate to="/login" replace />;
+  return <LandingPage />;
 }
 
 function App() {
@@ -75,152 +100,34 @@ function App() {
           <Route path="/offers/review/:token" element={<CandidateOfferReview />} />
           <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
           <Route path="/activate" element={<AccountActivation />} />
+          <Route path="/company/hr-management" element={<Navigate to="/admin/hr-management" replace />} />
+          <Route path="/company" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/admin/dashboard" element={<Portal><AdminDashboard /></Portal>} />
+          <Route path="/admin" element={<Portal><AdminHome /></Portal>} />
+          <Route path="/admin/organization" element={<Portal><OrganizationPage /></Portal>} />
+          <Route path="/admin/employees/:id" element={<Portal><EmployeeProfile /></Portal>} />
+          <Route path="/admin/employees/:id/edit" element={<Portal><EditEmployee /></Portal>} />
+          <Route path="/admin/attendance" element={<Portal><AdminAttendanceOverview /></Portal>} />
+          <Route path="/admin/leave" element={<Portal><AdminLeaveManagement /></Portal>} />
+          <Route path="/admin/hiring" element={<Portal><HiringOnboardingPage /></Portal>} />
+          <Route path="/admin/hiring/offer-editor" element={<Portal><Navigate to="/admin/hiring?compose=1" replace /></Portal>} />
+          <Route path="/admin/offers" element={<Portal><HiringRedirect context="offers" /></Portal>} />
+          <Route path="/admin/onboarding" element={<Portal><HiringRedirect context="onboarding" /></Portal>} />
+          <Route path="/admin/payroll" element={<Portal><AdminPayroll /></Portal>} />
+          <Route path="/admin/assets" element={<Portal><AdminAssets /></Portal>} />
+          <Route path="/admin/settings" element={<Portal><AdminSettings /></Portal>} />
+          <Route path="/admin/policies" element={<Portal><AdminPolicies /></Portal>} />
+          <Route path="/admin/work-management" element={<Portal><AdminWorkManagement /></Portal>} />
+          <Route path="/admin/work-impact" element={<Portal><AdminWorkManagement /></Portal>} />
+          <Route path="/admin/impact-points" element={<Portal><AdminImpactPoints /></Portal>} />
+          <Route path="/admin/reports" element={<Portal><AdminReports /></Portal>} />
+          <Route path="/admin/messages" element={<Portal><MessagesPage /></Portal>} />
           <Route
-            path="/admin/dashboard"
+            path="/admin/hr-management"
             element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
+              <ProtectedRoute roles={["COMPANY_ADMIN"]}>
                 <AppLayout>
-                  <AdminDashboard />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminHome />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/employees/:id"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <EmployeeProfile />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/employees/:id/edit"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <EditEmployee />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/attendance"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminAttendanceOverview />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/leave"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminLeaveManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/offers"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <OfferLettersManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/onboarding"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminOnboardingReview />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/payroll"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminPayroll />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/assets"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminAssets />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/settings"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminSettings />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/policies"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminPolicies />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/work-management"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminWorkManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/work-impact"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminWorkManagement />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/impact-points"
-            element={
-              <ProtectedRoute roles={["HR_ADMIN"]}>
-                <AppLayout>
-                  <AdminImpactPoints />
+                  <CompanyHrManagement />
                 </AppLayout>
               </ProtectedRoute>
             }
@@ -326,11 +233,31 @@ function App() {
             }
           />
           <Route
+            path="/app/directory"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <PeopleDirectory />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app/settings"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
                 <AppLayout>
                   <EmployeeSettings />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/app/messages"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <MessagesPage />
                 </AppLayout>
               </ProtectedRoute>
             }

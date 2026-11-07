@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, Upload } from "lucide-react";
+import EmployeeBulkImportSheet from "../../components/EmployeeBulkImportSheet";
 import HrPortalHeader from "../../components/HrPortalHeader";
 import SearchBar from "../../components/SearchBar";
 import Modal from "../../components/Modal";
@@ -10,8 +11,25 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import Pagination from "../../components/Pagination";
 import { useToast } from "../../components/Toast";
 import api from "../../services/api";
+import ReportingManagerSelect from "../../components/ReportingManagerSelect";
 
 const PAGE_SIZE = 50;
+const SEARCH_PLACEHOLDER =
+  "Search name, ID, email, phone, role, dept, project or location…";
+
+const INVITATION_STATUS_OPTIONS = [
+  { value: "PENDING", label: "Invite pending" },
+  { value: "ACCEPTED", label: "Invite accepted" },
+  { value: "EXPIRED", label: "Invite expired" },
+  { value: "DELIVERY_FAILED", label: "Delivery failed" },
+];
+
+const PROJECT_TYPE_OPTIONS = [
+  { value: "MANDATE", label: "Mandate" },
+  { value: "RETAIL", label: "Retail" },
+  { value: "BENCH", label: "Bench" },
+  { value: "INTERNAL", label: "Internal" },
+];
 
 const emptyHire = {
   fullName: "",
@@ -23,6 +41,7 @@ const emptyHire = {
   joiningDate: "",
   projectName: "",
   monthlySalary: "",
+  reportingManagerId: null,
   password: "",
 };
 
@@ -31,9 +50,120 @@ const emptyFilters = {
   department: "",
   jobTitle: "",
   project: "",
+  reportingManagerId: null,
+  employmentType: "",
+  workLocation: "",
+  invitationStatus: "",
+  joiningFrom: "",
+  joiningTo: "",
+  projectType: "",
   sortBy: "fullName",
   sortOrder: "asc",
 };
+
+function parseManagerFilterParam(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  if (!v) return null;
+  if (["none", "null", "unassigned"].includes(v.toLowerCase())) return "none";
+  return v;
+}
+
+function invitationStatusLabel(value) {
+  return INVITATION_STATUS_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+function projectTypeLabel(value) {
+  return PROJECT_TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
+}
+
+function managerSubtitle(emp) {
+  const mgr = emp?.job?.reportingManagerId;
+  if (mgr && typeof mgr === "object" && mgr.fullName) {
+    return { text: mgr.fullName, empty: false };
+  }
+  return { text: "No manager", empty: true };
+}
+
+function readFiltersFromParams(params) {
+  const statusRaw = (params.get("status") || emptyFilters.status).toUpperCase();
+  const status = ["ALL", "ACTIVE", "INACTIVE"].includes(statusRaw)
+    ? statusRaw
+    : emptyFilters.status;
+  const invitationRaw = (params.get("invitationStatus") || "").toUpperCase();
+  const invitationStatus = INVITATION_STATUS_OPTIONS.some((o) => o.value === invitationRaw)
+    ? invitationRaw
+    : "";
+  const projectTypeRaw = (params.get("projectType") || "").toUpperCase();
+  const projectType = PROJECT_TYPE_OPTIONS.some((o) => o.value === projectTypeRaw)
+    ? projectTypeRaw
+    : "";
+
+  return {
+    status,
+    department: params.get("department") || "",
+    jobTitle: params.get("jobTitle") || "",
+    project: params.get("project") || "",
+    reportingManagerId: parseManagerFilterParam(params.get("reportingManagerId")),
+    employmentType: params.get("employmentType") || "",
+    workLocation: params.get("workLocation") || "",
+    invitationStatus,
+    joiningFrom: params.get("joiningFrom") || "",
+    joiningTo: params.get("joiningTo") || "",
+    projectType,
+    sortBy: params.get("sortBy") || emptyFilters.sortBy,
+    sortOrder: params.get("sortOrder") || emptyFilters.sortOrder,
+  };
+}
+
+function buildFilterOptionsFromPool(rows) {
+  const departments = new Set();
+  const titles = new Set();
+  const projects = new Set();
+  const employmentTypes = new Set();
+  const workLocations = new Set();
+
+  rows.forEach((emp) => {
+    const dept = emp.job?.department || emp.department;
+    if (dept) departments.add(String(dept).trim());
+    const title = emp.job?.jobTitle || emp.jobTitle;
+    if (title) titles.add(String(title).trim());
+    const project = emp.job?.project?.projectName || emp.job?.projectName;
+    if (project) projects.add(String(project).trim());
+    const empType = emp.job?.employmentType;
+    if (empType) employmentTypes.add(String(empType).trim());
+    const loc = emp.job?.workLocation;
+    if (loc) workLocations.add(String(loc).trim());
+  });
+
+  const collator = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+  return {
+    departments: Array.from(departments).filter(Boolean).sort(collator),
+    titles: Array.from(titles).filter(Boolean).sort(collator),
+    projects: Array.from(projects).filter(Boolean).sort(collator),
+    employmentTypes: Array.from(employmentTypes).filter(Boolean).sort(collator),
+    workLocations: Array.from(workLocations).filter(Boolean).sort(collator),
+  };
+}
+
+function countActiveFilters(filters, searchValue) {
+  return (
+    (filters.status !== emptyFilters.status ? 1 : 0) +
+    (filters.department.trim() ? 1 : 0) +
+    (filters.jobTitle.trim() ? 1 : 0) +
+    (filters.project.trim() ? 1 : 0) +
+    (filters.reportingManagerId ? 1 : 0) +
+    (filters.employmentType.trim() ? 1 : 0) +
+    (filters.workLocation.trim() ? 1 : 0) +
+    (filters.invitationStatus ? 1 : 0) +
+    (filters.joiningFrom || filters.joiningTo ? 1 : 0) +
+    (filters.projectType ? 1 : 0) +
+    (filters.sortBy !== emptyFilters.sortBy || filters.sortOrder !== emptyFilters.sortOrder
+      ? 1
+      : 0) +
+    (searchValue.trim() ? 1 : 0)
+  );
+}
 
 export default function HrPeoplePage() {
   const toast = useToast();
@@ -47,38 +177,75 @@ export default function HrPeoplePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState(() => searchParams.get("q") || "");
-  const [filters, setFilters] = useState(() => ({
-    status: (searchParams.get("status") || emptyFilters.status).toUpperCase(),
-    department: searchParams.get("department") || "",
-    jobTitle: searchParams.get("jobTitle") || "",
-    project: searchParams.get("project") || "",
-    sortBy: searchParams.get("sortBy") || emptyFilters.sortBy,
-    sortOrder: searchParams.get("sortOrder") || emptyFilters.sortOrder,
-  }));
-  const [draft, setDraft] = useState(() => ({
-    status: (searchParams.get("status") || emptyFilters.status).toUpperCase(),
-    department: searchParams.get("department") || "",
-    jobTitle: searchParams.get("jobTitle") || "",
-    project: searchParams.get("project") || "",
-    sortBy: searchParams.get("sortBy") || emptyFilters.sortBy,
-    sortOrder: searchParams.get("sortOrder") || emptyFilters.sortOrder,
-  }));
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") || "");
+  const [filters, setFilters] = useState(() => readFiltersFromParams(searchParams));
+  const [draft, setDraft] = useState(() => readFiltersFromParams(searchParams));
   const [filterOpen, setFilterOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [hire, setHire] = useState(emptyHire);
   const [saving, setSaving] = useState(false);
   const [counts, setCounts] = useState({ ALL: 0, ACTIVE: 0, INACTIVE: 0 });
-  const [deptOptions, setDeptOptions] = useState([]);
+  const [poolOptions, setPoolOptions] = useState({
+    departments: [],
+    titles: [],
+    projects: [],
+    employmentTypes: [],
+    workLocations: [],
+  });
+  const skipPageResetRef = useRef(true);
+  const listRequestIdRef = useRef(0);
 
-  const filtersActive =
-    filters.status !== "ACTIVE" ||
-    Boolean(filters.department) ||
-    Boolean(filters.jobTitle) ||
-    Boolean(filters.project) ||
-    filters.sortBy !== "fullName" ||
-    filters.sortOrder !== "asc";
+  const filterCount = useMemo(
+    () => countActiveFilters(filters, debouncedSearch),
+    [filters, debouncedSearch]
+  );
+  const filtersActive = filterCount > 0;
+  const hasChipFilters =
+    Boolean(debouncedSearch.trim()) ||
+    filters.status !== emptyFilters.status ||
+    Boolean(filters.department.trim()) ||
+    Boolean(filters.jobTitle.trim()) ||
+    Boolean(filters.project.trim()) ||
+    Boolean(filters.reportingManagerId) ||
+    Boolean(filters.employmentType.trim()) ||
+    Boolean(filters.workLocation.trim()) ||
+    Boolean(filters.invitationStatus) ||
+    Boolean(filters.joiningFrom || filters.joiningTo) ||
+    Boolean(filters.projectType);
+
+  // Debounce free-text search; keep existing timing / single list API.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Lean filter-option pool — load once; do not refetch on search/filter changes.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/employees", {
+          params: {
+            limit: 300,
+            includeCompensation: false,
+            sortBy: "fullName",
+            sortOrder: "asc",
+          },
+        });
+        if (cancelled) return;
+        setPoolOptions(buildFilterOptionsFromPool(res.data?.employees || []));
+      } catch {
+        /* keep empty option lists; typed filters still work */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
+    const requestId = ++listRequestIdRef.current;
     try {
       setLoading(true);
       setError("");
@@ -88,13 +255,31 @@ export default function HrPeoplePage() {
         sortBy: filters.sortBy || "fullName",
         sortOrder: filters.sortOrder || "asc",
       });
-      if (search.trim()) params.set("search", search.trim());
+      // Phase 4A list API accepts `search` (URL state uses `q`).
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (filters.status && filters.status !== "ALL") params.set("status", filters.status);
       if (filters.department.trim()) params.set("department", filters.department.trim());
       if (filters.jobTitle.trim()) params.set("jobTitle", filters.jobTitle.trim());
       if (filters.project.trim()) params.set("project", filters.project.trim());
+      if (filters.reportingManagerId) {
+        params.set("reportingManagerId", String(filters.reportingManagerId));
+      }
+      if (filters.employmentType.trim()) {
+        params.set("employmentType", filters.employmentType.trim());
+      }
+      if (filters.workLocation.trim()) {
+        params.set("workLocation", filters.workLocation.trim());
+      }
+      if (filters.invitationStatus) {
+        params.set("invitationStatus", filters.invitationStatus);
+      }
+      if (filters.joiningFrom) params.set("joiningFrom", filters.joiningFrom);
+      if (filters.joiningTo) params.set("joiningTo", filters.joiningTo);
+      if (filters.projectType) params.set("projectType", filters.projectType);
 
       const res = await api.get(`/employees?${params}`);
+      if (requestId !== listRequestIdRef.current) return;
+
       const rows = res.data?.employees || [];
       const pagination = res.data?.pagination || {};
       const totalEmployees = pagination.totalEmployees ?? res.data?.total ?? rows.length;
@@ -105,49 +290,81 @@ export default function HrPeoplePage() {
       setEmployees(rows);
       setTotal(totalEmployees);
       setTotalPages(pages);
-
-      setDeptOptions((prev) => {
-        const depts = new Set(prev);
-        rows.forEach((emp) => {
-          const d = emp.job?.department || emp.department;
-          if (d) depts.add(d);
-        });
-        return Array.from(depts).sort((a, b) => a.localeCompare(b));
-      });
     } catch (err) {
+      if (requestId !== listRequestIdRef.current) return;
       setError(err.response?.data?.message || "Could not load people.");
     } finally {
-      setLoading(false);
+      if (requestId === listRequestIdRef.current) setLoading(false);
     }
-  }, [page, search, filters]);
+  }, [page, debouncedSearch, filters]);
 
   useEffect(() => {
-    const t = setTimeout(load, 250);
+    const t = setTimeout(load, 50);
     return () => clearTimeout(t);
   }, [load]);
 
   useEffect(() => {
+    if (skipPageResetRef.current) {
+      skipPageResetRef.current = false;
+      return;
+    }
     setPage(1);
-  }, [search, filters.status, filters.department, filters.jobTitle, filters.project, filters.sortBy, filters.sortOrder]);
+  }, [
+    debouncedSearch,
+    filters.status,
+    filters.department,
+    filters.jobTitle,
+    filters.project,
+    filters.reportingManagerId,
+    filters.employmentType,
+    filters.workLocation,
+    filters.invitationStatus,
+    filters.joiningFrom,
+    filters.joiningTo,
+    filters.projectType,
+    filters.sortBy,
+    filters.sortOrder,
+  ]);
 
   // Persist list state in the URL so Back from details restores filters/pagination.
   useEffect(() => {
-    const next = new URLSearchParams();
-    if (search.trim()) next.set("q", search.trim());
+    const next = new URLSearchParams(searchParams);
+    if (debouncedSearch.trim()) next.set("q", debouncedSearch.trim());
+    else next.delete("q");
     if (filters.status && filters.status !== "ACTIVE") next.set("status", filters.status);
+    else next.delete("status");
     if (filters.department.trim()) next.set("department", filters.department.trim());
+    else next.delete("department");
     if (filters.jobTitle.trim()) next.set("jobTitle", filters.jobTitle.trim());
+    else next.delete("jobTitle");
     if (filters.project.trim()) next.set("project", filters.project.trim());
+    else next.delete("project");
+    if (filters.reportingManagerId === "none") next.set("reportingManagerId", "none");
+    else if (filters.reportingManagerId) {
+      next.set("reportingManagerId", String(filters.reportingManagerId));
+    } else next.delete("reportingManagerId");
+    if (filters.employmentType.trim()) next.set("employmentType", filters.employmentType.trim());
+    else next.delete("employmentType");
+    if (filters.workLocation.trim()) next.set("workLocation", filters.workLocation.trim());
+    else next.delete("workLocation");
+    if (filters.invitationStatus) next.set("invitationStatus", filters.invitationStatus);
+    else next.delete("invitationStatus");
+    if (filters.joiningFrom) next.set("joiningFrom", filters.joiningFrom);
+    else next.delete("joiningFrom");
+    if (filters.joiningTo) next.set("joiningTo", filters.joiningTo);
+    else next.delete("joiningTo");
+    if (filters.projectType) next.set("projectType", filters.projectType);
+    else next.delete("projectType");
     if (filters.sortBy && filters.sortBy !== emptyFilters.sortBy) next.set("sortBy", filters.sortBy);
-    if (filters.sortOrder && filters.sortOrder !== emptyFilters.sortOrder) next.set("sortOrder", filters.sortOrder);
+    else next.delete("sortBy");
+    if (filters.sortOrder && filters.sortOrder !== emptyFilters.sortOrder) {
+      next.set("sortOrder", filters.sortOrder);
+    } else next.delete("sortOrder");
     if (page > 1) next.set("page", String(page));
-    const cur = searchParams.toString();
-    const upcoming = next.toString();
-    if (cur === upcoming) return;
-    // Preserve one-shot flags like new=1 until their own effect clears them.
-    if (searchParams.get("new") === "1") next.set("new", "1");
+    else next.delete("page");
+    if (next.toString() === searchParams.toString()) return;
     setSearchParams(next, { replace: true });
-  }, [search, filters, page, searchParams, setSearchParams]);
+  }, [debouncedSearch, filters, page, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -200,6 +417,35 @@ export default function HrPeoplePage() {
     setDraft(emptyFilters);
   };
 
+  const clearOneFilter = (key) => {
+    if (key === "search") {
+      setSearch("");
+      setDebouncedSearch("");
+      return;
+    }
+    if (key === "joining") {
+      setFilters((prev) => ({ ...prev, joiningFrom: "", joiningTo: "" }));
+      return;
+    }
+    setFilters((prev) => ({
+      ...prev,
+      [key]:
+        key === "status"
+          ? emptyFilters.status
+          : key === "reportingManagerId"
+            ? null
+            : "",
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters(emptyFilters);
+    setDraft(emptyFilters);
+    setSearch("");
+    setDebouncedSearch("");
+    setPage(1);
+  };
+
   const addPerson = async (event) => {
     event.preventDefault();
     if (!hire.fullName.trim() || !hire.employeeCode.trim() || !hire.email.trim()) {
@@ -213,6 +459,7 @@ export default function HrPeoplePage() {
         fullName: hire.fullName.trim(),
         employeeCode: hire.employeeCode.trim(),
         email: hire.email.trim(),
+        reportingManagerId: hire.reportingManagerId || null,
       });
       toast.push("Person added. Invitation generated.");
       setAddOpen(false);
@@ -232,39 +479,135 @@ export default function HrPeoplePage() {
       <SearchBar
         value={search}
         onChange={setSearch}
-        placeholder="Search employees..."
+        placeholder={SEARCH_PLACEHOLDER}
         onFilter={openFilters}
         filterActive={filtersActive}
+        filterCount={filterCount}
       />
 
-      {filtersActive ? (
-        <div className="st-filter-active" aria-live="polite">
-          <span>
-            Filters active
-            {filters.status !== "ALL" ? ` · ${filters.status}` : ""}
-            {filters.department ? ` · ${filters.department}` : ""}
-            {filters.jobTitle ? ` · ${filters.jobTitle}` : ""}
-            {filters.project ? ` · ${filters.project}` : ""}
-          </span>
-          <button
-            type="button"
-            className="hr-text-link"
-            onClick={() => setFilters(emptyFilters)}
-          >
-            Reset
+      {hasChipFilters ? (
+        <div className="st-filter-active st-filter-chips" aria-live="polite">
+          <div className="st-filter-chip-row">
+            {debouncedSearch.trim() ? (
+              <button type="button" className="st-filter-chip" onClick={() => clearOneFilter("search")}>
+                Search: {debouncedSearch.trim()}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.status !== emptyFilters.status ? (
+              <button type="button" className="st-filter-chip" onClick={() => clearOneFilter("status")}>
+                Status: {filters.status}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.department ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("department")}
+              >
+                Dept: {filters.department}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.jobTitle ? (
+              <button type="button" className="st-filter-chip" onClick={() => clearOneFilter("jobTitle")}>
+                Designation: {filters.jobTitle}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.project ? (
+              <button type="button" className="st-filter-chip" onClick={() => clearOneFilter("project")}>
+                Project: {filters.project}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.reportingManagerId === "none" ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("reportingManagerId")}
+              >
+                Manager: Unassigned
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.reportingManagerId && filters.reportingManagerId !== "none" ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("reportingManagerId")}
+              >
+                Manager: Direct reports
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.employmentType.trim() ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("employmentType")}
+              >
+                Type: {filters.employmentType.trim()}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.workLocation.trim() ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("workLocation")}
+              >
+                Location: {filters.workLocation.trim()}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.invitationStatus ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("invitationStatus")}
+              >
+                Invitation: {invitationStatusLabel(filters.invitationStatus)}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.joiningFrom || filters.joiningTo ? (
+              <button type="button" className="st-filter-chip" onClick={() => clearOneFilter("joining")}>
+                Joined: {[filters.joiningFrom, filters.joiningTo].filter(Boolean).join(" → ")}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+            {filters.projectType ? (
+              <button
+                type="button"
+                className="st-filter-chip"
+                onClick={() => clearOneFilter("projectType")}
+              >
+                Project type: {projectTypeLabel(filters.projectType)}
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+          </div>
+          <button type="button" className="hr-text-link" onClick={clearAllFilters}>
+            Clear all
           </button>
         </div>
       ) : null}
 
       <div className="st-people-meta">
         <span>
-          Total Headcount
+          {hasChipFilters ? "Matching" : "Total Headcount"}
           <i />
           <strong>
             {total} Team Member{total === 1 ? "" : "s"}
           </strong>
         </span>
         <span className="st-people-meta-right">{counts.ALL ? `${counts.ALL} on file` : ""}</span>
+        <button type="button" className="st-import-btn" onClick={() => setImportOpen(true)}>
+          <Upload size={14} strokeWidth={2} aria-hidden="true" />
+          Import
+        </button>
       </div>
 
       {loading ? (
@@ -272,13 +615,22 @@ export default function HrPeoplePage() {
       ) : error && employees.length === 0 ? (
         <ErrorState message={error} onRetry={load} />
       ) : employees.length === 0 ? (
-        <EmptyState message="No team members found." actionLabel="Add Employee" onAction={() => setAddOpen(true)} />
+        <EmptyState
+          message={
+            hasChipFilters
+              ? "No team members match the current search or filters."
+              : "No team members found."
+          }
+          actionLabel={hasChipFilters ? "Clear filters" : "Add Employee"}
+          onAction={hasChipFilters ? clearAllFilters : () => setAddOpen(true)}
+        />
       ) : (
         <div className="st-roster">
           {employees.map((emp, index) => {
             const title = emp.job?.jobTitle || "Team member";
             const code = emp.employeeCode || "—";
             const active = String(emp.status || "").toUpperCase() === "ACTIVE";
+            const manager = managerSubtitle(emp);
             return (
               <button
                 key={emp._id}
@@ -306,6 +658,9 @@ export default function HrPeoplePage() {
                     <em>·</em>
                     {code}
                   </span>
+                  <span className={`st-roster-mgr${manager.empty ? " is-none" : ""}`}>
+                    {manager.empty ? manager.text : `Reports to ${manager.text}`}
+                  </span>
                 </span>
                 <StatusBadge status={emp.status} />
                 <ChevronRight size={18} strokeWidth={1.85} className="st-roster-chevron" aria-hidden="true" />
@@ -329,6 +684,15 @@ export default function HrPeoplePage() {
         Add Employee
       </button>
 
+      <EmployeeBulkImportSheet
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          toast.push("Employees imported.");
+          load();
+        }}
+      />
+
       <Modal
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
@@ -345,7 +709,7 @@ export default function HrPeoplePage() {
           </>
         }
       >
-        <div className="form-grid">
+        <div className="form-grid st-people-filter-grid">
           <label>
             Employment status
             <select
@@ -366,7 +730,7 @@ export default function HrPeoplePage() {
               placeholder="Any department"
             />
             <datalist id="people-dept-options">
-              {deptOptions.map((d) => (
+              {poolOptions.departments.map((d) => (
                 <option key={d} value={d} />
               ))}
             </datalist>
@@ -374,19 +738,121 @@ export default function HrPeoplePage() {
           <label>
             Designation
             <input
+              list="people-title-options"
               value={draft.jobTitle}
               onChange={(e) => setDraft((prev) => ({ ...prev, jobTitle: e.target.value }))}
               placeholder="Any designation"
             />
+            <datalist id="people-title-options">
+              {poolOptions.titles.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
           </label>
           <label>
             Project
             <input
+              list="people-project-options"
               value={draft.project}
               onChange={(e) => setDraft((prev) => ({ ...prev, project: e.target.value }))}
               placeholder="Any project"
             />
+            <datalist id="people-project-options">
+              {poolOptions.projects.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
           </label>
+          <ReportingManagerSelect
+            filterMode
+            label="Reporting manager"
+            value={draft.reportingManagerId}
+            onChange={(next) => setDraft((prev) => ({ ...prev, reportingManagerId: next }))}
+          />
+          <label>
+            Employment type
+            <select
+              value={draft.employmentType}
+              onChange={(e) => setDraft((prev) => ({ ...prev, employmentType: e.target.value }))}
+            >
+              <option value="">All types</option>
+              {draft.employmentType &&
+              !poolOptions.employmentTypes.includes(draft.employmentType) ? (
+                <option value={draft.employmentType}>{draft.employmentType}</option>
+              ) : null}
+              {poolOptions.employmentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Work location
+            <select
+              value={draft.workLocation}
+              onChange={(e) => setDraft((prev) => ({ ...prev, workLocation: e.target.value }))}
+            >
+              <option value="">All locations</option>
+              {draft.workLocation && !poolOptions.workLocations.includes(draft.workLocation) ? (
+                <option value={draft.workLocation}>{draft.workLocation}</option>
+              ) : null}
+              {poolOptions.workLocations.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Invitation status
+            <select
+              value={draft.invitationStatus}
+              onChange={(e) => setDraft((prev) => ({ ...prev, invitationStatus: e.target.value }))}
+            >
+              <option value="">All invitation statuses</option>
+              {INVITATION_STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Project type
+            <select
+              value={draft.projectType}
+              onChange={(e) => setDraft((prev) => ({ ...prev, projectType: e.target.value }))}
+            >
+              <option value="">All project types</option>
+              {PROJECT_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="st-people-date-range">
+            <span className="st-people-date-range-label">Joining date</span>
+            <div className="st-people-date-range-fields">
+              <label>
+                From
+                <input
+                  type="date"
+                  value={draft.joiningFrom}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, joiningFrom: e.target.value }))}
+                />
+              </label>
+              <label>
+                To
+                <input
+                  type="date"
+                  value={draft.joiningTo}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, joiningTo: e.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
           <label>
             Sort by
             <select
@@ -442,6 +908,11 @@ export default function HrPeoplePage() {
             Department
             <input value={hire.department} onChange={(event) => setHire((prev) => ({ ...prev, department: event.target.value }))} />
           </label>
+          <ReportingManagerSelect
+            value={hire.reportingManagerId}
+            disabled={saving}
+            onChange={(nextId) => setHire((prev) => ({ ...prev, reportingManagerId: nextId }))}
+          />
           <label>
             Employee code
             <input value={hire.employeeCode} onChange={(event) => setHire((prev) => ({ ...prev, employeeCode: event.target.value }))} required />

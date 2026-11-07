@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 import { clearUserQueries } from "../lib/queryClient";
+import { setAccessSnapshot } from "../utils/accessNotice";
 
 const AuthContext = createContext(null);
 
@@ -12,8 +13,11 @@ export function AuthProvider({ children }) {
   const sessionGeneration = useRef(0);
 
   const applySession = (payload) => {
-    setUser(payload?.user ?? null);
-    setCompany(payload?.company ?? null);
+    const nextUser = payload?.user ?? null;
+    const nextCompany = payload?.company ?? null;
+    setAccessSnapshot(nextUser, nextCompany);
+    setUser(nextUser);
+    setCompany(nextCompany);
     if (payload?.token) {
       localStorage.setItem("hrms_token", payload.token);
     }

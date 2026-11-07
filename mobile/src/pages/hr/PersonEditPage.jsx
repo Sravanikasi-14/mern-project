@@ -5,7 +5,14 @@ import PageHeader from "../../components/PageHeader";
 import Expandable from "../../components/Expandable";
 import { ErrorState, Skeleton } from "../../components/EmptyState";
 import { useToast } from "../../components/Toast";
+import ReportingManagerSelect from "../../components/ReportingManagerSelect";
 import api from "../../services/api";
+
+function managerIdOf(emp) {
+  const m = emp?.job?.reportingManagerId;
+  if (!m) return null;
+  return typeof m === "object" ? String(m._id || "") || null : String(m);
+}
 
 const empty = {
   fullName: "",
@@ -23,6 +30,7 @@ const empty = {
   projectName: "",
   projectType: "MANDATE",
   monthlySalary: "",
+  reportingManagerId: null,
   bankName: "",
   accountNumber: "",
   ifscCode: "",
@@ -41,6 +49,7 @@ export default function HrPersonEditPage() {
   const navigate = useNavigate();
   const goBack = useSmartBack(id ? `/admin/employees/${id}` : "/admin");
   const [form, setForm] = useState(empty);
+  const [initialManager, setInitialManager] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -74,6 +83,7 @@ export default function HrPersonEditPage() {
             emp.compensation?.monthlySalary ??
             emp.monthlySalary ??
             "",
+          reportingManagerId: managerIdOf(emp),
           bankName: emp.bankDetails?.bankName || "",
           accountNumber: emp.bankDetails?.accountNumber || "",
           ifscCode: emp.bankDetails?.ifscCode || "",
@@ -85,6 +95,11 @@ export default function HrPersonEditPage() {
           emergencyContactRelationship: emp.emergencyContact?.relationship || "",
           emergencyContactPhone: emp.emergencyContact?.phone || "",
         });
+        setInitialManager(
+          emp.job?.reportingManagerId && typeof emp.job.reportingManagerId === "object"
+            ? emp.job.reportingManagerId
+            : null
+        );
       } catch (err) {
         if (!cancelled) setError(err.response?.data?.message || "Could not load this profile.");
       } finally {
@@ -119,6 +134,7 @@ export default function HrPersonEditPage() {
         status: form.status,
         projectName: form.projectName.trim(),
         projectType: form.projectType,
+        reportingManagerId: form.reportingManagerId || null,
         emergencyContact: {
           name: form.emergencyContactName.trim(),
           relationship: form.emergencyContactRelationship.trim(),
@@ -162,9 +178,16 @@ export default function HrPersonEditPage() {
           <label>Phone<input type="tel" value={form.phoneNumber} onChange={setField("phoneNumber")} /></label>
           <label>City<input value={form.city} onChange={setField("city")} /></label>
         </Expandable>
-        <Expandable title="Job">
+        <Expandable title="Job" defaultOpen>
           <label>Job title<input value={form.jobTitle} onChange={setField("jobTitle")} /></label>
           <label>Department<input value={form.department} onChange={setField("department")} /></label>
+          <ReportingManagerSelect
+            value={form.reportingManagerId}
+            initialSelected={initialManager}
+            excludeEmployeeId={id}
+            disabled={saving}
+            onChange={(nextId) => setForm((prev) => ({ ...prev, reportingManagerId: nextId }))}
+          />
           <label>Employment type<input value={form.employmentType} onChange={setField("employmentType")} /></label>
           <label>Project<input value={form.projectName} onChange={setField("projectName")} /></label>
           <label>

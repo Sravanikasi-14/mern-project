@@ -14,10 +14,35 @@ export const qk = {
   impactMe: () => ["employee", "impact-me"],
   impactLeaderboard: (params = {}) => ["employee", "impact-leaderboard", params],
   profile: () => ["employee", "profile"],
+  directory: (params = {}) => ["employee", "directory", params],
+  organizationView: () => ["employee", "organization-view"],
+  visibleProfile: (id) => ["employee", "visible-profile", id],
+  organizationExplorerConfig: () => ["shared", "organization-explorer-config"],
+  orgExplorerDepartments: () => ["shared", "organization-explorer", "departments"],
+  orgExplorerDepartment: (name) => ["shared", "organization-explorer", "departments", name],
+  orgExplorerProjects: () => ["shared", "organization-explorer", "projects"],
+  orgExplorerProject: (name) => ["shared", "organization-explorer", "projects", name],
+  orgExplorerTeams: (params = {}) => ["shared", "organization-explorer", "teams", params],
+  orgExplorerTeam: (id) => ["shared", "organization-explorer", "teams", id],
+  adminOrganization: (params = {}) => ["admin", "organization", params],
   payslips: () => ["employee", "payslips"],
   settlement: () => ["employee", "settlement"],
   assets: () => ["employee", "assets"],
   notifications: () => ["shared", "notifications"],
+  chatConversations: () => ["chat", "conversations"],
+  chatMessages: (id) => ["chat", "messages", id],
+  chatDirectory: (search) => ["chat", "directory", search],
+  chatUnread: () => ["chat", "unread"],
+  announcements: (params = {}) => ["announcements", params],
+  announcement: (id) => ["announcements", "detail", id],
+  announcementReads: (id, search = "") => ["announcements", "reads", id, search],
+  chatMembers: (id) => ["chat", "members", id],
+
+  // Company Admin portal
+  companyAdminDashboard: () => ["company-admin", "dashboard"],
+  companyHrAdmins: (params = {}) => ["company-admin", "hr-admins", params],
+  companyHrAccessEnforcement: () => ["company-admin", "hr-access-enforcement"],
+  companyHrAdmin: (id) => ["company-admin", "hr-admin", id],
 
   // HR / admin portal
   adminDashboard: (params = {}) => ["admin", "dashboard", params],
@@ -100,6 +125,14 @@ export function invalidateEmployees(client) {
     client.invalidateQueries({ queryKey: ["admin", "employees-pool"] }),
     client.invalidateQueries({ queryKey: ["admin", "employee"] }),
     client.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
+  ]);
+}
+
+export function invalidateCompanyHrAdmins(client) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: ["company-admin", "hr-admins"] }),
+    client.invalidateQueries({ queryKey: ["company-admin", "hr-admin"] }),
+    client.invalidateQueries({ queryKey: ["company-admin", "dashboard"] }),
   ]);
 }
 

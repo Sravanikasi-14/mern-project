@@ -213,6 +213,64 @@ export function getCompanyLogoAbsolutePath({ databaseName, storageKey }) {
   return fs.existsSync(filePath) ? filePath : null;
 }
 
+/**
+ * Validate a group image and return an opaque storage key plus bytes.
+ * Callers persist the bytes in the tenant database; disk is only a best-effort mirror.
+ */
+export async function saveChatImageFile({ databaseName, fileName, fileData, mimeType }) {
+  if (!fileName || typeof fileName !== "string") {
+    throw new HttpError(400, "Choose a group image.");
+  }
+  const ext = path.extname(fileName).toLowerCase();
+  if (!LOGO_ALLOWED_EXT.has(ext)) {
+    throw new HttpError(400, "Group image must be a PNG, JPEG, or WebP image.");
+  }
+  if (mimeType && !LOGO_ALLOWED_MIME.has(String(mimeType).toLowerCase())) {
+    throw new HttpError(400, "Group image must be a PNG, JPEG, or WebP image.");
+  }
+
+  let fileBuffer;
+  if (Buffer.isBuffer(fileData)) {
+    fileBuffer = fileData;
+  } else if (typeof fileData === "string") {
+    const base64Clean = fileData.replace(/^data:[^;]+;base64,/, "");
+    fileBuffer = Buffer.from(base64Clean, "base64");
+  } else {
+    throw new HttpError(400, "Invalid group image. Expected base64 or Buffer.");
+  }
+
+  if (fileBuffer.length > MAX_LOGO_SIZE) {
+    throw new HttpError(400, "Group image must be 2 MB or smaller.");
+  }
+
+  const detected = detectLogoMime(fileBuffer);
+  if (!detected) {
+    throw new HttpError(400, "The uploaded file is not a valid PNG, JPEG, or WebP image.");
+  }
+
+  const storedExt = detected === "image/png" ? ".png" : detected === "image/webp" ? ".webp" : ".jpg";
+  const storageKey = `chatimg_${Date.now()}_${crypto.randomBytes(6).toString("hex")}${storedExt}`;
+
+  const ephemeralFs = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  if (!ephemeralFs || process.env.UPLOADS_DIR) {
+    try {
+      const uploadsRoot = getUploadsRoot();
+      const baseDir = path.join(uploadsRoot, String(databaseName), "chat");
+      await fs.promises.mkdir(baseDir, { recursive: true });
+      await fs.promises.writeFile(path.join(baseDir, storageKey), fileBuffer);
+    } catch {
+      // The database copy is the source of truth.
+    }
+  }
+
+  return {
+    storageKey,
+    mimeType: detected,
+    fileBuffer,
+    fileSize: fileBuffer.length,
+  };
+}
+
 export async function deleteCompanyLogoFile({ databaseName, storageKey }) {
   const filePath = getCompanyLogoAbsolutePath({ databaseName, storageKey });
   if (!filePath) return false;

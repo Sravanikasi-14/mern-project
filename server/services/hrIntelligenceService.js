@@ -1,6 +1,10 @@
 import { getGeminiClient, DEFAULT_GEMINI_MODEL } from "../config/gemini.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import { getCompanyBusinessDate } from "./attendanceService.js";
+import {
+  mergeEmployeeScopeFilter,
+  mergeEmployeeIdScopeFilter,
+} from "./hrAccessEnforcementService.js";
 
 /**
  * Tenant-scoped in-memory cache for AI explanations.
@@ -39,7 +43,7 @@ export function setCachedCompanyExplanation(companyKey, category, data) {
  * Adheres strictly to tenant isolation through models.
  * Zero PII or private financial numbers are shared with external services.
  */
-export async function calculateDeterministicFindings({ models, company }) {
+export async function calculateDeterministicFindings({ models, company, hrAccess = null }) {
   const {
     Employee,
     Task,
@@ -60,7 +64,9 @@ export async function calculateDeterministicFindings({ models, company }) {
   // --------------------------------------------------------------------------
   if (Employee) {
     try {
-      const activeEmployees = await Employee.find({ status: "ACTIVE" })
+      const activeEmployees = await Employee.find(
+        mergeEmployeeScopeFilter(hrAccess, { status: "ACTIVE" })
+      )
         .select("employeeCode invitation bankDetails emergencyContact taxDetails")
         .lean();
 
@@ -119,13 +125,19 @@ export async function calculateDeterministicFindings({ models, company }) {
   if (Task) {
     try {
       const [overdueCount, pendingReviewCount] = await Promise.all([
-        Task.countDocuments({
-          status: { $in: ["ASSIGNED", "IN_PROGRESS", "CHANGES_REQUESTED"] },
-          deadline: { $lt: now },
-        }),
-        Task.countDocuments({
-          status: "SUBMITTED",
-        }),
+        Task.countDocuments(
+          mergeEmployeeIdScopeFilter(
+            hrAccess,
+            {
+              status: { $in: ["ASSIGNED", "IN_PROGRESS", "CHANGES_REQUESTED"] },
+              deadline: { $lt: now },
+            },
+            "assigneeId"
+          )
+        ),
+        Task.countDocuments(
+          mergeEmployeeIdScopeFilter(hrAccess, { status: "SUBMITTED" }, "assigneeId")
+        ),
       ]);
 
       const totalTaskIssues = overdueCount + pendingReviewCount;
@@ -180,7 +192,9 @@ export async function calculateDeterministicFindings({ models, company }) {
         const [h, m] = officeStartTime.split(":").map(Number);
         const lateThresholdMinutes = (h || 9) * 60 + (m || 30) + gracePeriodMinutes;
 
-        const todayRecords = await Attendance.find({ date: todayStr }).lean();
+        const todayRecords = await Attendance.find(
+          mergeEmployeeIdScopeFilter(hrAccess, { date: todayStr })
+        ).lean();
         let lateArrivalsCount = 0;
 
         for (const att of todayRecords) {
@@ -220,11 +234,13 @@ export async function calculateDeterministicFindings({ models, company }) {
     try {
       const inThreeDays = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
       const [pendingCount, urgentCount] = await Promise.all([
-        LeaveRequest.countDocuments({ status: "PENDING" }),
-        LeaveRequest.countDocuments({
-          status: "PENDING",
-          fromDate: { $lte: inThreeDays },
-        }),
+        LeaveRequest.countDocuments(mergeEmployeeIdScopeFilter(hrAccess, { status: "PENDING" })),
+        LeaveRequest.countDocuments(
+          mergeEmployeeIdScopeFilter(hrAccess, {
+            status: "PENDING",
+            fromDate: { $lte: inThreeDays },
+          })
+        ),
       ]);
 
       if (pendingCount > 0) {
@@ -253,13 +269,15 @@ export async function calculateDeterministicFindings({ models, company }) {
   if (PayrollCycle && EmployeeCompensation && Employee) {
     try {
       const [activeEmployeesCount, unconfiguredCompCount] = await Promise.all([
-        Employee.countDocuments({ status: "ACTIVE" }),
+        Employee.countDocuments(mergeEmployeeScopeFilter(hrAccess, { status: "ACTIVE" })),
         (async () => {
           const compEmployees = await EmployeeCompensation.distinct("employeeId");
-          const activeWithoutComp = await Employee.countDocuments({
-            status: "ACTIVE",
-            _id: { $nin: compEmployees },
-          });
+          const activeWithoutComp = await Employee.countDocuments(
+            mergeEmployeeScopeFilter(hrAccess, {
+              status: "ACTIVE",
+              _id: { $nin: compEmployees },
+            })
+          );
           return activeWithoutComp;
         })(),
       ]);
@@ -465,11 +483,20 @@ Do not output markdown code blocks or extra text. Output only valid JSON.`;
 /**
  * Main service entrypoint for gathering HR Intelligence.
  */
-export async function getHrIntelligenceReport({ models, company, forceRefresh = false }) {
+export async function getHrIntelligenceReport({
+  models,
+  company,
+  hrAccess = null,
+  forceRefresh = false,
+}) {
   const companyKey = company?._id || company?.slug || "default";
 
   // Authoritative calculations are always executed directly against the tenant database
-  const deterministicFindings = await calculateDeterministicFindings({ models, company });
+  const deterministicFindings = await calculateDeterministicFindings({
+    models,
+    company,
+    hrAccess,
+  });
 
   // Enrich with Gemini explanations (reusing valid explanations when findings haven't changed)
   const { findings, aiEnriched } = await enrichFindingsWithGemini(deterministicFindings, {

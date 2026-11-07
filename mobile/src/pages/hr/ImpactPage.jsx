@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSmartBack } from "../../hooks/useSmartBack";
 import HrPortalHeader from "../../components/HrPortalHeader";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
 import Modal from "../../components/Modal";
@@ -16,6 +17,7 @@ const PERIOD_OPTIONS = [
 ];
 
 export default function HrImpactPage() {
+  const goBack = useSmartBack("/admin/more");
   const toast = useToast();
   const [tab, setTab] = useState("leaderboard");
   const [board, setBoard] = useState([]);
@@ -29,6 +31,9 @@ export default function HrImpactPage() {
   const [form, setForm] = useState({ recipientId: "", points: "10", reason: "" });
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reverseTx, setReverseTx] = useState(null);
+  const [reverseReason, setReverseReason] = useState("");
+  const [reverseError, setReverseError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +80,30 @@ export default function HrImpactPage() {
     [board]
   );
 
+  const submitReverse = async (event) => {
+    event.preventDefault();
+    if (!reverseTx?._id) return;
+    if (!reverseReason.trim()) {
+      setReverseError("Reason for reversal is required.");
+      return;
+    }
+    try {
+      setBusy(true);
+      setReverseError("");
+      const res = await api.post(`/impact-points/transactions/${reverseTx._id}/reverse`, {
+        reason: reverseReason.trim(),
+      });
+      toast.push(res.data?.message || "Transaction reversed.");
+      setReverseTx(null);
+      setReverseReason("");
+      await load();
+    } catch (err) {
+      setReverseError(err.response?.data?.message || "Could not reverse this transaction.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitAward = async (event) => {
     event.preventDefault();
     if (!form.recipientId) {
@@ -112,7 +141,7 @@ export default function HrImpactPage() {
 
   return (
     <div className="hr-impact ip-page">
-      <HrPortalHeader title="Impact Points" />
+      <HrPortalHeader title="Impact Points" showBack onBack={() => goBack()} />
 
       <section className="ip-hero hr-impact-hero">
         <div className="hr-impact-hero-row">
@@ -134,7 +163,7 @@ export default function HrImpactPage() {
         onChange={setTab}
         options={[
           { value: "leaderboard", label: "Leaderboard" },
-          { value: "activity", label: "Recent awards" },
+          { value: "activity", label: "Transactions" },
         ]}
       />
 
@@ -182,24 +211,94 @@ export default function HrImpactPage() {
         <EmptyState message="No recent recognition activity." />
       ) : (
         <div className="ip-list">
-          {activity.map((tx, index) => (
-            <div key={tx._id || index} className="ip-row">
-              <ProfileAvatar
-                name={tx.recipientName || tx.employeeName || tx.fullName || "Employee"}
-                photo={tx.avatar}
-                size={40}
-              />
-              <span className="summary-body">
-                <span className="summary-title">
-                  {tx.recipientName || tx.employeeName || tx.fullName || "Employee"}
+          {activity.map((tx, index) => {
+            const emp =
+              tx.employee?.fullName ||
+              tx.employeeSnapshot?.fullName ||
+              tx.recipientName ||
+              tx.employeeName ||
+              tx.fullName ||
+              "Employee";
+            const pts = Number(tx.points || 0);
+            const isReversal = tx.transactionType === "REVERSAL" || tx.isReversed;
+            const canReverse = tx.transactionType !== "REVERSAL" && !tx.isReversed && tx._id;
+            return (
+              <div key={tx._id || index} className="ip-row" style={{ alignItems: "flex-start" }}>
+                <ProfileAvatar name={emp} photo={tx.avatar} size={40} />
+                <span className="summary-body">
+                  <span className="summary-title">{emp}</span>
+                  <span className="summary-sub">
+                    {tx.transactionType || tx.source || "Recognition"}
+                    {tx.isReversed ? " · Reversed" : ""}
+                  </span>
+                  <span className="caption">{tx.reason || tx.eventType || ""}</span>
+                  {canReverse ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ marginTop: 6 }}
+                      onClick={() => {
+                        setReverseTx(tx);
+                        setReverseReason("");
+                        setReverseError("");
+                      }}
+                    >
+                      Reverse
+                    </button>
+                  ) : null}
                 </span>
-                <span className="summary-sub">{tx.reason || tx.eventType || "Recognition"}</span>
-              </span>
-              <strong className="hr-impact-pts is-plus">+{Number(tx.points || 0)}</strong>
-            </div>
-          ))}
+                <strong className={`hr-impact-pts${pts >= 0 && !isReversal ? " is-plus" : ""}`}>
+                  {pts >= 0 ? "+" : ""}
+                  {pts}
+                </strong>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      <Modal
+        open={Boolean(reverseTx)}
+        onClose={() => !busy && setReverseTx(null)}
+        title="Reverse transaction"
+        footer={
+          <>
+            <button type="button" className="btn-secondary" disabled={busy} onClick={() => setReverseTx(null)}>
+              Cancel
+            </button>
+            <button type="submit" form="reverse-impact" className="btn-danger" disabled={busy}>
+              {busy ? "Reversing…" : "Confirm reverse"}
+            </button>
+          </>
+        }
+      >
+        {reverseTx ? (
+          <form id="reverse-impact" className="form-grid" onSubmit={submitReverse}>
+            {reverseError ? <div className="alert alert-error">{reverseError}</div> : null}
+            <p className="caption">
+              {reverseTx.employee?.fullName ||
+                reverseTx.employeeSnapshot?.fullName ||
+                reverseTx.recipientName ||
+                "Employee"}{" "}
+              · {Number(reverseTx.points || 0)} pts
+            </p>
+            <p className="caption">{reverseTx.reason || "No original reason"}</p>
+            <div className="alert alert-warn">
+              A compensating ledger entry of {Number(-(reverseTx.points || 0))} points will be recorded.
+            </div>
+            <label>
+              Reason for reversal
+              <textarea
+                rows={3}
+                value={reverseReason}
+                onChange={(e) => setReverseReason(e.target.value)}
+                placeholder="Why is this transaction being reversed?"
+                required
+              />
+            </label>
+          </form>
+        ) : null}
+      </Modal>
 
       <Modal
         open={awardOpen}

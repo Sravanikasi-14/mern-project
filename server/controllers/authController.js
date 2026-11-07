@@ -6,7 +6,13 @@ import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { HttpError } from "../utils/httpError.js";
 import { verifyOnboardingToken } from "../utils/onboardingToken.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
-import { decodeAuthToken, signAuthToken, verifyAuthToken } from "../utils/token.js";
+import { createAuthSessionRecord } from "../utils/authSession.js";
+import { stopActiveLiveTrackingSessions } from "../services/attendanceService.js";
+import { signAuthToken, verifyAuthToken } from "../utils/token.js";
+import {
+  acceptHrAdminInvitation,
+  verifyHrAdminInvitationToken,
+} from "../services/hrAdminManagementService.js";
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -29,6 +35,9 @@ function publicCompany(company) {
       primaryColor: branding.primaryColor || "#4338ca",
     },
     timezone: company.config?.timezone || "Asia/Kolkata",
+    hrAccessEnforcement: {
+      mode: company.config?.hrAccessEnforcement?.mode === "ENFORCED" ? "ENFORCED" : "OFF",
+    },
     config: {
       timezone: company.config?.timezone || "Asia/Kolkata",
       currencyCode: company.config?.currencyCode || "INR",
@@ -103,7 +112,12 @@ export async function login(req, res, next) {
       );
     }
 
-    if (user.onboarding && user.onboarding.status && user.onboarding.status !== "APPROVED") {
+    if (
+      user.onboarding &&
+      user.onboarding.status &&
+      user.onboarding.status !== "APPROVED" &&
+      user.onboarding.status !== "ACTIVATED"
+    ) {
       throw new HttpError(
         403,
         "Candidate onboarding must be approved before logging in.",
@@ -128,22 +142,7 @@ export async function login(req, res, next) {
     });
     setAuthCookie(res, token);
 
-    // Track active session in company's authSessions collection
-    if (models.AuthSession) {
-      const decoded = decodeAuthToken(token);
-      const expiresAt = decoded?.exp
-        ? new Date(decoded.exp * 1000)
-        : new Date(Date.now() + 8 * 60 * 60 * 1000);
-
-      await models.AuthSession.create({
-        userId: user._id,
-        token,
-        ipAddress: req.ip || "",
-        userAgent: req.headers["user-agent"] || "",
-        expiresAt,
-        isActive: true,
-      });
-    }
+    await createAuthSessionRecord(models, { userId: user._id, token, req });
 
     res.json({
       token,
@@ -161,12 +160,38 @@ export async function logout(req, res) {
     ? authHeader.slice(7).trim()
     : null;
   const token = headerToken || req.cookies?.[getAuthCookieName()];
+  let trackingStopped = false;
+  let trackingStopWarning = null;
+
   if (token) {
     try {
       const payload = verifyAuthToken(token);
       const company = await findCompanyById(payload.companyId);
       if (company) {
         const models = await getCompanyModels(company);
+
+        // Stop live tracking before invalidating the auth session.
+        try {
+          const user = await models.User.findById(payload.sub).select("_id email");
+          if (user && models.Employee) {
+            const employee = await models.Employee.findOne({
+              $or: [{ userId: user._id }, { email: user.email }],
+            });
+            if (employee) {
+              await stopActiveLiveTrackingSessions({
+                models,
+                employee,
+                reason: "logout",
+              });
+              trackingStopped = true;
+            }
+          }
+        } catch (err) {
+          console.error("[logout] Failed to stop live tracking:", err?.message || err);
+          trackingStopWarning =
+            "Signed out, but stopping the live tracking session may have failed.";
+        }
+
         if (models.AuthSession) {
           await models.AuthSession.updateMany(
             { token, isActive: true },
@@ -180,10 +205,16 @@ export async function logout(req, res) {
   }
 
   clearAuthCookie(res);
-  res.json({ message: "Logged out" });
+  res.json({
+    message: "Logged out",
+    trackingStopped,
+    ...(trackingStopWarning ? { trackingStopWarning } : {}),
+  });
 }
 
 export async function me(req, res) {
+  // Baseline contract: user + company only.
+  // A1–A6 authorization summary (effectiveAuthorizationService) removed from this path.
   res.json({
     user: serializeUser(req.auth.user),
     company: publicCompany(req.auth.company),
@@ -265,8 +296,19 @@ export async function changePassword(req, res, next) {
     userDoc.passwordHash = newHash;
     await userDoc.save();
 
+    // Revoke all active sessions so stolen/old JWTs cannot survive a password change.
+    if (models.AuthSession) {
+      await models.AuthSession.updateMany(
+        { userId: userDoc._id, isActive: true },
+        { isActive: false }
+      );
+    }
+
+    clearAuthCookie(res);
+
     res.json({
-      message: "Password changed successfully. Your account is secured.",
+      message: "Password changed successfully. Please sign in again with your new password.",
+      requireReauth: true,
     });
   } catch (error) {
     next(error);
@@ -297,6 +339,20 @@ export async function verifyOnboardingInvitation(req, res, next) {
     }
 
     const models = await getCompanyModels(company);
+
+    if (payload.purpose === "hr_admin_invitation") {
+      const verified = await verifyHrAdminInvitationToken({
+        models,
+        payload,
+        rawToken: token,
+      });
+      return res.json({
+        ...verified,
+        companyCode: company.slug,
+        companyName: company.companyName,
+        company: publicCompany(company),
+      });
+    }
 
     // If this is an employee onboarding invitation
     if (payload.purpose === "employee_onboarding") {
@@ -400,6 +456,36 @@ export async function completeOnboarding(req, res, next) {
 
     const models = await getCompanyModels(company);
 
+    if (payload.purpose === "hr_admin_invitation") {
+      const { user } = await acceptHrAdminInvitation({
+        models,
+        company,
+        payload,
+        rawToken: token,
+        password,
+        req,
+      });
+
+      const authToken = signAuthToken({
+        userId: user._id,
+        companyId: company._id,
+      });
+      setAuthCookie(res, authToken);
+
+      await createAuthSessionRecord(models, {
+        userId: user._id,
+        token: authToken,
+        req,
+      });
+
+      return res.status(201).json({
+        message: "HR Admin account activated successfully",
+        token: authToken,
+        user: serializeUser(user),
+        company: publicCompany(company),
+      });
+    }
+
     // Handle Employee Self-Service Onboarding Completion
     if (payload.purpose === "employee_onboarding") {
       if (models.AuthToken) {
@@ -501,21 +587,11 @@ export async function completeOnboarding(req, res, next) {
       });
       setAuthCookie(res, authToken);
 
-      if (models.AuthSession) {
-        const decoded = decodeAuthToken(authToken);
-        const expiresAt = decoded?.exp
-          ? new Date(decoded.exp * 1000)
-          : new Date(Date.now() + 8 * 60 * 60 * 1000);
-
-        await models.AuthSession.create({
-          userId: user._id,
-          token: authToken,
-          ipAddress: req.ip || "",
-          userAgent: req.headers["user-agent"] || "",
-          expiresAt,
-          isActive: true,
-        });
-      }
+      await createAuthSessionRecord(models, {
+        userId: user._id,
+        token: authToken,
+        req,
+      });
 
       if (models.AuthToken) {
         await models.AuthToken.updateMany(
@@ -578,22 +654,11 @@ export async function completeOnboarding(req, res, next) {
     });
     setAuthCookie(res, authToken);
 
-    // Track active session in authSessions
-    if (models.AuthSession) {
-      const decoded = decodeAuthToken(authToken);
-      const expiresAt = decoded?.exp
-        ? new Date(decoded.exp * 1000)
-        : new Date(Date.now() + 8 * 60 * 60 * 1000);
-
-      await models.AuthSession.create({
-        userId: user._id,
-        token: authToken,
-        ipAddress: req.ip || "",
-        userAgent: req.headers["user-agent"] || "",
-        expiresAt,
-        isActive: true,
-      });
-    }
+    await createAuthSessionRecord(models, {
+      userId: user._id,
+      token: authToken,
+      req,
+    });
 
     // Mark invitation token as used in authTokens
     if (models.AuthToken) {
@@ -708,21 +773,11 @@ export async function setupInitialAdmin(req, res, next) {
     });
     setAuthCookie(res, authToken);
 
-    if (models.AuthSession) {
-      const decoded = decodeAuthToken(authToken);
-      const expiresAt = decoded?.exp
-        ? new Date(decoded.exp * 1000)
-        : new Date(Date.now() + 8 * 60 * 60 * 1000);
-
-      await models.AuthSession.create({
-        userId: user._id,
-        token: authToken,
-        ipAddress: req.ip || "",
-        userAgent: req.headers["user-agent"] || "",
-        expiresAt,
-        isActive: true,
-      });
-    }
+    await createAuthSessionRecord(models, {
+      userId: user._id,
+      token: authToken,
+      req,
+    });
 
     res.status(201).json({
       message: "Initial HR Admin account established successfully",

@@ -2,6 +2,7 @@ process.env.NODE_ENV = "test";
 process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { CANDIDATE_SIGNATURE_FIELDS, HR_SIGNATURE_LETTERHEAD } from "./helpers/offerSignature.js";
 import request from "supertest";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -15,6 +16,7 @@ import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { signCandidateOnboardingToken, signEmployeeActivationToken } from "../utils/onboardingToken.js";
 import { encryptSecret } from "../utils/secretCrypto.js";
+import { approveAllSections } from "./helpers/onboardingReview.js";
 
 let mongod;
 let app;
@@ -41,6 +43,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
     app = createApp();
 
     companyAcme = await Company.create({
+      letterhead: HR_SIGNATURE_LETTERHEAD,
       companyName: "Acme Secure Ltd",
       slug: "acme-sec",
       databaseName: "tenant_acme_sec",
@@ -63,6 +66,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
     });
 
     companyGlobex = await Company.create({
+      letterhead: HR_SIGNATURE_LETTERHEAD,
       companyName: "Globex Defense Corp",
       slug: "globex-def",
       databaseName: "tenant_globex_def",
@@ -136,7 +140,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       // Candidate tries to accept offer with HR admin email
       const acceptRes = await request(app)
         .post(`/api/candidate/offers/review/${signingToken}/accept`)
-        .send({ signerName: "Acme HR Admin", consentAgreed: true });
+        .send({ signerName: "Acme HR Admin", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(acceptRes.status, 409);
       assert.ok(acceptRes.body.message.includes("administrator"));
@@ -184,7 +188,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
 
       const acceptRes = await request(app)
         .post(`/api/candidate/offers/review/${signingToken}/accept`)
-        .send({ signerName: "Existing Dev", consentAgreed: true });
+        .send({ signerName: "Existing Dev", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(acceptRes.status, 409);
       assert.ok(acceptRes.body.message.includes("employee"));
@@ -208,7 +212,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
 
       const accept1Res = await request(app)
         .post(`/api/candidate/offers/review/${send1Res.body.signingToken}/accept`)
-        .send({ signerName: "Rahul Sharma", consentAgreed: true });
+        .send({ signerName: "Rahul Sharma", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
       assert.equal(accept1Res.status, 200);
 
       // 2. Create second different offer for same email
@@ -229,7 +233,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       // Attempting to sign offer 2 while already onboarded to offer 1 must be rejected
       const accept2Res = await request(app)
         .post(`/api/candidate/offers/review/${send2Res.body.signingToken}/accept`)
-        .send({ signerName: "Rahul Sharma", consentAgreed: true });
+        .send({ signerName: "Rahul Sharma", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(accept2Res.status, 409);
       assert.ok(accept2Res.body.message.includes("already linked to another offer"));
@@ -269,7 +273,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
 
       const res = await request(app)
         .post(`/api/candidate/offers/review/${testSigningToken}/accept`)
-        .send({ signerName: "Sneha Reddy", consentAgreed: true });
+        .send({ signerName: "Sneha Reddy", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(res.status, 400);
       assert.ok(res.body.message.includes("expired"));
@@ -285,7 +289,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
 
       const res = await request(app)
         .post(`/api/candidate/offers/review/${testSigningToken}/accept`)
-        .send({ signerName: "Sneha Reddy", consentAgreed: true });
+        .send({ signerName: "Sneha Reddy", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(res.status, 400);
       assert.ok(res.body.message.includes("replaced or invalidated"));
@@ -301,7 +305,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       const freshSigningToken = resendRes.body.signingToken;
       const signRes = await request(app)
         .post(`/api/candidate/offers/review/${freshSigningToken}/accept`)
-        .send({ signerName: "Sneha Reddy", consentAgreed: true });
+        .send({ signerName: "Sneha Reddy", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       assert.equal(signRes.status, 200);
       testOnboardingToken = signRes.body.onboardingToken;
@@ -364,7 +368,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
         .set("Cookie", hrCookieAcme);
       const signRes = await request(app)
         .post(`/api/candidate/offers/review/${sendRes.body.signingToken}/accept`)
-        .send({ signerName: "Kiran Rao", consentAgreed: true });
+        .send({ signerName: "Kiran Rao", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       candidateToken = signRes.body.onboardingToken;
       candidateId = signRes.body.userId;
@@ -429,6 +433,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
     let candidateToken;
     let candidateUserId;
     let offerId;
+    let activationToken;
 
     before(async () => {
       const createRes = await request(app)
@@ -447,7 +452,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
         .set("Cookie", hrCookieAcme);
       const signRes = await request(app)
         .post(`/api/candidate/offers/review/${sendRes.body.signingToken}/accept`)
-        .send({ signerName: "Vikram Malhotra", consentAgreed: true });
+        .send({ signerName: "Vikram Malhotra", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
 
       candidateToken = signRes.body.onboardingToken;
       candidateUserId = signRes.body.userId;
@@ -495,7 +500,24 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       assert.equal(submitRes.status, 200);
     });
 
-    it("Concurrent approval requests create exactly one employee (prevents race condition)", async () => {
+    it("Final approval is blocked until every section is approved", async () => {
+      const res = await request(app)
+        .post(`/api/onboarding/submissions/${candidateUserId}/approve`)
+        .set("Cookie", hrCookieAcme)
+        .send();
+      assert.equal(res.status, 400);
+      assert.ok(res.body.message.includes("sections must be approved"));
+
+      // Lock must be reverted so approval can be retried
+      const { User } = await getCompanyModels(companyAcme);
+      const userInDb = await User.findById(candidateUserId);
+      assert.equal(userInDb.onboarding.status, ONBOARDING_STATUSES.SUBMITTED);
+
+      await approveAllSections(app, hrCookieAcme, candidateUserId);
+    });
+
+    it("Concurrent approval requests issue exactly one invitation and create NO employee", async () => {
+      emailService.clearHistory();
       // Fire two simultaneous approve requests for the same candidate
       const [res1, res2] = await Promise.all([
         request(app)
@@ -509,13 +531,70 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       ]);
 
       const statuses = [res1.status, res2.status].sort();
-      // Exactly one request must succeed (201), and the concurrent one must be rejected (409)
-      assert.deepEqual(statuses, [201, 409]);
+      // Exactly one request must succeed (200), and the concurrent one must be rejected (409)
+      assert.deepEqual(statuses, [200, 409]);
 
-      // Verify exactly one employee exists in the database
-      const { Employee } = await getCompanyModels(companyAcme);
+      const okRes = res1.status === 200 ? res1 : res2;
+      assert.equal(okRes.body.employee, null);
+      assert.equal(okRes.body.activationEmailSent, true);
+
+      // HR approval must NOT create an employee
+      const { Employee, User } = await getCompanyModels(companyAcme);
+      assert.equal(await Employee.countDocuments({ email: "vikram.m@example.test" }), 0);
+
+      const userInDb = await User.findById(candidateUserId);
+      assert.equal(userInDb.role, USER_ROLES.CANDIDATE);
+      assert.equal(userInDb.isActive, false);
+      assert.equal(userInDb.employeeId, null);
+      assert.equal(userInDb.onboarding.employeeId, null);
+      assert.ok(
+        [ONBOARDING_STATUSES.APPROVED, ONBOARDING_STATUSES.ACCOUNT_SETUP_SENT].includes(
+          userInDb.onboarding.status
+        )
+      );
+      assert.ok(userInDb.onboarding.invitationSentAt);
+
+      // Exactly one account-setup invitation email
+      const invites = emailService.getHistory().filter((e) => e.type === "employee_activation");
+      assert.equal(invites.length, 1);
+      activationToken = new URL(invites[0].activationLink).searchParams.get("token");
+      assert.ok(activationToken);
+    });
+
+    it("Activation creates the employee exactly once, even when completed concurrently", async () => {
+      const [a, b] = await Promise.all([
+        request(app)
+          .post("/api/auth/activate/complete")
+          .send({ token: activationToken, password: "VikramSecure2026!" }),
+        request(app)
+          .post("/api/auth/activate/complete")
+          .send({ token: activationToken, password: "VikramSecure2026!" }),
+      ]);
+      const codes = [a.status, b.status].sort();
+      assert.equal(codes[0], 200, JSON.stringify([a.body, b.body]));
+      assert.equal(codes[1], 409);
+
+      const { Employee, EmployeeCompensation, User } = await getCompanyModels(companyAcme);
       const employees = await Employee.find({ email: "vikram.m@example.test" });
       assert.equal(employees.length, 1);
+      assert.equal(
+        await EmployeeCompensation.countDocuments({ employeeId: employees[0]._id }),
+        1
+      );
+
+      const userInDb = await User.findById(candidateUserId);
+      assert.equal(userInDb.role, USER_ROLES.EMPLOYEE);
+      assert.equal(userInDb.isActive, true);
+      assert.equal(String(userInDb.employeeId), String(employees[0]._id));
+      assert.equal(userInDb.onboarding.status, ONBOARDING_STATUSES.ACTIVATED);
+      assert.ok(userInDb.onboarding.accountActivatedAt);
+
+      // Reusing the link afterwards is rejected and does not duplicate the employee
+      const replay = await request(app)
+        .post("/api/auth/activate/complete")
+        .send({ token: activationToken, password: "VikramSecure2026!" });
+      assert.equal(replay.status, 409);
+      assert.equal(await Employee.countDocuments({ email: "vikram.m@example.test" }), 1);
     });
 
     it("Invalidates candidate onboarding token immediately after HR approval", async () => {
@@ -579,7 +658,7 @@ describe("Candidate Onboarding Hardening & Edge-Cases Test Suite", () => {
       // 3. Accept offer and generate onboarding
       const acceptRes = await request(app)
         .post(`/api/candidate/offers/review/${signingToken}/accept`)
-        .send({ signerName: "Tarun Joshi", consentAgreed: true });
+        .send({ signerName: "Tarun Joshi", consentAgreed: true, ...CANDIDATE_SIGNATURE_FIELDS });
       assert.equal(acceptRes.status, 200);
       rejectedCandidateToken = acceptRes.body.onboardingToken;
 

@@ -9,6 +9,11 @@ import {
   getLiveTrackingStatus,
   getAdminAttendanceOverview,
 } from "../services/attendanceService.js";
+import {
+  extractRequestAuthToken,
+  resolveClientPlatformFromAuthSession,
+} from "../utils/clientPlatform.js";
+import { getAuthCookieName } from "../utils/authCookie.js";
 import { HttpError } from "../utils/httpError.js";
 
 async function getTargetEmployee(req) {
@@ -205,12 +210,20 @@ export async function startTracking(req, res, next) {
     const employee = await getTargetEmployee(req);
     const { durationMinutes } = req.body || {};
     const userAgent = req.headers["user-agent"] || "";
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
+    const token = extractRequestAuthToken(req, getAuthCookieName());
+    const clientPlatform = await resolveClientPlatformFromAuthSession(
+      req.auth.models,
+      token
+    );
 
     const result = await startLiveTrackingSession({
       models: req.auth.models,
       employee,
       durationMinutes,
       userAgent,
+      clientPlatform,
+      companyTimezone,
     });
 
     res.status(200).json(result);
@@ -226,6 +239,7 @@ export async function updateTrackingLocation(req, res, next) {
   try {
     const employee = await getTargetEmployee(req);
     const location = extractLocationPayload(req);
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
 
     if (!location) {
       throw new HttpError(400, "Location coordinates are required for live tracking update.");
@@ -235,6 +249,7 @@ export async function updateTrackingLocation(req, res, next) {
       models: req.auth.models,
       employee,
       location,
+      companyTimezone,
     });
 
     res.status(200).json(result);
@@ -305,6 +320,7 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
       companyTimezone,
       date,
       department,
+      hrAccess: req.hrAccess,
     });
 
     res.status(200).json({

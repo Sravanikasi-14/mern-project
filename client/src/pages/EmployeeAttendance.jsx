@@ -13,8 +13,8 @@ import {
   IconClock,
   IconChevronLeft,
   IconChevronRight,
-  IconSearch,
 } from "../components/EmployeeIcon";
+import ModuleToolbar from "../components/ModuleToolbar";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -158,7 +158,17 @@ export default function EmployeeAttendance() {
       }
 
       const response = await api.post("/employees/me/attendance/punch-out", { location: loc });
+      // Server stops tracking on punch-out; clear local watcher immediately.
+      if (unwatchRef.current) {
+        unwatchRef.current();
+        unwatchRef.current = null;
+      }
+      setIsLiveTracking(false);
+      setTrackingSession(null);
       setActionSuccess(response.data?.message || "Punched out successfully!");
+      if (response.data?.trackingStopWarning) {
+        setTrackingError(response.data.trackingStopWarning);
+      }
       await invalidateAttendance(queryClient);
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch out. Please try again.");
@@ -168,6 +178,11 @@ export default function EmployeeAttendance() {
   };
 
   const handleStartTracking = async () => {
+    if (isLiveTracking || unwatchRef.current) return;
+    if (todayStatus !== "CHECKED_IN") {
+      setTrackingError("Punch in before starting live location sharing.");
+      return;
+    }
     try {
       setTrackingError("");
       const res = await api.post("/employees/me/tracking/start", { durationMinutes: 30 });
@@ -186,13 +201,22 @@ export default function EmployeeAttendance() {
               await api.post("/employees/me/tracking/update", { location: newLoc });
               setTrackingSession((prev) => (prev ? { ...prev, lastLocation: newLoc } : null));
             } catch (err) {
-              if (err.response?.status === 400 && err.response?.data?.message?.includes("expired")) {
+              const msg = String(err.response?.data?.message || "");
+              const status = err.response?.status;
+              if (
+                status === 400 &&
+                (msg.includes("expired") ||
+                  msg.includes("No active tracking") ||
+                  msg.includes("no active punch-in"))
+              ) {
                 handleStopTracking(true);
               }
             }
           },
           (err) => {
             setTrackingError(err.message);
+            // Permission denied / position unavailable — stop local watcher safely.
+            handleStopTracking(false);
           }
         );
       }
@@ -455,7 +479,7 @@ export default function EmployeeAttendance() {
               </div>
             )}
 
-            {/* Live Tracking toggle button */}
+            {/* Live Tracking toggle — server requires active punch-in + policy */}
             {isLiveTracking ? (
               <button
                 type="button"
@@ -470,6 +494,12 @@ export default function EmployeeAttendance() {
                 type="button"
                 onClick={handleStartTracking}
                 className="btn-secondary btn-sm"
+                disabled={todayStatus !== "CHECKED_IN"}
+                title={
+                  todayStatus !== "CHECKED_IN"
+                    ? "Punch in before sharing live location"
+                    : "Share live location for 30 minutes"
+                }
               >
                 Share Location (30 min)
               </button>
@@ -561,56 +591,53 @@ export default function EmployeeAttendance() {
         showAccentFirst={true}
       />
 
-      {/* Section 3: Month Selector & Search Toolbar */}
-      <div className="att-toolbar">
-        <div className="att-month-selector">
-          <button
-            type="button"
-            className="att-month-nav-btn"
-            onClick={handlePrevMonth}
-            aria-label="Previous month"
-            title="Previous month"
-          >
-            <IconChevronLeft size={14} strokeWidth={2.15} />
-          </button>
-          <span className="att-month-title">{monthYearLabel}</span>
-          <button
-            type="button"
-            className="att-month-nav-btn"
-            onClick={handleNextMonth}
-            aria-label="Next month"
-            title="Next month"
-          >
-            <IconChevronRight size={14} strokeWidth={2.15} />
-          </button>
-        </div>
-
-        <div className="att-controls-right">
-          <div className="att-search-box">
-            <IconSearch size={14} />
-            <input
-              type="text"
-              placeholder="Search date..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search day"
-            />
+      <ModuleToolbar
+        leading={
+          <div className="att-month-selector">
+            <button
+              type="button"
+              className="att-month-nav-btn"
+              onClick={handlePrevMonth}
+              aria-label="Previous month"
+              title="Previous month"
+            >
+              <IconChevronLeft size={14} strokeWidth={2.15} />
+            </button>
+            <span className="att-month-title">{monthYearLabel}</span>
+            <button
+              type="button"
+              className="att-month-nav-btn"
+              onClick={handleNextMonth}
+              aria-label="Next month"
+              title="Next month"
+            >
+              <IconChevronRight size={14} strokeWidth={2.15} />
+            </button>
           </div>
-
-          <select
-            className="att-filter-select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter status"
-          >
-            <option value="ALL">All Status</option>
-            <option value="PRESENT">Present Only</option>
-            <option value="LATE">Late Clock-In</option>
-            <option value="ON_LEAVE">Leaves / Off</option>
-            <option value="ABSENT">Absent / No Punch</option>
-          </select>
-        </div>
-      </div>
+        }
+        searchValue={searchQuery}
+        onSearchChange={(e) => setSearchQuery(e.target.value)}
+        searchPlaceholder="Search date..."
+        searchAriaLabel="Search day"
+        filterCount={statusFilter !== "ALL" ? 1 : 0}
+        onFiltersClear={() => setStatusFilter("ALL")}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Status
+            <select
+              className="filter-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="ALL">All Status</option>
+              <option value="PRESENT">Present Only</option>
+              <option value="LATE">Late Clock-In</option>
+              <option value="ON_LEAVE">Leaves / Off</option>
+              <option value="ABSENT">Absent / No Punch</option>
+            </select>
+          </label>
+        }
+      />
 
       {/* Section 4: Daily Attendance Timeline List */}
       {historyLoading && historyRecords.length === 0 ? (

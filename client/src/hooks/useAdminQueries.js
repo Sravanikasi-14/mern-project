@@ -70,6 +70,15 @@ export function useEmployeesQuery(params = {}, options = {}) {
     status: params.status || "ALL",
     project: params.project || "ALL",
     department: params.department || "",
+    jobTitle: params.jobTitle || "",
+    /** null = no filter; "none" = unassigned; ObjectId string = direct reports */
+    reportingManagerId: params.reportingManagerId || "",
+    employmentType: params.employmentType || "",
+    workLocation: params.workLocation || "",
+    invitationStatus: params.invitationStatus || "",
+    joiningFrom: params.joiningFrom || "",
+    joiningTo: params.joiningTo || "",
+    projectType: params.projectType || "",
   };
   return useQuery({
     queryKey: qk.employees(normalized),
@@ -86,6 +95,22 @@ export function useEmployeesQuery(params = {}, options = {}) {
         queryParams.project = normalized.project;
       }
       if (normalized.department) queryParams.department = normalized.department;
+      if (normalized.jobTitle.trim()) queryParams.jobTitle = normalized.jobTitle.trim();
+      if (normalized.reportingManagerId) {
+        queryParams.reportingManagerId = normalized.reportingManagerId;
+      }
+      if (normalized.employmentType.trim()) {
+        queryParams.employmentType = normalized.employmentType.trim();
+      }
+      if (normalized.workLocation.trim()) {
+        queryParams.workLocation = normalized.workLocation.trim();
+      }
+      if (normalized.invitationStatus.trim()) {
+        queryParams.invitationStatus = normalized.invitationStatus.trim();
+      }
+      if (normalized.joiningFrom.trim()) queryParams.joiningFrom = normalized.joiningFrom.trim();
+      if (normalized.joiningTo.trim()) queryParams.joiningTo = normalized.joiningTo.trim();
+      if (normalized.projectType.trim()) queryParams.projectType = normalized.projectType.trim();
       const res = await api.get("/employees", { params: queryParams });
       return {
         employees: res.data?.employees || [],

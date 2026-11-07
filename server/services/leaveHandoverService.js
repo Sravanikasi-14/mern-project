@@ -898,10 +898,14 @@ export async function listHandoversForHr(companyContext, user, filters = {}) {
   const ctx = await resolveActorContext(companyContext, user);
   if (!ctx.isHr) throw new HttpError(403, "HR access required.");
 
-  const query = { handover: { $ne: null }, "handover.status": { $exists: true, $ne: null } };
+  let query = { handover: { $ne: null }, "handover.status": { $exists: true, $ne: null } };
   if (filters.status) query["handover.status"] = filters.status;
   if (filters.employeeId && mongoose.Types.ObjectId.isValid(filters.employeeId)) {
     query.employeeId = filters.employeeId;
+  }
+  if (filters.hrAccess) {
+    const { mergeEmployeeIdScopeFilter } = await import("./hrAccessEnforcementService.js");
+    query = mergeEmployeeIdScopeFilter(filters.hrAccess, query);
   }
 
   const rows = await LeaveRequest.find(query).sort({ updatedAt: -1 }).limit(100);

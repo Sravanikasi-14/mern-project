@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
@@ -14,8 +14,12 @@ import {
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import { useAdminAssetsQuery } from "../hooks/useAdminQueries";
 import { invalidateAssets } from "../lib/queryKeys";
+import ModuleToolbar from "../components/ModuleToolbar";
 
 const CATEGORIES = [
   { value: "ALL", label: "All Categories" },
@@ -50,6 +54,11 @@ const CONDITIONS = [
 
 export default function AdminAssets() {
   const queryClient = useQueryClient();
+  const { user, company } = useAuth();
+  const canCreateAsset = hrPortalAllows(user, company, "assets.create");
+  const canAssignAsset = hrPortalAllows(user, company, "assets.assign");
+  const canReturnAsset = hrPortalAllows(user, company, "assets.return");
+  const canEditAsset = hrPortalAllows(user, company, "assets.edit");
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
@@ -436,92 +445,79 @@ export default function AdminAssets() {
           boxShadow: "var(--shadow-sm)",
         }}
       >
-        {/* Consolidated Compact Toolbar: Search, Filters, Add Button */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 10,
-            marginBottom: 16,
-            paddingBottom: 14,
-            borderBottom: "1px solid var(--hair, #e6ede8)",
+        <ModuleToolbar
+          searchValue={search}
+          onSearchChange={(e) => setSearch(e.target.value)}
+          onSearchSubmit={handleSearchSubmit}
+          searchPlaceholder="Search by tag, name, serial, or employee..."
+          searchAriaLabel="Search assets"
+          actions={
+            <>
+              {(!canCreateAsset || !canAssignAsset || !canReturnAsset) ? <AccessRestrictedInline /> : null}
+              {canCreateAsset ? (
+                <button type="button" className="btn-primary" onClick={handleOpenAddModal}>
+                  + Add Asset
+                </button>
+              ) : null}
+            </>
+          }
+          filterCount={
+            (categoryFilter !== "ALL" ? 1 : 0) +
+            (statusFilter !== "ALL" ? 1 : 0) +
+            (conditionFilter !== "ALL" ? 1 : 0)
+          }
+          onFiltersClear={() => {
+            setCategoryFilter("ALL");
+            setStatusFilter("ALL");
+            setConditionFilter("ALL");
           }}
-        >
-          {/* Search form */}
-          <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: 8, flex: "1 1 240px", maxWidth: 360 }}>
-            <div style={{ position: "relative", width: "100%" }}>
-              <input
-                type="text"
-                placeholder="Search by tag, name, serial, or employee..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "7px 12px 7px 32px",
-                  borderRadius: 6,
-                  border: "1px solid #d4d4d8",
-                  fontSize: 12.5,
-                }}
-              />
-              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#a1a1aa" }}>
-                <IconSearch size={14} />
-              </span>
-            </div>
-            <button type="submit" className="btn-secondary" style={{ padding: "7px 12px", fontSize: 12.5 }}>
-              Search
-            </button>
-          </form>
-
-          {/* Filters & Action Button */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
-            >
-              {STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={conditionFilter}
-              onChange={(e) => setConditionFilter(e.target.value)}
-              style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #d4d4d8", fontSize: 12.5 }}
-            >
-              {CONDITIONS.map((cd) => (
-                <option key={cd.value} value={cd.value}>
-                  {cd.label}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleOpenAddModal}
-              style={{ padding: "7px 14px", fontSize: 12.5, fontWeight: 600 }}
-            >
-              + Add Asset
-            </button>
-          </div>
-        </div>
+          filters={
+            <>
+              <label className="module-toolbar-filter-field">
+                Category
+                <select
+                  className="filter-select"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="module-toolbar-filter-field">
+                Status
+                <select
+                  className="filter-select"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="module-toolbar-filter-field">
+                Condition
+                <select
+                  className="filter-select"
+                  value={conditionFilter}
+                  onChange={(e) => setConditionFilter(e.target.value)}
+                >
+                  {CONDITIONS.map((cd) => (
+                    <option key={cd.value} value={cd.value}>
+                      {cd.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          }
+        />
 
         {/* Loading State */}
         {loading && (
@@ -668,7 +664,7 @@ export default function AdminAssets() {
 
                       <td style={{ padding: "14px", textAlign: "right" }}>
                         <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          {isAvailable && (
+                          {isAvailable && canAssignAsset && (
                             <button
                               type="button"
                               className="btn-sm btn-primary"
@@ -679,7 +675,7 @@ export default function AdminAssets() {
                             </button>
                           )}
 
-                          {isAssigned && (
+                          {isAssigned && canReturnAsset && (
                             <button
                               type="button"
                               className="btn-sm btn-secondary"
@@ -699,6 +695,7 @@ export default function AdminAssets() {
                             Details
                           </button>
 
+                          {canEditAsset && (
                           <button
                             type="button"
                             className="btn-sm btn-secondary"
@@ -707,6 +704,7 @@ export default function AdminAssets() {
                           >
                             Edit
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

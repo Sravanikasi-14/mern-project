@@ -28,6 +28,7 @@ export async function getHrIntelligenceHandler(req, res, next) {
     const report = await getHrIntelligenceReport({
       models: req.auth.models,
       company: req.auth.company,
+      hrAccess: req.hrAccess,
       forceRefresh,
     });
 

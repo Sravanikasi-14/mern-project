@@ -22,6 +22,7 @@ import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
 import { useToast } from "../../components/Toast";
 import api from "../../services/api";
+import { documentErrorMessage, saveDocument } from "../../services/documents";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -73,7 +74,7 @@ const CATEGORIES = [
   },
 ];
 
-function downloadCsv(filename, rows) {
+async function downloadCsv(filename, rows) {
   const escape = (v) => {
     const s = String(v ?? "");
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -81,14 +82,11 @@ function downloadCsv(filename, rows) {
   };
   const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  await saveDocument({
+    blob,
+    filename,
+    mimeType: "text/csv;charset=utf-8",
+  });
 }
 
 function buildRows(category, data) {
@@ -219,16 +217,18 @@ export default function HrReportsPage() {
   const leaves = data?.recentLeaves || [];
   const workforce = data?.workforce?.departments || [];
 
-  const exportActive = () => {
-    if (!active || !data) return;
+  const exportActive = async () => {
+    if (!active || !data || busyExport) return;
     try {
       setBusyExport(true);
       const rows = buildRows(active, data);
-      downloadCsv(
+      await downloadCsv(
         `${active}-report-${year}-${String(month).padStart(2, "0")}.csv`,
         rows
       );
-      toast.push("Report exported.");
+      toast.push("Report ready — use Save or Share.");
+    } catch (err) {
+      toast.push(documentErrorMessage(err, "Could not export report."));
     } finally {
       setBusyExport(false);
     }

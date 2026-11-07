@@ -14,8 +14,11 @@ import {
   IconPlus,
 } from "../components/Icons";
 import AppModal from "../components/AppModal";
+import ModuleToolbar from "../components/ModuleToolbar";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import { useAdminTasksQuery } from "../hooks/useAdminQueries";
 import { useTasksMetaQuery } from "../hooks/useEmployeeQueries";
 import { invalidateEmployeeWork } from "../lib/queryKeys";
@@ -40,7 +43,8 @@ const VIEW_MODES = {
 };
 
 export default function AdminWorkManagement() {
-  const { company } = useAuth();
+  const { user, company } = useAuth();
+  const canEditPeople = hrPortalAllows(user, company, "people.edit");
   const queryClient = useQueryClient();
   const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(TASK_TABS.ALL);
@@ -219,6 +223,7 @@ export default function AdminWorkManagement() {
   const handleDrop = async (e, targetStatus) => {
     e.preventDefault();
     setDragOverCol(null);
+    if (!canEditPeople) return;
     const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
     if (!taskId) return;
 
@@ -252,7 +257,7 @@ export default function AdminWorkManagement() {
 
   // Accessible fallback status change
   const handleStatusChange = async (task, targetStatus) => {
-    if (task.status === targetStatus) return;
+    if (!canEditPeople || task.status === targetStatus) return;
     const prevTasks = [...tasks];
     setLocalTasks(tasks.map((t) => (t._id === task._id ? { ...t, status: targetStatus } : t)));
     try {
@@ -487,6 +492,7 @@ export default function AdminWorkManagement() {
             </button>
           </div>
 
+          {canEditPeople ? (
           <button
             type="button"
             className="wm-btn-primary"
@@ -500,6 +506,9 @@ export default function AdminWorkManagement() {
             <IconPlus size={16} />
             Create Task
           </button>
+          ) : (
+            <AccessRestrictedInline />
+          )}
         </div>
       </AppHeader>
 
@@ -531,134 +540,123 @@ export default function AdminWorkManagement() {
       <div className="wm-unified-grid">
         {/* Main Workspace (Left ~75%) */}
         <div className="wm-main-col">
-          {/* Consolidated Compact Toolbar: Tabs, Search & Filters in One Row */}
-          <div
-            className="wm-toolbar-card"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 10,
-              padding: "8px 14px",
-              marginBottom: 12,
-            }}
-          >
-            {/* Left: Task Tabs */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <div className="wm-tab-group">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(TASK_TABS.ALL)}
-                  className={`wm-tab-btn ${activeTab === TASK_TABS.ALL ? "active" : ""}`}
-                >
-                  All Tasks
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(TASK_TABS.REVIEW_QUEUE)}
-                  className={`wm-tab-btn ${activeTab === TASK_TABS.REVIEW_QUEUE ? "active" : ""}`}
-                >
-                  <span>Review Queue</span>
-                  {metrics.reviewQueueCount > 0 && (
-                    <span
-                      style={{
-                        padding: "1px 5px",
-                        borderRadius: 10,
-                        fontSize: 10.5,
-                        background: "#fef3c7",
-                        color: "#92400e",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {metrics.reviewQueueCount}
-                    </span>
-                  )}
-                </button>
-                {meta.isManager && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(TASK_TABS.TEAM)}
-                    className={`wm-tab-btn ${activeTab === TASK_TABS.TEAM ? "active" : ""}`}
-                  >
-                    My Team
-                  </button>
-                )}
-              </div>
-
-              {selectedProject !== "ALL" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 11.5, color: "#64748b" }}>Project:</span>
+          <div className="wm-tab-strip" style={{ marginBottom: 10 }}>
+            <div className="wm-tab-group">
+              <button
+                type="button"
+                onClick={() => setActiveTab(TASK_TABS.ALL)}
+                className={`wm-tab-btn ${activeTab === TASK_TABS.ALL ? "active" : ""}`}
+              >
+                All Tasks
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab(TASK_TABS.REVIEW_QUEUE)}
+                className={`wm-tab-btn ${activeTab === TASK_TABS.REVIEW_QUEUE ? "active" : ""}`}
+              >
+                <span>Review Queue</span>
+                {metrics.reviewQueueCount > 0 && (
                   <span
                     style={{
-                      background: "#e3f2e9",
-                      color: "#0d3a23",
-                      fontSize: 11,
+                      padding: "1px 5px",
+                      borderRadius: 10,
+                      fontSize: 10.5,
+                      background: "#fef3c7",
+                      color: "#92400e",
                       fontWeight: 700,
-                      padding: "2px 7px",
-                      borderRadius: 5,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
                     }}
                   >
-                    {selectedProject}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProject("ALL")}
-                      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "#0d3a23" }}
-                    >
-                      <IconClose size={11} />
-                    </button>
+                    {metrics.reviewQueueCount}
                   </span>
-                </div>
+                )}
+              </button>
+              {meta.isManager && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(TASK_TABS.TEAM)}
+                  className={`wm-tab-btn ${activeTab === TASK_TABS.TEAM ? "active" : ""}`}
+                >
+                  My Team
+                </button>
               )}
             </div>
-
-            {/* Right: Search + Filters */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <form onSubmit={handleSearchSubmit} className="wm-search-wrapper" style={{ minWidth: 160 }}>
-                <span className="wm-search-icon">
-                  <IconSearch size={14} />
+            {selectedProject !== "ALL" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 11.5, color: "#64748b" }}>Project:</span>
+                <span
+                  style={{
+                    background: "#e3f2e9",
+                    color: "#0d3a23",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "2px 7px",
+                    borderRadius: 5,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {selectedProject}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProject("ALL")}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "#0d3a23" }}
+                    aria-label="Clear project filter"
+                  >
+                    <IconClose size={11} />
+                  </button>
                 </span>
-                <input
-                  type="text"
-                  className="wm-input-search"
-                  style={{ height: 30, fontSize: 12, paddingLeft: 28 }}
-                  placeholder="Search tasks..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </form>
-
-              <select
-                className="wm-select"
-                style={{ height: 30, fontSize: 12, minHeight: 30 }}
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-              >
-                <option value="ALL">Priority: All</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
-
-              <select
-                className="wm-select"
-                style={{ height: 30, fontSize: 12, minHeight: 30 }}
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-              >
-                <option value="ALL">Dept: All</option>
-                {(meta?.departments || []).map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
+              </div>
+            )}
           </div>
+
+          <ModuleToolbar
+            searchValue={search}
+            onSearchChange={(e) => setSearch(e.target.value)}
+            onSearchSubmit={handleSearchSubmit}
+            searchPlaceholder="Search tasks..."
+            searchAriaLabel="Search tasks"
+            filterCount={
+              (priorityFilter !== "ALL" ? 1 : 0) + (departmentFilter !== "ALL" ? 1 : 0)
+            }
+            onFiltersClear={() => {
+              setPriorityFilter("ALL");
+              setDepartmentFilter("ALL");
+            }}
+            filters={
+              <>
+                <label className="module-toolbar-filter-field">
+                  Priority
+                  <select
+                    className="filter-select"
+                    value={priorityFilter}
+                    onChange={(e) => setPriorityFilter(e.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="CRITICAL">Critical</option>
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Department
+                  <select
+                    className="filter-select"
+                    value={departmentFilter}
+                    onChange={(e) => setDepartmentFilter(e.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    {(meta?.departments || []).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            }
+          />
 
           {/* Compact Weekly Schedule Strip */}
           <div className="wm-timeline-card">
@@ -785,7 +783,7 @@ export default function AdminWorkManagement() {
                                     {task.priority}
                                   </span>
                                   <span className="wm-points-tag">
-                                    ★ {task.priority === "CRITICAL" || task.priority === "HIGH" ? "+20" : "+10"}
+                                    +{task.priority === "CRITICAL" || task.priority === "HIGH" ? "20" : "10"}
                                   </span>
                                 </div>
                               </div>
@@ -824,7 +822,8 @@ export default function AdminWorkManagement() {
                                   className="wm-status-select-fallback"
                                   value={task.status}
                                   onChange={(e) => handleStatusChange(task, e.target.value)}
-                                  title="Change status directly"
+                                  title={canEditPeople ? "Change status directly" : "Access restricted"}
+                                  disabled={!canEditPeople}
                                 >
                                   <option value="ASSIGNED">To: Assigned</option>
                                   <option value="IN_PROGRESS">To: In Progress</option>

@@ -11,6 +11,7 @@ import {
 import { analyzeLeaveImpact } from "./leaveImpactAnalysisService.js";
 import { parseDateOnly, toDateString } from "./leaveService.js";
 import { HttpError } from "../utils/httpError.js";
+import { filterEmployeeListByScope } from "./hrAccessEnforcementService.js";
 
 const HANDOVER_EDITABLE_FOR_PROPOSAL = new Set([
   HANDOVER_STATUSES.DRAFT,
@@ -348,13 +349,14 @@ export async function recommendBackupEmployees(
   const toDate = parseDateOnly(windowTo);
 
   // Candidate pool: active employees in tenant (exclude leave-taker)
-  const candidates = await Employee.find({
+  const candidatePool = await Employee.find({
     _id: { $ne: originalEmployee._id },
     status: EMPLOYEE_STATUSES.ACTIVE,
   })
     .select("fullName employeeCode email job skills userId status")
     .limit(200)
     .lean();
+  const candidates = filterEmployeeListByScope(companyContext.hrAccess, candidatePool);
 
   const candidateIds = candidates.map((c) => c._id);
   const userIds = candidates.map((c) => c.userId).filter(Boolean);

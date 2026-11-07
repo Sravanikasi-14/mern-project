@@ -5,6 +5,10 @@ import {
   ACKNOWLEDGEMENT_STATUSES,
 } from "../models/CompanyAsset.js";
 import { HttpError } from "../utils/httpError.js";
+import { assertEmployeeInScope } from "../services/hrAccessEnforcementService.js";
+import { HR_SCOPE_MODES } from "../constants/hrAccessCatalog.js";
+import { USER_ROLES } from "../models/User.js";
+import mongoose from "mongoose";
 
 /**
  * GET /api/assets
@@ -48,7 +52,7 @@ export async function listAssets(req, res, next) {
     }
 
     if (search && search.trim()) {
-      const term = search.trim();
+      const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(term, "i");
       query.$or = [
         { name: regex },
@@ -61,6 +65,38 @@ export async function listAssets(req, res, next) {
       ];
     }
 
+    // Scoped HR: unassigned inventory + assignments within employee scope (union)
+    if (
+      req.hrAccess?.enforced &&
+      req.auth?.user?.role === USER_ROLES.HR_ADMIN &&
+      req.hrAccess.configured &&
+      req.hrAccess.scopeMode === HR_SCOPE_MODES.CUSTOM &&
+      req.hrAccess.allowedEmployeeIdSet
+    ) {
+      const ids = [...req.hrAccess.allowedEmployeeIdSet].map(
+        (id) => new mongoose.Types.ObjectId(id)
+      );
+      const scopeClause = {
+        $or: [
+          { "currentAssignment.employeeId": { $exists: false } },
+          { "currentAssignment.employeeId": null },
+          { "currentAssignment.employeeId": { $in: ids } },
+        ],
+      };
+      query.$and = [...(query.$and || []), scopeClause];
+    }
+
+    const attentionFilter = {
+      $or: [
+        { status: ASSET_STATUSES.UNDER_MAINTENANCE },
+        { status: ASSET_STATUSES.LOST },
+        { condition: ASSET_CONDITIONS.DAMAGED },
+        { condition: ASSET_CONDITIONS.POOR },
+      ],
+    };
+    // Reuse the same scoped list query for aggregates (CUSTOM HR must not see company-wide totals)
+    const aggregateMatch = { ...query };
+
     const [assets, totalMatched, statusCounts, attentionCount] = await Promise.all([
       CompanyAsset.find(query)
         .sort({ createdAt: -1 })
@@ -68,15 +104,15 @@ export async function listAssets(req, res, next) {
         .limit(parsedLimit)
         .lean(),
       CompanyAsset.countDocuments(query),
-      CompanyAsset.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-      CompanyAsset.countDocuments({
-        $or: [
-          { status: ASSET_STATUSES.UNDER_MAINTENANCE },
-          { status: ASSET_STATUSES.LOST },
-          { condition: ASSET_CONDITIONS.DAMAGED },
-          { condition: ASSET_CONDITIONS.POOR },
-        ],
-      }),
+      CompanyAsset.aggregate([
+        ...(Object.keys(aggregateMatch).length ? [{ $match: aggregateMatch }] : []),
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+      CompanyAsset.countDocuments(
+        Object.keys(aggregateMatch).length
+          ? { $and: [aggregateMatch, attentionFilter] }
+          : attentionFilter
+      ),
     ]);
 
     const statusMap = Object.fromEntries(
@@ -232,6 +268,14 @@ export async function getAssetDetails(req, res, next) {
       throw new HttpError(404, "Asset not found.");
     }
 
+    if (asset.currentAssignment?.employeeId) {
+      assertEmployeeInScope(
+        req.hrAccess,
+        asset.currentAssignment.employeeId,
+        "You do not have access to this assigned asset."
+      );
+    }
+
     res.status(200).json({
       success: true,
       asset,
@@ -255,6 +299,14 @@ export async function updateAsset(req, res, next) {
     const asset = await CompanyAsset.findById(id);
     if (!asset) {
       throw new HttpError(404, "Asset not found.");
+    }
+
+    if (asset.currentAssignment?.employeeId) {
+      assertEmployeeInScope(
+        req.hrAccess,
+        asset.currentAssignment.employeeId,
+        "You do not have access to this assigned asset."
+      );
     }
 
     const {
@@ -394,9 +446,21 @@ export async function assignAsset(req, res, next) {
       throw new HttpError(404, "Asset not found.");
     }
 
-    // Lifecycle rule: Only AVAILABLE assets can be assigned
+    // Lifecycle rule: Only AVAILABLE assets can be assigned.
+    // Scope is checked before any assignee name or code is placed in the error.
     if (asset.status === ASSET_STATUSES.ASSIGNED && asset.currentAssignment?.employeeId) {
-      throw new HttpError(400, `Asset is already assigned to ${asset.currentAssignment.employeeName} (${asset.currentAssignment.employeeCode}). Record a return before reassigning.`);
+      assertEmployeeInScope(
+        req.hrAccess,
+        asset.currentAssignment.employeeId,
+        "You do not have access to this asset."
+      );
+      const assigneeName = asset.currentAssignment.employeeName || "an employee";
+      const assigneeCode = asset.currentAssignment.employeeCode || "";
+      const assigneeLabel = assigneeCode ? `${assigneeName} (${assigneeCode})` : assigneeName;
+      throw new HttpError(
+        400,
+        `Asset is already assigned to ${assigneeLabel}. Record a return before reassigning.`
+      );
     }
 
     if (asset.status === ASSET_STATUSES.UNDER_MAINTENANCE) {
@@ -525,6 +589,12 @@ export async function returnAsset(req, res, next) {
     if (!asset.currentAssignment || !asset.currentAssignment.employeeId) {
       throw new HttpError(400, "Asset is not currently assigned to any employee.");
     }
+
+    assertEmployeeInScope(
+      req.hrAccess,
+      asset.currentAssignment.employeeId,
+      "You do not have access to return this assigned asset."
+    );
 
     const previousAssignment = asset.currentAssignment;
     const returnedCondition = conditionAtReturn && Object.values(ASSET_CONDITIONS).includes(conditionAtReturn)

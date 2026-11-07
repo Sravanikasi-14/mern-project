@@ -21,6 +21,7 @@ import { invalidateAttendance, invalidateEmployeeWork, invalidateLeave } from ".
 import api from "../services/api";
 import StatusBadge from "../components/StatusBadge";
 import DateRangePicker from "../components/DateRangePicker";
+import { acquireCurrentLocation } from "../utils/geolocation";
 import "./EmployeeDashboard.css";
 import MobileExpandable from "../components/mobile/MobileExpandable";
 import MobileEmptyState from "../components/mobile/MobileEmptyState";
@@ -334,37 +335,37 @@ export default function EmployeeDashboard() {
     }
   };
 
-  // Quick punch handlers with geolocation
+  // Quick punch — same strict punch-in/out + location rules as Attendance page
   const handlePunch = async (actionType) => {
+    if (punching) return;
+    const isCheckIn = actionType === "check-in";
     try {
       setPunching(true);
       setActionSuccess("");
       setActionError("");
 
-      let payload = {};
-      if (navigator.geolocation) {
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 5000,
-              enableHighAccuracy: true,
-            });
-          });
-          payload = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-          };
-        } catch {
-          // Continue without coords
-        }
+      let location;
+      try {
+        location = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
+      } catch (err) {
+        setActionError(
+          `${err.message || "Location required."} ${err.action || "Enable location to punch."}`
+        );
+        return;
       }
 
-      const res = await api.post(`/employees/me/attendance/${actionType}`, payload);
-      setActionSuccess(res.data?.message || `Successfully punched ${actionType === "check-in" ? "in" : "out"}!`);
+      const path = isCheckIn
+        ? "/employees/me/attendance/punch-in"
+        : "/employees/me/attendance/punch-out";
+      const res = await api.post(path, { location });
+      setActionSuccess(
+        res.data?.message || `Successfully punched ${isCheckIn ? "in" : "out"}!`
+      );
       await invalidateAttendance(queryClient);
     } catch (err) {
-      setActionError(err.response?.data?.message || `Failed to punch ${actionType === "check-in" ? "in" : "out"}.`);
+      setActionError(
+        err.response?.data?.message || `Failed to punch ${isCheckIn ? "in" : "out"}.`
+      );
     } finally {
       setPunching(false);
     }

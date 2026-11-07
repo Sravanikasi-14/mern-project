@@ -3,6 +3,16 @@ import nodemailer from "nodemailer";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { decryptSecret } from "../utils/secretCrypto.js";
 
+/** Mask local-part for logs — never log full recipient when avoidable. */
+function maskEmailForLog(email) {
+  const normalized = normalizeEmail(email || "");
+  if (!normalized || !normalized.includes("@")) return "(invalid)";
+  const [local, domain] = normalized.split("@");
+  if (!domain) return "(invalid)";
+  if (local.length <= 2) return `${"*".repeat(local.length)}@${domain}`;
+  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+}
+
 /**
  * In-process send throttle to avoid Gmail/SMTP burst lockouts.
  */
@@ -579,6 +589,25 @@ class EmailService {
 
     const resolvedFrom = from || config?.from || this.getFromAddress(company);
     const finalReplyTo = replyTo || undefined;
+    const tenantId = company?._id
+      ? String(company._id)
+      : company?.slug
+        ? String(company.slug)
+        : config?.tenantId || "platform";
+    const mailType = extra?.type || "generic";
+    const attempt = Number.isFinite(extra?.attempt) ? extra.attempt : undefined;
+    const startedAt = Date.now();
+
+    const baseDiag = {
+      tenantId,
+      type: mailType,
+      attempt: attempt ?? null,
+      from: resolvedFrom,
+      toMasked: maskEmailForLog(normalizedRecipient),
+      smtpHost: config?.host || null,
+      smtpPort: config?.port ?? null,
+      smtpSecure: Boolean(config?.secure),
+    };
 
     try {
       const transporter = this._customTransporter || this.getTransporterForConfig(config);
@@ -607,12 +636,65 @@ class EmailService {
         }));
       }
 
+      if (process.env.NODE_ENV !== "test") {
+        console.log("[EmailService] SMTP send start", JSON.stringify(baseDiag));
+      }
+
       const info = await transporter.sendMail(mailOptions);
       const messageId = info?.messageId || `smtp_${Date.now()}`;
+      const durationMs = Date.now() - startedAt;
+      const responseCode =
+        info?.responseCode ??
+        (typeof info?.response === "string"
+          ? Number.parseInt(info.response.split(" ")[0], 10) || null
+          : null);
+      const rejected = Array.isArray(info?.rejected) ? info.rejected : [];
+      const accepted = Array.isArray(info?.accepted) ? info.accepted : [];
+      const pending = Array.isArray(info?.pending) ? info.pending : [];
+
+      // Nodemailer can return without throw while rejecting recipients.
+      if (rejected.length > 0 && accepted.length === 0) {
+        const rejectMsg = `SMTP rejected recipient(s): ${rejected
+          .map((r) => maskEmailForLog(String(r)))
+          .join(", ")}. response=${this.sanitizeError(info?.response || "")}`;
+        if (process.env.NODE_ENV !== "test") {
+          console.error(
+            "[EmailService] SMTP rejected all recipients",
+            JSON.stringify({
+              ...baseDiag,
+              durationMs,
+              messageId,
+              responseCode,
+              response: this.sanitizeError(info?.response || ""),
+              acceptedCount: accepted.length,
+              rejectedCount: rejected.length,
+              pendingCount: pending.length,
+            })
+          );
+        }
+        return {
+          success: false,
+          error: rejectMsg,
+          provider: "nodemailer",
+          responseCode,
+          messageId,
+        };
+      }
 
       if (process.env.NODE_ENV !== "test") {
         console.log(
-          `[EmailService] Email accepted by SMTP for ${normalizedRecipient}. Message ID: ${messageId}`
+          "[EmailService] SMTP accepted",
+          JSON.stringify({
+            ...baseDiag,
+            durationMs,
+            messageId,
+            responseCode,
+            response: this.sanitizeError(info?.response || ""),
+            acceptedCount: accepted.length,
+            rejectedCount: rejected.length,
+            pendingCount: pending.length,
+            envelopeFrom: info?.envelope?.from || null,
+          })
         );
       }
 
@@ -628,6 +710,8 @@ class EmailService {
         sentAt: new Date(),
         provider: "nodemailer",
         providerStatus: "accepted",
+        responseCode,
+        durationMs,
         ...extra,
       };
       this.history.push(record);
@@ -639,19 +723,102 @@ class EmailService {
         sentAt: record.sentAt,
         provider: "nodemailer",
         providerStatus: "accepted",
+        responseCode,
+        durationMs,
       };
     } catch (err) {
       const safeError = this.sanitizeError(err);
-      console.error(
-        `[EmailService] Error delivering email via SMTP to ${normalizedRecipient}:`,
-        safeError
-      );
+      const durationMs = Date.now() - startedAt;
+      const responseCode = err?.responseCode ?? null;
+      const command = err?.command || null;
+      const smtpResponse = err?.response ? this.sanitizeError(err.response) : null;
+      if (process.env.NODE_ENV !== "test") {
+        console.error(
+          "[EmailService] SMTP error",
+          JSON.stringify({
+            ...baseDiag,
+            durationMs,
+            responseCode,
+            command,
+            response: smtpResponse,
+            error: safeError,
+          })
+        );
+      }
       return {
         success: false,
         error: safeError,
         provider: "nodemailer",
+        responseCode,
+        command,
       };
     }
+  }
+
+  async sendHrAdminInvitation({ companyName, hrAdminName, email, inviteLink, company }) {
+    const normalized = normalizeEmail(email);
+    if (!isValidEmail(normalized)) {
+      return { success: false, error: "Invalid recipient email address" };
+    }
+
+    if (this.failureSimulation || process.env.SIMULATE_EMAIL_FAILURE === "true") {
+      return {
+        success: false,
+        error: "Mail transfer agent unavailable: simulated delivery failure",
+      };
+    }
+
+    const orgName = companyName || "Your Company";
+    const adminName = hrAdminName || "HR Admin";
+    const subject = `You're invited as HR Admin for ${orgName}`;
+
+    const text = [
+      `Hello ${adminName},`,
+      ``,
+      `You have been invited to join ${orgName} as an HR Admin on the HRMS platform.`,
+      ``,
+      `Please set up your password and activate your account using the link below:`,
+      `${inviteLink}`,
+      ``,
+      `Note: This invitation link is personal to you and will expire in 7 days.`,
+      ``,
+      `Best regards,`,
+      `${orgName}`,
+    ].join("\n");
+
+    const html = `
+      <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #131a15; background-color: #ffffff; border: 1px solid #e6ede8; border-radius: 12px;">
+        <div style="margin-bottom: 24px; border-bottom: 1px solid #e6ede8; padding-bottom: 16px;">
+          <h2 style="margin: 0; color: #155a37; font-size: 20px; font-weight: 700;">${orgName} · HRMS</h2>
+        </div>
+        <p style="font-size: 15px; line-height: 1.5; margin: 0 0 16px;">Hello <strong>${adminName}</strong>,</p>
+        <p style="font-size: 15px; line-height: 1.5; margin: 0 0 20px;">
+          You have been invited to join <strong>${orgName}</strong> as an <strong>HR Admin</strong>. Set up your password to access the HR workspace.
+        </p>
+        <div style="margin: 28px 0; text-align: center;">
+          <a href="${inviteLink}" style="background-color: #27865a; color: #ffffff; padding: 12px 24px; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px; display: inline-block;">
+            Activate HR Admin account
+          </a>
+        </div>
+        <p style="font-size: 13px; color: #646d67; line-height: 1.5; margin: 0 0 16px;">
+          Or copy and paste this link in your browser:<br />
+          <a href="${inviteLink}" style="color: #155a37; word-break: break-all;">${inviteLink}</a>
+        </p>
+        <p style="font-size: 12px; color: #6c756f; border-top: 1px solid #e6ede8; padding-top: 16px; margin-top: 24px;">
+          This link will expire in 7 days. If you were not expecting this invitation, you can ignore this email.
+        </p>
+      </div>
+    `.trim();
+
+    return this.sendMail({
+      to: normalized,
+      subject,
+      text,
+      html,
+      type: "hr_admin_invitation",
+      inviteLink,
+      company,
+    });
   }
 
   async sendEmployeeInvitation({ companyName, employeeName, email, inviteLink, company }) {
@@ -724,10 +891,12 @@ class EmailService {
     candidateEmail,
     position,
     pdfBuffer,
+    docxBuffer,
     joiningDate,
     monthlySalary,
     reviewLink,
     company,
+    attempt,
   }) {
     const normalized = normalizeEmail(candidateEmail);
     if (!isValidEmail(normalized)) {
@@ -769,7 +938,9 @@ class EmailService {
       formattedSalary ? `- Monthly Gross Compensation: ${formattedSalary}` : null,
       `- Expected Joining Date: ${formattedJoiningDate}`,
       ``,
-      `Your complete formal offer letter document is attached to this email as a PDF. Please review the employment terms, compensation details, and policies carefully.`,
+      docxBuffer && !pdfBuffer
+        ? `Your complete formal offer letter document is attached to this email as a Word (DOCX) file. Please review the employment terms, compensation details, and policies carefully.`
+        : `Your complete formal offer letter document is attached to this email as a PDF. Please review the employment terms, compensation details, and policies carefully.`,
       reviewLink ? `` : null,
       reviewLink ? `You can review and electronically sign this offer letter online at:` : null,
       reviewLink ? `${reviewLink}` : null,
@@ -781,6 +952,11 @@ class EmailService {
     ]
       .filter((line) => line !== null)
       .join("\n");
+
+    const attachmentNote =
+      docxBuffer && !pdfBuffer
+        ? "Your complete offer letter with detailed terms is attached to this email as a Word (DOCX) document."
+        : "Your complete offer letter with detailed terms, compensation structure, and company policies is attached to this email as a PDF document.";
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 28px; color: #09090b; background-color: #ffffff; border: 1px solid #e4e4e7; border-radius: 10px;">
@@ -819,7 +995,7 @@ class EmailService {
 
         <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
           <p style="margin: 0; font-size: 13px; color: #1e40af; line-height: 1.5;">
-            <strong>Official Document Attached:</strong> Your complete offer letter with detailed terms, compensation structure, and company policies is attached to this email as a PDF document.
+            <strong>Official Document Attached:</strong> ${attachmentNote}
           </p>
         </div>
 
@@ -857,25 +1033,39 @@ class EmailService {
       }
     }
 
-    if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+    if (docxBuffer && !Buffer.isBuffer(docxBuffer)) {
+      try {
+        docxBuffer = Buffer.from(docxBuffer);
+      } catch {
+        docxBuffer = null;
+      }
+    }
+
+    const hasPdf = pdfBuffer && Buffer.isBuffer(pdfBuffer) && pdfBuffer.length > 0;
+    const hasDocx = docxBuffer && Buffer.isBuffer(docxBuffer) && docxBuffer.length > 0;
+    if (!hasPdf && !hasDocx) {
       return {
         success: false,
-        error: "Offer letter PDF attachment is missing, empty, or invalid.",
+        error: "Offer letter attachment is missing, empty, or invalid.",
       };
     }
 
     const safeCandidate = cName.replace(/[^a-zA-Z0-9_-]/g, "_").trim();
-    const filename = safeCandidate
-      ? `Offer_Letter_${safeCandidate}.pdf`
-      : "Offer_Letter_Candidate.pdf";
-
-    const attachments = [
-      {
-        filename,
+    const attachments = [];
+    if (hasPdf) {
+      attachments.push({
+        filename: safeCandidate ? `Offer_Letter_${safeCandidate}.pdf` : "Offer_Letter_Candidate.pdf",
         content: pdfBuffer,
         contentType: "application/pdf",
-      },
-    ];
+      });
+    } else if (hasDocx) {
+      attachments.push({
+        filename: safeCandidate ? `Offer_Letter_${safeCandidate}.docx` : "Offer_Letter_Candidate.docx",
+        content: docxBuffer,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+    }
 
     return this.sendMail({
       to: normalized,
@@ -886,6 +1076,7 @@ class EmailService {
       type: "offer_letter",
       reviewLink,
       company,
+      attempt,
     });
   }
 
@@ -1114,14 +1305,21 @@ class EmailService {
     }
     const org = companyName || "Our Organization";
     const name = employeeName || "Team Member";
-    const subject = `Welcome to the Team! Activate Your ${org} Employee Portal Account`;
+    // Without an employee code the Employee record does not exist yet: it is created when the
+    // candidate completes account setup, so use "account setup" wording.
+    const isAccountSetup = !employeeCode;
+    const subject = isAccountSetup
+      ? `Onboarding Approved! Set Up Your ${org} Account`
+      : `Welcome to the Team! Activate Your ${org} Employee Portal Account`;
 
     const text = [
       `Dear ${name},`,
       ``,
-      `Welcome to ${org}! Your employee onboarding has been fully reviewed and approved.`,
+      `Welcome to ${org}! Your onboarding information has been fully reviewed and approved.`,
       ``,
-      `Your Employee Code: ${employeeCode || "Assigned"}`,
+      isAccountSetup
+        ? `Next step: set your password to complete account setup. Your employee profile will be created once you finish.`
+        : `Your Employee Code: ${employeeCode}`,
       `Registered Email: ${normalized}`,
       ``,
       `Please use the secure link below to set your password and activate your employee portal account:`,
@@ -1141,14 +1339,22 @@ class EmailService {
         </div>
         <p style="font-size: 15px; margin: 0 0 16px;">Dear <strong>${name}</strong>,</p>
         <p style="font-size: 14px; line-height: 1.6; color: #3f3f46; margin: 0 0 20px;">
-          Welcome to the team! Your onboarding submission has been approved and your official employee profile is now active.
+          ${
+            isAccountSetup
+              ? "Your onboarding submission has been approved. Set your password to complete account setup; your employee profile will be created once you finish."
+              : "Welcome to the team! Your onboarding submission has been approved and your official employee profile is now active."
+          }
         </p>
         <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <tr>
+            ${
+              isAccountSetup
+                ? ""
+                : `<tr>
               <td style="padding: 4px 0; color: #166534; width: 40%;">Employee ID:</td>
-              <td style="padding: 4px 0; color: #0f172a; font-weight: 600;">${employeeCode || "Active"}</td>
-            </tr>
+              <td style="padding: 4px 0; color: #0f172a; font-weight: 600;">${employeeCode}</td>
+            </tr>`
+            }
             <tr>
               <td style="padding: 4px 0; color: #166534;">Account Email:</td>
               <td style="padding: 4px 0; color: #0f172a; font-weight: 600;">${normalized}</td>

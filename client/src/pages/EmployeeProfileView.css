@@ -258,8 +258,158 @@
 }
 
 /* --------------------------------------------------------------------------
-   Left Profile Panel (Reference 3 "Person" Card & Format Card)
+   Identity band + working summary (replaces side-by-side cards)
    -------------------------------------------------------------------------- */
+.epv-identity-band {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 14px);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+}
+
+.epv-identity-main {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+
+.epv-identity-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.epv-identity-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.epv-identity-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 16px;
+  margin: 12px 0 0;
+}
+
+.epv-identity-meta dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #646d67);
+}
+
+.epv-identity-meta dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  overflow-wrap: anywhere;
+}
+
+.epv-identity-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.epv-identity-actions .btn-primary,
+.epv-identity-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.epv-work-summary {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 14px);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.epv-work-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.epv-work-summary-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.epv-work-type {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-700, #1d7347);
+  background: var(--g-100, #e3f2e9);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.epv-work-summary-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.epv-work-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 72px;
+}
+
+.epv-work-stat strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink, #131a15);
+  letter-spacing: -0.02em;
+}
+
+.epv-work-stat span {
+  font-size: 12px;
+  color: var(--muted, #646d67);
+}
+
+.epv-work-balances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+.epv-work-balances strong {
+  color: var(--ink, #131a15);
+}
+
+.epv-records-panel {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 14px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+}
+
 .epv-left-panel {
   display: flex;
   flex-direction: column;
@@ -509,19 +659,23 @@
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: var(--r-md, 14px);
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
-  overflow: hidden;
 }
 
 /* Tabs Navigation Strip — Clean Text Links (Requirement 4) */
 .epv-tabs-strip {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 0 24px;
+  gap: 18px;
+  padding: 0 18px;
   background: transparent;
   border-bottom: 1px solid var(--hair, #e3e7e4);
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.epv-tabs-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .epv-tab-btn {

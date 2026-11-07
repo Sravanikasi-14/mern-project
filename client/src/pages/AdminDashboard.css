@@ -422,6 +422,9 @@
   transition: transform 0.25s var(--ease), background 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
 }
+div.stat .stat__arrow {
+  display: none;
+}
 
 .stat:hover .stat__arrow {
   background: var(--ink, #131a15);

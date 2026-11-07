@@ -30,7 +30,13 @@ export default function AppHeader({ title, subtitle, children, actions, hideLogo
 
   const userInitial = (user?.name || user?.email || "U")[0].toUpperCase();
   const displayName = user?.name || user?.email?.split("@")[0] || "User";
-  const displayRole = user?.role === "HR_ADMIN" ? "HR Admin" : "Employee";
+  const displayRole =
+    user?.role === "HR_ADMIN"
+      ? "HR Admin"
+      : user?.role === "COMPANY_ADMIN"
+        ? "Company Admin"
+        : "Employee";
+
 
   return (
     <header className="fernly-topbar">

@@ -5,6 +5,7 @@ import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import AttendanceMap from "../components/AttendanceMap";
 import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
+import ModuleToolbar from "../components/ModuleToolbar";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
@@ -36,7 +37,7 @@ const FILTER_LABELS = {
 };
 
 export default function AdminAttendanceOverview() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { company } = useAuth();
   const timeZone = resolveCompanyTimezone(company);
@@ -47,10 +48,40 @@ export default function AdminAttendanceOverview() {
   const [tableSearch, setTableSearch] = useState("");
   const initialFilter = searchParams.get("filter") === "PRESENT" ? FILTER_TYPES.PRESENT : FILTER_TYPES.TOTAL_STAFF;
   const [activeFilter, setActiveFilter] = useState(initialFilter);
-  const requestedTab = (searchParams.get("tab") || "overview").toLowerCase();
+  // Overview tab removed — records is the unified attendance workspace.
+  // Legacy ?tab=overview bookmarks resolve to records.
+  const requestedTab = (searchParams.get("tab") || "records").toLowerCase();
   const [section, setSection] = useState(
-    requestedTab === "records" || requestedTab === "tracking" ? requestedTab : "overview"
+    requestedTab === "tracking" ? "tracking" : "records"
   );
+
+  useEffect(() => {
+    const tab = (searchParams.get("tab") || "records").toLowerCase();
+    const next = tab === "tracking" ? "tracking" : "records";
+    setSection(next);
+    if (tab === "overview") {
+      setSearchParams(
+        (prev) => {
+          const nextParams = new URLSearchParams(prev);
+          nextParams.set("tab", "records");
+          return nextParams;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
+
+  const setAttendanceSection = (nextSection) => {
+    setSection(nextSection);
+    setSearchParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        nextParams.set("tab", nextSection);
+        return nextParams;
+      },
+      { replace: true }
+    );
+  };
   const [attendancePage, setAttendancePage] = useState(1);
   const [attendancePageSize, setAttendancePageSize] = useState(25);
 
@@ -137,7 +168,7 @@ export default function AdminAttendanceOverview() {
       const q = tableSearch.toLowerCase();
       list = list.filter(
         (e) =>
-          e.fullName.toLowerCase().includes(q) ||
+          (e.fullName || "").toLowerCase().includes(q) ||
           (e.employeeCode || "").toLowerCase().includes(q) ||
           (e.department || "").toLowerCase().includes(q)
       );
@@ -301,65 +332,49 @@ export default function AdminAttendanceOverview() {
       />
 
       <div className="module-tabs" role="tablist" aria-label="Attendance sections">
-        <button type="button" className={`module-tab ${section === "overview" ? "is-active" : ""}`} onClick={() => setSection("overview")}>
-          Overview
+        <button type="button" className={`module-tab ${section === "records" ? "is-active" : ""}`} onClick={() => setAttendanceSection("records")}>
+          Attendance
         </button>
-        <button type="button" className={`module-tab ${section === "records" ? "is-active" : ""}`} onClick={() => setSection("records")}>
-          Records
-        </button>
-        <button type="button" className={`module-tab ${section === "tracking" ? "is-active" : ""}`} onClick={() => setSection("tracking")}>
+        <button type="button" className={`module-tab ${section === "tracking" ? "is-active" : ""}`} onClick={() => setAttendanceSection("tracking")}>
           Live Tracking
         </button>
       </div>
 
-      {/* Date & Department Filter Toolbar */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 10,
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 8,
-          padding: "8px 14px",
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Date:</span>
+      <ModuleToolbar
+        searchValue={tableSearch}
+        onSearchChange={(e) => setTableSearch(e.target.value)}
+        searchPlaceholder="Search name, code, or department..."
+        searchAriaLabel="Search employees"
+        leading={
+          <label className="module-toolbar-field">
+            <span>Date</span>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              style={{
-                border: "1px solid var(--hair, #e6ede8)",
-                borderRadius: 6,
-                padding: "5px 10px",
-                fontSize: 12.5,
-                outline: "none",
-                fontWeight: 600,
-                background: "#f8faf8",
-                color: "var(--ink)",
-                height: 32,
-              }}
+              className="module-toolbar-control"
             />
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>Dept:</span>
+          </label>
+        }
+        actions={
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => attendanceQuery.refetch()}
+            title="Refresh attendance records"
+          >
+            Refresh
+          </button>
+        }
+        filterCount={department !== "ALL" ? 1 : 0}
+        onFiltersClear={() => setDepartment("ALL")}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Department
             <select
+              className="filter-select"
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
-              className="filter-select"
-              style={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                height: 32,
-                minHeight: 32,
-              }}
             >
               {departments.map((dept) => (
                 <option key={dept} value={dept}>
@@ -367,23 +382,11 @@ export default function AdminAttendanceOverview() {
                 </option>
               ))}
             </select>
-          </div>
-        </div>
+          </label>
+        }
+      />
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            onClick={() => attendanceQuery.refetch()}
-            title="Refresh attendance records"
-            style={{ height: 32, padding: "0 10px", fontSize: 12.5 }}
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {(section === "overview" || section === "records") && (
+      {section === "records" && (
       <>
       {/* Interactive Compact Attendance Metrics Strip */}
       <div
@@ -411,7 +414,7 @@ export default function AdminAttendanceOverview() {
               type="button"
               onClick={() => {
                 setActiveFilter(c.key);
-                if (c.key === FILTER_TYPES.LIVE_TRACKING) setSection("tracking");
+                if (c.key === FILTER_TYPES.LIVE_TRACKING) setAttendanceSection("tracking");
               }}
               style={{
                 display: "inline-flex",
@@ -533,10 +536,15 @@ export default function AdminAttendanceOverview() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", maxHeight: 380 }}>
-              {exceptionsList.map((alert, idx) => (
+              {exceptionsList.map((alert) => (
                 <div
                   key={alert.id}
-                  onClick={() => handleOpenDrawer(alert.employee, idx)}
+                  onClick={() => {
+                    const absoluteIdx = filteredEmployees.findIndex(
+                      (e) => String(e.employeeId) === String(alert.employee.employeeId)
+                    );
+                    handleOpenDrawer(alert.employee, absoluteIdx >= 0 ? absoluteIdx : 0);
+                  }}
                   style={{
                     padding: "12px 14px",
                     background: "#fbfdfc",
@@ -581,7 +589,7 @@ export default function AdminAttendanceOverview() {
       </div>
       )}
 
-      {(section === "overview" || section === "records") && (
+      {section === "records" && (
       <div
         style={{
           background: "var(--card, #ffffff)",
@@ -597,32 +605,14 @@ export default function AdminAttendanceOverview() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 18,
+            marginBottom: 14,
             flexWrap: "wrap",
-            gap: 14,
+            gap: 10,
           }}
         >
-          {/* Table Heading and Filter Status Indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
-              Employee Attendance Records ({filteredEmployees.length})
-            </h3>
-          </div>
-
-          {/* Table Search Input */}
-          <div className="att-search-box" style={{ background: "#ffffff" }}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m16.5 16.5 4 4" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by name or code..."
-              value={tableSearch}
-              onChange={(e) => setTableSearch(e.target.value)}
-              aria-label="Search employees table"
-            />
-          </div>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
+            Employee Attendance Records ({filteredEmployees.length})
+          </h3>
         </div>
 
         {/* Table Content */}
@@ -846,7 +836,7 @@ export default function AdminAttendanceOverview() {
                           }}
                           style={{ padding: "4px 10px", fontSize: 12 }}
                         >
-                          View Drawer →
+                          View details
                         </button>
                       </td>
                     </tr>

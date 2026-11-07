@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useChatUnreadQuery } from "../hooks/useChatQueries";
 import { IconClose } from "./Icons";
 import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import api from "../services/api";
 import { getCompanyBrandName } from "../utils/companyBrand";
+import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
 
 const HR_NAV_ITEMS = [
   {
@@ -34,6 +36,21 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
+    id: "organization",
+    label: "Organization",
+    path: "/admin/organization",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="5" r="2.5" />
+        <circle cx="5" cy="19" r="2.5" />
+        <circle cx="19" cy="19" r="2.5" />
+        <path d="M12 7.5v3.5" />
+        <path d="M12 11h7a2 2 0 0 1 2 2v3" />
+        <path d="M12 11H5a2 2 0 0 0-2 2v3" />
+      </svg>
+    ),
+  },
+  {
     id: "attendance",
     label: "Attendance",
     path: "/admin/attendance",
@@ -59,21 +76,9 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
-    id: "offers",
-    label: "Offer Letters",
-    path: "/admin/offers",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <path d="m9 15 2 2 4-4" />
-      </svg>
-    ),
-  },
-  {
-    id: "onboarding",
-    label: "Onboarding",
-    path: "/admin/onboarding",
+    id: "hiring",
+    label: "Hiring & Onboarding",
+    path: "/admin/hiring",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -130,9 +135,10 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
-    id: "policies",
-    label: "Policies",
+    id: "policies-settings",
+    label: "Policies & Settings",
     path: "/admin/policies",
+    matchPaths: ["/admin/policies", "/admin/settings"],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -144,21 +150,64 @@ const HR_NAV_ITEMS = [
     ),
   },
   {
-    id: "settings",
-    label: "Settings",
-    path: "/admin/settings",
+    id: "reports",
+    label: "Reports",
+    path: "/admin/reports",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        <line x1="18" y1="20" x2="18" y2="10" />
+        <line x1="12" y1="20" x2="12" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="14" />
       </svg>
     ),
   },
 ];
 
+const SETTLEMENTS_NAV_ITEM = {
+  id: "settlements",
+  label: "Settlements",
+  path: "/admin/payroll?tab=ff_settlements",
+  icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+      <circle cx="7" cy="15" r="1.5" />
+      <line x1="12" y1="15" x2="17" y2="15" />
+    </svg>
+  ),
+};
+
+const HR_MANAGEMENT_ITEM = {
+  id: "hr-management",
+  label: "HR Management",
+  path: "/admin/hr-management",
+  icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M19 8v6" />
+      <path d="M22 11h-6" />
+    </svg>
+  ),
+};
+
+function visibleHrNav(user, company) {
+  const byId = new Map(HR_NAV_ITEMS.map((item) => [item.id, item]));
+  byId.set("hr-management", HR_MANAGEMENT_ITEM);
+  byId.set("settlements", SETTLEMENTS_NAV_ITEM);
+  byId.set("work", byId.get("work-impact"));
+  return visibleHrPortalModules(user, company).flatMap((module) => {
+    const item = byId.get(module.id);
+    if (!item) return [];
+    return [{ ...item, id: module.id, path: module.path }];
+  });
+}
+
 const EMPLOYEE_NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", path: "/app/dashboard", iconName: "dashboard" },
+  { id: "messages", label: "Messages", path: "/app/messages", iconName: "messages" },
   { id: "profile", label: "Profile", path: "/app/profile", iconName: "profile" },
+  { id: "directory", label: "Organization", path: "/app/directory", iconName: "directory" },
   { id: "attendance", label: "Attendance", path: "/app/attendance", iconName: "attendance" },
   { id: "leave", label: "Leave", path: "/app/leave", iconName: "leave" },
   { id: "payslips", label: "Payslips", path: "/app/payslips", iconName: "payslips" },
@@ -167,6 +216,15 @@ const EMPLOYEE_NAV_ITEMS = [
   { id: "impact-points", label: "Impact Points", path: "/app/impact-points", iconName: "impact" },
   { id: "settings", label: "Settings", path: "/app/settings", iconName: "settings" },
 ];
+
+function withMessages(items, path) {
+  if (items.some((item) => item.id === "messages")) return items;
+  const item = { id: "messages", label: "Messages", path, iconName: "messages" };
+  const dashboardIndex = items.findIndex((entry) => entry.id === "dashboard");
+  const next = [...items];
+  next.splice(dashboardIndex >= 0 ? dashboardIndex + 1 : 0, 0, item);
+  return next;
+}
 
 export default function Sidebar({
   collapsed,
@@ -215,7 +273,14 @@ export default function Sidebar({
     };
   }, [company?.branding?.logoUrl]);
 
-  const navItems = user?.role === "HR_ADMIN" ? HR_NAV_ITEMS : EMPLOYEE_NAV_ITEMS;
+  const unreadQuery = useChatUnreadQuery({
+    enabled: user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN" || user?.role === "EMPLOYEE",
+  });
+  const unreadCount = unreadQuery.data || 0;
+  const navItems =
+    user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN"
+      ? withMessages(visibleHrNav(user, company), "/admin/messages")
+      : EMPLOYEE_NAV_ITEMS;
 
   const handleLogout = async () => {
     try {
@@ -240,7 +305,7 @@ export default function Sidebar({
   const isItemActive = (item) => {
     const current = location.pathname;
 
-    if (user?.role === "HR_ADMIN") {
+    if (user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN") {
       if (item.id === "dashboard") {
         return current === "/admin/dashboard";
       }
@@ -250,13 +315,28 @@ export default function Sidebar({
           current.startsWith("/admin/employees")
         );
       }
-      if (item.id === "work-impact") {
+      if (item.id === "work" || item.id === "work-impact") {
         return (
           current === "/admin/work-management" ||
-          current.startsWith("/admin/work-management/")
+          current.startsWith("/admin/work-management/") ||
+          current.startsWith("/admin/work-impact")
         );
       }
-      if (item.path) {
+      if (item.id === "payroll") {
+        return current === "/admin/payroll" && !isSettlementsLocation(current, location.search);
+      }
+      if (item.id === "settlements") {
+        return isSettlementsLocation(current, location.search);
+      }
+      if (item.id === "policies" || item.id === "policies-settings") {
+        return (
+          current === "/admin/policies" ||
+          current.startsWith("/admin/policies/") ||
+          current === "/admin/settings" ||
+          current.startsWith("/admin/settings/")
+        );
+      }
+      if (item.path && !item.path.includes("?")) {
         return current === item.path || current.startsWith(item.path + "/");
       }
       return false;
@@ -306,7 +386,8 @@ export default function Sidebar({
 
   const userInitial = (user?.name || user?.email || "U")[0].toUpperCase();
   const displayName = user?.name || user?.email?.split("@")[0] || "User";
-  const displayRole = user?.role === "HR_ADMIN" ? "HR Admin" : "Employee";
+  const displayRole =
+    user?.role === "HR_ADMIN" ? "HR Admin" : user?.role === "COMPANY_ADMIN" ? "Company Admin" : "Employee";
 
   return (
     <aside
@@ -394,6 +475,9 @@ export default function Sidebar({
                   {!collapsed && (
                     <span className="nav-item-label">{item.label}</span>
                   )}
+                  {!collapsed && item.id === "messages" && unreadCount > 0 ? (
+                    <span className="nav-unread-pill">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                  ) : null}
                   {!collapsed && !item.path && (
                     <span className="coming-soon-pill">Soon</span>
                   )}

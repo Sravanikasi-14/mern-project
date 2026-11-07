@@ -2,6 +2,7 @@ process.env.NODE_ENV = "test";
 process.env.MONGOMS_MD5_CHECK = "0";
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { CANDIDATE_SIGNATURE_FIELDS, HR_SIGNATURE_LETTERHEAD } from "./helpers/offerSignature.js";
 import request from "supertest";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -14,6 +15,7 @@ import { emailService } from "../services/emailService.js";
 import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { decodeAuthToken } from "../utils/token.js";
 import { encryptSecret } from "../utils/secretCrypto.js";
+import { approveAllSections } from "./helpers/onboardingReview.js";
 
 let mongod;
 let app;
@@ -28,7 +30,7 @@ function cookieFrom(res) {
   return Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader;
 }
 
-describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval -> Employee Creation -> Activation -> Login", () => {
+describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> Section Review -> HR Approval + Invite -> Activation (Employee Creation) -> Login", () => {
   before(async () => {
     mongod = await MongoMemoryServer.create();
     process.env.MONGO_URI = mongod.getUri();
@@ -41,6 +43,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
 
     // 1. Create Acme Company
     companyAcme = await Company.create({
+      letterhead: HR_SIGNATURE_LETTERHEAD,
       companyName: "Acme Innovations Ltd",
       slug: "acme",
       databaseName: "tenant_acme_hiring_pipeline",
@@ -64,6 +67,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
 
     // 2. Create Globex Company
     companyGlobex = await Company.create({
+      letterhead: HR_SIGNATURE_LETTERHEAD,
       companyName: "Globex Global Corp",
       slug: "globex",
       databaseName: "tenant_globex_hiring_pipeline",
@@ -198,6 +202,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
         .send({
           signerName: "Anita Desai",
           consentAgreed: true,
+        ...CANDIDATE_SIGNATURE_FIELDS,
         });
 
       assert.equal(res.status, 200);
@@ -206,10 +211,10 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.ok(res.body.offerLetter.signature);
       assert.equal(res.body.offerLetter.signature.signerName, "Anita Desai");
       assert.ok(res.body.offerLetter.signature.documentHash);
-      assert.ok(res.body.offerLetter.content.includes("Accepted Electronically"));
-      assert.ok(res.body.offerLetter.content.includes("Electronically Signed By:"));
-      assert.ok(res.body.offerLetter.content.includes("Anita Desai"));
-      assert.ok(!res.body.offerLetter.content.includes("Signature: _______________________"));
+      // Phase 4B: signing never rewrites the legal text; signature is stored separately.
+      assert.ok(res.body.offerLetter.issuedContent);
+      assert.equal(res.body.offerLetter.content, res.body.offerLetter.issuedContent);
+      assert.ok(!res.body.offerLetter.content.includes("Electronically Signed By:"));
       assert.ok(res.body.onboardingToken);
       onboardingToken = res.body.onboardingToken;
 
@@ -221,16 +226,18 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.ok(onboardingEmail.onboardingLink.includes(onboardingToken));
     });
 
-    it("Offer review endpoint returns recorded electronic signature in content", async () => {
+    it("Offer review endpoint returns frozen issued content and the recorded signature separately", async () => {
       const res = await request(app)
         .get(`/api/candidate/offers/review/${signingToken}`);
 
       assert.equal(res.status, 200);
       assert.equal(res.body.offer.status, OFFER_LETTER_STATUSES.ACCEPTED);
-      assert.ok(res.body.offer.content.includes("Accepted Electronically"));
-      assert.ok(res.body.offer.content.includes("Electronically Signed By:"));
       assert.ok(res.body.offer.content.includes("Anita Desai"));
-      assert.ok(!res.body.offer.content.includes("Signature: _______________________"));
+      assert.ok(!res.body.offer.content.includes("Electronically Signed By:"));
+      assert.equal(res.body.offer.signature.signerName, "Anita Desai");
+      // Phase 3 continuity: reviewing a signed offer re-issues the onboarding token
+      // (the previous onboarding token hash is replaced).
+      if (res.body.onboardingToken) onboardingToken = res.body.onboardingToken;
     });
 
     it("Candidate cannot sign an already accepted offer (prevents duplicate signing)", async () => {
@@ -239,6 +246,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
         .send({
           signerName: "Anita Desai",
           consentAgreed: true,
+        ...CANDIDATE_SIGNATURE_FIELDS,
         });
 
       assert.equal(res.status, 409);
@@ -476,8 +484,18 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
     });
   });
 
-  describe("Stage 5: Approval-Driven Employee Creation in Tenant Database", () => {
-    it("HR approves onboarding; employee, compensation, and inactive user are created in tenant DB", async () => {
+  describe("Stage 5: Section Review and Final HR Approval (NO employee created yet)", () => {
+    it("Final approval is rejected until every section has been approved", async () => {
+      const res = await request(app)
+        .post(`/api/onboarding/submissions/${onboardingId}/approve`)
+        .set("Cookie", hrCookieAcme)
+        .send();
+      assert.equal(res.status, 400);
+      assert.ok(res.body.message.includes("sections must be approved"));
+    });
+
+    it("HR approves each section, then final approval issues the account-setup invitation without creating an employee", async () => {
+      await approveAllSections(app, hrCookieAcme, onboardingId);
       emailService.clearHistory();
 
       const res = await request(app)
@@ -485,37 +503,28 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
         .set("Cookie", hrCookieAcme)
         .send();
 
-      assert.ok(res.status === 200 || res.status === 201);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
       assert.equal(res.body.success, true);
-      assert.ok(res.body.employee);
-      assert.ok(res.body.employee.employeeCode);
-      assert.equal(res.body.employee.fullName, "Anita Desai");
-      assert.equal(res.body.employee.email, "anita.desai@example.test");
-      createdEmployeeCode = res.body.employee.employeeCode;
+      assert.equal(res.body.employee, null);
+      assert.equal(res.body.activationEmailSent, true);
 
-      // Verify employee exists in Acme tenant database
+      // No Employee / compensation exists after HR approval
       const { Employee, EmployeeCompensation, User } = await getCompanyModels(companyAcme);
-      const empInDb = await Employee.findById(res.body.employee._id);
-      assert.ok(empInDb);
-      assert.equal(empInDb.fullName, "Anita Desai");
-      assert.equal(empInDb.status, "ACTIVE");
+      assert.equal(await Employee.countDocuments({ email: "anita.desai@example.test" }), 0);
+      assert.equal(await EmployeeCompensation.countDocuments({}), 0);
 
-      // Verify compensation record created with offer terms
-      const compInDb = await EmployeeCompensation.findOne({ employeeId: empInDb._id });
-      assert.ok(compInDb);
-      assert.ok(compInDb.revisions && compInDb.revisions.length > 0);
-      assert.equal(parseFloat(compInDb.revisions[0].monthlyCostToCompany.toString()), 120000);
-
-      // Verify user account was provisioned in tenant DB with isActive=false
+      // Candidate user stays an inactive CANDIDATE until activation
       const userInDb = await User.findOne({ email: "anita.desai@example.test" });
       assert.ok(userInDb);
-      assert.equal(userInDb.role, USER_ROLES.EMPLOYEE);
-      assert.equal(userInDb.isActive, false, "Provisioned user must be inactive until employee activates");
+      assert.equal(userInDb.role, USER_ROLES.CANDIDATE);
+      assert.equal(userInDb.isActive, false, "User must be inactive until the candidate activates");
+      assert.equal(userInDb.onboarding.employeeId, null);
+      assert.ok(userInDb.onboarding.approvedAt);
 
-      // Verify employee activation email sent
+      // Account-setup invitation sent
       const history = emailService.getHistory();
       const activationEmail = history.find((e) => e.type === "employee_activation");
-      assert.ok(activationEmail, "Activation email must be sent to employee");
+      assert.ok(activationEmail, "Account setup invitation must be sent");
       assert.equal(activationEmail.to, "anita.desai@example.test");
       assert.ok(activationEmail.activationLink.includes("/activate?token="));
 
@@ -525,7 +534,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.ok(activationToken);
     });
 
-    it("Prevents duplicate employee creation if approve is retried", async () => {
+    it("Prevents duplicate approval if approve is retried", async () => {
       const res = await request(app)
         .post(`/api/onboarding/submissions/${onboardingId}/approve`)
         .set("Cookie", hrCookieAcme)
@@ -534,7 +543,7 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.equal(res.status, 409);
     });
 
-    it("Newly created employee appears in HR People Management", async () => {
+    it("Employee does not appear in HR People Management before activation", async () => {
       const res = await request(app)
         .get("/api/employees")
         .set("Cookie", hrCookieAcme);
@@ -542,20 +551,20 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.equal(res.status, 200);
       const employees = res.body.employees || res.body;
       const found = employees.find((e) => e.email === "anita.desai@example.test");
-      assert.ok(found, "Created employee must appear in People Management list");
-      assert.equal(found.employeeCode, createdEmployeeCode);
+      assert.ok(!found, "Employee must not exist until account activation completes");
     });
   });
 
-  describe("Stage 6: Employee Portal Activation and Login", () => {
-    it("Verifies activation link and loads employee account summary", async () => {
+  describe("Stage 6: Account Activation Creates the Employee, then Login", () => {
+    it("Verifies account-setup link and loads candidate summary (no employee yet)", async () => {
       const res = await request(app)
         .get(`/api/auth/activate/verify?token=${encodeURIComponent(activationToken)}`);
 
       assert.equal(res.status, 200);
       assert.equal(res.body.email, "anita.desai@example.test");
       assert.equal(res.body.fullName, "Anita Desai");
-      assert.equal(res.body.employeeCode, createdEmployeeCode);
+      assert.equal(res.body.accountSetup, true);
+      assert.equal(res.body.employeeCode, "");
       assert.equal(res.body.company.name, "Acme Innovations Ltd");
     });
 
@@ -584,11 +593,43 @@ describe("Hiring Pipeline End-to-End: Offer Signing -> Onboarding -> HR Approval
       assert.ok(res.body.token);
       assert.equal(res.body.user.role, USER_ROLES.EMPLOYEE);
       assert.equal(res.body.user.email, "anita.desai@example.test");
+      assert.ok(res.body.employee?._id);
+      assert.ok(res.body.employee.employeeCode);
+      assert.equal(res.body.employee.fullName, "Anita Desai");
+      createdEmployeeCode = res.body.employee.employeeCode;
 
-      // Verify user in tenant database is now active
-      const { User } = await getCompanyModels(companyAcme);
+      // Verify user in tenant database is now active and linked to the employee
+      const { Employee, EmployeeCompensation, User } = await getCompanyModels(companyAcme);
       const userInDb = await User.findOne({ email: "anita.desai@example.test" });
       assert.equal(userInDb.isActive, true);
+      assert.equal(userInDb.role, USER_ROLES.EMPLOYEE);
+      assert.equal(userInDb.onboarding.status, ONBOARDING_STATUSES.ACTIVATED);
+      assert.ok(userInDb.onboarding.accountActivatedAt);
+
+      // Employee + compensation were created during activation
+      const empInDb = await Employee.findById(res.body.employee._id);
+      assert.ok(empInDb);
+      assert.equal(empInDb.fullName, "Anita Desai");
+      assert.equal(empInDb.status, "ACTIVE");
+      assert.equal(String(userInDb.employeeId), String(empInDb._id));
+      assert.equal(await Employee.countDocuments({ email: "anita.desai@example.test" }), 1);
+
+      const compInDb = await EmployeeCompensation.findOne({ employeeId: empInDb._id });
+      assert.ok(compInDb);
+      assert.ok(compInDb.revisions && compInDb.revisions.length > 0);
+      assert.equal(parseFloat(compInDb.revisions[0].monthlyCostToCompany.toString()), 120000);
+    });
+
+    it("Newly activated employee appears in HR People Management", async () => {
+      const res = await request(app)
+        .get("/api/employees")
+        .set("Cookie", hrCookieAcme);
+
+      assert.equal(res.status, 200);
+      const employees = res.body.employees || res.body;
+      const found = employees.find((e) => e.email === "anita.desai@example.test");
+      assert.ok(found, "Created employee must appear in People Management list");
+      assert.equal(found.employeeCode, createdEmployeeCode);
     });
 
     it("Invalidates activation token after single use (prevents replay)", async () => {

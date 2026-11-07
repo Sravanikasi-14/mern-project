@@ -18,15 +18,26 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 import Modal from "../../components/Modal";
 import StatusBadge from "../../components/StatusBadge";
 import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
-import ProfileAvatar from "../../components/ProfileAvatar";
+import ProfileAvatar, { initialsFrom } from "../../components/ProfileAvatar";
 import Pagination from "../../components/Pagination";
 import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
 import { useToast } from "../../components/Toast";
-import api from "../../services/api";
+import api, {
+  isRequestTimeoutError,
+  postOfferLetterSend,
+} from "../../services/api";
+import {
+  blobFromAxiosResponse,
+  documentErrorMessage,
+  openDocument,
+  saveDocument,
+} from "../../services/documents";
 
-const OFFER_STATUSES = ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED"];
+const OFFER_STATUSES = ["ALL", "DRAFT", "SENT", "ACCEPTED", "REJECTED", "WITHDRAWN"];
 const OFFER_PAGE_SIZE = 20;
+const HR_SIGNATURE_REQUIRED_MESSAGE =
+  "Save your electronic signature in Settings before sending offer letters.";
 
 const emptyForm = {
   fullName: "",
@@ -81,6 +92,8 @@ function stageHint(status) {
       return "Offer accepted";
     case "REJECTED":
       return "Offer declined";
+    case "WITHDRAWN":
+      return "Offer withdrawn";
     default:
       return "In pipeline";
   }
@@ -97,7 +110,14 @@ export default function HrOffersPage() {
   const initialSeg = searchParams.get("view") === "offers" ? "offers" : "candidates";
   const [segment, setSegment] = useState(initialSeg);
   const [items, setItems] = useState([]);
-  const [summary, setSummary] = useState({ total: 0, draft: 0, sent: 0, accepted: 0, rejected: 0 });
+  const [summary, setSummary] = useState({
+    total: 0,
+    draft: 0,
+    sent: 0,
+    accepted: 0,
+    rejected: 0,
+    withdrawn: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -117,17 +137,41 @@ export default function HrOffersPage() {
   const [send, setSend] = useState(null);
   const [remove, setRemove] = useState(null);
   const [statusConfirm, setStatusConfirm] = useState(null);
+  const [withdrawConfirm, setWithdrawConfirm] = useState(null); // { offer, reason }
 
   const [createStep, setCreateStep] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
   const [clauses, setClauses] = useState([]);
+  const [defaultClauses, setDefaultClauses] = useState([]);
+  const [recipients, setRecipients] = useState([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [editingId, setEditingId] = useState(null);
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [hrSignatureSaved, setHrSignatureSaved] = useState(null); // null = unknown
   const [busy, setBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const previewReq = useRef(0);
   const submitLock = useRef(false);
+  const createDepsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get("/settings/company")
+      .then((res) => {
+        if (cancelled) return;
+        const c = res.data?.company || res.data?.data || {};
+        setHrSignatureSaved(Boolean(c.letterhead?.hasSignature));
+      })
+      .catch(() => {
+        if (!cancelled) setHrSignatureSaved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = async () => {
     try {
@@ -140,10 +184,10 @@ export default function HrOffersPage() {
       if (statusFilter !== "ALL") query.set("status", statusFilter);
       if (search.trim()) query.set("search", search.trim());
 
-      const [listRes, summaryRes, clausesRes] = await Promise.all([
+      // List page: only list + summary. Defer clauses/recipients/templates until create.
+      const [listRes, summaryRes] = await Promise.all([
         api.get(`/offer-letters?${query.toString()}`),
         api.get("/offer-letters/summary").catch(() => null),
-        api.get("/offer-letters/clauses").catch(() => null),
       ]);
 
       const list = listRes.data?.offerLetters;
@@ -166,14 +210,37 @@ export default function HrOffersPage() {
           rejected: s.rejected ?? 0,
         });
       }
-      if (Array.isArray(clausesRes?.data?.clauses)) {
-        setClauses(clausesRes.data.clauses);
-      }
     } catch (err) {
       setError(err.response?.data?.message || "Could not load recruitment data.");
       setItems([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const ensureCreateDeps = async () => {
+    if (createDepsLoadedRef.current) return;
+    try {
+      const [clausesRes, recipientsRes] = await Promise.all([
+        api.get("/offer-letters/clauses").catch(() => null),
+        api.get("/offer-letters/recipients").catch(() => null),
+      ]);
+      if (Array.isArray(clausesRes?.data?.clauses)) {
+        const defs = clausesRes.data.clauses.map((c, i) => ({
+          ...c,
+          enabled: c.enabled !== false && c.isIncluded !== false,
+          isIncluded: c.enabled !== false && c.isIncluded !== false,
+          order: typeof c.order === "number" ? c.order : i,
+        }));
+        setDefaultClauses(defs);
+        setClauses((prev) => (editingId && prev.length ? prev : defs));
+      }
+      if (Array.isArray(recipientsRes?.data?.recipients)) {
+        setRecipients(recipientsRes.data.recipients);
+      }
+      createDepsLoadedRef.current = true;
+    } catch {
+      // Create sheet can still open; individual actions surface errors.
     }
   };
 
@@ -223,6 +290,7 @@ export default function HrOffersPage() {
       SENT: summary.sent,
       ACCEPTED: summary.accepted,
       REJECTED: summary.rejected,
+      WITHDRAWN: summary.withdrawn,
     };
     return OFFER_STATUSES.map((value) => ({
       value,
@@ -245,8 +313,37 @@ export default function HrOffersPage() {
     }
   };
 
-  const openCreate = (prefill) => {
+  const applyRecipient = (recipientId) => {
+    setEmployeeId(recipientId || "");
+    if (!recipientId) return;
+    const r = recipients.find((x) => String(x._id) === String(recipientId));
+    if (!r) return;
+    setForm((prev) => ({
+      ...prev,
+      fullName: r.fullName || prev.fullName,
+      email: r.email || prev.email,
+      position: r.position || prev.position,
+      department: r.department || prev.department,
+      workLocation: r.workLocation || prev.workLocation,
+      employmentType: r.employmentType || prev.employmentType,
+      reportingManager: r.reportingManager || prev.reportingManager,
+      monthlySalary: r.monthlySalary != null ? String(r.monthlySalary) : prev.monthlySalary,
+      joiningDate: r.joiningDate
+        ? new Date(r.joiningDate).toISOString().slice(0, 10)
+        : prev.joiningDate,
+    }));
+  };
+
+  const openCreate = async (prefill, { asEdit = false } = {}) => {
+    await ensureCreateDeps();
     const fromOffer = Boolean(prefill?._id || prefill?.candidate);
+    const isDraftEdit = asEdit && fromOffer && prefill?._id && String(prefill.status || "").toUpperCase() === "DRAFT";
+    setEditingId(isDraftEdit ? prefill._id : null);
+    setEmployeeId(
+      isDraftEdit || fromOffer
+        ? prefill?.employeeId?._id || prefill?.employeeId || prefill?.employee?._id || ""
+        : ""
+    );
     setForm({
       ...emptyForm,
       fullName: fromOffer ? offerName(prefill) : "",
@@ -264,11 +361,60 @@ export default function HrOffersPage() {
         ? prefill.employmentType || emptyForm.employmentType
         : emptyForm.employmentType,
     });
+    if (isDraftEdit && Array.isArray(prefill.clauses) && prefill.clauses.length) {
+      setClauses(
+        prefill.clauses.map((c, i) => ({
+          ...c,
+          enabled: c.enabled !== false && c.isIncluded !== false,
+          isIncluded: c.enabled !== false && c.isIncluded !== false,
+          order: typeof c.order === "number" ? c.order : i,
+        }))
+      );
+    } else if (defaultClauses.length) {
+      setClauses(defaultClauses.map((c) => ({ ...c })));
+    }
     setFormErrors({});
     setPreviewHtml("");
     setCreateStep(1);
     setSelected(fromOffer ? prefill : null);
     setSheet("create");
+  };
+
+  const openEditDraft = async (offer) => {
+    if (!offer?._id) return;
+    try {
+      setBusy(true);
+      const res = await api.get(`/offer-letters/${offer._id}`);
+      const full = res.data?.offerLetter || offer;
+      openCreate(full, { asEdit: true });
+    } catch {
+      openCreate(offer, { asEdit: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateClause = (index, patch) => {
+    setClauses((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  };
+
+  const addCustomClause = () => {
+    setClauses((prev) => [
+      ...prev,
+      {
+        id: `custom-${Date.now()}`,
+        title: "Custom clause",
+        body: "",
+        enabled: true,
+        isIncluded: true,
+        isCustom: true,
+        order: prev.length,
+      },
+    ]);
+  };
+
+  const resetClauses = () => {
+    setClauses(defaultClauses.map((c) => ({ ...c })));
   };
 
   const validateForm = () => {
@@ -289,6 +435,7 @@ export default function HrOffersPage() {
   };
 
   const buildPayload = () => ({
+    employeeId: employeeId || null,
     candidate: {
       fullName: form.fullName.trim(),
       email: form.email.trim().toLowerCase(),
@@ -336,29 +483,54 @@ export default function HrOffersPage() {
     try {
       setBusy(true);
       setError("");
-      const res = await api.post("/offer-letters", buildPayload());
+      const payload = buildPayload();
+      const res = editingId
+        ? await api.put(`/offer-letters/${editingId}`, payload)
+        : await api.post("/offer-letters", payload);
       const saved = res.data?.offerLetter;
-      if (mode === "send" && saved?._id) {
+      if (mode === "send" && saved?._id && hrSignatureSaved !== true) {
+        setError(HR_SIGNATURE_REQUIRED_MESSAGE);
+        toast.push("Offer saved as a draft. Add an HR signature in Settings to send it.");
+      } else if (mode === "send" && saved?._id) {
         try {
-          await api.post(`/offer-letters/${saved._id}/send`);
+          const sendRes = await postOfferLetterSend(saved._id);
+          if (!sendRes.data?.success) {
+            throw new Error(
+              sendRes.data?.message || "Offer saved, but email delivery failed."
+            );
+          }
           toast.push(`Offer sent to ${saved.candidate?.email || form.email}.`);
         } catch (sendErr) {
-          setError(sendErr.response?.data?.message || "Offer saved, but email delivery failed.");
-          toast.push("Offer saved as draft; send failed.");
+          if (isRequestTimeoutError(sendErr)) {
+            const msg =
+              "Send timed out while waiting for the mail server. The email may still have been sent — check delivery status before retrying.";
+            setError(msg);
+            toast.push(msg);
+          } else {
+            const delivery = sendErr.response?.data?.offerLetter?.emailDelivery;
+            const msg =
+              sendErr.response?.data?.message ||
+              delivery?.error ||
+              "Offer saved, but email delivery failed.";
+            setError(msg);
+            toast.push("Offer saved; email delivery failed.");
+            if (sendErr.response?.data?.offerLetter) setSelected(sendErr.response.data.offerLetter);
+          }
         }
       } else if (mode === "download" && saved?._id) {
-        toast.push("Offer letter created.");
+        toast.push(editingId ? "Offer letter updated." : "Offer letter created.");
         await downloadPdf(saved._id, saved.candidate?.fullName || form.fullName);
       } else {
-        toast.push("Offer letter draft created.");
+        toast.push(editingId ? "Draft updated." : "Offer letter draft created.");
       }
       setSheet(null);
       setCreateStep(1);
+      setEditingId(null);
       await load();
       setSegment("offers");
       setStatusFilter(mode === "send" ? "SENT" : "DRAFT");
     } catch (err) {
-      setError(err.response?.data?.message || "Could not create this offer.");
+      setError(err.response?.data?.message || (editingId ? "Could not update this offer." : "Could not create this offer."));
       const backendErrors = err.response?.data?.errors;
       if (backendErrors && typeof backendErrors === "object") setFormErrors(backendErrors);
     } finally {
@@ -367,23 +539,28 @@ export default function HrOffersPage() {
     }
   };
 
-  const downloadPdf = async (offerId, candidateName) => {
+  const downloadPdf = async (offerId, candidateName, mode = "save") => {
+    if (downloadingId) return;
     try {
       setDownloadingId(offerId);
+      setError("");
       const response = await api.get(`/offer-letters/${offerId}/pdf`, { responseType: "blob" });
-      const blob = new Blob([response.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
       const safe = (candidateName || "Candidate").replace(/[^a-zA-Z0-9_-]/g, "_");
-      link.href = url;
-      link.download = `Offer_Letter_${safe}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.push("Offer letter PDF downloaded.");
+      const file = await blobFromAxiosResponse(response, `Offer_Letter_${safe}.pdf`);
+      // Force PDF MIME when the server returns octet-stream
+      const payload = {
+        ...file,
+        mimeType: "application/pdf",
+        blob: file.blob.type ? file.blob : new Blob([file.blob], { type: "application/pdf" }),
+      };
+      if (mode === "open") {
+        await openDocument(payload);
+      } else {
+        await saveDocument(payload);
+        toast.push("Offer PDF ready — use Save or Share.");
+      }
     } catch (err) {
-      setError(err.response?.data?.message || "Could not download PDF.");
+      setError(documentErrorMessage(err, "Could not download PDF."));
     } finally {
       setDownloadingId(null);
     }
@@ -402,19 +579,54 @@ export default function HrOffersPage() {
 
   const sendOffer = async () => {
     if (!send?._id || submitLock.current) return;
+    if (hrSignatureSaved !== true) {
+      toast.push(HR_SIGNATURE_REQUIRED_MESSAGE);
+      setError(HR_SIGNATURE_REQUIRED_MESSAGE);
+      setSend(null);
+      return;
+    }
     submitLock.current = true;
     try {
-      await api.post(`/offer-letters/${send._id}/send`);
+      setBusy(true);
+      const sendRes = await postOfferLetterSend(send._id);
+      if (!sendRes.data?.success) {
+        throw new Error(sendRes.data?.message || "Could not send this offer.");
+      }
       toast.push("Offer sent.");
       setSend(null);
       setSheet(null);
       await load();
     } catch (err) {
-      setError(err.response?.data?.message || "Could not send this offer.");
+      if (isRequestTimeoutError(err)) {
+        setError(
+          "Send timed out while waiting for the mail server. The email may still have been sent — check delivery status before retrying."
+        );
+      } else {
+        const delivery = err.response?.data?.offerLetter?.emailDelivery;
+        const msg =
+          err.response?.data?.message ||
+          delivery?.error ||
+          "Could not send this offer.";
+        setError(msg);
+        if (err.response?.data?.offerLetter) {
+          setSelected(err.response.data.offerLetter);
+          setSheet("detail");
+        }
+      }
       setSend(null);
+      await load();
     } finally {
+      setBusy(false);
       submitLock.current = false;
     }
+  };
+
+  const emailDeliveryLabel = (offer) => {
+    const status = String(offer?.emailDelivery?.status || "").toUpperCase();
+    if (status === "DELIVERY_FAILED") return "Email failed";
+    if (status === "SENT") return "Email delivered";
+    if (status === "NOT_SENT") return "Not emailed";
+    return "";
   };
 
   const deleteOffer = async () => {
@@ -449,6 +661,33 @@ export default function HrOffersPage() {
       setError(err.response?.data?.message || "Could not update offer status.");
       setStatusConfirm(null);
     } finally {
+      submitLock.current = false;
+    }
+  };
+
+  const withdrawOffer = async () => {
+    if (!withdrawConfirm?.offer?._id || submitLock.current) return;
+    const reason = String(withdrawConfirm.reason || "").trim();
+    if (reason.length < 3) {
+      setError("Enter a withdrawal reason (at least 3 characters).");
+      return;
+    }
+    submitLock.current = true;
+    try {
+      setBusy(true);
+      const res = await api.post(`/offer-letters/${withdrawConfirm.offer._id}/withdraw`, { reason });
+      if (!res.data?.success) {
+        throw new Error(res.data?.message || "Could not withdraw this offer.");
+      }
+      toast.push(res.data.message || "Offer withdrawn.");
+      setWithdrawConfirm(null);
+      setSheet(null);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Could not withdraw this offer.");
+      setWithdrawConfirm(null);
+    } finally {
+      setBusy(false);
       submitLock.current = false;
     }
   };
@@ -506,6 +745,11 @@ export default function HrOffersPage() {
       </header>
 
       {error ? <div className="alert alert-error">{error}</div> : null}
+      {hrSignatureSaved === false ? (
+        <div className="alert alert-error" role="alert">
+          {HR_SIGNATURE_REQUIRED_MESSAGE} Open Settings → Company profile.
+        </div>
+      ) : null}
 
       <div className="st-rec-seg" role="tablist" aria-label="Recruitment views">
         <button
@@ -645,12 +889,18 @@ export default function HrOffersPage() {
                           <Clock3 size={12} strokeWidth={2} aria-hidden="true" />
                           {relativePrepared(offer.updatedAt || offer.createdAt)}
                           {offer.monthlySalary != null ? ` · ${formatMoney(offer.monthlySalary)}` : ""}
+                          {String(offer?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED"
+                            ? " · Email failed"
+                            : ""}
                         </>
                       ) : (
                         <>
                           {stageHint(offer.status)}
                           {offer.joiningDate
                             ? ` · Join ${new Date(offer.joiningDate).toLocaleDateString()}`
+                            : ""}
+                          {String(offer?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED"
+                            ? " · Email failed"
                             : ""}
                         </>
                       )}
@@ -701,7 +951,9 @@ export default function HrOffersPage() {
         title={
           sheet === "create"
             ? createStep === 1
-              ? "Create offer letter"
+              ? editingId
+                ? "Edit offer draft"
+                : "Create offer letter"
               : "Preview offer letter"
             : sheet === "filter"
               ? "Filters"
@@ -749,6 +1001,18 @@ export default function HrOffersPage() {
                   Mark accepted
                 </button>
               ) : null}
+              {selected.status === "ACCEPTED" && !selected.employeeId ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    setSheet(null);
+                    navigate(`/admin/onboarding?offerId=${selected._id}`);
+                  }}
+                >
+                  Onboard
+                </button>
+              ) : null}
             </>
           ) : sheet === "create" ? (
             createStep === 1 ? (
@@ -766,10 +1030,10 @@ export default function HrOffersPage() {
                   Back
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => saveOffer("draft")} disabled={busy}>
-                  {busy ? "…" : "Save draft"}
+                  {busy ? "…" : editingId ? "Update draft" : "Save draft"}
                 </button>
                 <button type="button" className="btn-primary" onClick={() => saveOffer("send")} disabled={busy}>
-                  {busy ? "…" : "Save & send"}
+                  {busy ? "…" : editingId ? "Update & send" : "Save & send"}
                 </button>
               </>
             )
@@ -802,14 +1066,26 @@ export default function HrOffersPage() {
                 <em>Contact and offer information</em>
               </span>
             </button>
-            <button type="button" onClick={() => openCreate(selected)}>
-              <FileText size={18} strokeWidth={1.85} />
-              <span>
-                <strong>Generate Offer</strong>
-                <em>Review compensation & clauses</em>
-              </span>
-            </button>
             {selected.status === "DRAFT" ? (
+              <button type="button" onClick={() => openEditDraft(selected)}>
+                <FileText size={18} strokeWidth={1.85} />
+                <span>
+                  <strong>Edit draft</strong>
+                  <em>Update details, recipient & clauses</em>
+                </span>
+              </button>
+            ) : (
+              <button type="button" onClick={() => openCreate(selected)}>
+                <FileText size={18} strokeWidth={1.85} />
+                <span>
+                  <strong>Generate related offer</strong>
+                  <em>Copy candidate into a new draft</em>
+                </span>
+              </button>
+            )}
+            {selected.status === "DRAFT" ||
+            selected.status === "SENT" ||
+            String(selected?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED" ? (
               <button
                 type="button"
                 onClick={() => {
@@ -819,7 +1095,12 @@ export default function HrOffersPage() {
               >
                 <Send size={18} strokeWidth={1.85} />
                 <span>
-                  <strong>Send offer</strong>
+                  <strong>
+                    {selected.status === "SENT" ||
+                    String(selected?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED"
+                      ? "Resend offer"
+                      : "Send offer"}
+                  </strong>
                   <em>Email via existing integration</em>
                 </span>
               </button>
@@ -853,12 +1134,57 @@ export default function HrOffersPage() {
                 </span>
               </button>
             ) : null}
+            {selected.status === "SENT" && !selected.employeeId ? (
+              <button
+                type="button"
+                className="is-danger"
+                onClick={() => {
+                  setWithdrawConfirm({ offer: selected, reason: "" });
+                  setSheet(null);
+                }}
+              >
+                <Trash2 size={18} strokeWidth={1.85} />
+                <span>
+                  <strong>Withdraw offer</strong>
+                  <em>Revoke signing — does not delete records</em>
+                </span>
+              </button>
+            ) : null}
+            {selected.status === "ACCEPTED" && !selected.employeeId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(null);
+                  navigate(`/admin/onboarding?offerId=${selected._id}`);
+                }}
+              >
+                <FileText size={18} strokeWidth={1.85} />
+                <span>
+                  <strong>Open onboarding</strong>
+                  <em>HR review workspace for this offer</em>
+                </span>
+              </button>
+            ) : null}
           </div>
         ) : null}
 
         {sheet === "detail" && selected ? (
           <div className="st-ast-detail">
             <StatusBadge status={selected.status} />
+            {emailDeliveryLabel(selected) ? (
+              <p className="caption" style={{ marginTop: 8 }}>
+                {emailDeliveryLabel(selected)}
+                {selected.emailDelivery?.sentTo ? ` · ${selected.emailDelivery.sentTo}` : ""}
+                {selected.emailDelivery?.attempts
+                  ? ` · ${selected.emailDelivery.attempts} attempt(s)`
+                  : ""}
+              </p>
+            ) : null}
+            {String(selected?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED" ? (
+              <div className="alert alert-error" style={{ marginTop: 10 }}>
+                {selected.emailDelivery?.error || "Email delivery failed. You can resend from actions."}
+              </div>
+            ) : null}
             <div className="st-detail-card" style={{ marginTop: 12 }}>
               <div className="st-detail-row">
                 <span>Email</span>
@@ -888,9 +1214,28 @@ export default function HrOffersPage() {
                 <span>Work location</span>
                 <strong>{selected.workLocation || "—"}</strong>
               </div>
+              <div className="st-detail-row">
+                <span>Reporting manager</span>
+                <strong>{selected.reportingManager || "—"}</strong>
+              </div>
+              <div className="st-detail-row">
+                <span>Employment type</span>
+                <strong>{selected.employmentType || "—"}</strong>
+              </div>
+              <div className="st-detail-row">
+                <span>Clauses included</span>
+                <strong>
+                  {Array.isArray(selected.clauses)
+                    ? selected.clauses.filter((c) => c.isIncluded !== false && c.enabled !== false).length
+                    : "—"}
+                </strong>
+              </div>
             </div>
             {selected.status === "DRAFT" ? (
               <div className="st-rec-detail-actions">
+                <button type="button" className="btn-primary btn-block" onClick={() => openEditDraft(selected)}>
+                  Edit draft
+                </button>
                 <button type="button" className="btn-secondary btn-block" onClick={() => openCreate(selected)}>
                   Create related offer
                 </button>
@@ -906,6 +1251,20 @@ export default function HrOffersPage() {
                 </button>
               </div>
             ) : null}
+            {selected.status === "SENT" ||
+            String(selected?.emailDelivery?.status || "").toUpperCase() === "DELIVERY_FAILED" ? (
+              <button
+                type="button"
+                className="btn-primary btn-block"
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setSend(selected);
+                  setSheet(null);
+                }}
+              >
+                Resend offer email
+              </button>
+            ) : null}
             {selected.status === "SENT" ? (
               <button
                 type="button"
@@ -919,6 +1278,37 @@ export default function HrOffersPage() {
                 Mark declined
               </button>
             ) : null}
+            {selected.status === "SENT" && !selected.employeeId ? (
+              <button
+                type="button"
+                className="btn-danger btn-block"
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setWithdrawConfirm({ offer: selected, reason: "" });
+                  setSheet(null);
+                }}
+              >
+                Withdraw offer
+              </button>
+            ) : null}
+            {selected.status === "ACCEPTED" && !selected.employeeId ? (
+              <button
+                type="button"
+                className="btn-primary btn-block"
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setSheet(null);
+                  navigate(`/admin/onboarding?offerId=${selected._id}`);
+                }}
+              >
+                Open onboarding review
+              </button>
+            ) : null}
+            {selected.status === "WITHDRAWN" && selected.withdrawal?.reason ? (
+              <p className="caption" style={{ marginTop: 12 }}>
+                Withdrawal reason: {selected.withdrawal.reason}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -931,7 +1321,23 @@ export default function HrOffersPage() {
                 loadPreview();
               }}
             >
-              <p className="caption">Step 1 of 2 — Candidate & offer details. Clauses use the company template library.</p>
+              <p className="caption">
+                Step 1 of 2 — {editingId ? "Edit draft details" : "Candidate & offer details"}. Toggle and edit
+                clauses below.
+              </p>
+              <label>
+                Recipient (optional)
+                <select value={employeeId || ""} onChange={(e) => applyRecipient(e.target.value)}>
+                  <option value="">External candidate / manual entry</option>
+                  {recipients.map((r) => (
+                    <option key={r._id} value={r._id}>
+                      {r.fullName}
+                      {r.employeeCode ? ` · ${r.employeeCode}` : ""}
+                      {r.email ? ` · ${r.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>
                 Candidate name *
                 <input
@@ -1009,9 +1415,58 @@ export default function HrOffersPage() {
                   <option>Intern</option>
                 </select>
               </label>
-              <p className="caption">
-                Template: {clauses.length ? `${clauses.length} standard clauses` : "Server defaults on save"}
-              </p>
+              <div className="st-offer-clauses">
+                <div className="st-set-section-head" style={{ marginBottom: 8 }}>
+                  <h2 style={{ fontSize: 15, margin: 0 }}>Clauses</h2>
+                  <span>{clauses.filter((c) => c.enabled !== false && c.isIncluded !== false).length} included</span>
+                </div>
+                {clauses.map((clause, index) => {
+                  const included = clause.enabled !== false && clause.isIncluded !== false;
+                  return (
+                    <div key={clause.id || clause.clauseId || index} className="st-set-card st-set-pad" style={{ marginBottom: 8 }}>
+                      <label className="st-offer-clause-toggle" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={included}
+                          disabled={clause.isRequired}
+                          onChange={(e) =>
+                            updateClause(index, {
+                              enabled: e.target.checked,
+                              isIncluded: e.target.checked,
+                            })
+                          }
+                        />
+                        <strong>{clause.title || `Clause ${index + 1}`}</strong>
+                      </label>
+                      {included ? (
+                        <>
+                          <input
+                            style={{ marginTop: 8 }}
+                            value={clause.title || ""}
+                            onChange={(e) => updateClause(index, { title: e.target.value })}
+                            placeholder="Clause title"
+                          />
+                          <textarea
+                            rows={3}
+                            style={{ marginTop: 8 }}
+                            value={clause.body || ""}
+                            onChange={(e) => updateClause(index, { body: e.target.value })}
+                            placeholder="Clause body"
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" className="btn-secondary" onClick={addCustomClause}>
+                    Add custom clause
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={resetClauses}>
+                    Reset to template
+                  </button>
+                </div>
+              </div>
             </form>
           ) : (
             <div className="st-rec-preview">
@@ -1085,6 +1540,28 @@ export default function HrOffersPage() {
         confirmLabel="Confirm"
         onConfirm={updateStatus}
       />
+      <ConfirmDialog
+        open={Boolean(withdrawConfirm)}
+        onClose={() => setWithdrawConfirm(null)}
+        title="Withdraw offer"
+        message={`Withdraw the offer for ${offerName(withdrawConfirm?.offer)} as ${offerPosition(withdrawConfirm?.offer) || "the listed role"}. The candidate will no longer be able to sign. This does not permanently delete the offer or email history.`}
+        confirmLabel="Withdraw"
+        danger
+        busy={busy}
+        onConfirm={withdrawOffer}
+      >
+        <label className="form-grid" style={{ marginTop: 12 }}>
+          Withdrawal reason (required)
+          <textarea
+            value={withdrawConfirm?.reason || ""}
+            onChange={(e) =>
+              setWithdrawConfirm((prev) => (prev ? { ...prev, reason: e.target.value } : prev))
+            }
+            placeholder="Why is this offer being withdrawn?"
+            rows={3}
+          />
+        </label>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -9,6 +9,9 @@ import { getCentralDbName, getCompanyModels, disconnectAll } from "../config/db.
 import Company, { COMPANY_STATUSES } from "../models/Company.js";
 import { USER_ROLES } from "../models/User.js";
 import { hashPassword } from "../utils/password.js";
+import { emailService } from "../services/emailService.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
+import { seedCompanyHrSignature } from "./helpers/offerSignature.js";
 
 let mongod;
 let app;
@@ -45,7 +48,27 @@ describe("Offer Letter Generation & Lifecycle Management Module", () => {
         timezone: "Asia/Kolkata",
         currencyCode: "INR",
       },
+      letterhead: {
+        signatoryName: "Acme HR Director",
+        signatoryTitle: "HR Director",
+      },
+      emailSettings: {
+        fromName: "Acme HR",
+        fromEmail: "hr@acme.test",
+        smtpHost: "smtp.acme.test",
+        smtpPort: 587,
+        smtpSecure: false,
+        appPasswordEncrypted: encryptSecret("mock-acme-smtp-pass"),
+        isConfigured: true,
+        lastVerifiedAt: new Date(),
+      },
     });
+    await seedCompanyHrSignature(Company, companyAcme._id);
+    emailService.setTransporter({
+      sendMail: async () => ({ messageId: `msg_${Date.now()}` }),
+      verify: async () => true,
+    });
+    emailService.setSimulateFailure(false);
 
     // 2. Create Globex Company (for tenant isolation tests)
     companyGlobex = await Company.create({
@@ -202,8 +225,13 @@ describe("Offer Letter Generation & Lifecycle Management Module", () => {
       assert.ok(res.body.html.includes("Lead Cloud Architect"));
       assert.ok(res.body.html.includes("Acme Technologies India Pvt Ltd"));
       assert.ok(res.body.html.includes("1,25,000") || res.body.html.includes("125,000"));
-      assert.ok(res.body.html.includes("1. Probationary Evaluation"));
-      assert.ok(res.body.html.includes("A probation period of six (6) months"));
+      // Standard HRMS master template (not per-offer custom clause injection).
+      assert.ok(res.body.html.includes("OFFER LETTER"));
+      assert.ok(res.body.html.includes("EMPLOYMENT TERMS AND CONDITIONS"));
+      assert.ok(res.body.html.includes("Probation."));
+      assert.ok(res.body.html.includes("EXECUTION"));
+      // Custom clause payloads are accepted for draft storage but do not rewrite the master legal text.
+      assert.equal(res.body.html.includes("1. Probationary Evaluation"), false);
     });
   });
 
@@ -356,17 +384,24 @@ describe("Offer Letter Generation & Lifecycle Management Module", () => {
       assert.equal(res.body.offerLetter.monthlySalary, 120000);
     });
 
-    it("should transition from DRAFT to SENT when HR explicitly marks as sent", async () => {
-      const res = await request(app)
+    it("should block manual Mark as Sent and require Send email (with HR signature)", async () => {
+      const blocked = await request(app)
         .patch(`/api/offer-letters/${draftOfferId}/status`)
         .set("Cookie", hrCookieAcme)
         .send({
           status: "SENT",
-          notes: "Generated PDF and issued via manual corporate dispatch.",
+          notes: "Attempted unsigned manual dispatch.",
         });
+      assert.equal(blocked.status, 400);
+      assert.equal(blocked.body.code, "HR_SIGNATURE_REQUIRED");
 
-      assert.equal(res.status, 200);
+      const res = await request(app)
+        .post(`/api/offer-letters/${draftOfferId}/send`)
+        .set("Cookie", hrCookieAcme)
+        .send({});
+      assert.equal(res.status, 200, res.body?.message);
       assert.equal(res.body.offerLetter.status, "SENT");
+      assert.ok(String(res.body.offerLetter.issuedContent || "").includes('class="sig-img"'));
     });
 
     it("should lock offer content from further edits once status is SENT", async () => {
@@ -454,10 +489,11 @@ describe("Offer Letter Generation & Lifecycle Management Module", () => {
         });
       acceptedOfferId = res1.body.offerLetter._id;
 
-      await request(app)
-        .patch(`/api/offer-letters/${acceptedOfferId}/status`)
+      const sendRes = await request(app)
+        .post(`/api/offer-letters/${acceptedOfferId}/send`)
         .set("Cookie", hrCookieAcme)
-        .send({ status: "SENT" });
+        .send({});
+      assert.equal(sendRes.status, 200, sendRes.body?.message);
 
       await request(app)
         .patch(`/api/offer-letters/${acceptedOfferId}/status`)

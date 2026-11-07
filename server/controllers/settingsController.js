@@ -6,9 +6,14 @@ import {
   getCompanyLogoAbsolutePath,
   deleteCompanyLogoFile,
 } from "../services/documentStorage.js";
-import { encryptSecret } from "../utils/secretCrypto.js";
+import { encryptSecret, decryptSecret } from "../utils/secretCrypto.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { HttpError } from "../utils/httpError.js";
+import { normalizeSignatureInput, toBuffer } from "../utils/signatureImage.js";
+import {
+  serializeOrganizationExplorerConfig,
+  validateOrganizationExplorerUpdate,
+} from "../services/organizationExplorerConfigService.js";
 
 function serializeEmailSettings(company) {
   const s = company.emailSettings || {};
@@ -282,11 +287,21 @@ export async function getCompanySettings(req, res, next) {
           timezone: company.config?.timezone || "Asia/Kolkata",
           currencyCode: company.config?.currencyCode || "INR",
           enabledModules: company.config?.enabledModules || [],
+          organizationExplorer: serializeOrganizationExplorerConfig(
+            company.config?.organizationExplorer
+          ),
         },
         primaryContact: {
           fullName: company.primaryContact?.fullName || "",
           email: company.primaryContact?.email || "",
           phoneNumber: company.primaryContact?.phoneNumber || "",
+        },
+        letterhead: {
+          address: company.letterhead?.address || "",
+          website: company.letterhead?.website || "",
+          signatoryName: company.letterhead?.signatoryName || "",
+          signatoryTitle: company.letterhead?.signatoryTitle || "",
+          ...serializeCompanySignature(company.letterhead),
         },
         subscription: {
           plan: company.subscription?.plan || "ENTERPRISE",
@@ -295,6 +310,71 @@ export async function getCompanySettings(req, res, next) {
           endDate: company.subscription?.endDate || null,
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/settings/organization-explorer
+ * EMPLOYEE + HR_ADMIN — returns view toggles / default for Organization Explorer UI.
+ */
+export async function getOrganizationExplorerSettings(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id)
+      .select("config.organizationExplorer")
+      .lean();
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    res.json({
+      success: true,
+      data: serializeOrganizationExplorerConfig(company.config?.organizationExplorer),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PUT /api/settings/organization-explorer
+ * HR_ADMIN only — updates Organization Explorer configuration.
+ */
+export async function updateOrganizationExplorerSettings(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id);
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const payload =
+      req.body?.organizationExplorer && typeof req.body.organizationExplorer === "object"
+        ? req.body.organizationExplorer
+        : req.body?.data && typeof req.body.data === "object"
+          ? req.body.data
+          : req.body;
+
+    const nextConfig = validateOrganizationExplorerUpdate(payload, {
+      current: company.config?.organizationExplorer,
+    });
+
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          "config.organizationExplorer.enabledViews": nextConfig.enabledViews,
+          "config.organizationExplorer.defaultView": nextConfig.defaultView,
+          "config.organizationExplorer.allowCompletedProjectsFilter": false,
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: "Organization Explorer settings updated successfully.",
+      data: nextConfig,
     });
   } catch (error) {
     next(error);
@@ -320,6 +400,9 @@ export async function updateCompanySettings(req, res, next) {
       primaryContact,
       contactEmail,
       contactPhone,
+      letterhead,
+      organizationExplorer,
+      config,
     } = req.body || {};
 
     // Use targeted $set only — never markModified("branding") without logoData loaded,
@@ -365,6 +448,42 @@ export async function updateCompanySettings(req, res, next) {
       }
     }
 
+    if (letterhead && typeof letterhead === "object") {
+      if (typeof letterhead.address === "string") {
+        $set["letterhead.address"] = letterhead.address.trim().slice(0, 1000);
+      }
+      if (typeof letterhead.website === "string") {
+        const site = letterhead.website.trim().slice(0, 300);
+        if (site && !/^https?:\/\//i.test(site) && site.includes(".")) {
+          $set["letterhead.website"] = `https://${site}`;
+        } else {
+          $set["letterhead.website"] = site;
+        }
+      }
+      if (typeof letterhead.signatoryName === "string") {
+        $set["letterhead.signatoryName"] = letterhead.signatoryName.trim().slice(0, 200);
+      }
+      if (typeof letterhead.signatoryTitle === "string") {
+        $set["letterhead.signatoryTitle"] = letterhead.signatoryTitle.trim().slice(0, 200);
+      }
+    }
+
+    const explorerInput =
+      organizationExplorer && typeof organizationExplorer === "object"
+        ? organizationExplorer
+        : config?.organizationExplorer && typeof config.organizationExplorer === "object"
+          ? config.organizationExplorer
+          : null;
+
+    if (explorerInput) {
+      const nextExplorer = validateOrganizationExplorerUpdate(explorerInput, {
+        current: company.config?.organizationExplorer,
+      });
+      $set["config.organizationExplorer.enabledViews"] = nextExplorer.enabledViews;
+      $set["config.organizationExplorer.defaultView"] = nextExplorer.defaultView;
+      $set["config.organizationExplorer.allowCompletedProjectsFilter"] = false;
+    }
+
     if (Object.keys($set).length > 0) {
       await Company.updateOne({ _id: company._id }, { $set });
     }
@@ -384,8 +503,22 @@ export async function updateCompanySettings(req, res, next) {
           logoMimeType: refreshed.branding?.logoMimeType || "",
           primaryColor: refreshed.branding?.primaryColor || "#155a37",
         },
-        config: refreshed.config,
+        config: {
+          timezone: refreshed.config?.timezone || "Asia/Kolkata",
+          currencyCode: refreshed.config?.currencyCode || "INR",
+          enabledModules: refreshed.config?.enabledModules || [],
+          organizationExplorer: serializeOrganizationExplorerConfig(
+            refreshed.config?.organizationExplorer
+          ),
+        },
         primaryContact: refreshed.primaryContact,
+        letterhead: {
+          address: refreshed.letterhead?.address || "",
+          website: refreshed.letterhead?.website || "",
+          signatoryName: refreshed.letterhead?.signatoryName || "",
+          signatoryTitle: refreshed.letterhead?.signatoryTitle || "",
+          ...serializeCompanySignature(refreshed.letterhead),
+        },
         subscription: refreshed.subscription,
       },
     });
@@ -540,6 +673,117 @@ export async function deleteCompanyLogo(req, res, next) {
         displayName: company.branding.displayName || "",
         logoUrl: "",
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Safe signature metadata for API responses (never includes image bytes). */
+export function serializeCompanySignature(letterhead = {}) {
+  const method = letterhead?.signatureMethod || "";
+  const typedText = letterhead?.signatureTypedText || "";
+  const hasSignature = Boolean(letterhead?.signatureMimeType) || (method === "TYPE" && Boolean(typedText));
+  return {
+    hasSignature,
+    signatureMethod: hasSignature ? method : "",
+    signatureUpdatedAt: hasSignature ? letterhead?.signatureUpdatedAt || null : null,
+    signatureTypedText: hasSignature && method === "TYPE" ? typedText : "",
+  };
+}
+
+/**
+ * POST /api/settings/company/signature
+ * Body: { method: "DRAW"|"UPLOAD"|"TYPE", fileData?: dataUrl, mimeType?, typedText? }
+ * Stores the HR e-signature on Company.letterhead (bytes are select:false).
+ */
+export async function saveCompanySignature(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id).select("_id");
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+
+    const parsed = normalizeSignatureInput(req.body || {});
+    const updatedAt = new Date();
+
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          "letterhead.signatureMethod": parsed.method,
+          "letterhead.signatureMimeType": parsed.mimeType,
+          "letterhead.signatureTypedText": parsed.method === "TYPE" ? parsed.typedText : "",
+          "letterhead.signatureUpdatedAt": updatedAt,
+          "letterhead.signatureData": parsed.buffer,
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: "HR signature saved.",
+      ...serializeCompanySignature({
+        signatureMethod: parsed.method,
+        signatureMimeType: parsed.mimeType,
+        signatureTypedText: parsed.typedText,
+        signatureUpdatedAt: updatedAt,
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/settings/company/signature  (HR admin) - streams the saved signature image.
+ */
+export async function streamCompanySignature(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id)
+      .select("letterhead.signatureMimeType +letterhead.signatureData")
+      .lean();
+    const buf = toBuffer(company?.letterhead?.signatureData);
+    const mime = String(company?.letterhead?.signatureMimeType || "").toLowerCase();
+    if (!company || !buf?.length || !mime) {
+      throw new HttpError(404, "No HR signature has been saved.");
+    }
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "private, no-cache");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    res.send(buf);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /api/settings/company/signature
+ * Already-issued offers keep the signature frozen inside their issuedContent.
+ */
+export async function deleteCompanySignature(req, res, next) {
+  try {
+    const company = await Company.findById(req.auth.company._id).select("_id");
+    if (!company) {
+      throw new HttpError(404, "Company not found");
+    }
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          "letterhead.signatureMethod": "",
+          "letterhead.signatureMimeType": "",
+          "letterhead.signatureTypedText": "",
+          "letterhead.signatureUpdatedAt": null,
+        },
+        $unset: { "letterhead.signatureData": "" },
+      }
+    );
+    res.json({
+      success: true,
+      message: "HR signature removed.",
+      ...serializeCompanySignature({}),
     });
   } catch (error) {
     next(error);

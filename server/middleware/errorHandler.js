@@ -34,20 +34,30 @@ export function errorHandler(err, _req, res, _next) {
     }
   }
 
+  // Preserve intentional 503 codes (storage / conversion not configured) with their messages.
+  const passthrough503 = new Set([
+    "CONVERSION_NOT_CONFIGURED",
+    "STORAGE_NOT_CONFIGURED",
+  ]);
+
   // Distinguish service unavailable (503) from unexpected server errors (500)
   if (status >= 500) {
-    console.error("SERVER ERROR IN TEST:", err);
-    if (process.env.NODE_ENV !== "test") {
-      console.error(err.name || "ServerError", err.message);
-    }
-    if (status === 503 || code === "SERVICE_UNAVAILABLE") {
-      status = 503;
-      code = "SERVICE_UNAVAILABLE";
-      message = "We're unable to connect right now. Please try again in a moment.";
+    if (status === 503 && passthrough503.has(code)) {
+      // Keep original code + message for configuration gaps (no silent remap).
     } else {
-      status = 500;
-      code = "SERVER_ERROR";
-      message = "Something went wrong on our side. Please try again later.";
+      console.error("SERVER ERROR IN TEST:", err);
+      if (process.env.NODE_ENV !== "test") {
+        console.error(err.name || "ServerError", err.message);
+      }
+      if (status === 503 || code === "SERVICE_UNAVAILABLE") {
+        status = 503;
+        code = "SERVICE_UNAVAILABLE";
+        message = "We're unable to connect right now. Please try again in a moment.";
+      } else {
+        status = 500;
+        code = "SERVER_ERROR";
+        message = "Something went wrong on our side. Please try again later.";
+      }
     }
   }
 

@@ -160,21 +160,41 @@ export default function EmployeeAttendancePage() {
 
   const attachTrackingWatch = () => {
     if (watchId.current != null) clearWatch(watchId.current);
-    watchId.current = watchPosition(async (loc) => {
-      try {
-        await api.post("/employees/me/tracking/update", { location: loc });
-      } catch (err) {
-        if (err.response?.status === 400 && String(err.response?.data?.message || "").includes("expired")) {
-          if (watchId.current != null) {
-            clearWatch(watchId.current);
-            watchId.current = null;
+    watchId.current = watchPosition(
+      async (loc) => {
+        try {
+          await api.post("/employees/me/tracking/update", { location: loc });
+        } catch (err) {
+          const msg = String(err.response?.data?.message || "");
+          const status = err.response?.status;
+          if (
+            status === 400 &&
+            (msg.includes("expired") ||
+              msg.includes("No active tracking") ||
+              msg.includes("no active punch-in"))
+          ) {
+            if (watchId.current != null) {
+              clearWatch(watchId.current);
+              watchId.current = null;
+            }
+            setTracking(false);
+            api.post("/employees/me/tracking/stop").catch(() => {});
+            invalidateAttendance(queryClient);
           }
-          setTracking(false);
-          api.post("/employees/me/tracking/stop").catch(() => {});
-          invalidateAttendance(queryClient);
         }
+      },
+      (err) => {
+        setActionError(err?.message || "Live tracking lost location updates.");
+        // Permission loss / GPS failure — stop local watch; ask server to stop.
+        if (watchId.current != null) {
+          clearWatch(watchId.current);
+          watchId.current = null;
+        }
+        setTracking(false);
+        api.post("/employees/me/tracking/stop").catch(() => {});
+        invalidateAttendance(queryClient);
       }
-    });
+    );
   };
 
   useEffect(() => {
@@ -191,6 +211,14 @@ export default function EmployeeAttendancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingQuery.data?.isTrackingActive]);
 
+  const clearLocalTrackingWatch = () => {
+    if (watchId.current != null) {
+      clearWatch(watchId.current);
+      watchId.current = null;
+    }
+    setTracking(false);
+  };
+
   const punch = async (kind) => {
     if (punching) return;
     try {
@@ -198,12 +226,19 @@ export default function EmployeeAttendancePage() {
       setActionError("");
       const loc = await geo.readPosition();
       const path = kind === "in" ? "/employees/me/attendance/punch-in" : "/employees/me/attendance/punch-out";
-      await api.post(path, {
+      const res = await api.post(path, {
         latitude: loc.latitude,
         longitude: loc.longitude,
         accuracy: loc.accuracy,
         location: loc,
       });
+      if (kind === "out") {
+        // Server stops tracking on punch-out; clear local watcher immediately.
+        clearLocalTrackingWatch();
+        if (res.data?.trackingStopWarning) {
+          setTrackingError(res.data.trackingStopWarning);
+        }
+      }
       toast.push(kind === "in" ? "Punched in." : "Punched out.");
       await invalidateAttendance(queryClient);
     } catch (err) {
@@ -214,6 +249,14 @@ export default function EmployeeAttendancePage() {
   };
 
   const startTracking = async () => {
+    const punchedIn =
+      today?.status === "CHECKED_IN" ||
+      (Boolean(today?.checkInTime || today?.checkIn) &&
+        !(today?.checkOutTime || today?.checkOut));
+    if (!punchedIn) {
+      setTrackingError("Punch in before starting live location sharing.");
+      return;
+    }
     try {
       setTrackingError("");
       const location = await geo.readPosition();
@@ -230,11 +273,7 @@ export default function EmployeeAttendancePage() {
   };
 
   const stopTracking = async () => {
-    if (watchId.current != null) {
-      clearWatch(watchId.current);
-      watchId.current = null;
-    }
-    setTracking(false);
+    clearLocalTrackingWatch();
     try {
       await api.post("/employees/me/tracking/stop");
       await invalidateAttendance(queryClient);
@@ -506,7 +545,13 @@ export default function EmployeeAttendancePage() {
           Stop live tracking
         </button>
       ) : (
-        <button type="button" className="btn-secondary btn-block" style={{ marginBottom: 12 }} onClick={startTracking}>
+        <button
+          type="button"
+          className="btn-secondary btn-block"
+          style={{ marginBottom: 12 }}
+          onClick={startTracking}
+          disabled={today?.status !== "CHECKED_IN"}
+        >
           Start live tracking
         </button>
       )}

@@ -1,6 +1,10 @@
 import { findCompanyById, getCompanyModels } from "../config/db.js";
 import { SETTLEMENT_STATUSES, VALID_STATUS_TRANSITIONS } from "../models/Settlement.js";
 import { HttpError } from "../utils/httpError.js";
+import {
+  assertEmployeeInScope,
+  mergeEmployeeIdScopeFilter,
+} from "../services/hrAccessEnforcementService.js";
 
 function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return "₹0.00";
@@ -256,11 +260,13 @@ export async function getSettlements(req, res, next) {
       query.status = status.toUpperCase();
     }
 
+    const scopedQuery = mergeEmployeeIdScopeFilter(req.hrAccess, query);
+
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
-    let settlements = await models.Settlement.find(query)
+    let settlements = await models.Settlement.find(scopedQuery)
       .populate("employeeId", "fullName employeeCode email job status exit")
       .populate("exitDetails.initiatedBy", "name email")
       .populate("paymentDetails.recordedBy", "name email")
@@ -335,6 +341,12 @@ export async function getSettlementById(req, res, next) {
       } else {
         throw new HttpError(403, "Unauthorized to access settlement statements.");
       }
+    } else {
+      assertEmployeeInScope(
+        req.hrAccess,
+        settlement.employeeId?._id || settlement.employeeId,
+        "You do not have access to this settlement."
+      );
     }
 
     res.json({
@@ -362,6 +374,12 @@ export async function updateSettlementDraft(req, res, next) {
     if (!settlement) {
       throw new HttpError(404, "Settlement record not found.");
     }
+
+    assertEmployeeInScope(
+      req.hrAccess,
+      settlement.employeeId,
+      "You do not have access to this settlement."
+    );
 
     if (settlement.status !== SETTLEMENT_STATUSES.DRAFT && settlement.status !== SETTLEMENT_STATUSES.ON_HOLD) {
       throw new HttpError(
@@ -459,6 +477,12 @@ export async function updateSettlementStatus(req, res, next) {
       throw new HttpError(404, "Settlement record not found.");
     }
 
+    assertEmployeeInScope(
+      req.hrAccess,
+      settlement.employeeId,
+      "You do not have access to this settlement."
+    );
+
     const currentStatus = settlement.status;
     const allowedTransitions = VALID_STATUS_TRANSITIONS[currentStatus] || [];
 
@@ -532,6 +556,12 @@ export async function recordSettlementPayment(req, res, next) {
       throw new HttpError(404, "Settlement record not found.");
     }
 
+    assertEmployeeInScope(
+      req.hrAccess,
+      settlement.employeeId,
+      "You do not have access to this settlement."
+    );
+
     if (settlement.status !== SETTLEMENT_STATUSES.APPROVED) {
       throw new HttpError(
         400,
@@ -582,6 +612,12 @@ export async function completeSettlement(req, res, next) {
     if (!settlement) {
       throw new HttpError(404, "Settlement record not found.");
     }
+
+    assertEmployeeInScope(
+      req.hrAccess,
+      settlement.employeeId,
+      "You do not have access to this settlement."
+    );
 
     if (settlement.status !== SETTLEMENT_STATUSES.PAID) {
       throw new HttpError(

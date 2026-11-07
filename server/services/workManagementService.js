@@ -3,7 +3,8 @@ import { HttpError } from "../utils/httpError.js";
 import { TASK_STATUSES, TASK_PRIORITIES } from "../models/Task.js";
 import { TRANSACTION_TYPES, TRANSACTION_SOURCES } from "../models/ImpactPointTransaction.js";
 import { getActiveCompanyHrPolicy, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
-import { USER_ROLES } from "../models/User.js";
+import { USER_ROLES, isHrPortalOperator } from "../models/User.js";
+import { assertEmployeeInScope, assertHrPermission } from "./hrAccessEnforcementService.js";
 
 /**
  * Resolves the Employee document for the currently authenticated User.
@@ -20,7 +21,7 @@ export async function getAuthenticatedEmployee(models, user) {
  * Checks whether an actor is authorized to review or approve a task.
  * Enforces independent review: assignee can NEVER approve their own task.
  */
-export function isAuthorizedReviewer(task, user, actorEmployee) {
+export function isAuthorizedReviewer(task, user, actorEmployee, hrAccess = null) {
   if (!task || !user) return false;
 
   const assigneeIdStr = String(task.assigneeId || "");
@@ -31,8 +32,17 @@ export function isAuthorizedReviewer(task, user, actorEmployee) {
     return false;
   }
 
-  // HR Admin can review/approve any task (except their own self-assigned tasks)
-  if (user.role === USER_ROLES.HR_ADMIN) {
+  // Enforcement OFF keeps company-wide review. ENFORCED HR still needs people.edit and scope.
+  // Company Admin is company-wide and is not limited by an HR Admin configuration.
+  if (isHrPortalOperator(user.role)) {
+    if (user.role === USER_ROLES.HR_ADMIN && hrAccess?.enforced) {
+      assertHrPermission(hrAccess, "people.edit");
+      assertEmployeeInScope(
+        hrAccess,
+        task.assigneeId,
+        "You do not have access to this task."
+      );
+    }
     return true;
   }
 
@@ -51,7 +61,7 @@ export async function canAssignTask(models, user, actorEmployee, targetEmployee)
   if (!user || !targetEmployee) return false;
 
   // HR_ADMIN can assign tasks across the company
-  if (user.role === USER_ROLES.HR_ADMIN) {
+  if (isHrPortalOperator(user.role)) {
     return true;
   }
 
@@ -175,7 +185,7 @@ export async function createTaskService({ models, user, data }) {
 /**
  * Transitions task from ASSIGNED to IN_PROGRESS.
  */
-export async function startTaskService({ models, user, taskId }) {
+export async function startTaskService({ models, user, taskId, hrAccess = null }) {
   const { Task } = models;
   const actorEmployee = await getAuthenticatedEmployee(models, user);
   const task = await Task.findById(taskId);
@@ -185,7 +195,7 @@ export async function startTaskService({ models, user, taskId }) {
   }
 
   const isAssignee = actorEmployee && String(task.assigneeId) === String(actorEmployee._id);
-  const isReviewer = isAuthorizedReviewer(task, user, actorEmployee);
+  const isReviewer = isAuthorizedReviewer(task, user, actorEmployee, hrAccess);
   let isActiveDelegate = false;
   if (!isAssignee && actorEmployee) {
     try {
@@ -218,7 +228,14 @@ export async function startTaskService({ models, user, taskId }) {
  * Submits work deliverables and evidence for review.
  * Allowed from IN_PROGRESS or CHANGES_REQUESTED.
  */
-export async function submitTaskEvidenceService({ models, user, taskId, deliverables = [], submissionNotes = "" }) {
+export async function submitTaskEvidenceService({
+  models,
+  user,
+  taskId,
+  deliverables = [],
+  submissionNotes = "",
+  hrAccess = null,
+}) {
   const { Task, AuditLog } = models;
   const actorEmployee = await getAuthenticatedEmployee(models, user);
   const task = await Task.findById(taskId);
@@ -229,7 +246,7 @@ export async function submitTaskEvidenceService({ models, user, taskId, delivera
 
   const isAssignee = actorEmployee && String(task.assigneeId) === String(actorEmployee._id);
   let isActiveDelegate = false;
-  if (!isAssignee && actorEmployee && user.role !== USER_ROLES.HR_ADMIN) {
+  if (!isAssignee && actorEmployee && !isHrPortalOperator(user.role)) {
     try {
       const { getActiveDelegationForActor } = await import("./taskDelegationService.js");
       const delegation = await getActiveDelegationForActor(models, taskId, actorEmployee._id);
@@ -238,7 +255,12 @@ export async function submitTaskEvidenceService({ models, user, taskId, delivera
       isActiveDelegate = false;
     }
   }
-  if (!isAssignee && !isActiveDelegate && user.role !== USER_ROLES.HR_ADMIN) {
+  if (isHrPortalOperator(user.role)) {
+    if (user.role === USER_ROLES.HR_ADMIN && hrAccess?.enforced) {
+      assertHrPermission(hrAccess, "people.edit");
+      assertEmployeeInScope(hrAccess, task.assigneeId, "You do not have access to this task.");
+    }
+  } else if (!isAssignee && !isActiveDelegate) {
     throw new HttpError(403, "Only the assigned employee or active temporary backup can submit evidence for this task");
   }
 
@@ -316,7 +338,7 @@ export async function submitTaskEvidenceService({ models, user, taskId, delivera
  * Reviews a submitted task: APPROVE, CHANGES_REQUESTED, or REJECT.
  * Approving triggers idempotent Impact Points awards.
  */
-export async function reviewTaskService({ models, user, taskId, decision, comments = "" }) {
+export async function reviewTaskService({ models, user, taskId, decision, comments = "", hrAccess = null }) {
   const { Task, CompanyHrPolicy, ImpactPointTransaction, AuditLog } = models;
   const actorEmployee = await getAuthenticatedEmployee(models, user);
   const task = await Task.findById(taskId);
@@ -326,7 +348,7 @@ export async function reviewTaskService({ models, user, taskId, decision, commen
   }
 
   // Independent verification authorization guard
-  const canReview = isAuthorizedReviewer(task, user, actorEmployee);
+  const canReview = isAuthorizedReviewer(task, user, actorEmployee, hrAccess);
   if (!canReview) {
     throw new HttpError(
       403,
@@ -552,7 +574,15 @@ export async function createIdempotentTransaction({ models, data }) {
 /**
  * Manager Recognition workflow: awards points to an eligible subordinate or team member.
  */
-export async function awardManagerRecognitionService({ models, user, recipientEmployeeId, points, reason, ruleCode }) {
+export async function awardManagerRecognitionService({
+  models,
+  user,
+  recipientEmployeeId,
+  points,
+  reason,
+  ruleCode,
+  hrAccess = null,
+}) {
   const { Employee, ImpactPointTransaction, CompanyHrPolicy, AuditLog } = models;
   const actorEmployee = await getAuthenticatedEmployee(models, user);
 
@@ -583,13 +613,22 @@ export async function awardManagerRecognitionService({ models, user, recipientEm
   }
 
   // Authorization check: HR Admin or direct reporting manager
-  const isHrAdmin = user.role === USER_ROLES.HR_ADMIN;
+  const isHrAdmin = isHrPortalOperator(user.role);
   const isManager = actorEmployee && recipient.job?.reportingManagerId && String(recipient.job.reportingManagerId) === String(actorEmployee._id);
 
   if (!isHrAdmin && !isManager) {
     throw new HttpError(
       403,
       "Unauthorized: Only HR Admins and direct reporting managers can award recognition points to this employee."
+    );
+  }
+
+  if (isHrAdmin && hrAccess?.enforced) {
+    assertHrPermission(hrAccess, "impact.manage");
+    assertEmployeeInScope(
+      hrAccess,
+      recipient._id,
+      "You do not have access to award recognition to this employee."
     );
   }
 
@@ -694,7 +733,7 @@ export async function awardManagerRecognitionService({ models, user, recipientEm
 export async function reverseTransactionService({ models, user, transactionId, reason }) {
   const { ImpactPointTransaction, AuditLog } = models;
 
-  if (user.role !== USER_ROLES.HR_ADMIN) {
+  if (!isHrPortalOperator(user.role)) {
     throw new HttpError(403, "Only HR Administrators can reverse Impact Points transactions.");
   }
 
@@ -718,6 +757,10 @@ export async function reverseTransactionService({ models, user, transactionId, r
   const reversalPoints = -originalTx.points;
   const idempotencyKey = `reversal_${originalTx._id}`;
 
+  // Mark the reversal row isReversed so balance aggregates (which filter
+  // isReversed:false) exclude both the original and the audit reversal entry.
+  // Otherwise excluding only the original while summing the negative reversal
+  // double-deducts the employee's balance.
   const reversalTx = await createIdempotentTransaction({
     models,
     data: {
@@ -738,6 +781,7 @@ export async function reverseTransactionService({ models, user, transactionId, r
       taskId: originalTx.taskId || null,
       idempotencyKey,
       reversalReferenceId: originalTx._id,
+      isReversed: true,
       metadata: { originalTransactionId: originalTx._id },
     },
   });
