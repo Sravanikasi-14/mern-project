@@ -1,0 +1,49 @@
+.tgh-root {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-height: 420px;
+}
+
+.tgh-band {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  transition: opacity 500ms ease;
+}
+
+.tgh-tile {
+  position: absolute;
+  border-radius: 14px;
+  overflow: visible;
+  will-change: transform;
+}
+
+.tgh-slice {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  border-radius: 2px;
+  box-shadow: 0 10px 28px rgba(18, 20, 18, 0.12);
+}
+
+.tgh-slice-img {
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #e8eee4;
+}
+
+.tgh-content {
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 720px) {
+  .tgh-root {
+    min-height: 320px;
+  }
+}

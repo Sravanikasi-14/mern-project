@@ -1,0 +1,33 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="840" height="408" viewBox="0 0 840 408" role="img" aria-label="Set up your organization">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7faf5"/>
+      <stop offset="100%" stop-color="#e8f2eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="840" height="408" fill="url(#bg)"/>
+  <rect x="28" y="28" width="784" height="352" rx="16" fill="#fff" stroke="#d5e3d9"/>
+  <text x="56" y="78" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#1f5c45">01 · ORGANIZATION</text>
+  <text x="56" y="122" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#14241c">Set Up Your Organization</text>
+  <text x="56" y="158" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#5b6b62">Company details, departments, designations, reporting lines.</text>
+  <g transform="translate(56 198)">
+    <rect width="160" height="72" rx="10" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="18" y="32" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Company</text>
+    <text x="18" y="52" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Profile &amp; settings</text>
+    <path d="M168 36 H198" stroke="#1f5c45" stroke-width="2"/>
+    <circle cx="204" cy="36" r="4" fill="#1f5c45"/>
+    <rect x="214" y="0" width="160" height="72" rx="10" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="232" y="32" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Departments</text>
+    <text x="232" y="52" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Org structure</text>
+    <path d="M382 36 H412" stroke="#1f5c45" stroke-width="2"/>
+    <circle cx="418" cy="36" r="4" fill="#1f5c45"/>
+    <rect x="428" y="0" width="160" height="72" rx="10" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="446" y="32" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Designations</text>
+    <text x="446" y="52" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Roles &amp; titles</text>
+    <path d="M596 36 H626" stroke="#1f5c45" stroke-width="2"/>
+    <circle cx="632" cy="36" r="4" fill="#1f5c45"/>
+    <rect x="642" y="0" width="100" height="72" rx="10" fill="#1f5c45"/>
+    <text x="662" y="42" font-size="13" font-weight="700" fill="#fff" font-family="Segoe UI, Arial, sans-serif">Ready</text>
+  </g>
+  <text x="56" y="318" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#5b6b62">Configure once — every module inherits your structure.</text>
+</svg>

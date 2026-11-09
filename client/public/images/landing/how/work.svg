@@ -1,0 +1,28 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="840" height="408" viewBox="0 0 840 408" role="img" aria-label="Keep work moving">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7faf5"/>
+      <stop offset="100%" stop-color="#e8f2eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="840" height="408" fill="url(#bg)"/>
+  <rect x="28" y="28" width="784" height="352" rx="16" fill="#fff" stroke="#d5e3d9"/>
+  <text x="56" y="78" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#1f5c45">04 · WORK</text>
+  <text x="56" y="122" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#14241c">Keep Work Moving</text>
+  <text x="56" y="158" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#5b6b62">Coordinate tasks, track progress, keep people connected.</text>
+  <g transform="translate(56 198)">
+    <rect width="220" height="88" rx="12" fill="#eef6f0" stroke="#c9ddd0"/>
+    <circle cx="28" cy="28" r="8" fill="#c9ddd0"/>
+    <text x="48" y="33" font-size="13" font-weight="700" fill="#14241c" font-family="Segoe UI, Arial, sans-serif">Plan sprint goals</text>
+    <text x="20" y="62" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Assigned · In progress</text>
+    <rect x="240" y="0" width="220" height="88" rx="12" fill="#eef6f0" stroke="#c9ddd0"/>
+    <circle cx="268" cy="28" r="8" fill="#1f5c45"/>
+    <text x="288" y="33" font-size="13" font-weight="700" fill="#14241c" font-family="Segoe UI, Arial, sans-serif">Review leave queue</text>
+    <text x="260" y="62" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Done · Shared update</text>
+    <rect x="480" y="0" width="220" height="88" rx="12" fill="#1f5c45"/>
+    <circle cx="508" cy="28" r="8" fill="#dceee3"/>
+    <text x="528" y="33" font-size="13" font-weight="700" fill="#fff" font-family="Segoe UI, Arial, sans-serif">Message the team</text>
+    <text x="500" y="62" font-size="12" fill="#dceee3" font-family="Segoe UI, Arial, sans-serif">Connected · Moving</text>
+  </g>
+  <text x="56" y="330" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#5b6b62">Tasks, Impact Points, and messages keep work visible.</text>
+</svg>

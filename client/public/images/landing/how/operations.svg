@@ -1,0 +1,31 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="840" height="408" viewBox="0 0 840 408" role="img" aria-label="Run everyday HR operations">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7faf5"/>
+      <stop offset="100%" stop-color="#e8f2eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="840" height="408" fill="url(#bg)"/>
+  <rect x="28" y="28" width="784" height="352" rx="16" fill="#fff" stroke="#d5e3d9"/>
+  <text x="56" y="78" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#1f5c45">03 · OPERATIONS</text>
+  <text x="56" y="122" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" fill="#14241c">Run Everyday HR Operations</text>
+  <text x="56" y="158" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#5b6b62">Attendance, leave, hiring, payroll, and employee services.</text>
+  <g transform="translate(56 198)">
+    <rect width="150" height="100" rx="12" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="20" y="36" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Attendance</text>
+    <text x="20" y="60" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Check-in / out</text>
+    <text x="20" y="82" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Exceptions</text>
+    <rect x="170" y="0" width="150" height="100" rx="12" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="190" y="36" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Leave</text>
+    <text x="190" y="60" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Requests</text>
+    <text x="190" y="82" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Approvals</text>
+    <rect x="340" y="0" width="150" height="100" rx="12" fill="#eef6f0" stroke="#c9ddd0"/>
+    <text x="360" y="36" font-size="13" font-weight="700" fill="#1f5c45" font-family="Segoe UI, Arial, sans-serif">Hiring</text>
+    <text x="360" y="60" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Offers</text>
+    <text x="360" y="82" font-size="12" fill="#5b6b62" font-family="Segoe UI, Arial, sans-serif">Onboarding</text>
+    <rect x="510" y="0" width="150" height="100" rx="12" fill="#1f5c45"/>
+    <text x="530" y="36" font-size="13" font-weight="700" fill="#fff" font-family="Segoe UI, Arial, sans-serif">Payroll</text>
+    <text x="530" y="60" font-size="12" fill="#dceee3" font-family="Segoe UI, Arial, sans-serif">Cycles</text>
+    <text x="530" y="82" font-size="12" fill="#dceee3" font-family="Segoe UI, Arial, sans-serif">Payslips</text>
+  </g>
+</svg>
