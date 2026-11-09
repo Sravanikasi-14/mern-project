@@ -36,6 +36,18 @@ export function createAuthSessionSchema() {
         required: true,
         index: true,
       },
+      /**
+       * SHA-256 of the mobile refresh token. Absent for web sessions.
+       * The raw token is never stored.
+       */
+      refreshTokenHash: {
+        type: String,
+        index: true,
+        sparse: true,
+      },
+      refreshExpiresAt: {
+        type: Date,
+      },
       isActive: {
         type: Boolean,
         default: true,

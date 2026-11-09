@@ -64,7 +64,7 @@ export default function HrMorePage() {
             onClick={() => navigate(item.path)}
           >
             <span className="mo-card-ico" style={{ background: item.color, color: item.ink }}>
-              <Icon name={item.icon} size={28} />
+              <Icon name={item.icon} size={18} />
             </span>
             <strong>{item.label}</strong>
           </button>
@@ -84,7 +84,7 @@ export default function HrMorePage() {
             }}
           >
             <span className="mo-util-ico">
-              <Icon name={item.icon} size={22} />
+              <Icon name={item.icon} size={18} />
             </span>
             <strong>{item.label}</strong>
           </button>

@@ -62,17 +62,51 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Response interceptor: preserves original status, response data, and error codes
-// without replacing all errors with a generic exception or breaking response rejection.
+function isAuthBootstrapUrl(url) {
+  return (
+    url.includes("/auth/login") ||
+    url.includes("/auth/me") ||
+    url.includes("/auth/refresh") ||
+    url.includes("/auth/logout") ||
+    url.includes("/auth/setup-initial-admin")
+  );
+}
+
+// Response interceptor: preserves original status, response data, and error codes.
+// On a native 401, renew the access token once when the refresh session is still valid.
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
-    const url = String(error?.config?.url || "");
-    const isAuthBootstrap =
-      url.includes("/auth/login") ||
-      url.includes("/auth/me") ||
-      url.includes("/auth/setup-initial-admin");
+    const config = error?.config;
+    const url = String(config?.url || "");
+    const isAuthBootstrap = isAuthBootstrapUrl(url);
+
+    if (
+      status === 401 &&
+      config &&
+      !config._retry &&
+      !isAuthBootstrap &&
+      typeof window !== "undefined"
+    ) {
+      try {
+        const { refreshNativeAccessToken } = await import("./nativeSessionStore.js");
+        const refreshed = await refreshNativeAccessToken();
+        if (refreshed?.ok && refreshed.token) {
+          config._retry = true;
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${refreshed.token}`;
+          return api(config);
+        }
+        if (refreshed?.revoked) {
+          window.dispatchEvent(new CustomEvent("hrms:session-expired"));
+        }
+      } catch {
+        window.dispatchEvent(new CustomEvent("hrms:session-expired"));
+      }
+      return Promise.reject(error);
+    }
+
     if (status === 401 && !isAuthBootstrap && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrms:session-expired"));
     }

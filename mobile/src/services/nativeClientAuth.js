@@ -34,16 +34,20 @@ export function resolveNativeClientPlatform() {
  */
 export async function buildNativeClientAuthHeaders() {
   const platform = resolveNativeClientPlatform();
+  if (!platform) return {};
+
+  const headers = {
+    "X-HRMS-Client-Platform": platform,
+  };
+
   const secret = import.meta?.env?.VITE_HRMS_NATIVE_CLIENT_SECRET;
-  if (!platform || typeof secret !== "string" || secret.trim().length < 16) {
-    return {};
+  if (typeof secret !== "string" || secret.trim().length < 16) {
+    return headers;
   }
 
   const timestamp = String(Date.now());
   const proof = await hmacSha256Hex(secret.trim(), `${platform}:${timestamp}`);
-  return {
-    "X-HRMS-Client-Platform": platform,
-    "X-HRMS-Client-Timestamp": timestamp,
-    "X-HRMS-Client-Proof": proof,
-  };
+  headers["X-HRMS-Client-Timestamp"] = timestamp;
+  headers["X-HRMS-Client-Proof"] = proof;
+  return headers;
 }

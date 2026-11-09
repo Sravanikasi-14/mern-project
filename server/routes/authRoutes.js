@@ -3,6 +3,7 @@ import {
   completeOnboarding,
   login,
   logout,
+  refreshSession,
   me,
   updateProfile,
   changePassword,
@@ -15,11 +16,12 @@ import {
   completeActivation,
 } from "../controllers/accountActivationController.js";
 import { authenticate } from "../middleware/authenticate.js";
-import { loginLimiter } from "../middleware/loginLimiter.js";
+import { loginLimiter, refreshSessionLimiter } from "../middleware/loginLimiter.js";
 
 const router = express.Router();
 
 router.post("/login", loginLimiter, login);
+router.post("/refresh", refreshSessionLimiter, refreshSession);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
 router.get("/company-logo", authenticate, streamCompanyLogo);

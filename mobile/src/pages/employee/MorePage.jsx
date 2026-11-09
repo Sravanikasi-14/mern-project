@@ -80,7 +80,7 @@ export default function EmployeeMorePage() {
             onClick={() => navigate(item.path)}
           >
             <span className="mo-card-ico" style={{ background: item.color, color: item.ink }}>
-              <Icon name={item.icon} size={28} />
+              <Icon name={item.icon} size={18} />
               {item.id === "assets" && assetCount > 0 ? (
                 <span className="mo-card-badge">{assetCount > 99 ? "99+" : assetCount}</span>
               ) : null}
@@ -103,7 +103,7 @@ export default function EmployeeMorePage() {
             }}
           >
             <span className="mo-util-ico">
-              <Icon name={item.icon} size={22} />
+              <Icon name={item.icon} size={18} />
               {item.badge > 0 ? <span className="mo-card-badge">{item.badge > 99 ? "99+" : item.badge}</span> : null}
             </span>
             <strong>{item.label}</strong>

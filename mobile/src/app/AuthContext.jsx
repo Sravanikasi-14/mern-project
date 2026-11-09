@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
+import {
+  clearNativeSession,
+  hydrateAccessToken,
+  isNativeApp,
+  readNativeSession,
+  refreshNativeAccessToken,
+  writeNativeSession,
+} from "../services/nativeSessionStore";
 import { clearUserQueries } from "./queryClient";
 import { clearCompanyLogoCache } from "../utils/companyLogo";
 
@@ -20,6 +28,24 @@ export function AuthProvider({ children }) {
     if (payload?.token) {
       localStorage.setItem("hrms_token", payload.token);
     }
+  };
+
+  const persistNativeLogin = async (payload) => {
+    if (!isNativeApp() || !payload?.token) return;
+    const existing = await readNativeSession();
+    await writeNativeSession({
+      accessToken: payload.token,
+      refreshToken: payload.refreshToken || existing?.refreshToken || "",
+      companyId: payload.company?._id || existing?.companyId || "",
+    });
+  };
+
+  const clearStoredSession = async () => {
+    localStorage.removeItem("hrms_token");
+    await clearNativeSession();
+    clearUserQueries();
+    clearCompanyLogoCache();
+    applySession(null);
   };
 
   /** Merge branding into the in-memory company so headers update without waiting on /auth/me. */
@@ -48,7 +74,8 @@ export function AuthProvider({ children }) {
       setSessionError(null);
     }
     try {
-      const response = await api.get("/auth/me");
+      await hydrateAccessToken();
+      let response = await api.get("/auth/me");
       if (generation !== sessionGeneration.current) {
         return { success: false, stale: true };
       }
@@ -68,15 +95,58 @@ export function AuthProvider({ children }) {
       }
       const status = err?.response?.status;
       if (status === 401) {
-        localStorage.removeItem("hrms_token");
-        clearUserQueries();
-        clearCompanyLogoCache();
-        applySession(null);
+        const refreshed = await refreshNativeAccessToken();
+        if (generation !== sessionGeneration.current) {
+          return { success: false, stale: true, error: err };
+        }
+        if (refreshed?.ok) {
+          try {
+            const response = await api.get("/auth/me");
+            if (generation !== sessionGeneration.current) {
+              return { success: false, stale: true };
+            }
+            const prevLogo = companyRef.current?.branding?.logoUrl || "";
+            const nextLogo = response.data?.company?.branding?.logoUrl || "";
+            if (String(prevLogo) !== String(nextLogo)) {
+              clearCompanyLogoCache();
+            }
+            applySession(response.data);
+            setSessionError(null);
+            return { success: true, data: response.data };
+          } catch (retryErr) {
+            if (generation !== sessionGeneration.current) {
+              return { success: false, stale: true, error: retryErr };
+            }
+            const retryStatus = retryErr?.response?.status;
+            if (!retryErr?.response && retryErr?.request) {
+              if (!silent) {
+                setSessionError({
+                  status: 0,
+                  type: "network",
+                  message:
+                    "Unable to connect to the server. Please check your connection and try again.",
+                });
+              }
+              return { success: false, error: retryErr };
+            }
+            if (retryStatus !== 401 && retryStatus !== 403) {
+              return { success: false, error: retryErr };
+            }
+          }
+        } else if (refreshed?.attempted && !refreshed?.revoked) {
+          if (!silent) {
+            setSessionError({
+              status: 0,
+              type: "network",
+              message:
+                "Unable to connect to the server. Please check your connection and try again.",
+            });
+          }
+          return { success: false, error: err };
+        }
+        await clearStoredSession();
       } else if (status === 403) {
-        localStorage.removeItem("hrms_token");
-        clearUserQueries();
-        clearCompanyLogoCache();
-        applySession(null);
+        await clearStoredSession();
         setSessionError({
           status: 403,
           type: "forbidden",
@@ -103,9 +173,7 @@ export function AuthProvider({ children }) {
           });
         }
       } else {
-        localStorage.removeItem("hrms_token");
-        clearUserQueries();
-        applySession(null);
+        await clearStoredSession();
       }
       return { success: false, error: err };
     } finally {
@@ -126,8 +194,24 @@ export function AuthProvider({ children }) {
 
     window.addEventListener("pageshow", handlePageShow);
 
+    let resumeListener;
+    let cancelled = false;
+    if (isNativeApp()) {
+      import("@capacitor/app")
+        .then(({ App }) => App.addListener("appStateChange", ({ isActive }) => {
+          if (isActive) restoreSession({ silent: true });
+        }))
+        .then((handle) => {
+          if (cancelled) handle?.remove();
+          else resumeListener = handle;
+        })
+        .catch(() => {});
+    }
+
     return () => {
+      cancelled = true;
       window.removeEventListener("pageshow", handlePageShow);
+      resumeListener?.remove();
     };
   }, []);
 
@@ -142,6 +226,7 @@ export function AuthProvider({ children }) {
     clearUserQueries();
     setSessionError(null);
     applySession(response.data);
+    await persistNativeLogin(response.data);
     return response.data;
   };
 
@@ -150,6 +235,7 @@ export function AuthProvider({ children }) {
     clearUserQueries();
     setSessionError(null);
     applySession(response.data);
+    await persistNativeLogin(response.data);
     return response.data;
   };
 
@@ -157,16 +243,16 @@ export function AuthProvider({ children }) {
     let serverRevoked = false;
     let logoutError = null;
     try {
-      await api.post("/auth/logout");
+      const stored = await readNativeSession();
+      await api.post("/auth/logout", stored?.refreshToken
+        ? { refreshToken: stored.refreshToken, companyId: stored.companyId }
+        : {});
       serverRevoked = true;
     } catch (err) {
       logoutError = err;
       serverRevoked = false;
     } finally {
-      localStorage.removeItem("hrms_token");
-      clearUserQueries();
-      clearCompanyLogoCache();
-      applySession(null);
+      await clearStoredSession();
       setSessionError(null);
     }
     return { success: true, serverRevoked, error: logoutError };
@@ -174,10 +260,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const onExpired = () => {
-      localStorage.removeItem("hrms_token");
-      clearUserQueries();
-      clearCompanyLogoCache();
-      applySession(null);
+      clearStoredSession();
       setSessionError({
         status: 401,
         type: "expired",

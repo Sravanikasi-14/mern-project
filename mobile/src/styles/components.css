@@ -2940,8 +2940,8 @@
 
 .mo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .mo-card,
@@ -2960,10 +2960,10 @@
 }
 
 .mo-card {
-  min-height: 136px;
-  padding: 20px 12px 16px;
-  gap: 12px;
-  border-radius: 18px;
+  min-height: 88px;
+  padding: 10px 6px 8px;
+  gap: 6px;
+  border-radius: 14px;
 }
 
 .mo-card-ico,
@@ -2975,8 +2975,8 @@
 }
 
 .mo-card-ico {
-  width: 56px;
-  height: 56px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
 }
 
@@ -2990,8 +2990,9 @@
 }
 
 .mo-card strong {
-  font-size: 13px;
+  font-size: 11.5px;
   color: var(--ink);
+  line-height: 1.2;
 }
 
 .mo-card-badge {
@@ -3017,10 +3018,10 @@
 }
 
 .mo-util {
-  min-height: 92px;
-  padding: 12px 6px 10px;
-  gap: 8px;
-  border-radius: 16px;
+  min-height: 68px;
+  padding: 8px 4px 6px;
+  gap: 6px;
+  border-radius: 14px;
 }
 
 .mo-util-ico {
@@ -3045,22 +3046,22 @@
 
 @media (max-width: 360px) {
   .mo-grid {
-    gap: 10px;
+    gap: 6px;
   }
 
   .mo-card {
-    min-height: 124px;
-    padding: 16px 8px 14px;
-    gap: 10px;
+    min-height: 80px;
+    padding: 8px 4px 6px;
+    gap: 4px;
   }
 
   .mo-card-ico {
-    width: 48px;
-    height: 48px;
+    width: 32px;
+    height: 32px;
   }
 
   .mo-card strong {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .mo-utils {
@@ -3068,8 +3069,8 @@
   }
 
   .mo-util {
-    min-height: 84px;
-    padding: 10px 4px;
+    min-height: 64px;
+    padding: 8px 4px;
   }
 
   .mo-util strong {
@@ -9600,7 +9601,7 @@
 }
 
 .hr-more-tiles {
-  gap: 16px;
+  gap: 10px;
 }
 
 .hr-impact-hero {

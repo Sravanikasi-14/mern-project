@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { findCompanyById, findCompanyBySlug, getCompanyModels } from "../config/db.js";
 import Company, { COMPANY_STATUSES, LOGIN_ALLOWED_STATUSES } from "../models/Company.js";
 import { USER_ROLES, serializeUser } from "../models/User.js";
@@ -8,7 +9,12 @@ import { verifyOnboardingToken } from "../utils/onboardingToken.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { createAuthSessionRecord } from "../utils/authSession.js";
 import { stopActiveLiveTrackingSessions } from "../services/attendanceService.js";
-import { signAuthToken, verifyAuthToken } from "../utils/token.js";
+import { signAuthToken, verifyAuthToken, decodeAuthToken } from "../utils/token.js";
+import {
+  generateRefreshToken,
+  hashRefreshToken,
+  isNativeRefreshClient,
+} from "../utils/refreshSession.js";
 import {
   acceptHrAdminInvitation,
   verifyHrAdminInvitationToken,
@@ -142,7 +148,82 @@ export async function login(req, res, next) {
     });
     setAuthCookie(res, token);
 
-    await createAuthSessionRecord(models, { userId: user._id, token, req });
+    // Web logins stay access-token + cookie only. Native apps also get a
+    // longer-lived refresh token so a killed process can restore the session.
+    const refreshToken = isNativeRefreshClient(req) ? generateRefreshToken() : null;
+    await createAuthSessionRecord(models, {
+      userId: user._id,
+      token,
+      req,
+      refreshToken,
+    });
+
+    res.json({
+      token,
+      ...(refreshToken ? { refreshToken } : {}),
+      user: serializeUser(user),
+      company: publicCompany(company),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function revokeRefreshSession(req) {
+  const refreshToken = typeof req.body?.refreshToken === "string" ? req.body.refreshToken.trim() : "";
+  const companyId = req.body?.companyId;
+  if (!refreshToken || !mongoose.Types.ObjectId.isValid(String(companyId || ""))) return;
+
+  const company = await findCompanyById(companyId);
+  if (!company) return;
+  const models = await getCompanyModels(company);
+  if (!models.AuthSession) return;
+
+  await models.AuthSession.updateMany(
+    { refreshTokenHash: hashRefreshToken(refreshToken), isActive: true },
+    { isActive: false }
+  );
+}
+
+export async function refreshSession(req, res, next) {
+  try {
+    const refreshToken = typeof req.body?.refreshToken === "string" ? req.body.refreshToken.trim() : "";
+    const companyId = req.body?.companyId;
+    if (!refreshToken || refreshToken.length < 20 || !mongoose.Types.ObjectId.isValid(String(companyId || ""))) {
+      throw new HttpError(401, "Your session has expired. Please sign in again.", { code: "SESSION_EXPIRED" });
+    }
+
+    const company = await findCompanyById(companyId);
+    if (!company || !LOGIN_ALLOWED_STATUSES.has(company.status)) {
+      throw new HttpError(401, "Your session has expired. Please sign in again.", { code: "SESSION_EXPIRED" });
+    }
+
+    const models = await getCompanyModels(company);
+    const session = await models.AuthSession.findOne({
+      refreshTokenHash: hashRefreshToken(refreshToken),
+      isActive: true,
+    });
+
+    if (!session || !session.refreshExpiresAt || session.refreshExpiresAt.getTime() <= Date.now()) {
+      throw new HttpError(401, "Your session has expired. Please sign in again.", { code: "SESSION_EXPIRED" });
+    }
+
+    const user = await models.User.findById(session.userId);
+    if (!user || !user.isActive || user.role === "CANDIDATE") {
+      throw new HttpError(401, "Your session has expired. Please sign in again.", { code: "SESSION_EXPIRED" });
+    }
+
+    const token = signAuthToken({
+      userId: user._id,
+      companyId: company._id,
+    });
+    const decoded = decodeAuthToken(token);
+    session.token = token;
+    session.expiresAt = decoded?.exp
+      ? new Date(decoded.exp * 1000)
+      : new Date(Date.now() + 8 * 60 * 60 * 1000);
+    await session.save();
+    setAuthCookie(res, token);
 
     res.json({
       token,
@@ -155,6 +236,12 @@ export async function login(req, res, next) {
 }
 
 export async function logout(req, res) {
+  try {
+    await revokeRefreshSession(req);
+  } catch (err) {
+    console.error("[logout] Failed to revoke refresh session:", err?.message || err);
+  }
+
   const authHeader = req.headers?.authorization;
   const headerToken = authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")
     ? authHeader.slice(7).trim()
