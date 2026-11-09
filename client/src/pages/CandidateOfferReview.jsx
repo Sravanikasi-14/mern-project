@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import SignatureCapture, { isSignatureValueComplete } from "../components/SignatureCapture";
+import ReviewStatusBadge from "../components/review/ReviewStatusBadge";
+import "../components/review/review.css";
 
 /** Renders the frozen offer HTML in an isolated iframe so its print CSS cannot leak into the app. */
 function OfferDocumentFrame({ html }) {
@@ -241,26 +243,10 @@ export default function CandidateOfferReview() {
               Download PDF
             </button>
 
-            {alreadySigned && (
-              <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#dcfce7", color: "#15803d", fontSize: "13px", fontWeight: "600" }}>
-                Accepted & Signed
-              </span>
-            )}
-            {alreadyDeclined && (
-              <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#fee2e2", color: "#b91c1c", fontSize: "13px", fontWeight: "600" }}>
-                Declined
-              </span>
-            )}
-            {alreadyWithdrawn && (
-              <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#f4f4f5", color: "#52525b", fontSize: "13px", fontWeight: "600" }}>
-                Withdrawn
-              </span>
-            )}
-            {!actionsClosed && (
-              <span style={{ padding: "6px 14px", borderRadius: "20px", background: "#eff6ff", color: "#1d4ed8", fontSize: "13px", fontWeight: "600" }}>
-                Pending Review
-              </span>
-            )}
+            {alreadySigned ? <ReviewStatusBadge status="ACCEPTED" label="Accepted & Signed" tone="approved" /> : null}
+            {alreadyDeclined ? <ReviewStatusBadge status="DECLINED" label="Declined" tone="rejected" /> : null}
+            {alreadyWithdrawn ? <ReviewStatusBadge status="WITHDRAWN" label="Withdrawn" tone="neutral" /> : null}
+            {!actionsClosed ? <ReviewStatusBadge status="PENDING_REVIEW" label="Pending Review" tone="pending" /> : null}
           </div>
         </div>
 

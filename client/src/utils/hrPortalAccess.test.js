@@ -21,6 +21,7 @@ test("company admin sees every module with HR Management second", () => {
     "HR Management",
     "Employees",
     "Attendance",
+    "Live Tracking",
     "Leave",
     "Payroll",
     "Settlements",

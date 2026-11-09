@@ -21,6 +21,7 @@ export default function MobileFilterBar({
             onChange={onSearchChange}
             placeholder={searchPlaceholder}
             ariaLabel={searchPlaceholder}
+            onClear={() => onSearchChange({ target: { value: "" } })}
           />
         )}
         <button

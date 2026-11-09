@@ -284,9 +284,9 @@ export default function CompanyHrManagement() {
         title="HR Management"
         subtitle="Invite and manage HR Admin accounts for your company"
         hideLogout
-        actions={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <SoftRefresh active={listQuery.isFetching && !listQuery.isLoading} />
+        actions={<SoftRefresh active={listQuery.isFetching && !listQuery.isLoading} />}
+        nav={
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
               className="btn-secondary"

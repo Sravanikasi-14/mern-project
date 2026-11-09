@@ -24,7 +24,24 @@ import {
 } from "../hooks/useEmployeeQueries";
 import { invalidateAttendance } from "../lib/queryKeys";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
-import { civilDaysInMonth, formatCivilDate, getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
+import DateRangePicker from "../components/DateRangePicker";
+import {
+  civilDaysInMonth,
+  formatCivilDate,
+  formatDisplayDate,
+  getCompanyBusinessDate,
+  monthTitle,
+  parseCivilDate,
+  resolveCompanyTimezone,
+  shiftMonth,
+} from "../utils/dateUtils";
+
+function monthRangeFor(year, month) {
+  return {
+    startDate: formatCivilDate(year, month, 1),
+    endDate: formatCivilDate(year, month, civilDaysInMonth(year, month)),
+  };
+}
 import "./Attendance.css";
 
 export default function EmployeeAttendance() {
@@ -48,20 +65,15 @@ export default function EmployeeAttendance() {
   const [trackingError, setTrackingError] = useState("");
   const unwatchRef = useRef(null);
 
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  // History range: defaults to the current month; month arrows and the picker both drive it.
+  const [historyRange, setHistoryRange] = useState(() => {
+    const now = new Date();
+    return monthRangeFor(now.getFullYear(), now.getMonth() + 1);
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [attPage, setAttPage] = useState(1);
   const [attPageSize, setAttPageSize] = useState(10);
-
-  const historyRange = useMemo(() => {
-    const year = selectedDate.getFullYear();
-    const month = selectedDate.getMonth() + 1;
-    return {
-      startDate: formatCivilDate(year, month, 1),
-      endDate: formatCivilDate(year, month, civilDaysInMonth(year, month)),
-    };
-  }, [selectedDate]);
 
   const dashboardQuery = useDashboardQuery();
   const historyQuery = useAttendanceHistoryQuery(historyRange.startDate, historyRange.endDate);
@@ -93,17 +105,38 @@ export default function EmployeeAttendance() {
     };
   }, []);
 
-  const handlePrevMonth = () => {
-    setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  const shiftHistoryMonth = (delta) => {
+    setHistoryRange((prev) => {
+      const parts = parseCivilDate(prev.startDate);
+      if (!parts) return prev;
+      const next = shiftMonth(parts.year, parts.month, delta);
+      return monthRangeFor(next.year, next.month);
+    });
   };
 
-  const handleNextMonth = () => {
-    setSelectedDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  const handlePrevMonth = () => shiftHistoryMonth(-1);
+  const handleNextMonth = () => shiftHistoryMonth(1);
+
+  const handleRangeChange = ({ startDate, endDate }) => {
+    if (!startDate) return;
+    setHistoryRange({ startDate, endDate: endDate || startDate });
   };
 
+  // Label is the month title for a whole-month range, otherwise the explicit span.
   const monthYearLabel = useMemo(() => {
-    return selectedDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  }, [selectedDate]);
+    const s = parseCivilDate(historyRange.startDate);
+    const e = parseCivilDate(historyRange.endDate);
+    if (!s || !e) return "";
+    const isWholeMonth =
+      s.year === e.year &&
+      s.month === e.month &&
+      s.day === 1 &&
+      e.day === civilDaysInMonth(e.year, e.month);
+    if (isWholeMonth) return monthTitle(s.year, s.month);
+    return historyRange.startDate === historyRange.endDate
+      ? formatDisplayDate(historyRange.startDate)
+      : `${formatDisplayDate(historyRange.startDate)} – ${formatDisplayDate(historyRange.endDate)}`;
+  }, [historyRange]);
 
   const handleCheckIn = async () => {
     try {
@@ -244,19 +277,24 @@ export default function EmployeeAttendance() {
 
   // Derive days list for the month view
   const monthDaysList = useMemo(() => {
-    const year = selectedDate.getFullYear();
-    const month = selectedDate.getMonth();
-    const totalDays = new Date(year, month + 1, 0).getDate();
     const todayStr = getCompanyBusinessDate(new Date(), timeZone);
+    const startParts = parseCivilDate(historyRange.startDate);
+    const endParts = parseCivilDate(historyRange.endDate);
+    if (!startParts || !endParts) return [];
 
     const recordsMap = new Map();
     for (const r of historyRecords) {
       recordsMap.set(r.date, r);
     }
 
+    const startMs = Date.UTC(startParts.year, startParts.month - 1, startParts.day);
+    const endMs = Date.UTC(endParts.year, endParts.month - 1, endParts.day);
+    const DAY_MS = 86_400_000;
+
     const list = [];
-    for (let day = totalDays; day >= 1; day--) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    for (let ms = endMs; ms >= startMs; ms -= DAY_MS) {
+      const dt = new Date(ms);
+      const dateStr = formatCivilDate(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
       if (dateStr > todayStr) {
         continue;
       }
@@ -265,7 +303,7 @@ export default function EmployeeAttendance() {
       if (existing) {
         list.push(existing);
       } else {
-        const dayOfWeek = new Date(Date.UTC(year, month, day)).getUTCDay();
+        const dayOfWeek = dt.getUTCDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
         list.push({
@@ -281,7 +319,7 @@ export default function EmployeeAttendance() {
     }
 
     return list;
-  }, [selectedDate, historyRecords, timeZone]);
+  }, [historyRange, historyRecords, timeZone]);
 
   // Filtered list
   const filteredDays = useMemo(() => {
@@ -317,7 +355,7 @@ export default function EmployeeAttendance() {
 
   useEffect(() => {
     setAttPage(1);
-  }, [selectedDate, statusFilter, searchQuery]);
+  }, [historyRange, statusFilter, searchQuery]);
 
   const totalDaysCount = filteredDays.length;
   const totalDaysPages = Math.ceil((totalDaysCount || 1) / attPageSize);
@@ -614,6 +652,15 @@ export default function EmployeeAttendance() {
               <IconChevronRight size={14} strokeWidth={2.15} />
             </button>
           </div>
+        }
+        actions={
+          <DateRangePicker
+            label=""
+            startDate={historyRange.startDate}
+            endDate={historyRange.endDate}
+            maxDate={getCompanyBusinessDate(new Date(), timeZone)}
+            onChange={handleRangeChange}
+          />
         }
         searchValue={searchQuery}
         onSearchChange={(e) => setSearchQuery(e.target.value)}

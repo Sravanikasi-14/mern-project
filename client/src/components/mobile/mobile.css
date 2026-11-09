@@ -81,6 +81,11 @@
     margin-bottom: 12px;
   }
 
+  /* Avoid duplicate search: pages that render MobileFilterBar then ModuleToolbar */
+  .m-filter-bar + .module-toolbar {
+    display: none !important;
+  }
+
   .m-filter-bar .search-input {
     flex: 1;
     min-width: 0;

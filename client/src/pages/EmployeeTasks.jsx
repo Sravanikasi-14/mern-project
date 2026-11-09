@@ -489,9 +489,8 @@ export default function EmployeeTasks() {
       <AppHeader
         title="My Tasks"
         hideLogout={true}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SoftRefresh active={tasksQuery.isFetching && !!tasksQuery.data} />
+        actions={<SoftRefresh active={tasksQuery.isFetching && !!tasksQuery.data} />}
+        nav={
           <div className="wm-view-switcher" role="tablist" aria-label="Task view">
             <button
               type="button"
@@ -508,8 +507,8 @@ export default function EmployeeTasks() {
               List
             </button>
           </div>
-        </div>
-      </AppHeader>
+        }
+      />
 
       {/* Floating Non-intrusive Toast (Never pushes down summary cards) */}
       {(error || successMsg) && (

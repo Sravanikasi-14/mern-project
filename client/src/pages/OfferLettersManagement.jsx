@@ -961,6 +961,12 @@ export default function OfferLettersManagement({
         searchPlaceholder="Search candidate or role…"
         searchAriaLabel="Search candidate or role"
         actions={
+          <button type="button" className="btn-primary" onClick={handleOpenCreate}>
+            <span aria-hidden="true">+</span>
+            <span>Add offer</span>
+          </button>
+        }
+        secondaryActions={
           <>
             <ColumnChooser
               columns={offerCols.columns}
@@ -979,10 +985,6 @@ export default function OfferLettersManagement({
             >
               <IconRefresh size={16} />
               <span>Refresh</span>
-            </button>
-            <button type="button" className="btn-primary" onClick={handleOpenCreate}>
-              <span aria-hidden="true">+</span>
-              <span>Add offer</span>
             </button>
           </>
         }

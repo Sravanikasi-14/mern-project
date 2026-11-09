@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import AppHeader from "../components/AppHeader";
+import AppModal from "../components/AppModal";
 import SoftRefresh from "../components/SoftRefresh";
 import {
   IconClose,
@@ -25,20 +26,15 @@ export default function EmployeePayslips() {
   const payslips = payslipsQuery.data || [];
   const mySettlement = settlementQuery.data ?? null;
   const loading = payslipsQuery.isLoading && !payslipsQuery.data;
-  const error = payslipsQuery.error?.response?.data?.message ||
+  const error =
+    payslipsQuery.error?.response?.data?.message ||
     (payslipsQuery.error && !payslipsQuery.data ? "Failed to load payslips." : "");
 
-  const [selectedPayslipId, setSelectedPayslipId] = useState(null);
+  const [selectedPayslip, setSelectedPayslip] = useState(null);
   const [selectedYear, setSelectedYear] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSettlementModal, setShowSettlementModal] = useState(false);
-
-  useEffect(() => {
-    if (payslips.length > 0 && !selectedPayslipId) {
-      setSelectedPayslipId(payslips[0].id);
-    }
-  }, [payslips, selectedPayslipId]);
 
   const handleDownloadPayslip = async (payslipId) => {
     try {
@@ -52,8 +48,7 @@ export default function EmployeePayslips() {
           params: { format: "pdf" },
           responseType: "blob",
         });
-      } catch (err) {
-        // Fallback to legacy endpoint if payroll endpoint 404s
+      } catch {
         response = await api.get(`/employees/me/payslips/${payslipId}/download`, {
           params: { format: "pdf" },
           responseType: "blob",
@@ -81,20 +76,21 @@ export default function EmployeePayslips() {
     }
   };
 
-  // Metrics calculation
+  const handlePrintPayslip = () => {
+    window.print();
+  };
+
   const totalNetPaidYTD = useMemo(
     () => payslips.reduce((sum, p) => sum + (p.netPay || 0), 0),
     [payslips]
   );
   const latestPayslip = payslips[0];
 
-  // Unique years for filter
   const availableYears = useMemo(
     () => Array.from(new Set(payslips.map((p) => String(p.year)))).sort((a, b) => b - a),
     [payslips]
   );
 
-  // Filtered payslips
   const filteredPayslips = useMemo(() => {
     return payslips.filter((p) => {
       if (selectedYear !== "ALL" && String(p.year) !== selectedYear) return false;
@@ -112,7 +108,7 @@ export default function EmployeePayslips() {
   }, [payslips, selectedYear, statusFilter, searchQuery]);
 
   const [payslipPage, setPayslipPage] = useState(1);
-  const [payslipPageSize, setPayslipPageSize] = useState(6);
+  const [payslipPageSize, setPayslipPageSize] = useState(10);
 
   useEffect(() => {
     setPayslipPage(1);
@@ -125,12 +121,7 @@ export default function EmployeePayslips() {
     return filteredPayslips.slice(start, start + payslipPageSize);
   }, [filteredPayslips, payslipPage, payslipPageSize]);
 
-  // Active selected payslip (defaults to first available in filtered list)
-  const activePayslip = useMemo(() => {
-    if (!filteredPayslips || filteredPayslips.length === 0) return null;
-    const found = filteredPayslips.find((p) => p.id === selectedPayslipId);
-    return found || filteredPayslips[0];
-  }, [filteredPayslips, selectedPayslipId]);
+  const closePayslipModal = () => setSelectedPayslip(null);
 
   return (
     <div className="container-wide employee-payslips-container">
@@ -143,7 +134,6 @@ export default function EmployeePayslips() {
         />
       </AppHeader>
 
-      {/* Alerts */}
       {actionSuccess && (
         <div className="success-alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -168,7 +158,6 @@ export default function EmployeePayslips() {
         </div>
       )}
 
-      {/* Loading */}
       {loading && (
         <div className="page-loading">
           <div className="spinner" style={{ margin: "0 auto 12px" }} />
@@ -176,79 +165,45 @@ export default function EmployeePayslips() {
         </div>
       )}
 
-      {/* Error */}
       {!loading && error && (
         <div className="error" style={{ padding: 24, textAlign: "center", marginBottom: 20 }}>
           <p style={{ margin: "0 0 16px", fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => payslipsQuery.refetch()}>Retry</button>
+          <button type="button" onClick={() => payslipsQuery.refetch()}>
+            Retry
+          </button>
         </div>
       )}
 
       {!loading && !error && (
         <>
-          {/* Compact Inline Payslip Metrics Strip */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 20,
-              background: "var(--card, #ffffff)",
-              border: "1px solid var(--hair, #e6ede8)",
-              borderRadius: 8,
-              padding: "8px 16px",
-              marginBottom: 14,
-              fontSize: 13,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ color: "var(--text-muted)" }}>
-              Latest Net Pay: <strong style={{ color: "var(--g-800, #155a37)" }}>₹{(latestPayslip?.netPay || 0).toLocaleString("en-IN")}</strong>
+          <div className="ep-metrics-strip" aria-label="Payslip summary">
+            <span>
+              Latest Net Pay: <strong>₹{(latestPayslip?.netPay || 0).toLocaleString("en-IN")}</strong>
             </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              Period: <strong style={{ color: "var(--ink)" }}>{latestPayslip ? `${latestPayslip.month} ${latestPayslip.year}` : "—"}</strong>
+            <span className="ep-metrics-dot">•</span>
+            <span>
+              Period: <strong>{latestPayslip ? `${latestPayslip.month} ${latestPayslip.year}` : "—"}</strong>
             </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              YTD Received: <strong style={{ color: "var(--g-800, #155a37)" }}>₹{totalNetPaidYTD.toLocaleString("en-IN")}</strong>
+            <span className="ep-metrics-dot">•</span>
+            <span>
+              YTD Received: <strong>₹{totalNetPaidYTD.toLocaleString("en-IN")}</strong>
             </span>
-            <span style={{ color: "#d4d4d8" }}>•</span>
-            <span style={{ color: "var(--text-muted)" }}>
-              Statements: <strong style={{ color: "var(--ink)" }}>{payslips.length}</strong>
+            <span className="ep-metrics-dot">•</span>
+            <span>
+              Statements: <strong>{payslips.length}</strong>
             </span>
           </div>
 
-          {/* Full & Final Settlement Alert Banner if eligible */}
           {mySettlement && (
-            <div
-              style={{
-                background: "var(--g-100, #e3f2e9)",
-                border: "1px solid rgba(29, 115, 71, 0.3)",
-                borderRadius: 12,
-                padding: "16px 20px",
-                marginBottom: 20,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 12,
-              }}
-            >
+            <div className="ep-settlement-banner">
               <div>
-                <div style={{ fontWeight: 700, fontSize: 14.5, color: "var(--g-950)" }}>
-                  Full & Final Settlement Statement Available
-                </div>
-                <div style={{ fontSize: 13, color: "var(--g-800)", marginTop: 2 }}>
+                <div className="ep-settlement-title">Full & Final Settlement Statement Available</div>
+                <div className="ep-settlement-sub">
                   Your final separation statement has been prepared. Net Settlement Amount:{" "}
                   <strong>₹{(mySettlement.netSettlementAmount || 0).toLocaleString("en-IN")}</strong>
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setShowSettlementModal(true)}
-                style={{ fontSize: 12.5, padding: "7px 14px" }}
-              >
+              <button type="button" className="btn-primary" onClick={() => setShowSettlementModal(true)}>
                 View Settlement Details
               </button>
             </div>
@@ -259,9 +214,7 @@ export default function EmployeePayslips() {
             onSearchChange={(e) => setSearchQuery(e.target.value)}
             searchPlaceholder="Search by month or payslip #..."
             searchAriaLabel="Search payslips"
-            filterCount={
-              (statusFilter !== "ALL" ? 1 : 0) + (selectedYear !== "ALL" ? 1 : 0)
-            }
+            filterCount={(statusFilter !== "ALL" ? 1 : 0) + (selectedYear !== "ALL" ? 1 : 0)}
             onFiltersClear={() => {
               setStatusFilter("ALL");
               setSelectedYear("ALL");
@@ -301,359 +254,388 @@ export default function EmployeePayslips() {
             }
           />
 
-          {/* Master-Detail Workspace Layout */}
-          <div className="ep-workspace-grid">
-            {/* Left Column: Monthly Payslip History List */}
-            <div className="ep-list-panel">
-              <div className="ep-list-header">
-                <h3 className="ep-list-title">Salary History</h3>
-                <span className="ep-list-count">{filteredPayslips.length} Statements</span>
+          <div className="ep-list-panel">
+            <div className="ep-list-header">
+              <h3 className="ep-list-title">Salary History</h3>
+              <span className="ep-list-count">{filteredPayslips.length} Statements</span>
+            </div>
+
+            {filteredPayslips.length === 0 ? (
+              <div className="ep-empty">
+                <IconFileText size={32} />
+                <div>No statements found</div>
               </div>
-
-              {filteredPayslips.length === 0 ? (
-                <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-                  <IconFileText size={32} style={{ color: "#d4d4d8", margin: "0 auto 8px" }} />
-                  <div>No statements found</div>
+            ) : (
+              <>
+                <div className="ep-table-wrap">
+                  <table className="ep-table">
+                    <thead>
+                      <tr>
+                        <th>Period</th>
+                        <th>Gross</th>
+                        <th>Deductions</th>
+                        <th>Net Pay</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "right" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedPayslips.map((ps) => {
+                        const isPaid = ps.paymentStatus === "PAID" || ps.status === "PAID";
+                        return (
+                          <tr key={ps.id}>
+                            <td>
+                              <div className="ep-card-period">
+                                {ps.month} {ps.year}
+                              </div>
+                              <div className="ep-card-ref">{ps.payslipNumber || ps.period || "—"}</div>
+                            </td>
+                            <td>₹{Number(ps.grossSalary || 0).toLocaleString("en-IN")}</td>
+                            <td className="ep-deduct-cell">
+                              -₹{Number(ps.deductions || 0).toLocaleString("en-IN")}
+                            </td>
+                            <td className="ep-net-cell">₹{Number(ps.netPay || 0).toLocaleString("en-IN")}</td>
+                            <td>
+                              <span className={`ep-status-pill ${isPaid ? "is-paid" : "is-open"}`}>
+                                {isPaid ? <IconCheck size={11} /> : <IconClock size={11} />}
+                                {isPaid ? "PAID" : "FINALIZED"}
+                              </span>
+                              {ps.disbursedDate ? (
+                                <div className="ep-card-ref" style={{ marginTop: 4 }}>
+                                  {isPaid ? `Paid: ${ps.disbursedDate}` : `Finalized: ${ps.disbursedDate}`}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>
+                              <div className="ep-row-actions">
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-secondary"
+                                  onClick={() => setSelectedPayslip(ps)}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-sm btn-primary"
+                                  onClick={() => handleDownloadPayslip(ps.id)}
+                                  disabled={downloadingId === ps.id}
+                                >
+                                  <IconDownload size={13} />
+                                  {downloadingId === ps.id ? "…" : "PDF"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                <>
-                  {paginatedPayslips.map((ps) => {
-                    const isSelected = activePayslip?.id === ps.id;
-                    const isPaid = ps.paymentStatus === "PAID" || ps.status === "PAID";
 
-                    return (
-                      <div
-                        key={ps.id}
-                        className={`ep-card-item ${isSelected ? "selected" : ""}`}
-                        onClick={() => setSelectedPayslipId(ps.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") setSelectedPayslipId(ps.id);
-                        }}
-                      >
-                        <div className="ep-card-header">
-                          <div>
-                            <div className="ep-card-period">
-                              {ps.month} {ps.year}
-                            </div>
-                            <div className="ep-card-ref">
-                              {ps.payslipNumber}
-                            </div>
-                          </div>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              padding: "2px 8px",
-                              borderRadius: 12,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              background: isPaid ? "var(--g-100, #e3f2e9)" : "#eff6ff",
-                              color: isPaid ? "var(--g-800, #155a37)" : "#1d4ed8",
-                            }}
-                          >
-                            {isPaid ? <IconCheck size={11} /> : <IconClock size={11} />}
-                            <span>{isPaid ? "PAID" : "FINALIZED"}</span>
-                          </span>
-                        </div>
-
-                        <div className="ep-card-footer">
-                          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                            Net Disbursal
-                          </span>
-                          <div className="ep-card-amount">
-                            ₹{Number(ps.netPay || 0).toLocaleString("en-IN")}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {totalPayslipsCount > 0 && (
-                    <Pagination
-                      currentPage={payslipPage}
-                      totalPages={totalPayslipPages}
-                      totalItems={totalPayslipsCount}
-                      pageSize={payslipPageSize}
-                      pageSizeOptions={[6, 12, 24]}
-                      onPageChange={(p) => setPayslipPage(p)}
-                      onPageSizeChange={(s) => {
-                        setPayslipPageSize(s);
-                        setPayslipPage(1);
-                      }}
-                      itemLabel="statements"
-                      compact={true}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Right Column: Selected Payslip Deep-Dive */}
-            <div className="ep-detail-panel">
-              {activePayslip ? (
-                <>
-                  {/* Detail Header */}
-                  <div className="ep-detail-header">
-                    <div className="ep-detail-title-group">
-                      <h2>
-                        Payslip — {activePayslip.month} {activePayslip.year}
-                      </h2>
-                      <div className="ep-detail-meta">
-                        <span><strong>Ref:</strong> {activePayslip.payslipNumber}</span>
-                        <span>•</span>
-                        <span><strong>Period:</strong> {activePayslip.period}</span>
-                        {activePayslip.disbursedDate && (
-                          <>
-                            <span>•</span>
-                            <span><strong>Date:</strong> {activePayslip.disbursedDate}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        className="btn-primary"
-                        onClick={() => handleDownloadPayslip(activePayslip.id)}
-                        disabled={downloadingId === activePayslip.id}
-                        style={{ fontSize: 12.5, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                      >
-                        <IconDownload size={14} />
-                        <span>{downloadingId === activePayslip.id ? "Downloading..." : "Download PDF"}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Attendance & Days Summary Bar */}
-                  {activePayslip.daysBreakdown && (
-                    <div className="ep-attendance-bar">
-                      <div className="ep-att-item">
-                        <span className="ep-att-label">Working Days</span>
-                        <span className="ep-att-val">{activePayslip.daysBreakdown.workingDays ?? "—"}</span>
-                      </div>
-                      <div className="ep-att-item">
-                        <span className="ep-att-label">Present</span>
-                        <span className="ep-att-val green">{activePayslip.daysBreakdown.presentDays ?? "—"}</span>
-                      </div>
-                      <div className="ep-att-item">
-                        <span className="ep-att-label">Paid Leave</span>
-                        <span className="ep-att-val" style={{ color: "#2563eb" }}>{activePayslip.daysBreakdown.paidLeaveDays ?? 0}</span>
-                      </div>
-                      <div className="ep-att-item">
-                        <span className="ep-att-label">Loss of Pay</span>
-                        <span className="ep-att-val red">{activePayslip.daysBreakdown.lossOfPayDays ?? 0}</span>
-                      </div>
-                      <div className="ep-att-item">
-                        <span className="ep-att-label">Payable Days</span>
-                        <span className="ep-att-val" style={{ fontWeight: 800 }}>{activePayslip.daysBreakdown.payableDays ?? "—"}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Itemized Financial Breakdown (2-Column) */}
-                  <div className="ep-breakdown-grid">
-                    {/* Left: Earnings */}
-                    <div className="ep-section-box">
-                      <div className="ep-section-title earnings">
-                        Earnings & Allowances
-                      </div>
-                      {(!activePayslip.earnings || activePayslip.earnings.length === 0) ? (
-                        <div className="ep-line-item">
-                          <span className="ep-line-name">Gross Base Salary</span>
-                          <span className="ep-line-amount">₹{Number(activePayslip.grossSalary || 0).toLocaleString("en-IN")}</span>
-                        </div>
-                      ) : (
-                        activePayslip.earnings.map((e, idx) => (
-                          <div key={idx} className="ep-line-item">
-                            <span className="ep-line-name">{e.name}</span>
-                            <span className="ep-line-amount">₹{Number(e.amount || 0).toLocaleString("en-IN")}</span>
-                          </div>
-                        ))
-                      )}
-                      <div className="ep-section-total">
-                        <span>Total Gross Earnings</span>
-                        <span style={{ color: "var(--g-800)" }}>₹{Number(activePayslip.grossSalary || 0).toLocaleString("en-IN")}</span>
-                      </div>
-                    </div>
-
-                    {/* Right: Deductions */}
-                    <div className="ep-section-box">
-                      <div className="ep-section-title deductions">
-                        Statutory & Voluntary Deductions
-                      </div>
-                      {(!activePayslip.employeeDeductions || activePayslip.employeeDeductions.length === 0) ? (
-                        <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "8px 0", fontStyle: "italic" }}>
-                          No statutory deductions recorded
-                        </div>
-                      ) : (
-                        activePayslip.employeeDeductions.map((d, idx) => (
-                          <div key={idx} className="ep-line-item">
-                            <span className="ep-line-name">{d.name}</span>
-                            <span className="ep-line-amount deduct">-₹{Number(d.amount || 0).toLocaleString("en-IN")}</span>
-                          </div>
-                        ))
-                      )}
-                      <div className="ep-section-total">
-                        <span>Total Deductions</span>
-                        <span style={{ color: "#b91c1c" }}>-₹{Number(activePayslip.deductions || 0).toLocaleString("en-IN")}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hero Net Take-Home Card */}
-                  <div className="ep-hero-netpay">
-                    <div>
-                      <div className="ep-hero-netpay-label">Net Take-Home Salary</div>
-                      <div className="ep-hero-netpay-amount">
-                        ₹{Number(activePayslip.netPay || 0).toLocaleString("en-IN")}
-                      </div>
-                    </div>
-                    <div className="ep-hero-netpay-badge">
-                      {activePayslip.paymentStatus === "PAID" ? <IconCheck size={14} /> : <IconClock size={14} />}
-                      <span>{activePayslip.paymentStatus === "PAID" ? "Disbursed via Bank" : "Finalized Snapshot"}</span>
-                    </div>
-                  </div>
-
-                  {/* Banking & Disbursal Footprint */}
-                  <div className="ep-banking-footer">
-                    <div>
-                      <strong>Account:</strong>{" "}
-                      {activePayslip.employeeSnapshot?.bankDetails?.accountNumber
-                        ? `•••• ${activePayslip.employeeSnapshot.bankDetails.accountNumber.slice(-4)} (${activePayslip.employeeSnapshot.bankDetails.bankName || "Salary A/C"})`
-                        : "Bank Direct Deposit on file"}
-                    </div>
-                    {activePayslip.payments?.[0]?.referenceNumber ? (
-                      <div>
-                        <strong>Transaction Ref:</strong> {activePayslip.payments[0].referenceNumber}
-                      </div>
-                    ) : (
-                      <div>
-                        <strong>Statement Status:</strong> Verified & Frozen Snapshot
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--muted)" }}>
-                  <IconFileText size={40} style={{ color: "#d4d4d8", margin: "0 auto 12px" }} />
-                  <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>Select a salary statement</div>
-                  <div>Choose a month from the left history to view detailed earnings and deductions.</div>
-                </div>
-              )}
-            </div>
+                {totalPayslipsCount > 0 && (
+                  <Pagination
+                    currentPage={payslipPage}
+                    totalPages={totalPayslipPages}
+                    totalItems={totalPayslipsCount}
+                    pageSize={payslipPageSize}
+                    pageSizeOptions={[10, 20, 50]}
+                    onPageChange={(p) => setPayslipPage(p)}
+                    onPageSizeChange={(s) => {
+                      setPayslipPageSize(s);
+                      setPayslipPage(1);
+                    }}
+                    itemLabel="statements"
+                  />
+                )}
+              </>
+            )}
           </div>
         </>
       )}
 
-      {/* Full & Final Settlement Modal */}
-      {showSettlementModal && mySettlement && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0, 0, 0, 0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: 16,
-          }}
-          onClick={() => setShowSettlementModal(false)}
-        >
-          <div
-            style={{
-              background: "#ffffff",
-              borderRadius: 14,
-              padding: "24px 28px",
-              width: "100%",
-              maxWidth: 600,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>
-                  Full & Final Settlement Summary
-                </h3>
-                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
-                  Exit Reference: {mySettlement.settlementNumber || mySettlement._id}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn-sm btn-secondary"
-                onClick={() => setShowSettlementModal(false)}
-                aria-label="Close"
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 12,
-                padding: "16px",
-                background: "var(--panel, #f5f6f5)",
-                borderRadius: 10,
-                border: "1px solid var(--hair, #e3e7e4)",
-                marginBottom: 18,
-              }}
-            >
-              <div>
-                <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>
-                  Gross Earnings
-                </span>
-                <div style={{ fontSize: 17, fontWeight: 700, color: "var(--g-800)", marginTop: 2 }}>
-                  ₹{(mySettlement.totalEarnings || 0).toLocaleString("en-IN")}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>
-                  Total Deductions
-                </span>
-                <div style={{ fontSize: 17, fontWeight: 700, color: "#b91c1c", marginTop: 2 }}>
-                  -₹{(mySettlement.totalDeductions || 0).toLocaleString("en-IN")}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>
-                  Net Settlement Pay
-                </span>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--g-950)", marginTop: 2 }}>
-                  ₹{(mySettlement.netSettlementAmount || 0).toLocaleString("en-IN")}
-                </div>
-              </div>
-              <div>
-                <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>
-                  Status
-                </span>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>
-                  {mySettlement.status}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowSettlementModal(false)}
-              >
+      <AppModal
+        open={Boolean(selectedPayslip)}
+        onClose={closePayslipModal}
+        size="lg"
+        className="ep-payslip-modal"
+        title={
+          selectedPayslip
+            ? `Payslip — ${selectedPayslip.month} ${selectedPayslip.year}`
+            : "Payslip"
+        }
+        subtitle={
+          selectedPayslip
+            ? `Ref: ${selectedPayslip.payslipNumber || "—"} · Period: ${selectedPayslip.period || "—"}`
+            : undefined
+        }
+        footer={
+          selectedPayslip ? (
+            <>
+              <button type="button" className="btn-secondary" onClick={closePayslipModal}>
                 Close
               </button>
+              <button type="button" className="btn-secondary" onClick={handlePrintPayslip}>
+                Print
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => handleDownloadPayslip(selectedPayslip.id)}
+                disabled={downloadingId === selectedPayslip.id}
+              >
+                <IconDownload size={14} />
+                {downloadingId === selectedPayslip.id ? "Downloading…" : "Download PDF"}
+              </button>
+            </>
+          ) : null
+        }
+      >
+        {selectedPayslip ? (
+          <div className="ep-modal-body" id="ep-payslip-print-root">
+            <section className="ep-modal-section">
+              <h4 className="ep-modal-section-title">Employee & period</h4>
+              <dl className="ep-meta-grid">
+                <div>
+                  <dt>Employee</dt>
+                  <dd>
+                    {selectedPayslip.employeeSnapshot?.name ||
+                      selectedPayslip.employeeName ||
+                      "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Employee ID</dt>
+                  <dd>
+                    {selectedPayslip.employeeSnapshot?.employeeCode ||
+                      selectedPayslip.employeeId ||
+                      "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Department</dt>
+                  <dd>
+                    {selectedPayslip.employeeSnapshot?.department ||
+                      selectedPayslip.department ||
+                      "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Designation</dt>
+                  <dd>
+                    {selectedPayslip.employeeSnapshot?.designation ||
+                      selectedPayslip.designation ||
+                      "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Salary period</dt>
+                  <dd>
+                    {selectedPayslip.month} {selectedPayslip.year}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Payslip #</dt>
+                  <dd>{selectedPayslip.payslipNumber || "—"}</dd>
+                </div>
+              </dl>
+            </section>
+
+            {selectedPayslip.daysBreakdown && (
+              <div className="ep-attendance-bar">
+                <div className="ep-att-item">
+                  <span className="ep-att-label">Working Days</span>
+                  <span className="ep-att-val">{selectedPayslip.daysBreakdown.workingDays ?? "—"}</span>
+                </div>
+                <div className="ep-att-item">
+                  <span className="ep-att-label">Present</span>
+                  <span className="ep-att-val green">
+                    {selectedPayslip.daysBreakdown.presentDays ?? "—"}
+                  </span>
+                </div>
+                <div className="ep-att-item">
+                  <span className="ep-att-label">Paid Leave</span>
+                  <span className="ep-att-val" style={{ color: "#2563eb" }}>
+                    {selectedPayslip.daysBreakdown.paidLeaveDays ?? 0}
+                  </span>
+                </div>
+                <div className="ep-att-item">
+                  <span className="ep-att-label">Loss of Pay</span>
+                  <span className="ep-att-val red">
+                    {selectedPayslip.daysBreakdown.lossOfPayDays ?? 0}
+                  </span>
+                </div>
+                <div className="ep-att-item">
+                  <span className="ep-att-label">Payable Days</span>
+                  <span className="ep-att-val" style={{ fontWeight: 800 }}>
+                    {selectedPayslip.daysBreakdown.payableDays ?? "—"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="ep-breakdown-grid">
+              <div className="ep-section-box">
+                <div className="ep-section-title earnings">Earnings & Allowances</div>
+                {!selectedPayslip.earnings || selectedPayslip.earnings.length === 0 ? (
+                  <div className="ep-line-item">
+                    <span className="ep-line-name">Gross Base Salary</span>
+                    <span className="ep-line-amount">
+                      ₹{Number(selectedPayslip.grossSalary || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                ) : (
+                  selectedPayslip.earnings.map((e, idx) => (
+                    <div key={idx} className="ep-line-item">
+                      <span className="ep-line-name">{e.name}</span>
+                      <span className="ep-line-amount">
+                        ₹{Number(e.amount || 0).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                  ))
+                )}
+                <div className="ep-section-total">
+                  <span>Total Gross Earnings</span>
+                  <span style={{ color: "var(--g-800)" }}>
+                    ₹{Number(selectedPayslip.grossSalary || 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+
+              <div className="ep-section-box">
+                <div className="ep-section-title deductions">Deductions</div>
+                {!selectedPayslip.employeeDeductions ||
+                selectedPayslip.employeeDeductions.length === 0 ? (
+                  <div className="ep-empty-inline">No statutory deductions recorded</div>
+                ) : (
+                  selectedPayslip.employeeDeductions.map((d, idx) => (
+                    <div key={idx} className="ep-line-item">
+                      <span className="ep-line-name">{d.name}</span>
+                      <span className="ep-line-amount deduct">
+                        -₹{Number(d.amount || 0).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                  ))
+                )}
+                <div className="ep-section-total">
+                  <span>Total Deductions</span>
+                  <span style={{ color: "#b91c1c" }}>
+                    -₹{Number(selectedPayslip.deductions || 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {selectedPayslip.employerContributions?.length > 0 && (
+              <section className="ep-modal-section">
+                <h4 className="ep-modal-section-title">Employer contributions</h4>
+                {selectedPayslip.employerContributions.map((item, idx) => (
+                  <div key={idx} className="ep-line-item">
+                    <span className="ep-line-name">{item.name}</span>
+                    <span className="ep-line-amount">
+                      ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                ))}
+              </section>
+            )}
+
+            <div className="ep-hero-netpay">
+              <div>
+                <div className="ep-hero-netpay-label">Net Take-Home Salary</div>
+                <div className="ep-hero-netpay-amount">
+                  ₹{Number(selectedPayslip.netPay || 0).toLocaleString("en-IN")}
+                </div>
+              </div>
+              <div className="ep-hero-netpay-badge">
+                {selectedPayslip.paymentStatus === "PAID" ? (
+                  <IconCheck size={14} />
+                ) : (
+                  <IconClock size={14} />
+                )}
+                <span>
+                  {selectedPayslip.paymentStatus === "PAID"
+                    ? "Disbursed via Bank"
+                    : "Finalized Snapshot"}
+                </span>
+              </div>
+            </div>
+
+            <div className="ep-banking-footer">
+              <div>
+                <strong>Account:</strong>{" "}
+                {selectedPayslip.employeeSnapshot?.bankDetails?.accountNumber
+                  ? `•••• ${selectedPayslip.employeeSnapshot.bankDetails.accountNumber.slice(-4)} (${
+                      selectedPayslip.employeeSnapshot.bankDetails.bankName || "Salary A/C"
+                    })`
+                  : "Bank Direct Deposit on file"}
+              </div>
+              {selectedPayslip.payments?.[0] ? (
+                <div>
+                  <strong>Payment:</strong>{" "}
+                  {selectedPayslip.payments[0].paymentDate
+                    ? new Date(selectedPayslip.payments[0].paymentDate).toLocaleDateString()
+                    : "—"}
+                  {selectedPayslip.payments[0].paymentMethod
+                    ? ` · ${selectedPayslip.payments[0].paymentMethod}`
+                    : ""}
+                  {selectedPayslip.payments[0].referenceNumber
+                    ? ` · Ref ${selectedPayslip.payments[0].referenceNumber}`
+                    : ""}
+                </div>
+              ) : (
+                <div>
+                  <strong>Statement Status:</strong> Verified & Frozen Snapshot
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </AppModal>
+
+      <AppModal
+        open={Boolean(showSettlementModal && mySettlement)}
+        onClose={() => setShowSettlementModal(false)}
+        size="md"
+        title="Full & Final Settlement Summary"
+        subtitle={
+          mySettlement
+            ? `Exit Reference: ${mySettlement.settlementNumber || mySettlement._id}`
+            : undefined
+        }
+        footer={
+          <button type="button" className="btn-secondary" onClick={() => setShowSettlementModal(false)}>
+            Close
+          </button>
+        }
+      >
+        {mySettlement ? (
+          <div className="ep-settlement-grid">
+            <div>
+              <span className="ep-att-label">Gross Earnings</span>
+              <div className="ep-settlement-value green">
+                ₹{(mySettlement.totalEarnings || 0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div>
+              <span className="ep-att-label">Total Deductions</span>
+              <div className="ep-settlement-value red">
+                -₹{(mySettlement.totalDeductions || 0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div>
+              <span className="ep-att-label">Net Settlement Pay</span>
+              <div className="ep-settlement-value strong">
+                ₹{(mySettlement.netSettlementAmount || 0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div>
+              <span className="ep-att-label">Status</span>
+              <div className="ep-settlement-status">{mySettlement.status}</div>
+            </div>
+          </div>
+        ) : null}
+      </AppModal>
     </div>
   );
 }

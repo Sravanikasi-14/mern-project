@@ -215,10 +215,42 @@ export default function HiringOnboardingPage() {
     return rows.find((r) => String(r.offerId) === open.offerId) || open.row;
   }, [open, rows]);
 
-  const counters = summary || {};
   const chipCount = (chip) => (summary ? summary[chip.summaryKey] ?? 0 : null);
 
   const emptyFiltered = stage !== "ALL" || debouncedSearch;
+
+  const stageNav = (
+    <div className="dept-chip-row hw-stage-row" role="tablist" aria-label="Filter by stage">
+      {HIRING_STAGE_CHIPS.map((chip) => {
+        const count = chipCount(chip);
+        return (
+          <button
+            key={chip.key}
+            type="button"
+            role="tab"
+            aria-selected={stage === chip.key}
+            className={`dept-chip${stage === chip.key ? " is-selected" : ""}`}
+            onClick={() => setStage(chip.key)}
+          >
+            {chip.label}
+            {count !== null ? <strong>{count}</strong> : null}
+          </button>
+        );
+      })}
+      {stage === "WITHDRAWN" || (summary?.withdrawn > 0 && stage === "ALL") ? (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={stage === "WITHDRAWN"}
+          className={`dept-chip${stage === "WITHDRAWN" ? " is-selected" : ""}`}
+          onClick={() => setStage(stage === "WITHDRAWN" ? "ALL" : "WITHDRAWN")}
+        >
+          Withdrawn
+          <strong>{summary?.withdrawn ?? 0}</strong>
+        </button>
+      ) : null}
+    </div>
+  );
 
   if (composing) {
     return (
@@ -238,79 +270,32 @@ export default function HiringOnboardingPage() {
 
   return (
     <main className="container-wide hw-page">
-      <AppHeader title="Hiring & Onboarding" />
-
-      <div className="hw-header">
-        <p>Offers, candidate onboarding, HR review and account setup in one place.</p>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <AppHeader
+        title="Hiring & Onboarding"
+        subtitle="Offers, candidate onboarding, HR review and account setup in one place."
+        actions={
           <span
             className={`hw-live${liveConnected ? " is-on" : ""}`}
             title={liveConnected ? "Live updates connected" : "Live updates reconnecting"}
           >
             ● {liveConnected ? "Live" : "Offline"}
           </span>
-          {canCreateOffer ? (
-          <button type="button" className="hw-btn hw-btn-primary" onClick={() => openCompose()}>
-            + New offer
-          </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="hw-counters" aria-label="Pipeline counters">
-        <span>Total: <strong>{summary ? counters.all : "—"}</strong></span>
-        <span className="hw-dot">•</span>
-        <span>Offers: <strong>{summary ? counters.offers : "—"}</strong></span>
-        <span className="hw-dot">•</span>
-        <span>Onboarding: <strong>{summary ? counters.onboarding : "—"}</strong></span>
-        <span className="hw-dot">•</span>
-        <span className={counters.hrReview > 0 ? "hw-counter-hot" : ""}>
-          Awaiting HR review: <strong>{summary ? counters.hrReview : "—"}</strong>
-        </span>
-        <span className="hw-dot">•</span>
-        <span className={counters.corrections > 0 ? "hw-counter-warn" : ""}>
-          Corrections: <strong>{summary ? counters.corrections : "—"}</strong>
-        </span>
-        <span className="hw-dot">•</span>
-        <span>Account setup: <strong>{summary ? counters.accountSetup : "—"}</strong></span>
-        <span className="hw-dot">•</span>
-        <span>Completed: <strong>{summary ? counters.completed : "—"}</strong></span>
-      </div>
-
-      <div className="hw-chips" role="tablist" aria-label="Filter by stage">
-        {HIRING_STAGE_CHIPS.map((chip) => {
-          const count = chipCount(chip);
-          return (
-            <button
-              key={chip.key}
-              type="button"
-              role="tab"
-              aria-selected={stage === chip.key}
-              className={`hw-chip${stage === chip.key ? " is-active" : ""}`}
-              onClick={() => setStage(chip.key)}
-            >
-              {chip.label}
-              {count !== null && <span className="hw-chip-count">{count}</span>}
-            </button>
-          );
-        })}
-        {stage === "WITHDRAWN" || (summary?.withdrawn > 0 && stage === "ALL") ? (
-          <button
-            type="button"
-            className={`hw-chip${stage === "WITHDRAWN" ? " is-active" : ""}`}
-            onClick={() => setStage(stage === "WITHDRAWN" ? "ALL" : "WITHDRAWN")}
-          >
-            Withdrawn
-            <span className="hw-chip-count">{summary?.withdrawn ?? 0}</span>
-          </button>
-        ) : null}
-      </div>
+        }
+        nav={stageNav}
+      />
 
       <ModuleToolbar
         searchValue={searchTerm}
         onSearchChange={(e) => setSearchTerm(e.target.value)}
         searchPlaceholder="Search name, email or role..."
         searchAriaLabel="Search candidates"
+        actions={
+          canCreateOffer ? (
+            <button type="button" className="btn-primary" onClick={() => openCompose()}>
+              + New offer
+            </button>
+          ) : null
+        }
       />
 
       {error && (

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
+import ProfilePhotoField from "../components/ProfilePhotoField";
+import { invalidateProfile } from "../lib/queryKeys";
 import { useAuth } from "../context/AuthContext";
 import {
   IconClose,
@@ -19,13 +22,16 @@ const EMPLOYEE_SETTINGS_TABS = [
   { id: "security", label: "Security", icon: IconShield },
   { id: "notifications", label: "Notifications", icon: IconMail },
   { id: "preferences", label: "Preferences", icon: IconSettings },
-  { id: "account", label: "Account", icon: IconUser },
+  { id: "account", label: "My Profile", icon: IconUser },
 ];
 
 export default function EmployeeSettings() {
   const { user, company, restoreSession, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("security");
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -43,6 +49,11 @@ export default function EmployeeSettings() {
   const [tableDensity, setTableDensity] = useState(() => {
     return localStorage.getItem("hrms_table_density") || "compact";
   });
+
+  useEffect(() => {
+    setProfileName(user?.fullName || user?.name || "");
+    setProfilePhone(user?.phoneNumber || "");
+  }, [user?.fullName, user?.name, user?.phoneNumber]);
 
   useEffect(() => {
     if (user?.preferences) {
@@ -89,6 +100,33 @@ export default function EmployeeSettings() {
       setConfirmPassword("");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to change password. Please check your current password.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handler: Save My Profile (name / phone; synced to the linked Employee record by the server)
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccessMsg("");
+    if (!profileName.trim()) {
+      setError("Full name cannot be empty.");
+      return;
+    }
+    try {
+      setSaving(true);
+      const res = await api.put("/auth/profile", {
+        fullName: profileName.trim(),
+        phoneNumber: profilePhone.trim(),
+      });
+      if (res.data?.user && restoreSession) {
+        await restoreSession({ silent: true });
+      }
+      invalidateProfile(queryClient);
+      setSuccessMsg(res.data?.message || "Profile updated successfully.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to update profile.");
     } finally {
       setSaving(false);
     }
@@ -604,8 +642,48 @@ export default function EmployeeSettings() {
           {activeTab === "account" && (
             <div>
               <div className="settings-panel-head">
-                <h2 className="settings-panel-title">Account</h2>
+                <h2 className="settings-panel-title">My Profile</h2>
               </div>
+
+              <ProfilePhotoField />
+
+              <form
+                onSubmit={handleSaveProfile}
+                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "20px" }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    required
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--hair, #e6ede8)", fontSize: "13.5px", background: "#ffffff" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={profilePhone}
+                    onChange={(e) => setProfilePhone(e.target.value)}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--hair, #e6ede8)", fontSize: "13.5px", background: "#ffffff" }}
+                  />
+                </div>
+                <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    style={{ padding: "8px 18px", fontSize: "13px", borderRadius: "8px", background: "var(--g-800, #155a37)", color: "#ffffff", border: "none", cursor: "pointer", fontWeight: 600 }}
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
 
               {/* Dedicated Profile Shortcut Card */}
               <div

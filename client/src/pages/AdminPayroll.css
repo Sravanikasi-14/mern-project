@@ -144,64 +144,14 @@
   margin-top: 2px;
 }
 
-/* Cycle & Filter Toolbar — single aligned row when width allows */
-.ap-toolbar {
-  background: var(--card, #ffffff);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: 12px;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
-  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.03);
-}
-
-.ap-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.ap-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Search / button sizing inherited from shared .module-toolbar rules in index.css */
-
+/* Payroll listing uses ModuleToolbar — keep ap-select for cycle/filter controls */
 .ap-select {
-  border-radius: 8px;
+  border-radius: var(--r-md, 12px);
   font-size: 13px;
   font-weight: 500;
   min-width: 0;
-}
-
-.ap-search-input {
-  /* Prefer ModuleSearch; keep legacy class aligned to standard height */
   height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: 10px;
-  font-size: 13.5px;
-  background: #ffffff;
-  color: var(--ink, #131a15);
-  min-width: 200px;
-  transition: border-color 0.15s ease;
   box-sizing: border-box;
-}
-
-.ap-search-input:focus {
-  outline: none;
-  border-color: var(--g-700, #1d7347);
-  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
 }
 
 .ap-register-hint {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
+import ModuleToolbar from "../components/ModuleToolbar";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
   IconCheck,
@@ -18,7 +19,6 @@ import {
 } from "../hooks/useEmployeeQueries";
 import { invalidateImpact } from "../lib/queryKeys";
 import "./WorkManagement.css";
-import MobileExpandable from "../components/mobile/MobileExpandable";
 
 const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
@@ -121,15 +121,16 @@ export default function EmployeeImpactPoints() {
       <AppHeader
         title="Impact Points"
         hideLogout={true}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        actions={
           <SoftRefresh
             active={
               (impactQuery.isFetching && !!impactQuery.data) ||
               (leaderboardQuery.isFetching && !!leaderboardQuery.data)
             }
           />
-          {meta.isManager && (
+        }
+        nav={
+          meta.isManager ? (
             <button
               className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
               onClick={() => setSidePanelMode(sidePanelMode === "recognize" ? "none" : "recognize")}
@@ -137,9 +138,9 @@ export default function EmployeeImpactPoints() {
             >
               {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
             </button>
-          )}
-        </div>
-      </AppHeader>
+          ) : null
+        }
+      />
 
       {/* Notifications */}
       {(error || successMsg) && (
@@ -228,55 +229,51 @@ export default function EmployeeImpactPoints() {
               </div>
             </div>
 
-            {/* Filter Bar (for Leaderboard) */}
-            {activeTab === "LEADERBOARD" && (
-              <MobileExpandable title="Leaderboard filters">
-              <div className="wm-filter-row">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Department:</span>
-                  <select
-                    className="wm-select"
-                    value={departmentFilter}
-                    onChange={(e) => setDepartmentFilter(e.target.value)}
-                    style={{ width: "auto", minWidth: 160 }}
-                  >
-                    <option value="ALL">All Departments</option>
-                    {(meta?.departments || []).map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Timeframe:</span>
-                  <div style={{ display: "flex", gap: 4, background: "#f1f5f9", padding: 3, borderRadius: 8 }}>
-                    {PERIOD_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setPeriodFilter(opt.value)}
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          border: "none",
-                          background: periodFilter === opt.value ? "#ffffff" : "transparent",
-                          color: periodFilter === opt.value ? "#2563eb" : "#64748b",
-                          boxShadow: periodFilter === opt.value ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                          cursor: "pointer",
-                        }}
+            {activeTab === "LEADERBOARD" ? (
+              <ModuleToolbar
+                className="wm-module-toolbar"
+                filterCount={(departmentFilter !== "ALL" ? 1 : 0) + (periodFilter !== "all" ? 1 : 0)}
+                onFiltersClear={() => {
+                  setDepartmentFilter("ALL");
+                  setPeriodFilter("all");
+                }}
+                filters={
+                  <>
+                    <label className="module-toolbar-filter-field">
+                      Department
+                      <select
+                        className="filter-select"
+                        value={departmentFilter}
+                        onChange={(e) => setDepartmentFilter(e.target.value)}
                       >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              </MobileExpandable>
-            )}
+                        <option value="ALL">All Departments</option>
+                        {(meta?.departments || []).map((dept) => (
+                          <option key={dept} value={dept}>
+                            {dept}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="module-toolbar-filter-field">
+                      Timeframe
+                      <div className="module-toolbar-pill-group" role="group" aria-label="Timeframe">
+                        {PERIOD_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            className={`btn-secondary btn-sm${periodFilter === opt.value ? " is-active" : ""}`}
+                            onClick={() => setPeriodFilter(opt.value)}
+                            aria-pressed={periodFilter === opt.value}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                }
+              />
+            ) : null}
           </div>
 
           {/* Table Container */}

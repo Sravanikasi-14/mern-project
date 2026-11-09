@@ -472,45 +472,45 @@ export default function AdminWorkManagement() {
       <AppHeader
         title="Work Management"
         hideLogout={true}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SoftRefresh active={Boolean(tasksQuery.isFetching && queryTasks.length > 0)} />
-          <div className="wm-view-switcher" role="tablist" aria-label="Task view">
-            <button
-              type="button"
-              className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
-              onClick={() => setViewMode(VIEW_MODES.KANBAN)}
-            >
-              Board
-            </button>
-            <button
-              type="button"
-              className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
-              onClick={() => setViewMode(VIEW_MODES.LIST)}
-            >
-              List
-            </button>
+        actions={<SoftRefresh active={Boolean(tasksQuery.isFetching && queryTasks.length > 0)} />}
+        nav={
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div className="wm-view-switcher" role="tablist" aria-label="Task view">
+              <button
+                type="button"
+                className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
+                onClick={() => setViewMode(VIEW_MODES.KANBAN)}
+              >
+                Board
+              </button>
+              <button
+                type="button"
+                className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
+                onClick={() => setViewMode(VIEW_MODES.LIST)}
+              >
+                List
+              </button>
+            </div>
+            {canEditPeople ? (
+              <button
+                type="button"
+                className="wm-btn-primary"
+                onClick={() => {
+                  setSelectedTask(null);
+                  setCreateError("");
+                  setSidePanelMode("create");
+                }}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                <IconPlus size={16} />
+                Create Task
+              </button>
+            ) : (
+              <AccessRestrictedInline />
+            )}
           </div>
-
-          {canEditPeople ? (
-          <button
-            type="button"
-            className="wm-btn-primary"
-            onClick={() => {
-              setSelectedTask(null);
-              setCreateError("");
-              setSidePanelMode("create");
-            }}
-            style={{ whiteSpace: "nowrap", height: 32, fontSize: 12, padding: "0 12px" }}
-          >
-            <IconPlus size={16} />
-            Create Task
-          </button>
-          ) : (
-            <AccessRestrictedInline />
-          )}
-        </div>
-      </AppHeader>
+        }
+      />
 
       {/* Floating Non-intrusive Toast (Never pushes down summary cards) */}
       {(error || successMsg) && (

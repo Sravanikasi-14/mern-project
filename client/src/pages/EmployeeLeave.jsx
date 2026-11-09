@@ -308,9 +308,9 @@ export default function EmployeeLeave() {
     <div className="lm-container">
       <AppHeader
         title={<><span className="m-title-full">Leave</span><span className="m-title-short">Time off</span></>}
-        actions={
+        actions={<SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />}
+        nav={
           <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-            <SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />
             <button
               type="button"
               className="btn-primary"

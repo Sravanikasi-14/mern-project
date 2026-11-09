@@ -1,11 +1,12 @@
-import { useEffect, useId, useRef, useState } from "react";
 import ModuleSearch from "./ModuleSearch";
+import ModuleFilters from "./ModuleFilters";
 import "./ModuleToolbar.css";
 
 /**
- * Unified HRMS module toolbar.
- * Layout: [optional leading] [Search] ........ [actions] [Filters]
- * Module-specific filters render inside one Filters popover.
+ * Page tools strip under PageIdentity (not the sticky global bar).
+ * Layout: [leading + primary actions] [expandable local search] [secondary + filters]
+ * Search grows to fill remaining space — never a fixed centered 320px column.
+ * GlobalSearch remains exclusively in AppHeader.
  */
 export default function ModuleToolbar({
   className = "",
@@ -14,9 +15,14 @@ export default function ModuleToolbar({
   searchValue = "",
   onSearchChange,
   onSearchSubmit,
+  onSearchClear,
   searchPlaceholder = "Search…",
   searchAriaLabel = "Search",
+  searchLoading = false,
+  searchDisabled = false,
+  searchId,
   actions = null,
+  secondaryActions = null,
   filters = null,
   filterCount = 0,
   onFiltersClear,
@@ -24,93 +30,55 @@ export default function ModuleToolbar({
   applyLabel = "Done",
   clearLabel = "Clear",
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const panelId = useId();
-  const hasFilters = Boolean(filters);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const onPointer = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const handleClear = () => {
-    onFiltersClear?.();
-  };
-
-  const handleApply = () => {
-    setOpen(false);
-  };
+  const showSearch = !hideSearch && typeof onSearchChange === "function";
+  const hasStart = Boolean(leading) || Boolean(actions);
+  const hasEnd = Boolean(secondaryActions) || Boolean(filters);
 
   return (
-    <div className={`module-toolbar ${className}`.trim()} ref={rootRef}>
-      <div className="module-toolbar-left">
+    <div
+      className={`module-toolbar ${className}`.trim()}
+      role="toolbar"
+      aria-label="Page tools"
+      data-toolbar="module"
+      data-has-search={showSearch ? "true" : "false"}
+    >
+      <div className={`module-toolbar-start${hasStart ? "" : " is-empty"}`}>
         {leading}
-        {!hideSearch && onSearchChange ? (
+        {actions ? <div className="module-toolbar-actions">{actions}</div> : null}
+      </div>
+
+      <div className={`module-toolbar-search-slot${showSearch ? "" : " is-empty"}`}>
+        {showSearch ? (
           <ModuleSearch
+            id={searchId}
             value={searchValue}
             onChange={onSearchChange}
             onSubmit={onSearchSubmit}
+            onClear={onSearchClear}
             placeholder={searchPlaceholder}
             ariaLabel={searchAriaLabel}
+            loading={searchLoading}
+            disabled={searchDisabled}
           />
         ) : null}
       </div>
 
-      <div className="module-toolbar-right">
-        {actions}
-        {hasFilters ? (
-          <div className="module-toolbar-filters">
-            <button
-              type="button"
-              className={`btn-secondary module-toolbar-filters-btn${filterCount > 0 ? " is-active" : ""}`}
-              aria-expanded={open}
-              aria-controls={panelId}
-              onClick={() => setOpen((prev) => !prev)}
-            >
-              <span>{filtersLabel}</span>
-              {filterCount > 0 ? (
-                <span className="module-toolbar-filters-count" aria-label={`${filterCount} active filters`}>
-                  {filterCount}
-                </span>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              )}
-            </button>
-
-            {open ? (
-              <div id={panelId} className="module-toolbar-filters-panel" role="dialog" aria-label={filtersLabel}>
-                <div className="module-toolbar-filters-body">{filters}</div>
-                <div className="module-toolbar-filters-footer">
-                  {onFiltersClear ? (
-                    <button type="button" className="btn-secondary" onClick={handleClear} disabled={filterCount === 0}>
-                      {clearLabel}
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                  <button type="button" className="btn-primary" onClick={handleApply}>
-                    {applyLabel}
-                  </button>
-                </div>
-              </div>
-            ) : null}
+      <div className={`module-toolbar-end${hasEnd ? "" : " is-empty"}`}>
+        {secondaryActions ? (
+          <div className="module-toolbar-actions module-toolbar-actions--secondary">
+            {secondaryActions}
           </div>
+        ) : null}
+        {filters ? (
+          <ModuleFilters
+            filterCount={filterCount}
+            onClear={onFiltersClear}
+            label={filtersLabel}
+            applyLabel={applyLabel}
+            clearLabel={clearLabel}
+          >
+            {filters}
+          </ModuleFilters>
         ) : null}
       </div>
     </div>

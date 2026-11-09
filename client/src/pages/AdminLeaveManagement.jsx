@@ -500,49 +500,50 @@ export default function AdminLeaveManagement() {
   return (
     <div className="lm-container">
       <AppHeader
-        title="Leave"
+        title="Leave Management"
         actions={<SoftRefresh active={Boolean(leaveQuery.isFetching && requests.length > 0)} />}
+        nav={
+          <div className="module-tabs" role="tablist" aria-label="Leave sections">
+            <button
+              type="button"
+              className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
+              onClick={() => {
+                setLeaveSection("overview");
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set("tab", "overview");
+                    return next;
+                  },
+                  { replace: true }
+                );
+                setPage(1);
+              }}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              className={`module-tab ${leaveSection === "leave" ? "is-active" : ""}`}
+              onClick={() => {
+                setLeaveSection("leave");
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set("tab", "leave");
+                    return next;
+                  },
+                  { replace: true }
+                );
+                setPage(1);
+              }}
+            >
+              Leave workspace
+            </button>
+          </div>
+        }
       />
       {!canApproveLeave ? <AccessRestrictedInline /> : null}
-
-      <div className="module-tabs" role="tablist" aria-label="Leave sections">
-        <button
-          type="button"
-          className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
-          onClick={() => {
-            setLeaveSection("overview");
-            setSearchParams(
-              (prev) => {
-                const next = new URLSearchParams(prev);
-                next.set("tab", "overview");
-                return next;
-              },
-              { replace: true }
-            );
-            setPage(1);
-          }}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          className={`module-tab ${leaveSection === "leave" ? "is-active" : ""}`}
-          onClick={() => {
-            setLeaveSection("leave");
-            setSearchParams(
-              (prev) => {
-                const next = new URLSearchParams(prev);
-                next.set("tab", "leave");
-                return next;
-              },
-              { replace: true }
-            );
-            setPage(1);
-          }}
-        >
-          Leave workspace
-        </button>
-      </div>
 
       {/* Global Alerts */}
       {actionSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{actionSuccess}</div>}
@@ -704,7 +705,8 @@ export default function AdminLeaveManagement() {
           </select>
         </label>
         <DateRangePicker
-          label="Date range"
+          label=""
+          placeholder="Select dates"
           startDate={fromDateFilter}
           endDate={toDateFilter}
           onChange={({ startDate, endDate }) => {
@@ -719,7 +721,21 @@ export default function AdminLeaveManagement() {
         onSearchChange={(e) => setSearch(e.target.value)}
         searchPlaceholder="Search employee, role, reason..."
         searchAriaLabel="Search leave requests"
-        actions={
+        leading={
+          <DateRangePicker
+            label=""
+            placeholder="Select dates"
+            className="module-toolbar-drp"
+            startDate={fromDateFilter}
+            endDate={toDateFilter}
+            onChange={({ startDate, endDate }) => {
+              setFromDateFilter(startDate || "");
+              setToDateFilter(endDate || "");
+              setPage(1);
+            }}
+          />
+        }
+        secondaryActions={
           <>
             <ColumnChooser
               columns={leaveCols.columns}
@@ -787,20 +803,6 @@ export default function AdminLeaveManagement() {
                 ))}
               </select>
             </label>
-            <div className="module-toolbar-filter-field">
-              <span>Date range</span>
-              <DateRangePicker
-                label=""
-                placeholder="Date range"
-                startDate={fromDateFilter}
-                endDate={toDateFilter}
-                onChange={({ startDate, endDate }) => {
-                  setFromDateFilter(startDate || "");
-                  setToDateFilter(endDate || "");
-                  setPage(1);
-                }}
-              />
-            </div>
           </>
         }
       />

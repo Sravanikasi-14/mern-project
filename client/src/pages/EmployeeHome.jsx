@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
 import SoftRefresh from "../components/SoftRefresh";
+import AuthedAvatar from "../components/AuthedAvatar";
+import ProfilePhotoField from "../components/ProfilePhotoField";
 import {
   IconDocument,
   IconPencil,
@@ -410,10 +412,18 @@ export default function EmployeeHome({ defaultTab = "overview" }) {
           {/* Person Card */}
           <div className="epv-person-card">
             <div className="epv-avatar-wrapper">
-              <div className="epv-avatar-large">
-                {userInitial}
-              </div>
+              <AuthedAvatar
+                className="epv-avatar-large"
+                src={user?.avatar || profile.avatar}
+                initials={userInitial}
+                alt={profile.fullName}
+              />
             </div>
+            <ProfilePhotoField
+              hideAvatar
+              className="epv-photo-field"
+              onChanged={() => queryClient.invalidateQueries({ queryKey: ["employee", "profile"] })}
+            />
 
             <h2 className="epv-person-name">{profile.fullName}</h2>
             <p className="epv-person-role">{profile.job?.jobTitle || "Team Member"}</p>

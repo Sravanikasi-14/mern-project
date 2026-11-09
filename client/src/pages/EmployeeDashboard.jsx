@@ -418,87 +418,72 @@ export default function EmployeeDashboard() {
         </div>
       )}
 
-      {/* ====================================================================
-          1. Board Head: Greeting, Identity Badges, Quick Actions
-          ==================================================================== */}
-      {/* ====================================================================
-          1. Compact Welcome & Daily Status Area
-          ==================================================================== */}
-      <div className="emp-head">
-        <div className="emp-head__title-group">
-          <h1 className="emp-head__title">{getGreeting()}, {employeeName}</h1>
-          <div className="emp-head__meta">
-            <span className="emp-badge-pill emp-badge-pill--green">
-              {employee?.department || "General"}
-            </span>
-            <span className="emp-badge-pill">
-              {employee?.jobTitle || "Team Member"}
-            </span>
-            {employee?.employeeCode && (
-              <span className="emp-badge-pill">
-                ID: {employee.employeeCode}
+      <AppHeader
+        title={`${getGreeting()}, ${employeeName}`}
+        hideLogout
+        actions={<SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />}
+        nav={
+          <>
+            <div className="emp-head__meta">
+              <span className="emp-badge-pill emp-badge-pill--green">
+                {employee?.department || "General"}
               </span>
-            )}
-            <span
-              className="emp-badge-pill"
-              style={{
-                background:
-                  todayStatus === "CHECKED_IN"
-                    ? "var(--g-100)"
-                    : todayStatus === "CHECKED_OUT"
-                    ? "var(--amber-bg)"
-                    : "var(--panel)",
-                color:
-                  todayStatus === "CHECKED_IN"
-                    ? "var(--g-800)"
-                    : todayStatus === "CHECKED_OUT"
-                    ? "var(--amber)"
-                    : "var(--muted)",
-                fontWeight: 600,
-              }}
-            >
-              {todayStatus === "CHECKED_IN"
-                ? "Shift active"
-                : todayStatus === "CHECKED_OUT"
-                ? "Shift completed"
-                : todayStatus === "ON_LEAVE"
-                ? "On leave"
-                : "Not clocked in"}
-            </span>
-          </div>
-        </div>
-
-        <div className="emp-head__actions">
-          <SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />
-          {/* Apply for Leave Action */}
-          <button
-            type="button"
-            className="btn--emp-primary"
-            onClick={handleOpenLeaveModal}
-          >
-            <IconCalendarPlus size={16} />
-            <span>Apply for Leave</span>
-          </button>
-
-          {/* Profile Shortcut */}
-          <Link to="/app/profile" className="btn--emp-secondary">
-            <IconUser size={16} />
-            <span>My Profile</span>
-          </Link>
-
-          {/* Sync Button */}
-          <button
-            type="button"
-            className="btn--ghost-sync"
-            onClick={() => dashboardQuery.refetch()}
-            title="Refresh dashboard metrics"
-            disabled={dashboardQuery.isFetching}
-            aria-label="Refresh dashboard"
-          >
-            <IconRefresh size={16} className={dashboardQuery.isFetching ? "spin-icon" : ""} />
-          </button>
-        </div>
-      </div>
+              <span className="emp-badge-pill">
+                {employee?.jobTitle || "Team Member"}
+              </span>
+              {employee?.employeeCode ? (
+                <span className="emp-badge-pill">ID: {employee.employeeCode}</span>
+              ) : null}
+              <span
+                className="emp-badge-pill"
+                style={{
+                  background:
+                    todayStatus === "CHECKED_IN"
+                      ? "var(--g-100)"
+                      : todayStatus === "CHECKED_OUT"
+                        ? "var(--amber-bg)"
+                        : "var(--panel)",
+                  color:
+                    todayStatus === "CHECKED_IN"
+                      ? "var(--g-800)"
+                      : todayStatus === "CHECKED_OUT"
+                        ? "var(--amber)"
+                        : "var(--muted)",
+                  fontWeight: 600,
+                }}
+              >
+                {todayStatus === "CHECKED_IN"
+                  ? "Shift active"
+                  : todayStatus === "CHECKED_OUT"
+                    ? "Shift completed"
+                    : todayStatus === "ON_LEAVE"
+                      ? "On leave"
+                      : "Not clocked in"}
+              </span>
+            </div>
+            <div className="emp-head__actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className="btn--emp-primary" onClick={handleOpenLeaveModal}>
+                <IconCalendarPlus size={16} />
+                <span>Apply for Leave</span>
+              </button>
+              <Link to="/app/profile" className="btn--emp-secondary">
+                <IconUser size={16} />
+                <span>My Profile</span>
+              </Link>
+              <button
+                type="button"
+                className="btn--ghost-sync"
+                onClick={() => dashboardQuery.refetch()}
+                title="Refresh dashboard metrics"
+                disabled={dashboardQuery.isFetching}
+                aria-label="Refresh dashboard"
+              >
+                <IconRefresh size={16} className={dashboardQuery.isFetching ? "spin-icon" : ""} />
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {/* Loading Skeleton / State */}
       {loading && (
@@ -641,9 +626,15 @@ export default function EmployeeDashboard() {
 
               {/* Right / Secondary: Leave Balances & Fast Request */}
               <div className="emp-ops-leave-col">
-                <div className="emp-card__head" style={{ marginBottom: 14 }}>
-                  <div>
+                <div className="emp-card__head emp-leave-head">
+                  <div className="emp-leave-title-row">
                     <h2 className="emp-card__title">Leave Balances</h2>
+                    {Number(leave?.summary?.pending) > 0 ? (
+                      <span className="emp-leave-pending-badge" title="Pending leave requests">
+                        <span className="emp-leave-pending-dot" aria-hidden="true" />
+                        {leave.summary.pending} pending
+                      </span>
+                    ) : null}
                   </div>
                   <Link to="/app/leave" className="emp-card__link">
                     <span>View</span>
@@ -669,18 +660,9 @@ export default function EmployeeDashboard() {
                   </div>
                 </div>
 
-                {leave?.summary?.pending > 0 && (
-                  <div style={{ marginTop: 10 }}>
-                    <span className="emp-leave-pending-badge">
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#b45309" }} />
-                      {leave.summary.pending} pending
-                    </span>
-                  </div>
-                )}
-
                 <button
                   type="button"
-                  className="btn--emp-primary m-inline-apply"
+                  className="btn--emp-primary m-inline-apply emp-leave-apply"
                   onClick={handleOpenLeaveModal}
                 >
                   Apply for leave

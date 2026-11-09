@@ -1,0 +1,61 @@
+/* Row 2 — page identity below the sticky global toolbar */
+
+.page-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+
+.page-identity-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.page-identity-title {
+  margin: 0;
+  font-size: var(--fs-page, 22px);
+  font-weight: var(--fw-emphasis, 600);
+  letter-spacing: -0.02em;
+  color: var(--ink, #131a15);
+  line-height: 1.25;
+}
+
+.page-identity-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+  line-height: 1.4;
+}
+
+.page-identity-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Tabs nested under identity keep their own spacing; avoid double bottom margin */
+.page-identity-nav > .module-tabs,
+.page-identity-nav > .dept-chip-row,
+.page-identity-nav > .msg-channels {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .page-identity {
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+
+  .page-identity-title {
+    font-size: 19px;
+  }
+}

@@ -145,24 +145,25 @@
   gap: 10px;
 }
 
-/* Action Buttons */
+/* Action Buttons — match shared primary/secondary geometry */
 .btn--emp-primary {
-  height: 42px;
-  padding: 0 20px;
-  border-radius: 999px;
+  min-height: var(--hit, 40px);
+  height: var(--hit, 40px);
+  padding: 0 16px;
+  border-radius: var(--r-md, 12px);
   background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
   color: #f2f8f4;
-  border: none;
+  border: 1px solid var(--g-950, #0d3a23);
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--fs-emphasis, 13px);
+  font-weight: var(--fw-emphasis, 600);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(13, 58, 35, 0.25);
+  box-shadow: 0 2px 6px rgba(13, 58, 35, 0.18);
 }
 
 .btn--emp-primary:hover {
@@ -171,15 +172,16 @@
 }
 
 .btn--emp-secondary {
-  height: 42px;
+  min-height: var(--hit, 40px);
+  height: var(--hit, 40px);
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: var(--r-md, 12px);
   background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e3e7e4);
   color: var(--ink, #131a15);
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--fs-emphasis, 13px);
+  font-weight: var(--fw-emphasis, 600);
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -225,6 +227,32 @@
 .emp-ops-leave-col {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.emp-leave-head {
+  margin-bottom: 0;
+}
+
+.emp-leave-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.emp-leave-apply {
+  margin-top: 2px;
+  width: 100%;
+}
+
+.emp-leave-pending-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b45309;
+  flex-shrink: 0;
 }
 
 /* Dual Subsections inside Pay/Benefits and Work/Allocation Cards */
@@ -685,9 +713,11 @@
   color: #92400e;
   border: 1px solid #fde68a;
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   font-size: 11.5px;
   font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .emp-leave-cutoff-note {

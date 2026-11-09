@@ -1,25 +1,42 @@
 /**
- * Standard module toolbar search field.
- * Preserves caller-controlled value/onChange/submit behaviour.
+ * Shared page-level search field for ModuleToolbar / MobileFilterBar.
+ * Distinct from GlobalSearch (header cross-module search).
  */
 export default function ModuleSearch({
   value,
   onChange,
   onSubmit,
+  onClear,
   placeholder = "Search…",
   ariaLabel = "Search",
   id,
   name = "q",
   className = "",
+  loading = false,
+  disabled = false,
+  autoFocus = false,
 }) {
   const handleSubmit = (event) => {
     event.preventDefault();
     onSubmit?.(event);
   };
 
+  const handleClear = () => {
+    if (disabled) return;
+    if (onClear) {
+      onClear();
+      return;
+    }
+    if (onChange) {
+      onChange({ target: { value: "", name } });
+    }
+  };
+
+  const hasValue = Boolean(String(value || "").length);
+
   return (
     <form
-      className={`module-search ${className}`.trim()}
+      className={`module-search${loading ? " is-loading" : ""}${disabled ? " is-disabled" : ""} ${className}`.trim()}
       onSubmit={handleSubmit}
       role="search"
     >
@@ -39,7 +56,26 @@ export default function ModuleSearch({
         placeholder={placeholder}
         aria-label={ariaLabel}
         autoComplete="off"
+        disabled={disabled}
+        autoFocus={autoFocus}
       />
+      {loading ? (
+        <span className="module-search-spinner" aria-label="Searching" role="status" />
+      ) : null}
+      {hasValue && !loading ? (
+        <button
+          type="button"
+          className="module-search-clear"
+          onClick={handleClear}
+          aria-label="Clear search"
+          disabled={disabled}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      ) : null}
     </form>
   );
 }

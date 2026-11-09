@@ -36,6 +36,12 @@ const ICONS = {
       <polyline points="12 6 12 12 16 14" />
     </Ico>
   ),
+  pin: (
+    <Ico>
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </Ico>
+  ),
   calendar: (
     <Ico>
       <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -131,6 +137,7 @@ const PORTAL_MOBILE_ICON = {
   "hr-management": "people",
   people: "people",
   attendance: "clock",
+  "live-tracking": "pin",
   leave: "calendar",
   payroll: "pay",
   settlements: "pay",

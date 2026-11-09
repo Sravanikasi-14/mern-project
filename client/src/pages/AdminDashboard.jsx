@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import WorkforceAllocation from "../components/WorkforceAllocation";
+import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import { IconArrowLeft, IconArrowRight } from "../components/Icons";
 import MobileExpandable from "../components/mobile/MobileExpandable";
@@ -248,101 +249,103 @@ export default function AdminDashboard() {
 
   return (
     <div className="board-container admin-dashboard-page">
-      {/* ====================================================================
-          1. Board Head: Greeting, Controls, Sync Button
-          ==================================================================== */}
-      <div className="board__head">
-        <div>
-          <h1 className="board__title">{getGreeting()}, {user?.name || "Eleanor"}</h1>
-          <p className="board__sub">
-            {getCompanyBrandName({ ...(company || {}), companyName: meta.companyName || company?.companyName })}
-          </p>
-        </div>
-
-        <div className="board__actions">
-          {/* Department Filter */}
-          {meta.departments && meta.departments.length > 0 && (
-            <div className="dash-filter-pill">
-              <span>Dept:</span>
-              <select
-                className="dash-filter-select"
-                value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value)}
-                aria-label="Filter by department"
+      <AppHeader
+        title={`${getGreeting()}, ${user?.name || "Admin"}`}
+        subtitle={getCompanyBrandName({
+          ...(company || {}),
+          companyName: meta.companyName || company?.companyName,
+        })}
+        actions={<SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />}
+        nav={
+          <div className="board__actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {meta.departments && meta.departments.length > 0 ? (
+              <div className="dash-filter-pill">
+                <span>Dept:</span>
+                <select
+                  className="dash-filter-select"
+                  value={selectedDept}
+                  onChange={(e) => setSelectedDept(e.target.value)}
+                  aria-label="Filter by department"
+                >
+                  <option value="ALL">All Departments</option>
+                  {meta.departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <div className="month-picker-pill" role="group" aria-label="Select month">
+              <button
+                type="button"
+                className="month-nav-arrow"
+                onClick={handlePrevMonth}
+                title="Previous Month"
+                aria-label="Previous Month"
               >
-                <option value="ALL">All Departments</option>
-                {meta.departments.map((dept) => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+                <IconArrowLeft size={20} />
+              </button>
+              <span className="month-nav-label">
+                {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear}
+              </span>
+              <button
+                type="button"
+                className="month-nav-arrow"
+                onClick={handleNextMonth}
+                title="Next Month"
+                aria-label="Next Month"
+              >
+                <IconArrowRight size={20} />
+              </button>
             </div>
-          )}
 
-          {/* Month Navigator Pill */}
-          <div className="month-picker-pill" role="group" aria-label="Select month">
+            {canPeople ? (
+              <Link to="/admin" className="btn--primary-fern">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>Add Employee</span>
+              </Link>
+            ) : null}
+
             <button
               type="button"
-              className="month-nav-arrow"
-              onClick={handlePrevMonth}
-              title="Previous Month"
-              aria-label="Previous Month"
+              className="btn--ghost-sync"
+              onClick={() => dashboardQuery.refetch()}
+              title="Sync live dashboard metrics"
+              disabled={dashboardQuery.isFetching}
+              aria-label="Refresh dashboard"
             >
-              <IconArrowLeft size={20} />
-            </button>
-            <span className="month-nav-label">
-              {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear}
-            </span>
-            <button
-              type="button"
-              className="month-nav-arrow"
-              onClick={handleNextMonth}
-              title="Next Month"
-              aria-label="Next Month"
-            >
-              <IconArrowRight size={20} />
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={dashboardQuery.isFetching ? "spin-icon" : ""}
+              >
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
             </button>
           </div>
-
-          {/* Primary Action Button */}
-          {canPeople ? (
-          <Link to="/admin" className="btn--primary-fern">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span>Add Employee</span>
-          </Link>
-          ) : null}
-
-          <SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />
-
-          {/* Sync / Refresh Button */}
-          <button
-            type="button"
-            className="btn--ghost-sync"
-            onClick={() => dashboardQuery.refetch()}
-            title="Sync live dashboard metrics"
-            disabled={dashboardQuery.isFetching}
-            aria-label="Refresh dashboard"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={dashboardQuery.isFetching ? "spin-icon" : ""}
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <polyline points="1 20 1 14 7 14" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* ====================================================================
           2. Asymmetric Bento Grid
@@ -459,7 +462,7 @@ export default function AdminDashboard() {
               </div>
 
               {canAttendance ? (
-              <Link to="/admin/attendance?tab=tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
+              <Link to="/admin/live-tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
                 <span className="pulse-dot" />
                 <span>Live Tracking</span>
               </Link>

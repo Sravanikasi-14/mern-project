@@ -163,24 +163,25 @@
   white-space: nowrap;
 }
 
-/* Fernly Gradient Action Buttons */
+/* Fernly Gradient Action Buttons — match shared primary geometry */
 .btn--primary-fern {
-  height: 42px;
-  padding: 0 20px;
-  border-radius: 999px;
+  min-height: var(--hit, 40px);
+  height: var(--hit, 40px);
+  padding: 0 16px;
+  border-radius: var(--r-md, 12px);
   background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
   color: #f2f8f4;
-  border: none;
+  border: 1px solid var(--g-950, #0d3a23);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-emphasis, 13px);
+  font-weight: var(--fw-emphasis, 600);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(13, 58, 35, 0.25);
+  box-shadow: 0 2px 6px rgba(13, 58, 35, 0.18);
 }
 
 .btn--primary-fern:hover {
@@ -189,17 +190,17 @@
 }
 
 .btn--ghost-sync {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
+  width: var(--hit, 40px);
+  height: var(--hit, 40px);
+  border-radius: var(--r-md, 12px);
   background: var(--card, #fdfdfc);
-  border: 1.5px solid var(--g-950, #0d3a23);
+  border: 1px solid var(--hair, #e3e7e4);
   color: var(--ink, #131a15);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
 }
 
 .btn--ghost-sync:hover {

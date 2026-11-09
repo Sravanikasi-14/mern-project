@@ -1896,7 +1896,19 @@ input.has-error {
   cursor: default;
 }
 
+.fernly-profile-chip--link {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.fernly-profile-chip--link:hover {
+  border-color: var(--g-300, #86d3a8);
+}
+
 .fernly-avatar {
+  flex: 0 0 auto;
+  overflow: hidden;
   width: 34px;
   height: 34px;
   border-radius: 50%;

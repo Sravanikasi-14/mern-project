@@ -1,37 +1,116 @@
-/* Unified HRMS module toolbar — single source of layout/sizing */
+/*
+ * Shared page tools strip — flex regions with expandable search.
+ * Pages configure content via slots; they must not reintroduce centered-grid geometry.
+ */
 
 .module-toolbar {
+  --mt-h: 40px;
+  --mt-gap: 10px;
+  --mt-pad-y: 0;
+  --mt-margin-bottom: 14px;
+  --mt-search-min: 180px;
+  --mt-radius: var(--r-md, 12px);
+  --mt-control-fs: 13px;
+  --mt-label-fs: 12px;
+
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--mt-gap);
+  min-height: var(--mt-h);
+  margin: 0 0 var(--mt-margin-bottom);
+  padding: var(--mt-pad-y) 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+}
+
+.module-toolbar[data-has-search="false"] {
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
 }
 
-.module-toolbar-left,
-.module-toolbar-right {
+.module-toolbar-start,
+.module-toolbar-end,
+.module-toolbar-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--mt-gap);
   min-width: 0;
+  min-height: var(--mt-h);
 }
 
-.module-toolbar-left {
-  flex: 1 1 auto;
+.module-toolbar-search-slot,
+.module-toolbar-start > *,
+.module-toolbar-end > * {
+  align-self: center;
 }
 
-.module-toolbar-right {
+/* Compact date-range control in the leading toolbar slot */
+.module-toolbar .drp-root,
+.module-toolbar .module-toolbar-drp {
+  width: 220px;
+  max-width: min(260px, 34vw);
+  flex: 0 0 auto;
+}
+
+.module-toolbar .drp-trigger {
+  min-height: var(--mt-h);
+  height: var(--mt-h);
+  min-width: 0;
+  border-radius: var(--mt-radius);
+  font-size: var(--mt-control-fs);
+}
+
+.module-toolbar-start {
+  flex: 0 1 auto;
+  justify-content: flex-start;
+}
+
+.module-toolbar-end {
   flex: 0 1 auto;
   justify-content: flex-end;
+  margin-left: auto;
 }
 
-.module-toolbar .module-search {
-  flex: 1 1 240px;
-  min-width: 200px;
-  max-width: 360px;
-  height: 40px;
+.module-toolbar-start.is-empty,
+.module-toolbar-end.is-empty {
+  display: none;
+  min-height: 0;
+}
+
+.module-toolbar-search-slot.is-empty {
+  display: none;
+  min-height: 0;
+  flex: 0 0 0;
+}
+
+.module-toolbar-search-slot {
+  display: flex;
+  align-items: center;
+  justify-content: stretch;
+  flex: 1 1 auto;
+  min-width: var(--mt-search-min);
+  min-height: var(--mt-h);
+}
+
+.module-toolbar-search-slot .module-search {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  height: var(--mt-h);
+  border-radius: var(--mt-radius);
+}
+
+/* Backward-compatible aliases used by older selectors */
+.module-toolbar-left {
+  display: contents;
+}
+
+.module-toolbar-right {
+  display: contents;
 }
 
 .module-toolbar-field {
@@ -39,9 +118,10 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: var(--mt-label-fs);
+  font-weight: 600;
   color: var(--muted, #646d67);
+  min-height: var(--mt-h);
 }
 
 .module-toolbar-field > span {
@@ -60,31 +140,44 @@
 .module-toolbar-filters-panel .ol-select,
 .module-toolbar-filters-panel select,
 .module-toolbar-filters-panel input[type="date"] {
-  height: 40px;
-  min-height: 40px;
+  height: var(--mt-h);
+  min-height: var(--mt-h);
   box-sizing: border-box;
-  border-radius: 10px;
-  font-size: 13.5px;
+  border-radius: var(--mt-radius);
+  font-size: var(--mt-control-fs);
 }
 
 .module-toolbar .btn-primary,
-.module-toolbar .btn-secondary {
-  min-height: 40px;
-  height: 40px;
+.module-toolbar .btn-secondary,
+.module-toolbar-actions .btn-primary,
+.module-toolbar-actions .btn-secondary {
+  min-height: var(--mt-h);
+  height: var(--mt-h);
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 13.5px;
+  font-size: var(--mt-control-fs);
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: var(--mt-radius);
   box-sizing: border-box;
   white-space: nowrap;
 }
 
+.module-toolbar .btn-sm {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .module-toolbar-filters {
   position: relative;
+}
+
+.module-toolbar-filters-btn {
+  gap: 6px;
 }
 
 .module-toolbar-filters-btn.is-active {
@@ -104,7 +197,7 @@
   background: var(--g-800, #155a37);
   color: #fff;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -116,7 +209,7 @@
   width: min(360px, calc(100vw - 32px));
   background: var(--card, #ffffff);
   border: 1px solid var(--hair, #e3e7e4);
-  border-radius: 12px;
+  border-radius: var(--mt-radius);
   box-shadow: 0 12px 32px rgba(19, 26, 21, 0.14);
   padding: 12px;
   box-sizing: border-box;
@@ -134,8 +227,8 @@
   flex-direction: column;
   gap: 6px;
   margin: 0;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--muted, #646d67);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -174,14 +267,44 @@
   gap: 6px;
 }
 
+/* Nested inside cards (Impact, Work Management) — keep geometry, kill card padding drift */
+.wm-toolbar-card > .module-toolbar,
+.wm-toolbar-card .module-toolbar {
+  margin-bottom: 0;
+  padding-top: 10px;
+}
+
+.ow-module-toolbar.module-toolbar,
+.wm-module-toolbar.module-toolbar {
+  margin-bottom: var(--mt-margin-bottom);
+}
+
 @media (max-width: 900px) {
-  .module-toolbar .module-search {
+  .module-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .module-toolbar-start,
+  .module-toolbar-end,
+  .module-toolbar-search-slot {
+    width: 100%;
     flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .module-toolbar-end {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .module-toolbar-search-slot .module-search {
     max-width: none;
   }
 
-  .module-toolbar-right {
+  .module-toolbar .drp-root,
+  .module-toolbar .module-toolbar-drp {
     width: 100%;
+    max-width: none;
   }
 
   .module-toolbar-filters-panel {

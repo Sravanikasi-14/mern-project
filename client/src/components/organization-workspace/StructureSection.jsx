@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AppModal from "../AppModal";
 import EmployeePicker from "../EmployeePicker";
+import ModuleToolbar from "../ModuleToolbar";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { hrPortalAllows } from "../../utils/hrPortalAccess";
@@ -258,26 +259,44 @@ export default function StructureSection({ embedded = false }) {
         </button>
       </div>
 
-      <div className="ow-toolbar">
-        <input
-          className="org-search"
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={pane === "departments" ? "Search departments" : "Search teams"}
-          aria-label={pane === "departments" ? "Search departments" : "Search teams"}
-        />
-        <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Status">
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="all">All</option>
-        </select>
-        {canManage && pane === "departments" ? (
-          <button type="button" className="btn-secondary" onClick={() => { setFormError(""); setConfirm({ type: "backfill" }); }}>
-            Match old department names
-          </button>
-        ) : null}
-      </div>
+      <ModuleToolbar
+        className="ow-module-toolbar"
+        searchValue={query}
+        onSearchChange={(event) => setQuery(event.target.value)}
+        searchPlaceholder={pane === "departments" ? "Search departments" : "Search teams"}
+        searchAriaLabel={pane === "departments" ? "Search departments" : "Search teams"}
+        actions={
+          canManage && pane === "departments" ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setFormError("");
+                setConfirm({ type: "backfill" });
+              }}
+            >
+              Match old department names
+            </button>
+          ) : null
+        }
+        filterCount={status !== "active" ? 1 : 0}
+        onFiltersClear={() => setStatus("active")}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Status
+            <select
+              className="filter-select"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              aria-label="Status"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+        }
+      />
 
       {notice ? <p className="ow-feedback" role="status">{notice}</p> : null}
       {error ? <p className="ow-error" role="alert">{error}</p> : null}

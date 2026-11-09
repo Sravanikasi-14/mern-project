@@ -92,12 +92,15 @@
   width: 100%;
   min-width: 0;
   max-width: none;
-  padding: 10px 36px 10px 36px;
+  height: 40px;
+  padding: 0 36px;
   border: 1px solid var(--hair, #e6ede8);
-  border-radius: 12px;
+  border-radius: var(--r-md, 12px);
   font: inherit;
-  font-size: 13.5px;
-  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--card, #ffffff);
+  box-sizing: border-box;
 }
 
 .org-search:focus {

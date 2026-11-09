@@ -1071,67 +1071,35 @@ export default function AdminHome() {
         <>
           <AppHeader
             title={<><span className="m-title-full">Employees</span><span className="m-title-short">People</span></>}
-            actions={
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <SoftRefresh active={listFetching} />
-                {(!canImportPeople || !canCreatePeople) ? <AccessRestrictedInline /> : null}
-                {canImportPeople ? (
+            actions={<SoftRefresh active={listFetching} />}
+            nav={
+              <div className="dept-chip-row" role="tablist" aria-label="Filter by department">
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowImportModal(true)}
-                >
-                  Import
-                </button>
-                ) : null}
-                {canCreatePeople ? (
-                <button
-                  type="button"
-                  className="btn-primary"
+                  className={`dept-chip ${!selectedDepartment ? "is-selected" : ""}`}
                   onClick={() => {
-                    setNewEmployee((prev) => ({
-                      ...prev,
-                      projectName: selectedProject === "ALL" ? "" : selectedProject,
-                    }));
-                    setShowAddModal(true);
+                    setSelectedDepartment("");
+                    setCurrentPage(1);
                   }}
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  Add Employee
+                  All <strong>{totalEmployeesCount}</strong>
                 </button>
-                ) : null}
+                {projectsData.deptList.map((dept) => (
+                  <button
+                    key={dept.name}
+                    type="button"
+                    className={`dept-chip ${selectedDepartment === dept.name ? "is-selected" : ""}`}
+                    onClick={() => {
+                      setSelectedDepartment(dept.name);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    {dept.name} <strong>{dept.count}</strong>
+                  </button>
+                ))}
               </div>
             }
           />
-
-          <div className="dept-chip-row" role="tablist" aria-label="Filter by department">
-            <button
-              type="button"
-              className={`dept-chip ${!selectedDepartment ? "is-selected" : ""}`}
-              onClick={() => {
-                setSelectedDepartment("");
-                setCurrentPage(1);
-              }}
-            >
-              All <strong>{totalEmployeesCount}</strong>
-            </button>
-            {projectsData.deptList.map((dept) => (
-              <button
-                key={dept.name}
-                type="button"
-                className={`dept-chip ${selectedDepartment === dept.name ? "is-selected" : ""}`}
-                onClick={() => {
-                  setSelectedDepartment(dept.name);
-                  setCurrentPage(1);
-                }}
-              >
-                {dept.name} <strong>{dept.count}</strong>
-              </button>
-            ))}
-          </div>
 
           <MobileFilterBar
             search={search}
@@ -1321,6 +1289,39 @@ export default function AdminHome() {
             searchPlaceholder={SEARCH_PLACEHOLDER}
             searchAriaLabel="Search employees by name, ID, email, phone, designation, department, project or location"
             actions={
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {(!canImportPeople || !canCreatePeople) ? <AccessRestrictedInline /> : null}
+                {canImportPeople ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setShowImportModal(true)}
+                  >
+                    Import
+                  </button>
+                ) : null}
+                {canCreatePeople ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setNewEmployee((prev) => ({
+                        ...prev,
+                        projectName: selectedProject === "ALL" ? "" : selectedProject,
+                      }));
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Add Employee
+                  </button>
+                ) : null}
+              </div>
+            }
+            secondaryActions={
               <ColumnChooser
                 columns={peopleCols.columns}
                 visible={peopleCols.visible}

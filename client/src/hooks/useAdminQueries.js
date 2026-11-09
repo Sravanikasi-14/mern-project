@@ -169,14 +169,23 @@ export function useActiveLeavePoliciesQuery(options = {}) {
 }
 
 export function useAttendanceOverviewQuery(params = {}, options = {}) {
+  const endDate = params.endDate || params.date || params.startDate || "";
+  const startDate = params.startDate || endDate;
   const normalized = {
-    date: params.date,
+    // `date` stays equal to endDate for backward compatibility with the single-day API.
+    date: endDate,
+    startDate,
+    endDate,
     department: params.department || "ALL",
   };
   return useQuery({
     queryKey: qk.attendanceOverview(normalized),
     queryFn: async ({ signal }) => {
-      const request = { date: normalized.date };
+      const request = {
+        date: normalized.date,
+        startDate: normalized.startDate,
+        endDate: normalized.endDate,
+      };
       if (normalized.department !== "ALL") request.department = normalized.department;
       const res = await api.get("/admin/attendance/overview", {
         params: request,
@@ -185,6 +194,34 @@ export function useAttendanceOverviewQuery(params = {}, options = {}) {
       return res.data;
     },
     enabled: Boolean(normalized.date),
+    staleTime: STALE.attendance,
+    ...options,
+  });
+}
+
+export function useTrackingSessionsQuery(params = {}, options = {}) {
+  const normalized = {
+    startDate: params.startDate || "",
+    endDate: params.endDate || params.startDate || "",
+    department: params.department || "ALL",
+    status: params.status || "ALL",
+  };
+  return useQuery({
+    queryKey: qk.trackingSessions(normalized),
+    queryFn: async ({ signal }) => {
+      const request = {};
+      if (normalized.startDate && normalized.endDate) {
+        request.startDate = normalized.startDate;
+        request.endDate = normalized.endDate;
+      }
+      if (normalized.department !== "ALL") request.department = normalized.department;
+      if (normalized.status !== "ALL") request.status = normalized.status;
+      const res = await api.get("/admin/attendance/tracking-sessions", {
+        params: request,
+        signal,
+      });
+      return res.data;
+    },
     staleTime: STALE.attendance,
     ...options,
   });

@@ -23,6 +23,11 @@ export function AuthProvider({ children }) {
     }
   };
 
+  /** Merge fields into the in-memory user (e.g. profile photo) so headers update immediately. */
+  const updateUser = (patch = {}) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
+
   /** Merge branding into the in-memory company so layouts update without waiting on /auth/me. */
   const updateCompanyBranding = (branding = {}) => {
     setCompany((prev) => {
@@ -178,6 +183,7 @@ export function AuthProvider({ children }) {
       restoreSession,
       applySession,
       updateCompanyBranding,
+      updateUser,
     }),
     [user, company, loading, sessionError]
   );

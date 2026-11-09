@@ -29,6 +29,7 @@ const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminPolicies = lazy(() => import("./pages/AdminPolicies"));
 const AccountActivation = lazy(() => import("./pages/AccountActivation"));
 const AdminAttendanceOverview = lazy(() => import("./pages/AdminAttendanceOverview"));
+const AdminLiveTracking = lazy(() => import("./pages/AdminLiveTracking"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminAssets = lazy(() => import("./pages/AdminAssets"));
 const EmployeeAttendance = lazy(() => import("./pages/EmployeeAttendance"));
@@ -108,6 +109,7 @@ function App() {
           <Route path="/admin/employees/:id" element={<Portal><EmployeeProfile /></Portal>} />
           <Route path="/admin/employees/:id/edit" element={<Portal><EditEmployee /></Portal>} />
           <Route path="/admin/attendance" element={<Portal><AdminAttendanceOverview /></Portal>} />
+          <Route path="/admin/live-tracking" element={<Portal><AdminLiveTracking /></Portal>} />
           <Route path="/admin/leave" element={<Portal><AdminLeaveManagement /></Portal>} />
           <Route path="/admin/hiring" element={<Portal><HiringOnboardingPage /></Portal>} />
           <Route path="/admin/hiring/offer-editor" element={<Portal><Navigate to="/admin/hiring?compose=1" replace /></Portal>} />

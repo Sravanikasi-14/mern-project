@@ -5,16 +5,22 @@
 
 .msg-shell {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
-  min-height: min(72vh, 760px);
-  background: #fff;
-  border: 1px solid var(--line, #d7e0da);
-  border-radius: 16px;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  min-height: min(74vh, 820px);
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: var(--r-lg, 16px);
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.04);
+}
+
+.msg-shell.is-details {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(280px, 340px);
 }
 
 .msg-list,
-.msg-thread {
+.msg-thread,
+.msg-details {
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -22,8 +28,41 @@
 }
 
 .msg-list {
-  border-right: 1px solid var(--line, #d7e0da);
+  border-right: 1px solid var(--hair, #e6ede8);
+  background: #f7faf8;
+}
+
+.msg-details {
+  border-left: 1px solid var(--hair, #e6ede8);
   background: #fbfcfb;
+}
+
+.msg-details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: #fff;
+}
+
+.msg-details-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.msg-details-head p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+}
+
+.msg-details-body {
+  flex: 1;
+  overflow: auto;
+  padding: 14px 16px 20px;
 }
 
 .msg-list-tools,
@@ -32,23 +71,53 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 12px;
+  padding: 12px 14px;
 }
 
 .msg-list-tools {
   flex-direction: column;
   align-items: stretch;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: #fff;
 }
 
 .msg-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line, #d7e0da);
-  border-radius: 12px;
+  height: 40px;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: var(--r-md, 12px);
   background: #fff;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--muted, #646d67);
+  box-sizing: border-box;
+}
+
+.msg-search:focus-within {
+  border-color: var(--g-600, #27865a);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
+}
+
+.msg-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--hair, #e6ede8);
+  background: #fff;
+  color: var(--muted, #646d67);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.msg-icon-btn:hover,
+.msg-icon-btn.is-active {
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-950, #0d3a23);
+  border-color: rgba(39, 134, 90, 0.35);
 }
 
 .msg-search input,
@@ -82,7 +151,7 @@
 .msg-person {
   width: 100%;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   text-align: left;
@@ -91,26 +160,26 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  padding: 8px;
+  padding: 10px 8px;
   cursor: pointer;
 }
 
 .msg-person.is-active,
 .msg-person:hover {
-  background: var(--g-100, #e7f3ec);
+  background: var(--g-100, #e3f2e9);
 }
 
 .msg-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--g-800, #155a37);
+  background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .msg-person-body {
@@ -128,8 +197,8 @@
 
 .msg-person-top strong,
 .msg-person-body strong {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,13 +231,15 @@
 }
 
 .msg-thread-head {
-  border-bottom: 1px solid var(--line, #d7e0da);
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: #fff;
+  min-height: 64px;
 }
 
 .msg-thread-head h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .msg-thread-head p,
@@ -189,12 +260,11 @@
 .msg-history {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background:
-    linear-gradient(180deg, #fbfcfb 0%, #f6faf7 100%);
+  gap: 10px;
+  background: #f4f7f5;
 }
 
 .msg-day {
@@ -218,17 +288,20 @@
 }
 
 .msg-bubble {
-  max-width: min(75%, 520px);
-  padding: 8px 10px;
-  border-radius: 14px;
+  max-width: min(72%, 520px);
+  padding: 10px 12px;
+  border-radius: 14px 14px 14px 4px;
   background: #fff;
-  border: 1px solid var(--line, #d7e0da);
+  border: 1px solid var(--hair, #e6ede8);
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.04);
 }
 
 .msg-bubble-row.is-mine .msg-bubble {
-  background: var(--g-800, #155a37);
-  border-color: var(--g-800, #155a37);
+  background: linear-gradient(180deg, var(--g-700, #1d7347), var(--g-950, #0d3a23));
+  border-color: transparent;
   color: #fff;
+  border-radius: 14px 14px 4px 14px;
+  box-shadow: none;
 }
 
 .msg-bubble p {
@@ -741,29 +814,35 @@ img.msg-avatar {
 .msg-channels {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 12px;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 4px;
+  background: #eef3f0;
+  border-radius: 12px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .msg-channels button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--line, #d7e0da);
-  background: #fff;
-  color: var(--ink, #131a15);
-  border-radius: 12px;
-  padding: 6px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted, #646d67);
+  border-radius: 10px;
+  padding: 7px 12px;
   font: inherit;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .msg-channels button.is-active {
-  background: var(--g-800, #155a37);
-  border-color: var(--g-800, #155a37);
-  color: #fff;
+  background: #fff;
+  border-color: var(--hair, #e6ede8);
+  color: var(--g-950, #0d3a23);
+  box-shadow: 0 1px 2px rgba(19, 26, 21, 0.06);
 }
 
 .msg-shell.is-announcements,
@@ -966,7 +1045,34 @@ img.msg-avatar {
   margin-top: 8px;
 }
 
+@media (max-width: 1100px) {
+  .msg-shell.is-details {
+    position: relative;
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  }
+
+  .msg-shell.is-details .msg-details {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(340px, 92vw);
+    z-index: 5;
+    box-shadow: -8px 0 24px rgba(19, 26, 21, 0.08);
+  }
+}
+
 @media (max-width: 800px) {
+  .msg-shell.is-details {
+    grid-template-columns: 1fr;
+  }
+
+  .msg-shell.is-details .msg-details {
+    position: static;
+    width: auto;
+    box-shadow: none;
+  }
+
   .msg-shell,
   .msg-shell.is-list,
   .msg-shell.is-thread {

@@ -1,39 +1,290 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
 import DepartmentSelect from "../components/DepartmentSelect";
+import DateRangePicker from "../components/DateRangePicker";
 import { departmentPayload } from "../components/departmentAssignment";
 import ReportingManagerSelect from "../components/ReportingManagerSelect";
 import DesignationFields from "../components/organization-workspace/DesignationFields";
-import { IconDocument, IconArrowLeft, IconClose, IconCheck, IconAlertCircle } from "../components/Icons";
+import {
+  IconDocument,
+  IconArrowLeft,
+  IconClose,
+  IconCheck,
+  IconMail,
+  IconBriefcase,
+  IconDownload,
+  IconUsers,
+  IconShield,
+} from "../components/Icons";
+import { useAuth } from "../context/AuthContext";
+import { hrPortalAllows } from "../utils/hrPortalAccess";
+import {
+  formatDisplayDate,
+  formatCivilDate,
+  getCompanyBusinessDate,
+  parseCivilDate,
+  resolveCompanyTimezone,
+} from "../utils/dateUtils";
+import {
+  analyzeAttendance,
+  buildHolidaySet,
+  ATTENDANCE_STATUS_LABELS,
+} from "../utils/employeeAttendanceInsights";
 import { useSmartBack } from "../hooks/useSmartBack";
 import api from "../services/api";
+import useAuthedImage from "../hooks/useAuthedImage";
 import "./EmployeeProfileView.css";
 
+/* ------------------------------------------------------------------------
+   Tabs
+   ------------------------------------------------------------------------ */
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "personal", label: "Personal Info" },
+  { id: "work", label: "Work Info" },
+  { id: "attendance", label: "Attendance" },
+  { id: "performance", label: "Performance" },
+  { id: "payroll", label: "Payroll" },
+  { id: "documents", label: "Documents" },
+  { id: "activity", label: "Activity" },
+];
+
+/* ------------------------------------------------------------------------
+   Small helpers
+   ------------------------------------------------------------------------ */
 function managerIdOf(emp) {
   const m = emp?.job?.reportingManagerId;
   if (!m) return null;
   return typeof m === "object" ? String(m._id || "") || null : String(m);
 }
 
+function managerOf(emp) {
+  const m = emp?.job?.reportingManagerId;
+  return m && typeof m === "object" && m._id ? m : null;
+}
+
+/**
+ * The HR employee API fills bank / tax with demo placeholders when none are on
+ * file. Never show or re-save those as if they were real records.
+ */
+function realBank(emp) {
+  const b = emp?.bankDetails;
+  if (!b || !b.accountNumber) return null;
+  if (b.bankName === "HDFC Bank" && b.ifscCode === "HDFC0001024") return null;
+  return b;
+}
+
+function realTax(emp) {
+  const t = emp?.taxDetails;
+  if (!t || !t.panNumber) return null;
+  if (t.panNumber === "ABCDE1234F" && /115BAC/.test(t.taxRegime || "")) return null;
+  return t;
+}
+
+function initialsOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "E";
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function shortCivil(dateStr) {
+  const p = parseCivilDate(dateStr);
+  if (!p) return "";
+  return new Date(Date.UTC(p.year, p.month - 1, p.day)).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+function formatCurrency(amount) {
+  if (amount == null || Number.isNaN(Number(amount))) return "—";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function IconPhone({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.34 1.78.64 2.62a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.46-1.21a2 2 0 0 1 2.11-.45c.84.3 1.72.52 2.62.64A2 2 0 0 1 22 16.92z" />
+    </svg>
+  );
+}
+
+function IconPencil({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function IconMore({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="5" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="12" cy="19" r="1.8" />
+    </svg>
+  );
+}
+
+function IconBuilding({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" />
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------------
+   Presentational building blocks (module-level so inputs never remount)
+   ------------------------------------------------------------------------ */
+function Card({ title, subtitle, action, children, className = "" }) {
+  return (
+    <section className={`epd-card ${className}`.trim()}>
+      {(title || action) && (
+        <header className="epd-card-head">
+          <div>
+            {title ? <h3 className="epd-card-title">{title}</h3> : null}
+            {subtitle ? <p className="epd-card-sub">{subtitle}</p> : null}
+          </div>
+          {action}
+        </header>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function Info({ label, children, mono = false, highlight = false }) {
+  return (
+    <div className="epd-info">
+      <span className="epd-info-lbl">{label}</span>
+      <span className={`epd-info-val${mono ? " is-mono" : ""}${highlight ? " is-highlight" : ""}`}>
+        {children === undefined || children === null || children === "" ? "—" : children}
+      </span>
+    </div>
+  );
+}
+
+function Field({ label, tag, children, wide = false }) {
+  return (
+    <div className={`epv-edit-field-group${wide ? " epd-span-all" : ""}`}>
+      <label className="epv-edit-label">
+        <span>{label}</span>
+        {tag ? <span className="epv-readonly-tag">{tag}</span> : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function TextField({ label, value, onChange, type = "text", placeholder, tag, disabled, wide, ...rest }) {
+  return (
+    <Field label={label} tag={tag} wide={wide}>
+      <input
+        type={type}
+        className="epv-edit-input"
+        value={value ?? ""}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        {...rest}
+      />
+    </Field>
+  );
+}
+
+function EmptyState({ title, children, icon = null }) {
+  return (
+    <div className="epd-empty">
+      {icon ? <span className="epd-empty-icon">{icon}</span> : null}
+      <strong>{title}</strong>
+      {children ? <p>{children}</p> : null}
+    </div>
+  );
+}
+
+function StatCard({ tone, label, value, sub }) {
+  return (
+    <div className="epd-stat">
+      <span className={`epd-stat-dot is-${tone}`} aria-hidden="true" />
+      <span className="epd-stat-lbl">{label}</span>
+      <strong className="epd-stat-val">{value}</strong>
+      {sub ? <span className="epd-stat-sub">{sub}</span> : null}
+    </div>
+  );
+}
+
+/* ========================================================================
+   Page
+   ======================================================================== */
 export default function EmployeeProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const goBack = useSmartBack();
+  const { user, company } = useAuth();
+  const timeZone = resolveCompanyTimezone(company);
+  const todayStr = useMemo(() => getCompanyBusinessDate(new Date(), timeZone), [timeZone]);
+
+  const canEdit = hrPortalAllows(user, company, "people.edit");
+  const canViewPayroll = hrPortalAllows(user, company, "payroll.view");
+  const canViewAttendance = hrPortalAllows(user, company, "attendance.view");
+  const canViewLeave = hrPortalAllows(user, company, "leave.view");
+  const canViewImpact = hrPortalAllows(user, company, "impact.view");
+  const canInitiateFnF = hrPortalAllows(user, company, "settlements.create");
+  const canViewFnF = hrPortalAllows(user, company, "settlements.view");
 
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("personal");
+  const [activeTab, setActiveTab] = useState("overview");
+  const { url: avatarUrl } = useAuthedImage(employee?.avatar);
 
-  // Integrated Editing State (Requirement 3A)
+  // Integrated editing state
   const [isEditing, setIsEditing] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editSuccess, setEditSuccess] = useState("");
   const [editError, setEditError] = useState("");
   const [editFormData, setEditFormData] = useState({});
+  const editBaselineRef = useRef({});
 
-  // F&F Initiation Modal state
+  // F&F initiation modal
   const [showFnFModal, setShowFnFModal] = useState(false);
   const [submittingFnF, setSubmittingFnF] = useState(false);
   const [fnfForm, setFnfForm] = useState({
@@ -45,9 +296,35 @@ export default function EmployeeProfile() {
   const [fnfSuccess, setFnfSuccess] = useState("");
   const [downloadingDocId, setDownloadingDocId] = useState(null);
 
+  // Header overflow menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Real data sources (all optional / permissioned)
+  const [range, setRange] = useState(() => {
+    const p = parseCivilDate(getCompanyBusinessDate(new Date(), resolveCompanyTimezone(company)));
+    return {
+      startDate: p ? formatCivilDate(p.year, p.month, 1) : "",
+      endDate: p ? formatCivilDate(p.year, p.month, p.day) : "",
+    };
+  });
+  const [attendance, setAttendance] = useState({ state: "idle", records: [], total: 0, error: "" });
+  const [policy, setPolicy] = useState(null);
+  const [leaves, setLeaves] = useState({ state: "idle", items: [], error: "" });
+  const [impact, setImpact] = useState({ state: "idle", data: null, error: "" });
+
+  // Attendance log table controls
+  const [logFilter, setLogFilter] = useState("all");
+  const [logSortDesc, setLogSortDesc] = useState(true);
+  const [logPageSize, setLogPageSize] = useState(10);
+  const [logPage, setLogPage] = useState(1);
+
+  /* -------------------------- edit form plumbing -------------------------- */
   const populateEditForm = (emp) => {
     if (!emp) return;
-    setEditFormData({
+    const bank = realBank(emp);
+    const tax = realTax(emp);
+    const next = {
       fullName: emp.fullName || "",
       preferredName: emp.preferredName || "",
       employeeCode: emp.employeeCode || "",
@@ -57,7 +334,7 @@ export default function EmployeeProfile() {
       personalPhone: emp.personalPhone || "",
       city: emp.city || "",
       dateOfBirth: emp.dateOfBirth ? emp.dateOfBirth.split("T")[0] : "",
-      gender: emp.gender || "",
+      gender: emp.gender && emp.gender !== "Not specified" ? emp.gender : "",
       residentialStreet: emp.residentialAddress?.street || "",
       residentialCity: emp.residentialAddress?.city || emp.city || "",
       residentialState: emp.residentialAddress?.state || "",
@@ -70,22 +347,30 @@ export default function EmployeeProfile() {
       departmentName: emp.job?.department || "",
       clearDepartment: false,
       departmentTouched: false,
-      jobGrade: emp.job?.jobGrade || "Level L3",
-      employmentType: emp.job?.employmentType || "Full-time Permanent",
+      jobGrade: emp.job?.jobGrade || "",
+      employmentType: emp.job?.employmentType || "",
       workLocation: emp.job?.workLocation || "",
       status: emp.status || "ACTIVE",
       projectName: emp.job?.project?.projectName || "",
       projectType: emp.job?.project?.projectType || "MANDATE",
       monthlySalary: emp.currentMonthlySalary != null ? String(emp.currentMonthlySalary) : "",
       reportingManagerId: managerIdOf(emp),
-      bankName: emp.bankDetails?.bankName || "",
-      accountNumber: emp.bankDetails?.accountNumber || "",
-      ifscCode: emp.bankDetails?.ifscCode || "",
-      panNumber: emp.taxDetails?.panNumber || "",
-    });
+      bankName: bank?.bankName || "",
+      accountNumber: bank?.accountNumber || "",
+      ifscCode: bank?.ifscCode || "",
+      panNumber: tax?.panNumber || "",
+    };
+    editBaselineRef.current = {
+      bankName: next.bankName,
+      accountNumber: next.accountNumber,
+      ifscCode: next.ifscCode,
+      panNumber: next.panNumber,
+    };
+    setEditFormData(next);
   };
 
   const handleStartEdit = () => {
+    if (!canEdit) return;
     populateEditForm(employee);
     setEditError("");
     setEditSuccess("");
@@ -105,6 +390,7 @@ export default function EmployeeProfile() {
 
   const handleSaveProfile = async (e) => {
     if (e) e.preventDefault();
+    if (!canEdit) return;
     setEditError("");
     setEditSuccess("");
 
@@ -113,9 +399,9 @@ export default function EmployeeProfile() {
       return;
     }
 
-    if (editFormData.monthlySalary) {
+    if (canViewPayroll && editFormData.monthlySalary) {
       const sal = parseFloat(editFormData.monthlySalary);
-      if (isNaN(sal) || sal < 0) {
+      if (Number.isNaN(sal) || sal < 0) {
         setEditError("Please enter a valid monthly salary.");
         return;
       }
@@ -135,7 +421,10 @@ export default function EmployeeProfile() {
         jobTitle: editFormData.jobTitle?.trim() || undefined,
         ...departmentPayload({
           clearDepartment: editFormData.departmentTouched && editFormData.clearDepartment,
-          departmentId: editFormData.departmentTouched && !editFormData.clearDepartment ? editFormData.departmentId : "",
+          departmentId:
+            editFormData.departmentTouched && !editFormData.clearDepartment
+              ? editFormData.departmentId
+              : "",
         }),
         jobGrade: editFormData.jobGrade?.trim() || undefined,
         employmentType: editFormData.employmentType || undefined,
@@ -159,20 +448,31 @@ export default function EmployeeProfile() {
           postalCode: editFormData.residentialPostalCode?.trim() || undefined,
           country: "India",
         },
-        bankDetails: {
-          accountHolderName: editFormData.fullName?.trim(),
-          bankName: editFormData.bankName?.trim() || undefined,
-          accountNumber: editFormData.accountNumber?.trim() || undefined,
-          ifscCode: editFormData.ifscCode?.trim() || undefined,
-          accountType: "SAVINGS",
-        },
-        taxDetails: {
-          panNumber: editFormData.panNumber?.trim() || undefined,
-        },
       };
 
-      if (editFormData.monthlySalary !== "" && editFormData.monthlySalary != null) {
-        payload.monthlySalary = parseFloat(editFormData.monthlySalary);
+      // Payroll-sensitive fields are only sent by users who can view payroll,
+      // and bank / tax only when they were actually changed.
+      if (canViewPayroll) {
+        const base = editBaselineRef.current || {};
+        const bankChanged =
+          editFormData.bankName !== base.bankName ||
+          editFormData.accountNumber !== base.accountNumber ||
+          editFormData.ifscCode !== base.ifscCode;
+        if (bankChanged) {
+          payload.bankDetails = {
+            accountHolderName: editFormData.fullName?.trim(),
+            bankName: editFormData.bankName?.trim() || undefined,
+            accountNumber: editFormData.accountNumber?.trim() || undefined,
+            ifscCode: editFormData.ifscCode?.trim() || undefined,
+            accountType: "SAVINGS",
+          };
+        }
+        if (editFormData.panNumber !== base.panNumber) {
+          payload.taxDetails = { panNumber: editFormData.panNumber?.trim() || undefined };
+        }
+        if (editFormData.monthlySalary !== "" && editFormData.monthlySalary != null) {
+          payload.monthlySalary = parseFloat(editFormData.monthlySalary);
+        }
       }
 
       await api.patch(`/employees/${id}`, payload);
@@ -188,6 +488,19 @@ export default function EmployeeProfile() {
     } finally {
       setSavingEdit(false);
     }
+  };
+
+  /* ------------------------------- F&F flow ------------------------------- */
+  const openFnFModal = () => {
+    setFnfForm({
+      lastWorkingDay: new Date().toISOString().split("T")[0],
+      exitReason: "Resignation",
+      hrRemarks: "",
+    });
+    setFnfError("");
+    setFnfSuccess("");
+    setShowFnFModal(true);
+    setMenuOpen(false);
   };
 
   const handleInitiateFnF = async (e) => {
@@ -237,67 +550,6 @@ export default function EmployeeProfile() {
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchEmployee = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await api.get(`/employees/${id}`);
-        if (!cancelled) {
-          setEmployee(res.data);
-          populateEditForm(res.data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (err.response?.status === 404) {
-            setError("Employee record not found. It may have been removed.");
-          } else {
-            setError(err.response?.data?.message || "Failed to load employee profile.");
-          }
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchEmployee();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
-  const formatCurrency = (amount) => {
-    if (amount == null) return "—";
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "Not provided";
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return "Not provided";
-    return d.toLocaleDateString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatFileSize = (bytes) => {
-    if (!bytes && bytes !== 0) return "—";
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
-  };
-
   const handleDownloadDocument = async (docId, fileName) => {
     setDownloadingDocId(docId);
     try {
@@ -322,6 +574,230 @@ export default function EmployeeProfile() {
     }
   };
 
+  /* ------------------------------- data loads ------------------------------ */
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchEmployee = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await api.get(`/employees/${id}`);
+        if (!cancelled) {
+          setEmployee(res.data);
+          populateEditForm(res.data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          if (err.response?.status === 404) {
+            setError("Employee record not found. It may have been removed.");
+          } else {
+            setError(err.response?.data?.message || "Failed to load employee profile.");
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchEmployee();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Active attendance policy (weekends, holidays, office start / grace).
+  useEffect(() => {
+    if (!canViewAttendance) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get("/policies/active");
+        if (!cancelled) setPolicy(res.data?.policy || null);
+      } catch {
+        if (!cancelled) setPolicy(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewAttendance]);
+
+  // Real attendance history for the selected range.
+  useEffect(() => {
+    if (!canViewAttendance || !id || !range.startDate || !range.endDate) return undefined;
+    let cancelled = false;
+    setAttendance((prev) => ({ ...prev, state: "loading", error: "" }));
+    (async () => {
+      try {
+        const res = await api.get(`/admin/attendance/employee/${id}`, {
+          params: { startDate: range.startDate, endDate: range.endDate, limit: 100 },
+        });
+        if (cancelled) return;
+        setAttendance({
+          state: "ready",
+          records: res.data?.records || [],
+          total: res.data?.pagination?.total ?? (res.data?.records || []).length,
+          error: "",
+        });
+      } catch (err) {
+        if (cancelled) return;
+        setAttendance({
+          state: "error",
+          records: [],
+          total: 0,
+          error: err.response?.data?.message || "Failed to load attendance history.",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, canViewAttendance, range.startDate, range.endDate]);
+
+  // Leave requests (existing HR list API, filtered to this employee).
+  useEffect(() => {
+    if (!canViewLeave || !employee?.employeeCode) return undefined;
+    let cancelled = false;
+    setLeaves((prev) => ({ ...prev, state: "loading", error: "" }));
+    (async () => {
+      try {
+        const res = await api.get("/leave-requests", {
+          params: { search: employee.employeeCode, limit: 100, includeSummary: "false" },
+        });
+        if (cancelled) return;
+        const items = (res.data?.leaveRequests || []).filter(
+          (l) => String(l.employeeId) === String(id)
+        );
+        setLeaves({ state: "ready", items, error: "" });
+      } catch (err) {
+        if (cancelled) return;
+        setLeaves({
+          state: "error",
+          items: [],
+          error: err.response?.data?.message || "Failed to load leave history.",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, canViewLeave, employee?.employeeCode]);
+
+  // Impact points summary (existing admin employee API).
+  useEffect(() => {
+    if (!canViewImpact || !id) return undefined;
+    let cancelled = false;
+    setImpact((prev) => ({ ...prev, state: "loading", error: "" }));
+    (async () => {
+      try {
+        const res = await api.get(`/impact-points/employee/${id}`);
+        if (cancelled) return;
+        setImpact({ state: "ready", data: res.data?.summary || res.data?.data || null, error: "" });
+      } catch (err) {
+        if (cancelled) return;
+        setImpact({
+          state: "error",
+          data: null,
+          error: err.response?.data?.message || "Failed to load impact points.",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, canViewImpact]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDoc = (e) => {
+      if (!menuRef.current?.contains(e.target)) setMenuOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setLogPage(1);
+  }, [logFilter, logPageSize, logSortDesc, range.startDate, range.endDate]);
+
+  /* ----------------------------- derived values ---------------------------- */
+  const analysis = useMemo(() => {
+    if (attendance.state !== "ready") return null;
+    return analyzeAttendance({
+      records: attendance.records,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      todayStr,
+      weekendRules: policy?.weekendRules || { saturdayOff: true, sundayOff: true },
+      holidaySet: buildHolidaySet(policy?.holidays),
+      officeStart: policy?.attendanceRules?.officeStartTime || "09:30",
+      graceMinutes: policy?.attendanceRules?.gracePeriodMinutes ?? 15,
+      timeZone,
+    });
+  }, [attendance, range.startDate, range.endDate, todayStr, policy, timeZone]);
+
+  const activityEvents = useMemo(() => {
+    if (!employee) return [];
+    const events = [];
+    const push = (ts, title, detail, tone = "neutral") => {
+      const t = new Date(ts).getTime();
+      if (Number.isNaN(t)) return;
+      events.push({ ts: t, title, detail, tone });
+    };
+
+    push(employee.job?.joiningDate, "Joined the company", employee.job?.jobTitle || "", "success");
+    push(employee.createdAt, "Employee record created", "", "neutral");
+    if (employee.updatedAt && employee.updatedAt !== employee.createdAt) {
+      push(employee.updatedAt, "Profile last updated", "", "neutral");
+    }
+    if (employee.settlement?.initiatedAt) {
+      push(
+        employee.settlement.initiatedAt,
+        "F&F settlement initiated",
+        `Status: ${String(employee.settlement.status || "").replace(/_/g, " ")}`,
+        "warn"
+      );
+    }
+    for (const l of leaves.items.slice(0, 15)) {
+      push(
+        l.createdAt,
+        `Leave request ${String(l.status || "").toLowerCase()}`,
+        `${l.leaveTypeCode || "Leave"} · ${shortCivil(l.fromDate)}${l.toDate && l.toDate !== l.fromDate ? ` – ${shortCivil(l.toDate)}` : ""} · ${l.daysCount} day(s)`,
+        l.status === "APPROVED" ? "success" : l.status === "REJECTED" ? "danger" : "warn"
+      );
+    }
+    for (const tx of impact.data?.recentTransactions || []) {
+      const pts = Number(tx.points) || 0;
+      push(
+        tx.createdAt,
+        `${pts >= 0 ? "+" : ""}${pts} impact points`,
+        tx.reason || tx.source || "",
+        pts >= 0 ? "success" : "danger"
+      );
+    }
+    if (analysis) {
+      for (const d of analysis.days.filter((x) => x.record?.checkIn).slice(-10)) {
+        push(
+          d.record.checkIn,
+          `Checked in${d.checkIn ? ` at ${d.checkIn}` : ""}`,
+          d.checkOut ? `Checked out at ${d.checkOut}${d.hours ? ` · ${d.hours}` : ""}` : "No check-out recorded",
+          d.statusKey === "late" ? "warn" : "success"
+        );
+      }
+    }
+    return events.sort((a, b) => b.ts - a.ts).slice(0, 40);
+  }, [employee, leaves.items, impact.data, analysis]);
+
+  /* ------------------------------ early returns ---------------------------- */
   if (loading) {
     return (
       <div className="epv-container">
@@ -358,1085 +834,874 @@ export default function EmployeeProfile() {
     );
   }
 
-  const userInitial = (employee.fullName || "E")[0].toUpperCase();
-  const isActive = employee.status === "ACTIVE";
+  /* ------------------------------- derived (post-load) --------------------- */
+  const job = employee.job || {};
+  const manager = managerOf(employee);
+  const project = job.project?.projectName ? job.project : null;
+  const bank = realBank(employee);
+  const tax = realTax(employee);
+  const skills = Array.isArray(employee.skills) ? employee.skills.filter(Boolean) : [];
+  const aboutText =
+    [employee.about, employee.bio, employee.summary, employee.customFields?.about].find(
+      (v) => typeof v === "string" && v.trim()
+    ) || "";
+  const phone = employee.phoneNumber || employee.personalPhone || "";
+  const hasFnFMenu = employee.settlement ? canViewFnF : canInitiateFnF;
+  const isInactive = employee.status === "INACTIVE";
+  const rangeLabel =
+    range.startDate && range.endDate
+      ? `${formatDisplayDate(range.startDate, timeZone)} – ${formatDisplayDate(range.endDate, timeZone)}`
+      : "";
 
-  // Calculate days in company from joining date
-  const joiningDateObj = employee.job?.joiningDate ? new Date(employee.job.joiningDate) : null;
-  const daysInCompany = joiningDateObj && !isNaN(joiningDateObj.getTime())
-    ? Math.max(1, Math.floor((new Date() - joiningDateObj) / (1000 * 60 * 60 * 24)))
-    : 120;
+  const filteredRows = (analysis?.rows || []).filter((r) => {
+    if (logFilter === "all") return true;
+    return r.statusKey === logFilter;
+  });
+  const sortedRows = logSortDesc ? filteredRows : filteredRows.slice().reverse();
+  const totalLogPages = Math.max(1, Math.ceil(sortedRows.length / logPageSize));
+  const safeLogPage = Math.min(logPage, totalLogPages);
+  const pageRows = sortedRows.slice((safeLogPage - 1) * logPageSize, safeLogPage * logPageSize);
 
-  const attendanceInfo = employee.attendance || {
-    totalWorkingDays: 22,
-    daysPresent: 21,
-    leaveBalance: { casual: 8, sick: 6, earned: 12 },
+  const attendanceUnavailable = !canViewAttendance
+    ? "You don't have permission to view attendance data."
+    : attendance.state === "error"
+      ? attendance.error
+      : null;
+
+  /* --------------------------------- tab bodies ---------------------------- */
+  const renderAttendanceSummary = () => {
+    if (attendanceUnavailable) {
+      return <EmptyState title="Attendance summary unavailable">{attendanceUnavailable}</EmptyState>;
+    }
+    if (!analysis) return <p className="epd-muted">Loading attendance…</p>;
+    return (
+      <>
+        <p className="epd-card-sub" style={{ marginBottom: 10 }}>{rangeLabel}</p>
+        <ul className="epd-summary-list">
+          <li><span className="epd-stat-dot is-present" /> <span>Present Days</span> <strong>{analysis.counts.present + analysis.counts.late}</strong></li>
+          <li><span className="epd-stat-dot is-late" /> <span>Late Check-ins</span> <strong>{analysis.counts.late}</strong></li>
+          <li><span className="epd-stat-dot is-absent" /> <span>Absent Days</span> <strong>{analysis.counts.absent}</strong></li>
+          <li><span className="epd-stat-dot is-leave" /> <span>Leave Taken</span> <strong>{analysis.counts.leave} {analysis.counts.leave === 1 ? "Day" : "Days"}</strong></li>
+        </ul>
+      </>
+    );
   };
-  const attendanceRate = Math.round(
-    ((attendanceInfo.daysPresent || 21) / (attendanceInfo.totalWorkingDays || 22)) * 100
+
+  const renderOverview = () => (
+    <div className="epd-grid-2">
+      <div className="epd-col">
+        {aboutText ? (
+          <Card title="About Employee">
+            <p className="epd-about">{aboutText}</p>
+          </Card>
+        ) : null}
+
+        <Card title="Employee Information Snapshot">
+          <div className="epd-info-grid">
+            <Info label="Employee ID" mono>{employee.employeeCode ? `#${employee.employeeCode}` : ""}</Info>
+            <Info label="Email"><span title={employee.email}>{employee.email}</span></Info>
+            <Info label="Phone">{phone}</Info>
+            <Info label="Join Date">{formatDate(job.joiningDate)}</Info>
+            <Info label="Reporting To">
+              {manager ? (
+                <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+              ) : (
+                ""
+              )}
+            </Info>
+            <Info label="Work Type">{job.employmentType}</Info>
+            <Info label="Office Location">{job.workLocation || employee.city}</Info>
+          </div>
+        </Card>
+
+        <Card title="Performance Snapshot" subtitle="From impact points and skill tags on file">
+          {impact.state === "ready" && impact.data ? (
+            <div className="epd-info-grid">
+              <Info label="Impact Balance" highlight>{impact.data.balance}</Info>
+              <Info label="This Month">{impact.data.pointsThisMonth}</Info>
+              <Info label="Company Rank">{impact.data.rankInCompany}</Info>
+              <Info label="Department Rank">{impact.data.rankInDepartment}</Info>
+            </div>
+          ) : null}
+          {skills.length > 0 ? (
+            <div className="epd-chips" style={{ marginTop: impact.data ? 14 : 0 }}>
+              {skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}
+            </div>
+          ) : null}
+          {!(impact.state === "ready" && impact.data) && skills.length === 0 ? (
+            <EmptyState title="No performance data yet">
+              {!canViewImpact
+                ? "You don't have permission to view impact points."
+                : "Impact points and skill tags will appear here once recorded."}
+            </EmptyState>
+          ) : null}
+        </Card>
+      </div>
+
+      <div className="epd-col">
+        <Card title="Current Projects">
+          {project ? (
+            <ul className="epd-project-list">
+              <li>
+                <span className="epd-project-bar" aria-hidden="true" />
+                <div>
+                  <strong>{project.projectName}</strong>
+                  <span>{project.projectType ? `${project.projectType} project` : "Assigned project"}</span>
+                </div>
+              </li>
+            </ul>
+          ) : (
+            <EmptyState title="No project assigned">Assign a project from the Work Info tab.</EmptyState>
+          )}
+        </Card>
+
+        <Card
+          title="Attendance Summary"
+          action={
+            <button type="button" className="epd-text-btn" onClick={() => setActiveTab("attendance")}>
+              View details
+            </button>
+          }
+        >
+          {renderAttendanceSummary()}
+        </Card>
+      </div>
+    </div>
   );
 
-  const projectName = employee.job?.project?.projectName || "Platform Operations";
-  const projectType = employee.job?.project?.projectType || "MANDATE";
+  const renderPersonal = () => (
+    <div className="epd-stack">
+      <Card
+        title="Demographic & Contact Details"
+        subtitle={isEditing ? "Edit personal information" : "Official identity and contact information"}
+      >
+        {isEditing ? (
+          <div className="epd-form-grid">
+            <TextField label="Full Legal Name *" value={editFormData.fullName} onChange={(v) => handleEditChange("fullName", v)} placeholder="Legal Name" required />
+            <TextField label="Preferred Name" value={editFormData.preferredName} onChange={(v) => handleEditChange("preferredName", v)} placeholder="Preferred Name" />
+            <TextField label="Work Email" tag="Read-only" value={employee.email} disabled />
+            <TextField label="Personal Email" type="email" value={editFormData.personalEmail} onChange={(v) => handleEditChange("personalEmail", v)} placeholder="personal@email.com" />
+            <TextField label="Work Phone" value={editFormData.phoneNumber} onChange={(v) => handleEditChange("phoneNumber", v)} placeholder="Work Phone" />
+            <TextField label="Personal Phone" value={editFormData.personalPhone} onChange={(v) => handleEditChange("personalPhone", v)} placeholder="Personal Phone" />
+            <TextField label="Date of Birth" type="date" value={editFormData.dateOfBirth} onChange={(v) => handleEditChange("dateOfBirth", v)} />
+            <Field label="Gender">
+              <select className="epv-edit-input" value={editFormData.gender || ""} onChange={(e) => handleEditChange("gender", e.target.value)}>
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Prefer not to say">Prefer not to say</option>
+              </select>
+            </Field>
+            <TextField label="City" value={editFormData.city} onChange={(v) => handleEditChange("city", v)} placeholder="City" />
+          </div>
+        ) : (
+          <div className="epd-info-grid epd-info-grid-3">
+            <Info label="Full Legal Name">{employee.fullName}</Info>
+            <Info label="Preferred Name">{employee.preferredName}</Info>
+            <Info label="Work Email">{employee.email}</Info>
+            <Info label="Personal Email">{employee.personalEmail}</Info>
+            <Info label="Work Phone">{employee.phoneNumber}</Info>
+            <Info label="Personal Phone">{employee.personalPhone}</Info>
+            <Info label="Date of Birth">{formatDate(employee.dateOfBirth)}</Info>
+            <Info label="Gender">{employee.gender && employee.gender !== "Not specified" ? employee.gender : ""}</Info>
+            <Info label="City">{employee.residentialAddress?.city || employee.city}</Info>
+          </div>
+        )}
+      </Card>
 
-  return (
-    <div className="epv-container">
-      {/* -----------------------------------------------------------------------
-          TOP HEADER & BREADCRUMBS
-          ----------------------------------------------------------------------- */}
-      <div className="epv-header-bar">
-        <nav className="epv-breadcrumb" aria-label="Breadcrumb">
-          <Link to="/admin">People Management</Link>
-          <span className="epv-breadcrumb-sep">/</span>
-          <span className="epv-breadcrumb-current">{employee.fullName}</span>
-        </nav>
+      <Card title="Address & Emergency Contact">
+        {isEditing ? (
+          <div className="epd-form-grid">
+            <TextField label="Street Address" value={editFormData.residentialStreet} onChange={(v) => handleEditChange("residentialStreet", v)} placeholder="Street Address" />
+            <TextField label="State" value={editFormData.residentialState} onChange={(v) => handleEditChange("residentialState", v)} placeholder="State" />
+            <TextField label="Postal Code" value={editFormData.residentialPostalCode} onChange={(v) => handleEditChange("residentialPostalCode", v)} placeholder="Postal Code" />
+            <TextField label="Emergency Contact Name" value={editFormData.emergencyName} onChange={(v) => handleEditChange("emergencyName", v)} placeholder="Emergency Contact Name" />
+            <TextField label="Emergency Relationship" value={editFormData.emergencyRel} onChange={(v) => handleEditChange("emergencyRel", v)} placeholder="e.g. Spouse, Parent, Sibling" />
+            <TextField label="Emergency Contact Phone" value={editFormData.emergencyPhone} onChange={(v) => handleEditChange("emergencyPhone", v)} placeholder="Phone Number" />
+          </div>
+        ) : (
+          <div className="epd-info-grid">
+            <Info label="Residential Address">
+              {[
+                employee.residentialAddress?.street,
+                employee.residentialAddress?.city,
+                employee.residentialAddress?.state,
+                employee.residentialAddress?.postalCode,
+              ].filter(Boolean).join(", ") || employee.city}
+            </Info>
+            <Info label="Emergency Contact">
+              {employee.emergencyContact?.name
+                ? `${employee.emergencyContact.name}${employee.emergencyContact.relationship ? ` (${employee.emergencyContact.relationship})` : ""}${employee.emergencyContact.phone ? ` — ${employee.emergencyContact.phone}` : ""}`
+                : ""}
+            </Info>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 
-        <div className="epv-header-row">
-          <div className="epv-title-group">
-            <h1>{employee.fullName}</h1>
-            <p>
-              {employee.job?.jobTitle || "Employee"} • {employee.job?.department || "General"} •{" "}
-              {employee.email}
-            </p>
+  const reportingManagerDisplay = manager ? (
+    <>
+      <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+      {manager.job?.jobTitle ? <span className="epd-info-sub">{manager.job.jobTitle}</span> : null}
+    </>
+  ) : (
+    "No reporting manager"
+  );
+
+  const renderWork = () => (
+    <div className="epd-stack">
+      <Card title="Job & Organization Role" subtitle="Corporate structure and placement">
+        {isEditing ? (
+          <div className="epd-form-grid">
+            <TextField label="Employee Code" tag="Read-only" value={employee.employeeCode || "—"} disabled />
+            <div className="epd-span-all epd-designation">
+              <DesignationFields
+                jobTitle={editFormData.jobTitle || ""}
+                jobGrade={editFormData.jobGrade || ""}
+                inputClassName="epv-edit-input"
+                titleLabel="Official job title"
+                gradeLabel="Job grade / level"
+                disabled={savingEdit}
+                onJobTitleChange={(value) => handleEditChange("jobTitle", value)}
+                onJobGradeChange={(value) => handleEditChange("jobGrade", value)}
+              />
+              <DepartmentSelect
+                departmentId={editFormData.clearDepartment ? "" : editFormData.departmentId}
+                departmentName={editFormData.clearDepartment ? "" : editFormData.departmentName}
+                linked={Boolean(editFormData.departmentId) && !editFormData.clearDepartment}
+                disabled={savingEdit}
+                onChange={(next) =>
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    departmentId: next.departmentId,
+                    departmentName: next.departmentName,
+                    clearDepartment: next.clearDepartment && !next.departmentId,
+                    departmentTouched: true,
+                  }))
+                }
+              />
+            </div>
+            <Field label="Employment Type">
+              <select className="epv-edit-input" value={editFormData.employmentType || ""} onChange={(e) => handleEditChange("employmentType", e.target.value)}>
+                <option value="">Not specified</option>
+                <option value="Full-time Permanent">Full-time Permanent</option>
+                <option value="Part-time">Part-time</option>
+                <option value="Contract">Contract</option>
+                <option value="Intern">Intern</option>
+                {editFormData.employmentType &&
+                !["Full-time Permanent", "Part-time", "Contract", "Intern"].includes(editFormData.employmentType) ? (
+                  <option value={editFormData.employmentType}>{editFormData.employmentType}</option>
+                ) : null}
+              </select>
+            </Field>
+            <Field label="Employment Status">
+              <select className="epv-edit-input" value={editFormData.status || "ACTIVE"} onChange={(e) => handleEditChange("status", e.target.value)}>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+                {editFormData.status && !["ACTIVE", "INACTIVE"].includes(editFormData.status) ? (
+                  <option value={editFormData.status}>{editFormData.status}</option>
+                ) : null}
+              </select>
+            </Field>
+            <TextField label="Date of Joining" tag="Read-only" value={formatDate(job.joiningDate)} disabled />
+            <TextField label="Work Location" value={editFormData.workLocation} onChange={(v) => handleEditChange("workLocation", v)} placeholder="Work Location" />
+            <div className="epd-span-all">
+              <ReportingManagerSelect
+                value={editFormData.reportingManagerId ?? null}
+                initialSelected={job.reportingManagerId && typeof job.reportingManagerId === "object" ? job.reportingManagerId : null}
+                excludeEmployeeId={id}
+                disabled={savingEdit}
+                onChange={(nextId) => handleEditChange("reportingManagerId", nextId)}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="epd-info-grid epd-info-grid-3">
+            <Info label="Employee Code" mono>{employee.employeeCode}</Info>
+            <Info label="Official Job Title">{job.jobTitle}</Info>
+            <Info label="Department">{job.department}</Info>
+            <Info label="Job Grade / Level">{job.jobGrade}</Info>
+            <Info label="Employment Type">{job.employmentType}</Info>
+            <Info label="Employment Status"><StatusBadge status={employee.status || "ACTIVE"} /></Info>
+            <Info label="Date of Joining">{formatDate(job.joiningDate)}</Info>
+            <Info label="Work Location">{job.workLocation}</Info>
+            <Info label="Reporting Manager">{reportingManagerDisplay}</Info>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Project Assignment" subtitle="Current project and deployment type">
+        {isEditing ? (
+          <div className="epd-form-grid">
+            <TextField label="Assigned Project Name" value={editFormData.projectName} onChange={(v) => handleEditChange("projectName", v)} placeholder="e.g. Core Platform Modernization" />
+            <Field label="Project Type">
+              <select className="epv-edit-input" value={editFormData.projectType || "MANDATE"} onChange={(e) => handleEditChange("projectType", e.target.value)}>
+                <option value="MANDATE">MANDATE</option>
+                <option value="RETAIL">RETAIL</option>
+                <option value="INTERNAL">INTERNAL</option>
+                <option value="BENCH">BENCH</option>
+              </select>
+            </Field>
+          </div>
+        ) : project ? (
+          <div className="epd-info-grid">
+            <Info label="Assigned Project" highlight>{project.projectName}</Info>
+            <Info label="Project Type">{project.projectType}</Info>
+          </div>
+        ) : (
+          <EmptyState title="No project assigned" />
+        )}
+      </Card>
+
+      {isInactive ? (
+        <Card title="Exit & Deactivation Details">
+          <div className="epd-info-grid">
+            <Info label="Last Working Day">{formatDate(job.terminationDate || employee.exit?.inactiveDate || employee.settlement?.lastWorkingDay)}</Info>
+            <Info label="Exit Reason">{employee.exit?.reason || employee.settlement?.exitReason}</Info>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+
+  const renderAttendance = () => {
+    const toolbar = (
+      <div className="epd-toolbar">
+        <div>
+          <h3 className="epd-card-title">Attendance</h3>
+          <p className="epd-card-sub">Real punch records for the selected period</p>
+        </div>
+        <DateRangePicker
+          label=""
+          placeholder="Select dates"
+          startDate={range.startDate}
+          endDate={range.endDate}
+          maxDate={todayStr}
+          autoApply
+          onChange={({ startDate, endDate }) => setRange({ startDate, endDate })}
+        />
+      </div>
+    );
+
+    if (attendanceUnavailable) {
+      return (
+        <div className="epd-stack">
+          {canViewAttendance ? toolbar : null}
+          <Card><EmptyState title="Attendance unavailable" icon={<IconShield size={18} />}>{attendanceUnavailable}</EmptyState></Card>
+        </div>
+      );
+    }
+    if (!analysis) {
+      return (
+        <div className="epd-stack">
+          {toolbar}
+          <Card><p className="epd-muted">Loading attendance…</p></Card>
+        </div>
+      );
+    }
+
+    const maxWeekly = 100;
+    const todayDay = analysis.today;
+
+    return (
+      <div className="epd-stack">
+        {toolbar}
+
+        <div className="epd-stat-row">
+          <StatCard tone="present" label="Present Days" value={analysis.counts.present + analysis.counts.late} sub={`of ${analysis.workingDays} working days`} />
+          <StatCard tone="late" label="Late Check-ins" value={analysis.counts.late} />
+          <StatCard tone="absent" label="Absent Days" value={analysis.counts.absent} sub={analysis.counts.absent === 0 ? "No unexcused absences" : undefined} />
+          <StatCard tone="leave" label="Leave Taken" value={`${analysis.counts.leave} ${analysis.counts.leave === 1 ? "Day" : "Days"}`} sub="Marked on leave in period" />
+        </div>
+
+        {attendance.total > attendance.records.length ? (
+          <p className="epd-note">
+            Showing the latest {attendance.records.length} of {attendance.total} records. Narrow the period to see all of them.
+          </p>
+        ) : null}
+
+        <div className="epd-grid-2">
+          <div className="epd-col">
+            <Card title="Attendance Rate">
+              {analysis.rate === null ? (
+                <EmptyState title="No working days in this period" />
+              ) : (
+                <>
+                  <div className="epd-rate">
+                    <strong>{analysis.rate}%</strong>
+                    <span>{analysis.attended} of {analysis.workingDays} working days attended</span>
+                  </div>
+                  <div className="epd-progress" role="progressbar" aria-valuenow={analysis.rate} aria-valuemin={0} aria-valuemax={100}>
+                    <span style={{ width: `${analysis.rate}%` }} />
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <Card title="Attendance Trend" subtitle="Weekly attendance rate in the selected period">
+              {analysis.weekly.length === 0 ? (
+                <EmptyState title="Not enough data for a trend" />
+              ) : (
+                <div className="epd-bars" role="img" aria-label="Weekly attendance rate">
+                  {analysis.weekly.map((w) => (
+                    <div key={w.startDate} className="epd-bar-col" title={`Week of ${shortCivil(w.startDate)}: ${w.attended}/${w.working} days (${w.rate}%)`}>
+                      <span className="epd-bar-val">{w.rate}%</span>
+                      <span className="epd-bar-track"><span className="epd-bar-fill" style={{ height: `${(w.rate / maxWeekly) * 100}%` }} /></span>
+                      <span className="epd-bar-lbl">{shortCivil(w.startDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
 
-          <div className="epv-header-actions">
-            {employee.settlement ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() =>
-                  navigate(
-                    `/admin/payroll?settlementId=${
-                      employee.settlement.id || employee.settlement._id
-                    }`
-                  )
-                }
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <span>View F&F ({employee.settlement.status?.replace("_", " ")})</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setFnfForm({
-                    lastWorkingDay: new Date().toISOString().split("T")[0],
-                    exitReason: "Resignation",
-                    hrRemarks: "",
-                  });
-                  setFnfError("");
-                  setFnfSuccess("");
-                  setShowFnFModal(true);
-                }}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <span>Initiate F&F</span>
-              </button>
-            )}
+          <div className="epd-col">
+            <Card title="Today's Attendance Status">
+              {!todayDay ? (
+                <p className="epd-muted">Today is outside the selected period.</p>
+              ) : (
+                <div className="epd-today">
+                  <div><span>Current Status</span><b className={`epd-pill is-${todayDay.statusKey}`}>{ATTENDANCE_STATUS_LABELS[todayDay.statusKey] || (todayDay.statusKey === "weekend" ? "Weekend" : "Holiday")}</b></div>
+                  <div><span>Clock In</span><b>{todayDay.checkIn || "—"}</b></div>
+                  <div><span>Clock Out</span><b>{todayDay.checkOut || "—"}</b></div>
+                  <div><span>Worked Hours</span><b>{todayDay.hours || "—"}</b></div>
+                </div>
+              )}
+            </Card>
 
-            {/* INTEGRATED EDITING BUTTON (Requirement 3A) */}
+            <Card title="Leave">
+              <p className="epd-compact-note" style={{ marginBottom: 10 }}>
+                Leave balances are not available from the HR API for this employee.
+              </p>
+              <h4 className="epd-card-sub" style={{ marginBottom: 8 }}>Recent leave history</h4>
+              {!canViewLeave ? (
+                <EmptyState title="Leave history unavailable">You don't have permission to view leave requests.</EmptyState>
+              ) : leaves.state === "loading" ? (
+                <p className="epd-muted">Loading leave history…</p>
+              ) : leaves.state === "error" ? (
+                <EmptyState title="Leave history unavailable">{leaves.error}</EmptyState>
+              ) : leaves.items.length === 0 ? (
+                <EmptyState title="No leave requests on record" />
+              ) : (
+                <ul className="epd-leave-list">
+                  {leaves.items.slice(0, 5).map((l) => (
+                    <li key={l._id} className={`is-${String(l.status || "").toLowerCase()}`}>
+                      <div>
+                        <strong>{l.leaveTypeCode || "Leave"}</strong>
+                        <span>
+                          {shortCivil(l.fromDate)}
+                          {l.toDate && l.toDate !== l.fromDate ? ` – ${shortCivil(l.toDate)}` : ""} · {l.daysCount} {l.daysCount === 1 ? "day" : "days"}
+                        </span>
+                      </div>
+                      <StatusBadge status={l.status} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        <Card
+          title="Recent Attendance Logs"
+          action={
+            <div className="epd-log-controls">
+              <select className="epd-select" value={logFilter} onChange={(e) => setLogFilter(e.target.value)} aria-label="Filter by status">
+                <option value="all">All statuses</option>
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+                <option value="leave">On leave</option>
+              </select>
+              <button type="button" className="epd-select epd-sort-btn" onClick={() => setLogSortDesc((v) => !v)}>
+                Date {logSortDesc ? "↓" : "↑"}
+              </button>
+            </div>
+          }
+        >
+          {sortedRows.length === 0 ? (
+            <EmptyState title="No attendance logs for this selection" />
+          ) : (
+            <>
+              <div className="epd-table-wrap">
+                <table className="epd-table">
+                  <thead>
+                    <tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th></tr>
+                  </thead>
+                  <tbody>
+                    {pageRows.map((r) => (
+                      <tr key={r.date}>
+                        <td>{formatDisplayDate(r.date, timeZone)}</td>
+                        <td>{r.checkIn || "—"}</td>
+                        <td>{r.checkOut || "—"}</td>
+                        <td>{r.hours || "—"}</td>
+                        <td><span className={`epd-pill is-${r.statusKey}`}>{ATTENDANCE_STATUS_LABELS[r.statusKey] || (r.statusKey === "weekend" ? "Weekend" : "Holiday")}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="epd-pager">
+                <label>
+                  Show
+                  <select className="epd-select" value={logPageSize} onChange={(e) => setLogPageSize(Number(e.target.value))}>
+                    {[5, 10, 20, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  of {sortedRows.length} entries
+                </label>
+                <div className="epd-pager-btns">
+                  <button type="button" onClick={() => setLogPage(Math.max(1, safeLogPage - 1))} disabled={safeLogPage <= 1} aria-label="Previous page">‹</button>
+                  <span>{safeLogPage} / {totalLogPages}</span>
+                  <button type="button" onClick={() => setLogPage(Math.min(totalLogPages, safeLogPage + 1))} disabled={safeLogPage >= totalLogPages} aria-label="Next page">›</button>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    );
+  };
+
+  const renderPerformance = () => (
+    <div className="epd-stack">
+      <Card title="Impact Points" subtitle="Recognition ledger from the Impact Points module">
+        {!canViewImpact ? (
+          <EmptyState title="Impact points unavailable" icon={<IconShield size={18} />}>You don't have permission to view impact points.</EmptyState>
+        ) : impact.state === "loading" ? (
+          <p className="epd-muted">Loading impact points…</p>
+        ) : impact.state === "error" ? (
+          <EmptyState title="Impact points unavailable">{impact.error}</EmptyState>
+        ) : impact.data ? (
+          <>
+            <div className="epd-stat-row">
+              <StatCard tone="present" label="Balance" value={impact.data.balance} />
+              <StatCard tone="leave" label="This Month" value={impact.data.pointsThisMonth} />
+              <StatCard tone="late" label="Company Rank" value={impact.data.rankInCompany} />
+              <StatCard tone="absent" label="Department Rank" value={impact.data.rankInDepartment} />
+            </div>
+            <div className="epd-info-grid" style={{ marginTop: 14 }}>
+              <Info label="Total Earned">{impact.data.totalEarned}</Info>
+              <Info label="Total Deducted">{impact.data.totalDeducted}</Info>
+            </div>
+          </>
+        ) : (
+          <EmptyState title="No impact points recorded" />
+        )}
+      </Card>
+
+      <Card title="Skills" subtitle="Skill tags on the employee record">
+        {skills.length > 0 ? (
+          <div className="epd-chips">{skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}</div>
+        ) : (
+          <EmptyState title="No skills recorded" />
+        )}
+      </Card>
+
+      <Card title="Reviews & KPIs">
+        <EmptyState title="No performance review data">
+          There is no performance review or KPI module connected yet, so no ratings or KPI scores are shown.
+        </EmptyState>
+      </Card>
+    </div>
+  );
+
+  const renderPayroll = () => {
+    if (!canViewPayroll) {
+      return (
+        <Card>
+          <EmptyState title="Payroll details are restricted" icon={<IconShield size={18} />}>
+            Your HR access does not include payroll.view, so compensation, bank and tax details are hidden.
+          </EmptyState>
+        </Card>
+      );
+    }
+    return (
+      <div className="epd-stack">
+        <Card title="Current Compensation Structure" subtitle="Visible only to HR users with payroll access">
+          {isEditing ? (
+            <div className="epd-form-grid">
+              <TextField label="Monthly CTC (₹)" type="number" min="0" value={editFormData.monthlySalary} onChange={(v) => handleEditChange("monthlySalary", v)} placeholder="e.g. 75000" />
+            </div>
+          ) : employee.currentMonthlySalary == null ? (
+            <EmptyState title="No compensation record on file" />
+          ) : (
+            <>
+              <div className="epd-stat-row epd-stat-row-3">
+                <StatCard tone="present" label="Monthly CTC" value={formatCurrency(employee.currentMonthlySalary)} />
+                <StatCard tone="leave" label="Annual CTC" value={formatCurrency(employee.currentMonthlySalary * 12)} sub="Monthly × 12" />
+                <StatCard tone="late" label="Currency" value="INR (₹)" />
+              </div>
+              {employee.salaryComponents ? (
+                <div className="epd-info-grid epd-info-grid-3" style={{ marginTop: 16 }}>
+                  <Info label="Basic Salary">{formatCurrency(employee.salaryComponents.basicSalary)}</Info>
+                  <Info label="House Rent Allowance (HRA)">{formatCurrency(employee.salaryComponents.houseRentAllowance)}</Info>
+                  <Info label="Conveyance Allowance">{formatCurrency(employee.salaryComponents.conveyanceAllowance)}</Info>
+                  <Info label="Special Allowance">{formatCurrency(employee.salaryComponents.specialAllowance)}</Info>
+                  <Info label="Employer PF Contribution">{formatCurrency(employee.salaryComponents.employerProvidentFund)}</Info>
+                  <Info label="Statutory Deductions">{formatCurrency(employee.salaryComponents.otherDeductions)}</Info>
+                </div>
+              ) : null}
+            </>
+          )}
+        </Card>
+
+        <Card title="Bank & Tax Details">
+          {isEditing ? (
+            <div className="epd-form-grid">
+              <TextField label="PAN Number" value={editFormData.panNumber} onChange={(v) => handleEditChange("panNumber", v.toUpperCase())} placeholder="ABCDE1234F" />
+              <TextField label="Bank Name" value={editFormData.bankName} onChange={(v) => handleEditChange("bankName", v)} placeholder="e.g. HDFC Bank" />
+              <TextField label="Account Number" value={editFormData.accountNumber} onChange={(v) => handleEditChange("accountNumber", v)} placeholder="Bank Account Number" />
+              <TextField label="IFSC Code" value={editFormData.ifscCode} onChange={(v) => handleEditChange("ifscCode", v.toUpperCase())} placeholder="IFSC" />
+            </div>
+          ) : (
+            <div className="epd-info-grid epd-info-grid-3">
+              <Info label="PAN Number" mono>{tax?.panNumber || "Not recorded"}</Info>
+              <Info label="Bank Name">{bank?.bankName || "Not recorded"}</Info>
+              <Info label="Account Number" mono>{bank?.accountNumber ? `••••••••${String(bank.accountNumber).slice(-4)}` : "Not recorded"}</Info>
+              <Info label="IFSC Code" mono>{bank?.ifscCode || "Not recorded"}</Info>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Payslips">
+          <EmptyState title="Payslips live in the Payroll module">
+            There is no per-employee payslip list in the HR API. Open a payroll cycle to review or download this employee's payslip.
+          </EmptyState>
+          <div style={{ marginTop: 12 }}>
+            <Link className="btn-secondary" to="/admin/payroll">Open Payroll</Link>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderDocuments = () => (
+    <Card title="Uploaded Verification Documents" subtitle={`${employee.documents?.length || 0} document(s) on file`}>
+      {!employee.documents || employee.documents.length === 0 ? (
+        <EmptyState title="No documents uploaded" icon={<IconDocument size={18} />}>
+          No documents have been uploaded for this employee yet.
+        </EmptyState>
+      ) : (
+        employee.documents.map((doc) => (
+          <div key={doc._id} className="epv-doc-row">
+            <div className="epv-doc-left">
+              <div className="epv-doc-icon"><IconDocument size={18} /></div>
+              <div>
+                <div className="epv-doc-title">{doc.title || doc.fileName}</div>
+                <div className="epv-doc-meta">
+                  {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="epv-doc-download-btn"
+              disabled={downloadingDocId === doc._id}
+              onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
+            >
+              <IconDownload size={14} />
+              <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
+            </button>
+          </div>
+        ))
+      )}
+    </Card>
+  );
+
+  const renderActivity = () => (
+    <Card title="Recent Activity" subtitle="Built from the employee record, attendance, leave and impact points — not a full audit log">
+      {activityEvents.length === 0 ? (
+        <EmptyState title="No activity to show yet" />
+      ) : (
+        <ol className="epd-timeline">
+          {activityEvents.map((ev, idx) => (
+            <li key={`${ev.ts}-${idx}`} className={`is-${ev.tone}`}>
+              <span className="epd-timeline-dot" aria-hidden="true" />
+              <div>
+                <strong>{ev.title}</strong>
+                {ev.detail ? <span>{ev.detail}</span> : null}
+                <time>{formatDateTime(ev.ts)}</time>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+
+  const tabBodies = {
+    overview: renderOverview,
+    personal: renderPersonal,
+    work: renderWork,
+    attendance: renderAttendance,
+    performance: renderPerformance,
+    payroll: renderPayroll,
+    documents: renderDocuments,
+    activity: renderActivity,
+  };
+
+  const onTabKeyDown = (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const idx = TABS.findIndex((t) => t.id === activeTab);
+    const next = (idx + (e.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
+    setActiveTab(TABS[next].id);
+    e.preventDefault();
+  };
+
+  return (
+    <div className="epv-container epd-page">
+      <AppHeader
+        title="Employee Detail"
+        leading={
+          <button type="button" className="epd-back" onClick={() => goBack()} aria-label="Go back">
+            <IconArrowLeft size={18} />
+          </button>
+        }
+        nav={
+          <nav className="epv-breadcrumb" aria-label="Breadcrumb">
+            <Link to="/admin">Employees</Link>
+            <span className="epv-breadcrumb-sep">›</span>
+            <span className="epv-breadcrumb-current">{employee.fullName}</span>
+          </nav>
+        }
+      />
+
+      {editSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{editSuccess}</div>}
+      {editError && <div className="error" style={{ marginBottom: 14 }}>{editError}</div>}
+
+      {/* ---------------------------- Profile header --------------------------- */}
+      <section className="epd-header" aria-label="Employee profile header">
+        <div className="epd-banner" aria-hidden="true" />
+        <div className="epd-header-body">
+          <div className="epd-identity">
+            <div className="epd-avatar">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={employee.fullName} />
+              ) : (
+                <span aria-hidden="true">{initialsOf(employee.fullName)}</span>
+              )}
+            </div>
+            <div className="epd-identity-copy">
+              <h2 className="epd-name">{employee.fullName}</h2>
+              <p className="epd-sub">
+                {employee.employeeCode ? <span className="epd-code">#{employee.employeeCode}</span> : null}
+                {employee.employeeCode && job.jobTitle ? <span className="epd-dot">›</span> : null}
+                {job.jobTitle ? <span>{job.jobTitle}</span> : null}
+              </p>
+            </div>
+          </div>
+
+          <div className="epd-header-actions">
+            <StatusBadge status={employee.status || "ACTIVE"} />
             {isEditing ? (
-              <div className="epv-action-bar-top">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleCancelEdit}
-                  disabled={savingEdit}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleSaveProfile}
-                  disabled={savingEdit}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                >
+              <>
+                <button type="button" className="btn-secondary" onClick={handleCancelEdit} disabled={savingEdit}>Cancel</button>
+                <button type="button" className="btn-primary epd-btn" onClick={handleSaveProfile} disabled={savingEdit}>
                   <IconCheck size={14} />
                   <span>{savingEdit ? "Saving..." : "Save Changes"}</span>
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleStartEdit}
-                title="Edit employee details"
-                aria-label="Edit employee details"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-                <span>Edit Employee</span>
+              </>
+            ) : canEdit ? (
+              <button type="button" className="btn-primary epd-btn" onClick={handleStartEdit} title="Edit employee details" aria-label="Edit employee details">
+                <IconPencil />
+                <span>Edit</span>
               </button>
-            )}
-          </div>
-        </div>
-      </div>
+            ) : null}
 
-      {/* Action alerts */}
-      {editSuccess && <div className="success-alert" style={{ marginBottom: 18 }}>{editSuccess}</div>}
-      {editError && <div className="error" style={{ marginBottom: 18 }}>{editError}</div>}
-
-      {/* -----------------------------------------------------------------------
-          TOP 4 HIGH-IMPACT KPI STRIP (Reference 3)
-          ----------------------------------------------------------------------- */}
-      <section className="epv-top-strip" aria-label="Profile Summary Indicators">
-        {/* KPI 1: Days in the company (Dark Forest-Green Card) */}
-        <div className="epv-kpi-card dark-card">
-          <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span>Tenure</span>
-          </div>
-          <div className="epv-kpi-num-row">
-            <span className="epv-kpi-val">{daysInCompany}</span>
-            <span className="epv-kpi-badge">Days</span>
-          </div>
-          <div className="epv-kpi-sub">Since {formatDate(employee.job?.joiningDate)}</div>
-        </div>
-
-        {/* KPI 2: Current Assigned Project */}
-        <div className="epv-kpi-card">
-          <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-            <span>Active Project</span>
-          </div>
-          <div className="epv-kpi-num-row">
-            <span
-              className="epv-kpi-val"
-              style={{ fontSize: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              title={projectName}
-            >
-              {projectName}
-            </span>
-            <span className="epv-kpi-badge">{projectType}</span>
-          </div>
-          <div className="epv-kpi-sub">{employee.job?.workLocation || "Headquarters"}</div>
-        </div>
-
-        {/* KPI 3: Attendance Performance */}
-        <div className="epv-kpi-card">
-          <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            <span>Attendance Rate</span>
-          </div>
-          <div className="epv-kpi-num-row">
-            <span className="epv-kpi-val">{attendanceRate}%</span>
-            <span className="epv-kpi-badge">
-              {attendanceInfo.daysPresent}/{attendanceInfo.totalWorkingDays}d
-            </span>
-          </div>
-          <div className="epv-kpi-sub">
-            Leaves Balance: {attendanceInfo.leaveBalance?.casual + attendanceInfo.leaveBalance?.sick + attendanceInfo.leaveBalance?.earned} days remaining
-          </div>
-        </div>
-
-        {/* KPI 4: Monthly Compensation (HR Only) */}
-        <div className="epv-kpi-card">
-          <div className="epv-kpi-lbl">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="2" y="4" width="20" height="16" rx="2" />
-              <line x1="12" y1="8" x2="12" y2="16" />
-              <line x1="8" y1="12" x2="16" y2="12" />
-            </svg>
-            <span>Monthly Salary (CTC)</span>
-          </div>
-          <div className="epv-kpi-num-row">
-            <span className="epv-kpi-val" style={{ color: "var(--g-800)" }}>
-              {formatCurrency(employee.currentMonthlySalary)}
-            </span>
-            <span className="epv-kpi-badge">Monthly</span>
-          </div>
-          <div className="epv-kpi-sub">Official HR Payroll Master</div>
-        </div>
-      </section>
-
-      {/* Identity band + working summary (single flow, no side-by-side cards) */}
-      <section className="epv-identity-band" aria-label="Employee identity">
-        <div className="epv-identity-main">
-          <div className="epv-avatar-large" aria-hidden="true">{userInitial}</div>
-          <div className="epv-identity-copy">
-            <div className="epv-identity-title-row">
-              <h2 className="epv-person-name">{employee.fullName}</h2>
-              <div className="epv-person-badges">
-                <span className="epv-code-badge">{employee.employeeCode || "EMP-000"}</span>
-                <StatusBadge status={employee.status || "ACTIVE"} />
-              </div>
-            </div>
-            <p className="epv-person-role">{employee.job?.jobTitle || "Team Member"}</p>
-            <dl className="epv-identity-meta">
-              <div>
-                <dt>Department</dt>
-                <dd>{employee.job?.department || "General"}</dd>
-              </div>
-              <div>
-                <dt>Location</dt>
-                <dd>{employee.job?.workLocation || employee.city || "Bangalore HQ"}</dd>
-              </div>
-              <div>
-                <dt>Joined</dt>
-                <dd>{formatDate(employee.job?.joiningDate)}</dd>
-              </div>
-              <div>
-                <dt>Email</dt>
-                <dd title={employee.email}>{employee.email}</dd>
-              </div>
-              {employee.phoneNumber ? (
-                <div>
-                  <dt>Phone</dt>
-                  <dd>{employee.phoneNumber}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
-        </div>
-        <div className="epv-identity-actions">
-          {isEditing ? (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleSaveProfile}
-              disabled={savingEdit}
-            >
-              <IconCheck size={15} />
-              <span>{savingEdit ? "Saving..." : "Save Changes"}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleStartEdit}
-              aria-label="Edit employee details"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-              <span>Edit Details</span>
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="epv-work-summary" aria-label="Working format">
-        <div className="epv-work-summary-head">
-          <h3>Working format</h3>
-          <span className="epv-work-type">{employee.job?.employmentType || "Full-time"}</span>
-        </div>
-        <div className="epv-work-summary-stats">
-          <div className="epv-work-stat">
-            <strong>{attendanceInfo.daysPresent || 21}</strong>
-            <span>Present</span>
-          </div>
-          <div className="epv-work-stat">
-            <strong>{(attendanceInfo.totalWorkingDays || 22) - (attendanceInfo.daysPresent || 21)}</strong>
-            <span>Leave</span>
-          </div>
-          <div className="epv-work-stat">
-            <strong>{attendanceInfo.totalWorkingDays || 22}</strong>
-            <span>Working days</span>
-          </div>
-          <div className="epv-work-balances">
-            <span>Casual <strong>{attendanceInfo.leaveBalance?.casual || 8}</strong></span>
-            <span>Sick <strong>{attendanceInfo.leaveBalance?.sick || 6}</strong></span>
-            <span>Earned <strong>{attendanceInfo.leaveBalance?.earned || 12}</strong></span>
-          </div>
-        </div>
-      </section>
-
-      <section className="epv-records-panel" aria-label="Detailed Records Tabs">
-          <div className="epv-tabs-strip">
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "personal" ? "active" : ""}`}
-              onClick={() => setActiveTab("personal")}
-            >
-              Personal Info
-            </button>
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "employment" ? "active" : ""}`}
-              onClick={() => setActiveTab("employment")}
-            >
-              Employment Details
-            </button>
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "projects" ? "active" : ""}`}
-              onClick={() => setActiveTab("projects")}
-            >
-              Projects & Reporting
-            </button>
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "documents" ? "active" : ""}`}
-              onClick={() => setActiveTab("documents")}
-            >
-              Identity & Documents ({employee.documents?.length || 0})
-            </button>
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "salary" ? "active" : ""}`}
-              onClick={() => setActiveTab("salary")}
-            >
-              Salary & Compensation
-            </button>
-            <button
-              type="button"
-              className={`epv-tab-btn ${activeTab === "attendance" ? "active" : ""}`}
-              onClick={() => setActiveTab("attendance")}
-            >
-              Attendance & Leaves
-            </button>
-          </div>
-
-          {/* Tab 1: Personal Information */}
-          {activeTab === "personal" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Demographic & Contact Details</h3>
-                  <span className="epv-section-sub">
-                    {isEditing ? "Edit personal information" : "Official identity and contact information"}
-                  </span>
-                </div>
-
-                {isEditing ? (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Full Legal Name *</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.fullName || ""}
-                        onChange={(e) => handleEditChange("fullName", e.target.value)}
-                        placeholder="Legal Name"
-                        required
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Preferred Name</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.preferredName || ""}
-                        onChange={(e) => handleEditChange("preferredName", e.target.value)}
-                        placeholder="Preferred Name"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">
-                        <span>Work Email</span>
-                        <span className="epv-readonly-tag">Read-only</span>
-                      </label>
-                      <input
-                        className="epv-edit-input"
-                        value={employee.email}
-                        disabled
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Personal Email</label>
-                      <input
-                        type="email"
-                        className="epv-edit-input"
-                        value={editFormData.personalEmail || ""}
-                        onChange={(e) => handleEditChange("personalEmail", e.target.value)}
-                        placeholder="personal@email.com"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Work Phone</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.phoneNumber || ""}
-                        onChange={(e) => handleEditChange("phoneNumber", e.target.value)}
-                        placeholder="Work Phone"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Personal Phone</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.personalPhone || ""}
-                        onChange={(e) => handleEditChange("personalPhone", e.target.value)}
-                        placeholder="Personal Phone"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Date of Birth</label>
-                      <input
-                        type="date"
-                        className="epv-edit-input"
-                        value={editFormData.dateOfBirth || ""}
-                        onChange={(e) => handleEditChange("dateOfBirth", e.target.value)}
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Gender</label>
-                      <select
-                        className="epv-edit-input"
-                        value={editFormData.gender || ""}
-                        onChange={(e) => handleEditChange("gender", e.target.value)}
-                      >
-                        <option value="">Select Gender</option>
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                        <option value="Non-binary">Non-binary</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">City</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.city || ""}
-                        onChange={(e) => handleEditChange("city", e.target.value)}
-                        placeholder="City"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Full Legal Name</span>
-                      <span className="epv-field-val">{employee.fullName || "Not provided"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Preferred Name</span>
-                      <span className="epv-field-val">{employee.preferredName || employee.fullName?.split(" ")[0] || "—"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Work Email</span>
-                      <span className="epv-field-val">{employee.email}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Personal Email</span>
-                      <span className="epv-field-val">{employee.personalEmail || "Not provided"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Work Phone</span>
-                      <span className="epv-field-val">{employee.phoneNumber || "Not provided"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Personal Phone</span>
-                      <span className="epv-field-val">{employee.personalPhone || employee.phoneNumber || "Not provided"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Date of Birth</span>
-                      <span className="epv-field-val">{formatDate(employee.dateOfBirth)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Gender</span>
-                      <span className="epv-field-val">{employee.gender || "Not specified"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Residential City</span>
-                      <span className="epv-field-val">{employee.residentialAddress?.city || employee.city || "Not provided"}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Address & Emergency Contact</h3>
-                </div>
-
-                {isEditing ? (
-                  <div className="epv-field-grid-2">
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Street Address</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.residentialStreet || ""}
-                        onChange={(e) => handleEditChange("residentialStreet", e.target.value)}
-                        placeholder="Street Address"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Emergency Contact Name</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.emergencyName || ""}
-                        onChange={(e) => handleEditChange("emergencyName", e.target.value)}
-                        placeholder="Emergency Contact Name"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Emergency Contact Relationship</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.emergencyRel || ""}
-                        onChange={(e) => handleEditChange("emergencyRel", e.target.value)}
-                        placeholder="e.g. Spouse, Parent, Sibling"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Emergency Contact Phone</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.emergencyPhone || ""}
-                        onChange={(e) => handleEditChange("emergencyPhone", e.target.value)}
-                        placeholder="Phone Number"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-field-grid-2">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Residential Address</span>
-                      <span className="epv-field-val">
-                        {employee.residentialAddress?.street
-                          ? `${employee.residentialAddress.street}, ${employee.residentialAddress.city || ""}, ${employee.residentialAddress.state || ""} - ${employee.residentialAddress.postalCode || ""}`
-                          : employee.city || "Not provided"}
-                      </span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Emergency Contact</span>
-                      <span className="epv-field-val">
-                        {employee.emergencyContact?.name
-                          ? `${employee.emergencyContact.name} (${employee.emergencyContact.relationship || "Primary"}) — ${employee.emergencyContact.phone || "No phone"}`
-                          : "Not provided"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab 2: Employment Details */}
-          {activeTab === "employment" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Job & Organization Role</h3>
-                  <span className="epv-section-sub">Corporate structure and placement</span>
-                </div>
-
-                {isEditing ? (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">
-                        <span>Employee Code</span>
-                        <span className="epv-readonly-tag">Read-only</span>
-                      </label>
-                      <input className="epv-edit-input" value={employee.employeeCode || "—"} disabled />
-                    </div>
-                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
-                      <DesignationFields
-                        jobTitle={editFormData.jobTitle || ""}
-                        jobGrade={editFormData.jobGrade || ""}
-                        inputClassName="epv-edit-input"
-                        titleLabel="Official job title"
-                        gradeLabel="Job grade / level"
-                        disabled={savingEdit}
-                        onJobTitleChange={(value) => handleEditChange("jobTitle", value)}
-                        onJobGradeChange={(value) => handleEditChange("jobGrade", value)}
-                      />
-                      <DepartmentSelect
-                        departmentId={editFormData.clearDepartment ? "" : editFormData.departmentId}
-                        departmentName={editFormData.clearDepartment ? "" : editFormData.departmentName}
-                        linked={Boolean(editFormData.departmentId) && !editFormData.clearDepartment}
-                        disabled={savingEdit}
-                        onChange={(next) => setEditFormData((prev) => ({
-                          ...prev,
-                          departmentId: next.departmentId,
-                          departmentName: next.departmentName,
-                          clearDepartment: next.clearDepartment && !next.departmentId,
-                          departmentTouched: true,
-                        }))}
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Employment Type</label>
-                      <select
-                        className="epv-edit-input"
-                        value={editFormData.employmentType || "Full-time Permanent"}
-                        onChange={(e) => handleEditChange("employmentType", e.target.value)}
-                      >
-                        <option value="Full-time Permanent">Full-time Permanent</option>
-                        <option value="Part-time">Part-time</option>
-                        <option value="Contract">Contract</option>
-                        <option value="Intern">Intern</option>
-                      </select>
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Employment Status</label>
-                      <select
-                        className="epv-edit-input"
-                        value={editFormData.status || "ACTIVE"}
-                        onChange={(e) => handleEditChange("status", e.target.value)}
-                      >
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="INACTIVE">INACTIVE</option>
-                      </select>
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">
-                        <span>Date of Joining</span>
-                        <span className="epv-readonly-tag">Read-only</span>
-                      </label>
-                      <input className="epv-edit-input" value={formatDate(employee.job?.joiningDate)} disabled />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Work Location</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.workLocation || ""}
-                        onChange={(e) => handleEditChange("workLocation", e.target.value)}
-                        placeholder="Work Location"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group" style={{ gridColumn: "1 / -1" }}>
-                      <ReportingManagerSelect
-                        value={editFormData.reportingManagerId ?? null}
-                        initialSelected={
-                          employee.job?.reportingManagerId &&
-                          typeof employee.job.reportingManagerId === "object"
-                            ? employee.job.reportingManagerId
-                            : null
-                        }
-                        excludeEmployeeId={id}
-                        disabled={savingEdit}
-                        onChange={(nextId) => handleEditChange("reportingManagerId", nextId)}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Employee Code</span>
-                      <span className="epv-field-val font-mono">{employee.employeeCode || "—"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Official Job Title</span>
-                      <span className="epv-field-val">{employee.job?.jobTitle || "Not specified"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Department</span>
-                      <span className="epv-field-val">{employee.job?.department || "General"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Job Grade / Level</span>
-                      <span className="epv-field-val">{employee.job?.jobGrade || "Level L3"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Employment Type</span>
-                      <span className="epv-field-val">{employee.job?.employmentType || "Full-time Permanent"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Employment Status</span>
-                      <span className="epv-field-val">
-                        <span className={`badge ${isActive ? "badge-active" : "badge-inactive"}`}>
-                          {employee.status || "ACTIVE"}
-                        </span>
-                      </span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Date of Joining</span>
-                      <span className="epv-field-val">{formatDate(employee.job?.joiningDate)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Work Location</span>
-                      <span className="epv-field-val">{employee.job?.workLocation || "Headquarters"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Reporting Manager</span>
-                      <span className="epv-field-val">
-                        {employee.job?.reportingManagerId &&
-                        typeof employee.job.reportingManagerId === "object" &&
-                        employee.job.reportingManagerId._id ? (
-                          <>
-                            <Link
-                              to={`/admin/employees/${employee.job.reportingManagerId._id}`}
-                              style={{ fontWeight: 600, color: "var(--g-800, #155a37)" }}
-                            >
-                              {employee.job.reportingManagerId.fullName}
-                            </Link>
-                            {employee.job.reportingManagerId.job?.jobTitle ? (
-                              <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                                {employee.job.reportingManagerId.job.jobTitle}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          "No reporting manager"
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {employee.status === "INACTIVE" && (
-                <div className="epv-section-block">
-                  <div className="epv-section-head">
-                    <h3 className="epv-section-title">Exit & Deactivation Details</h3>
-                  </div>
-                  <div className="epv-field-grid-2">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Last Working Day</span>
-                      <span className="epv-field-val">
-                        {formatDate(employee.job?.terminationDate || employee.exit?.inactiveDate)}
-                      </span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Exit Reason</span>
-                      <span className="epv-field-val">{employee.exit?.reason || "Resignation"}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 3: Projects & Reporting */}
-          {activeTab === "projects" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Current Project Assignment</h3>
-                  <span className="epv-section-sub">Project portfolio and deployment status</span>
-                </div>
-
-                {isEditing ? (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Assigned Project Name</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.projectName || ""}
-                        onChange={(e) => handleEditChange("projectName", e.target.value)}
-                        placeholder="e.g. Core Platform Modernization"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Project Type</label>
-                      <select
-                        className="epv-edit-input"
-                        value={editFormData.projectType || "MANDATE"}
-                        onChange={(e) => handleEditChange("projectType", e.target.value)}
-                      >
-                        <option value="MANDATE">MANDATE</option>
-                        <option value="RETAIL">RETAIL</option>
-                        <option value="INTERNAL">INTERNAL</option>
-                        <option value="BENCH">BENCH</option>
-                      </select>
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Assignment Location</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.workLocation || ""}
-                        onChange={(e) => handleEditChange("workLocation", e.target.value)}
-                        placeholder="Work Location"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Assigned Project</span>
-                      <span className="epv-field-val highlight">{projectName}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Project Type</span>
-                      <span className="epv-field-val">{projectType}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Assignment Location</span>
-                      <span className="epv-field-val">{employee.job?.workLocation || "Bangalore HQ"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Reporting Manager</span>
-                      <span className="epv-field-val">
-                        {employee.job?.reportingManagerId &&
-                        typeof employee.job.reportingManagerId === "object" &&
-                        employee.job.reportingManagerId._id ? (
-                          <>
-                            <Link
-                              to={`/admin/employees/${employee.job.reportingManagerId._id}`}
-                              style={{ fontWeight: 600, color: "var(--g-800, #155a37)" }}
-                            >
-                              {employee.job.reportingManagerId.fullName}
-                            </Link>
-                            {employee.job.reportingManagerId.job?.jobTitle ? (
-                              <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                                {employee.job.reportingManagerId.job.jobTitle}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          "No reporting manager"
-                        )}
-                      </span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Project Status</span>
-                      <span className="epv-field-val" style={{ color: "var(--g-700)" }}>Active Deployment</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab 4: Identity & Documents */}
-          {activeTab === "documents" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Statutory Identity & Tax Details</h3>
-                </div>
-
-                {isEditing ? (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">PAN Number</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.panNumber || ""}
-                        onChange={(e) => handleEditChange("panNumber", e.target.value.toUpperCase())}
-                        placeholder="ABCDE1234F"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Bank Name</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.bankName || ""}
-                        onChange={(e) => handleEditChange("bankName", e.target.value)}
-                        placeholder="e.g. HDFC Bank"
-                      />
-                    </div>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Account Number</label>
-                      <input
-                        className="epv-edit-input"
-                        value={editFormData.accountNumber || ""}
-                        onChange={(e) => handleEditChange("accountNumber", e.target.value)}
-                        placeholder="Bank Account Number"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">PAN Number</span>
-                      <span className="epv-field-val font-mono">{employee.taxDetails?.panNumber || "Not recorded"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Bank Name</span>
-                      <span className="epv-field-val">{employee.bankDetails?.bankName || "Not recorded"}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Account Number</span>
-                      <span className="epv-field-val font-mono">
-                        {employee.bankDetails?.accountNumber
-                          ? `••••••••${employee.bankDetails.accountNumber.slice(-4)}`
-                          : "Not recorded"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Uploaded Verification Documents</h3>
-                  <span className="epv-section-sub">
-                    {employee.documents?.length || 0} document(s) on file
-                  </span>
-                </div>
-
-                {!employee.documents || employee.documents.length === 0 ? (
-                  <p style={{ fontSize: "13px", color: "var(--muted)", padding: "12px 0" }}>
-                    No documents uploaded for this employee yet.
-                  </p>
-                ) : (
-                  employee.documents.map((doc) => (
-                    <div key={doc._id} className="epv-doc-row">
-                      <div className="epv-doc-left">
-                        <div className="epv-doc-icon">
-                          <IconDocument size={18} />
-                        </div>
-                        <div>
-                          <div className="epv-doc-title">{doc.title || doc.fileName}</div>
-                          <div className="epv-doc-meta">
-                            {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
-                          </div>
-                        </div>
-                      </div>
-
+            {hasFnFMenu && !isEditing ? (
+              <div className="epd-menu" ref={menuRef}>
+                <button type="button" className="epd-icon-btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More actions" onClick={() => setMenuOpen((v) => !v)}>
+                  <IconMore />
+                </button>
+                {menuOpen ? (
+                  <div className="epd-menu-list" role="menu">
+                    {employee.settlement ? (
                       <button
                         type="button"
-                        className="epv-doc-download-btn"
-                        disabled={downloadingDocId === doc._id}
-                        onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          navigate(`/admin/payroll?settlementId=${employee.settlement.id || employee.settlement._id}`);
+                        }}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                        <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
+                        View F&amp;F ({employee.settlement.status?.replace("_", " ")})
                       </button>
-                    </div>
-                  ))
-                )}
+                    ) : (
+                      <button type="button" role="menuitem" onClick={openFnFModal}>Initiate F&amp;F</button>
+                    )}
+                  </div>
+                ) : null}
               </div>
-            </div>
-          )}
+            ) : null}
+          </div>
+        </div>
 
-          {/* Tab 5: Salary Information (HR Only) */}
-          {activeTab === "salary" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Current Compensation Structure</h3>
-                  <span className="epv-section-sub">Visible strictly to HR Administrators</span>
-                </div>
-
-                {isEditing ? (
-                  <div style={{ maxWidth: "340px", marginBottom: "20px" }}>
-                    <div className="epv-edit-field-group">
-                      <label className="epv-edit-label">Monthly CTC (₹)</label>
-                      <input
-                        type="number"
-                        className="epv-edit-input"
-                        value={editFormData.monthlySalary || ""}
-                        onChange={(e) => handleEditChange("monthlySalary", e.target.value)}
-                        placeholder="e.g. 75000"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="epv-salary-strip">
-                    <div className="epv-salary-card">
-                      <span className="epv-salary-card-lbl">Monthly CTC</span>
-                      <span className="epv-salary-card-val highlight">
-                        {formatCurrency(employee.currentMonthlySalary)}
-                      </span>
-                    </div>
-                    <div className="epv-salary-card">
-                      <span className="epv-salary-card-lbl">Annual CTC</span>
-                      <span className="epv-salary-card-val">
-                        {formatCurrency(employee.currentMonthlySalary ? employee.currentMonthlySalary * 12 : 0)}
-                      </span>
-                    </div>
-                    <div className="epv-salary-card">
-                      <span className="epv-salary-card-lbl">Currency</span>
-                      <span className="epv-salary-card-val">INR (₹)</span>
-                    </div>
-                  </div>
-                )}
-
-                {employee.salaryComponents && !isEditing && (
-                  <div className="epv-field-grid-3">
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Basic Salary</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.basicSalary)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">House Rent Allowance (HRA)</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.houseRentAllowance)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Conveyance Allowance</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.conveyanceAllowance)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Special Allowance</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.specialAllowance)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Employer PF Contribution</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.employerProvidentFund)}</span>
-                    </div>
-                    <div className="epv-field-item">
-                      <span className="epv-field-lbl">Statutory Deductions</span>
-                      <span className="epv-field-val">{formatCurrency(employee.salaryComponents.otherDeductions)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab 6: Attendance & Leaves */}
-          {activeTab === "attendance" && (
-            <div className="epv-tab-body">
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Monthly Attendance Summary</h3>
-                  <span className="epv-section-sub">Current cycle attendance metrics</span>
-                </div>
-                <div className="epv-field-grid-3">
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Total Working Days</span>
-                    <span className="epv-field-val">{attendanceInfo.totalWorkingDays || 22} Days</span>
-                  </div>
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Present Days</span>
-                    <span className="epv-field-val highlight">{attendanceInfo.daysPresent || 21} Days</span>
-                  </div>
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Attendance Percentage</span>
-                    <span className="epv-field-val">{attendanceRate}%</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="epv-section-block">
-                <div className="epv-section-head">
-                  <h3 className="epv-section-title">Leave Balances</h3>
-                </div>
-                <div className="epv-field-grid-3">
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Casual Leave (CL)</span>
-                    <span className="epv-field-val">{attendanceInfo.leaveBalance?.casual || 8} Days Available</span>
-                  </div>
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Sick Leave (SL)</span>
-                    <span className="epv-field-val">{attendanceInfo.leaveBalance?.sick || 6} Days Available</span>
-                  </div>
-                  <div className="epv-field-item">
-                    <span className="epv-field-lbl">Earned / Privilege Leave</span>
-                    <span className="epv-field-val">{attendanceInfo.leaveBalance?.earned || 12} Days Available</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="epd-tiles">
+          <div className="epd-tile">
+            <span className="epd-tile-lbl">Department</span>
+            <span className="epd-tile-val"><IconBuilding size={15} /><span>{job.department || "—"}</span></span>
+          </div>
+          <div className="epd-tile">
+            <span className="epd-tile-lbl">Employment Type</span>
+            <span className="epd-tile-val"><IconBriefcase size={15} /><span>{job.employmentType || "—"}</span></span>
+          </div>
+          <div className="epd-tile">
+            <span className="epd-tile-lbl">Email</span>
+            <span className="epd-tile-val"><IconMail size={15} /><span title={employee.email}>{employee.email || "—"}</span></span>
+          </div>
+          <div className="epd-tile">
+            <span className="epd-tile-lbl">Phone Number</span>
+            <span className="epd-tile-val"><IconPhone size={15} /><span>{phone || "—"}</span></span>
+          </div>
+        </div>
       </section>
 
+      {/* ------------------------------- Tabs --------------------------------- */}
+      <div className="epd-tabs" role="tablist" aria-label="Employee detail sections" onKeyDown={onTabKeyDown}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            id={`epd-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls="epd-panel"
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            className={`epd-tab${activeTab === tab.id ? " is-active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+            {tab.id === "documents" && employee.documents?.length ? (
+              <span className="epd-tab-count">{employee.documents.length}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {isEditing ? (
+        <div className="epd-edit-banner" role="status">
+          <IconUsers size={15} />
+          <span>
+            Editing mode — changes in Personal Info, Work Info{canViewPayroll ? " and Payroll" : ""} are saved together.
+          </span>
+        </div>
+      ) : null}
+
+      <div id="epd-panel" role="tabpanel" aria-labelledby={`epd-tab-${activeTab}`} className="epd-panel">
+        {tabBodies[activeTab]()}
+      </div>
+
       {/* =========================================================================
-          F&F Initiation Modal (Preserved Operational Settlement Flow)
+          F&F Initiation Modal (preserved operational settlement flow)
           ========================================================================= */}
       {showFnFModal && (
         <div className="modal-overlay" onClick={() => setShowFnFModal(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px" }}>
             <div className="modal-header">
               <h2>Initiate Full & Final Settlement</h2>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setShowFnFModal(false)}
-                aria-label="Close modal"
-              >
+              <button type="button" className="btn-secondary btn-sm" onClick={() => setShowFnFModal(false)} aria-label="Close modal">
                 <IconClose size={14} />
               </button>
             </div>
@@ -1489,18 +1754,8 @@ export default function EmployeeProfile() {
               </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowFnFModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingFnF}
-                  className="btn-primary"
-                >
+                <button type="button" className="btn-secondary" onClick={() => setShowFnFModal(false)}>Cancel</button>
+                <button type="submit" disabled={submittingFnF} className="btn-primary">
                   {submittingFnF ? "Initiating..." : "Initiate Settlement"}
                 </button>
               </div>

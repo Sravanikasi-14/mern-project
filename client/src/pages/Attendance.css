@@ -200,15 +200,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f6f8f6;
+  background: var(--card, #fdfdfc);
   border: 1px solid var(--hair, #e6ede8);
-  border-radius: 10px;
-  padding: 7px 12px;
-  font-size: 13px;
+  border-radius: var(--r-md, 12px);
+  min-height: var(--hit, 40px);
+  height: var(--hit, 40px);
+  padding: 0 12px;
+  font-size: var(--fs-body-sm, 13px);
   color: var(--ink, #131a15);
   flex: 1;
   min-width: 0;
-  max-width: 320px;
+  max-width: 360px;
+  box-sizing: border-box;
 }
 
 .att-search-box input {

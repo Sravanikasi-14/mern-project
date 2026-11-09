@@ -598,29 +598,7 @@
   flex-wrap: wrap;
 }
 
-/* Toolbar Controls Bar (Reference 2) */
-.pm-cards-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.pm-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.pm-toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+/* People listing uses ModuleToolbar — retain view-toggle styles only */
 
 .pm-view-toggle {
   display: inline-flex;
@@ -692,9 +670,8 @@
 }
 
 .pm-emp-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow, 0 6px 20px rgba(0,0,0,0.07));
   border-color: rgba(29, 115, 71, 0.35);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
 }
 
 /* Card Header: Checkbox indicator, status pill */

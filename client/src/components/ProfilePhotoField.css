@@ -1,0 +1,75 @@
+.profile-photo-field {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.profile-photo-field__avatar {
+  flex: 0 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-900, #0d3a23);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(29, 115, 71, 0.2);
+}
+
+.profile-photo-field__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-photo-field__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-photo-field__input {
+  display: none;
+}
+
+.profile-photo-field__btn {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: var(--g-800, #155a37);
+  color: #ffffff;
+}
+
+.profile-photo-field__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-photo-field__btn--ghost {
+  background: #ffffff;
+  color: var(--ink, #1f2937);
+  border: 1px solid var(--hair, #e6ede8);
+}
+
+.profile-photo-field__hint,
+.profile-photo-field__msg {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+
+.profile-photo-field__msg {
+  color: #047857;
+}
+
+.profile-photo-field__msg--error {
+  color: #b91c1c;
+}
+

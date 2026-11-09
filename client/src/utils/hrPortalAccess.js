@@ -30,6 +30,7 @@ export const HR_PORTAL_MODULES = Object.freeze([
   { id: "hr-management", label: "HR Management", path: "/admin/hr-management", companyAdminOnly: true },
   { id: "people", label: "Employees", path: "/admin", permission: "people.view" },
   { id: "attendance", label: "Attendance", path: "/admin/attendance", permission: "attendance.view" },
+  { id: "live-tracking", label: "Live Tracking", path: "/admin/live-tracking", permission: "attendance.view" },
   { id: "leave", label: "Leave", path: "/admin/leave", permission: "leave.view" },
   { id: "payroll", label: "Payroll", path: "/admin/payroll", permission: "payroll.view" },
   { id: "settlements", label: "Settlements", path: "/admin/payroll?tab=ff_settlements", permission: "settlements.view" },
@@ -88,7 +89,7 @@ export function permissionForAdminPath(pathname = "", search = "") {
   if (path.startsWith("/admin/payroll")) {
     return isSettlementsLocation(path, search) ? "settlements.view" : "payroll.view";
   }
-  if (path.startsWith("/admin/attendance")) return "attendance.view";
+  if (path.startsWith("/admin/attendance") || path.startsWith("/admin/live-tracking")) return "attendance.view";
   if (path.startsWith("/admin/leave")) return "leave.view";
   if (path.startsWith("/admin/hiring") || path.startsWith("/admin/offers") || path.startsWith("/admin/onboarding")) {
     return "hiring.view";

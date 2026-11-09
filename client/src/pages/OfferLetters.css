@@ -67,11 +67,12 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
+  min-height: var(--hit, 40px);
+  height: var(--hit, 40px);
   padding: 0 16px;
-  border-radius: 10px;
-  font-size: 13.5px;
-  font-weight: 600;
+  border-radius: var(--r-md, 12px);
+  font-size: var(--fs-emphasis, 13px);
+  font-weight: var(--fw-emphasis, 600);
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -106,17 +107,18 @@
 }
 
 .ol-btn-sm {
-  height: 32px;
+  min-height: 34px;
+  height: 34px;
   padding: 0 10px;
   font-size: 12.5px;
-  border-radius: 8px;
+  border-radius: var(--r-md, 12px);
 }
 
 .ol-btn-icon {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md, 12px);
   background: transparent;
   border: 1px solid transparent;
   color: var(--ol-muted);
@@ -243,87 +245,34 @@
   color: #6b7280;
 }
 
-/* —— Toolbar —— */
-.ol-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.ol-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  flex: 1;
-}
-
-.ol-search {
-  position: relative;
-  min-width: 240px;
-  flex: 0 1 280px;
-}
-
-.ol-search input {
-  width: 100%;
-  height: 38px;
-  padding: 0 12px 0 36px;
-  border: 1px solid var(--ol-line);
-  border-radius: 10px;
-  background: #fff;
-  font-size: 13.5px;
-  color: var(--ol-ink);
-  outline: none;
-  box-sizing: border-box;
-}
-
-.ol-search input::placeholder {
-  color: var(--ol-faint);
-}
-
-.ol-search input:focus {
-  border-color: #c7cdd6;
-  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.04);
-}
-
-.ol-search-icon {
-  position: absolute;
-  left: 11px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--ol-faint);
-  display: flex;
-  pointer-events: none;
-}
-
+/* —— Toolbar —— pages use ModuleToolbar; keep ol-select for filter panels only —— */
 .ol-select {
-  height: 38px;
+  height: 40px;
   padding: 0 32px 0 12px;
   border: 1px solid var(--ol-line);
-  border-radius: 10px;
+  border-radius: var(--r-md, 12px);
   background: #fff
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")
     no-repeat right 10px center;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--ol-ink);
   cursor: pointer;
   appearance: none;
   outline: none;
+  box-sizing: border-box;
 }
 
 .ol-select:focus {
-  border-color: #c7cdd6;
+  border-color: var(--g-600, #27865a);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.15);
 }
 
 /* —— Table card —— */
 .ol-table-card {
   background: var(--ol-card);
   border: 1px solid var(--ol-line);
-  border-radius: 14px;
-  box-shadow: var(--ol-shadow);
+  border-radius: var(--r-md, 12px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
   overflow: hidden;
 }
 
@@ -341,12 +290,12 @@
 
 .ol-table thead th {
   padding: 12px 16px;
-  font-size: 11px;
+  font-size: var(--fs-label, 11px);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ol-faint);
-  background: #fafafa;
+  color: var(--muted, #646d67);
+  background: var(--panel, #f5f6f5);
   border-bottom: 1px solid var(--ol-line);
   white-space: nowrap;
 }

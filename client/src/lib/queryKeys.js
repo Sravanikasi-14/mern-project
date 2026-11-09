@@ -53,6 +53,7 @@ export const qk = {
   leaveRequests: (params = {}) => ["admin", "leave-requests", params],
   leavePoliciesActive: () => ["admin", "leave-policies-active"],
   attendanceOverview: (params = {}) => ["admin", "attendance-overview", params],
+  trackingSessions: (params = {}) => ["admin", "tracking-sessions", params],
   adminTasks: (params = {}) => ["admin", "tasks", params],
   adminImpactLeaderboard: (params = {}) => ["admin", "impact-leaderboard", params],
   adminImpactTransactions: (params = {}) => ["admin", "impact-transactions", params],
@@ -79,6 +80,7 @@ export function invalidateAttendance(client) {
     client.invalidateQueries({ queryKey: ["employee", "attendance-history"] }),
     client.invalidateQueries({ queryKey: ["employee", "tracking-status"] }),
     client.invalidateQueries({ queryKey: ["admin", "attendance-overview"] }),
+    client.invalidateQueries({ queryKey: ["admin", "tracking-sessions"] }),
     client.invalidateQueries({ queryKey: ["admin", "dashboard"] }),
   ]);
 }

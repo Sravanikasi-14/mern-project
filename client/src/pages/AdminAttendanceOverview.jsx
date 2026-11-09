@@ -1,20 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
-import AttendanceMap from "../components/AttendanceMap";
+import DateRangePicker from "../components/DateRangePicker";
 import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
 import ModuleToolbar from "../components/ModuleToolbar";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
-import {
-  IconClose,
-  IconClipboardList,
-  IconAlertCircle,
-  IconCheck,
-  IconClock,
-} from "../components/Icons";
+import { IconClipboardList } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { useAttendanceOverviewQuery } from "../hooks/useAdminQueries";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
@@ -28,14 +22,6 @@ const FILTER_TYPES = {
   LIVE_TRACKING: "LIVE_TRACKING",
 };
 
-const FILTER_LABELS = {
-  [FILTER_TYPES.TOTAL_STAFF]: "All Staff",
-  [FILTER_TYPES.PRESENT]: "Present Today",
-  [FILTER_TYPES.CHECKED_IN]: "On Duty (Checked In)",
-  [FILTER_TYPES.CHECKED_OUT]: "Completed Shift",
-  [FILTER_TYPES.LIVE_TRACKING]: "Live Field GPS",
-};
-
 export default function AdminAttendanceOverview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -43,45 +29,41 @@ export default function AdminAttendanceOverview() {
   const timeZone = resolveCompanyTimezone(company);
 
   const [error, setError] = useState("");
-  const [date, setDate] = useState(() => searchParams.get("date") || getCompanyBusinessDate(new Date(), timeZone));
+  const todayBusinessDate = getCompanyBusinessDate(new Date(), timeZone);
+  const initialDate = searchParams.get("date") || todayBusinessDate;
+  const [startDate, setStartDate] = useState(initialDate);
+  const [endDate, setEndDate] = useState(initialDate);
+  const isRangeMode = Boolean(startDate && endDate && startDate !== endDate);
   const [department, setDepartment] = useState("ALL");
   const [tableSearch, setTableSearch] = useState("");
   const initialFilter = searchParams.get("filter") === "PRESENT" ? FILTER_TYPES.PRESENT : FILTER_TYPES.TOTAL_STAFF;
   const [activeFilter, setActiveFilter] = useState(initialFilter);
-  // Overview tab removed — records is the unified attendance workspace.
-  // Legacy ?tab=overview bookmarks resolve to records.
-  const requestedTab = (searchParams.get("tab") || "records").toLowerCase();
-  const [section, setSection] = useState(
-    requestedTab === "tracking" ? "tracking" : "records"
-  );
 
+  // Live Tracking moved to its own page. Old ?tab=tracking links redirect there.
+  const requestedTab = (searchParams.get("tab") || "").toLowerCase();
+  const redirectToTracking = requestedTab === "tracking";
+
+  // Legacy ?tab=overview / ?tab=records bookmarks: drop the obsolete param.
   useEffect(() => {
-    const tab = (searchParams.get("tab") || "records").toLowerCase();
-    const next = tab === "tracking" ? "tracking" : "records";
-    setSection(next);
-    if (tab === "overview") {
+    if (requestedTab === "overview" || requestedTab === "records") {
       setSearchParams(
         (prev) => {
           const nextParams = new URLSearchParams(prev);
-          nextParams.set("tab", "records");
+          nextParams.delete("tab");
           return nextParams;
         },
         { replace: true }
       );
     }
-  }, [searchParams, setSearchParams]);
+  }, [requestedTab, setSearchParams]);
 
-  const setAttendanceSection = (nextSection) => {
-    setSection(nextSection);
-    setSearchParams(
-      (prev) => {
-        const nextParams = new URLSearchParams(prev);
-        nextParams.set("tab", nextSection);
-        return nextParams;
-      },
-      { replace: true }
-    );
+  const handleRangeChange = ({ startDate: s, endDate: e }) => {
+    const nextStart = s || todayBusinessDate;
+    const nextEnd = e || nextStart;
+    setStartDate(nextStart);
+    setEndDate(nextEnd);
   };
+
   const [attendancePage, setAttendancePage] = useState(1);
   const [attendancePageSize, setAttendancePageSize] = useState(25);
 
@@ -90,8 +72,9 @@ export default function AdminAttendanceOverview() {
   const [drawerIndex, setDrawerIndex] = useState(-1);
 
   const attendanceQuery = useAttendanceOverviewQuery(
-    { date, department },
+    { startDate, endDate, department },
     {
+      enabled: !redirectToTracking,
       // Live tracking needs refresh, but 30s fought staleTime and hammered the full roster.
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
@@ -179,7 +162,7 @@ export default function AdminAttendanceOverview() {
 
   useEffect(() => {
     setAttendancePage(1);
-  }, [tableSearch, activeFilter, date, department]);
+  }, [tableSearch, activeFilter, startDate, endDate, department]);
 
   const totalAttendanceEmployees = filteredEmployees.length;
   const totalAttendancePages = Math.ceil((totalAttendanceEmployees || 1) / attendancePageSize);
@@ -217,50 +200,58 @@ export default function AdminAttendanceOverview() {
     };
   }, [overviewData.summary, overviewData.employees]);
 
-  // Derive real attendance exceptions and active field tasks
-  const exceptionsList = useMemo(() => {
-    const list = overviewData.employees || [];
-    const alerts = [];
+  // Multi-day mode: per-day attendance records returned by the server for the selected range.
+  const rangeRecords = useMemo(
+    () => (isRangeMode ? overviewData.rangeRecords || [] : []),
+    [isRangeMode, overviewData.rangeRecords]
+  );
 
-    for (const emp of list) {
-      if (emp.isTrackingActive) {
-        alerts.push({
-          id: `track-${emp.employeeId}`,
-          employee: emp,
-          type: "TRACKING",
-          title: "Live GPS Active",
-          desc: `${emp.fullName} has an active GPS field tracking session.`,
-          time: "Live Now",
-        });
-      }
-      if (emp.checkInTime) {
-        const inDate = new Date(emp.checkInTime);
-        const inHours = inDate.getHours() + inDate.getMinutes() / 60;
-        if (inHours > 9.5) {
-          alerts.push({
-            id: `late-${emp.employeeId}`,
-            employee: emp,
-            type: "LATE",
-            title: "Late Arrival",
-            desc: `${emp.fullName} clocked in at ${inDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`,
-            time: "Today",
-          });
-        }
-      }
-      if (emp.attendanceStatus === "ON_LEAVE") {
-        alerts.push({
-          id: `leave-${emp.employeeId}`,
-          employee: emp,
-          type: "LEAVE",
-          title: "On Approved Leave",
-          desc: `${emp.fullName} is scheduled on leave today.`,
-          time: "Full Day",
-        });
-      }
+  const filteredRangeRecords = useMemo(() => {
+    const q = tableSearch.trim().toLowerCase();
+    if (!q) return rangeRecords;
+    return rangeRecords.filter(
+      (r) =>
+        (r.fullName || "").toLowerCase().includes(q) ||
+        (r.employeeCode || "").toLowerCase().includes(q) ||
+        (r.department || "").toLowerCase().includes(q)
+    );
+  }, [rangeRecords, tableSearch]);
+
+  const totalRangePages = Math.ceil((filteredRangeRecords.length || 1) / attendancePageSize);
+  const paginatedRangeRecords = useMemo(() => {
+    const start = (attendancePage - 1) * attendancePageSize;
+    return filteredRangeRecords.slice(start, start + attendancePageSize);
+  }, [filteredRangeRecords, attendancePage, attendancePageSize]);
+
+  // Drawer navigation in range mode walks unique employees, not individual day rows.
+  const rangeEmployees = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const r of filteredRangeRecords) {
+      const id = String(r.employeeId);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      list.push({
+        employeeId: r.employeeId,
+        employeeCode: r.employeeCode,
+        fullName: r.fullName,
+        department: r.department,
+        jobTitle: r.jobTitle,
+      });
     }
+    return list;
+  }, [filteredRangeRecords]);
 
-    return alerts.slice(0, 5);
-  }, [overviewData.employees]);
+  const drawerEmployees = isRangeMode ? rangeEmployees : filteredEmployees;
+
+  const fmtClock = (value) =>
+    value ? new Date(value).toLocaleTimeString([], { timeZone, hour: "2-digit", minute: "2-digit" }) : "—";
+
+  const handleOpenRangeDrawer = (record) => {
+    const idx = rangeEmployees.findIndex((e) => String(e.employeeId) === String(record.employeeId));
+    setDrawerEmployeeId(record.employeeId);
+    setDrawerIndex(Math.max(idx, 0));
+  };
 
   // Handle opening the details drawer
   const handleOpenDrawer = (emp, idx) => {
@@ -269,9 +260,9 @@ export default function AdminAttendanceOverview() {
   };
 
   const handleSelectDrawerIndex = (newIdx) => {
-    if (newIdx >= 0 && newIdx < filteredEmployees.length) {
+    if (newIdx >= 0 && newIdx < drawerEmployees.length) {
       setDrawerIndex(newIdx);
-      setDrawerEmployeeId(filteredEmployees[newIdx].employeeId);
+      setDrawerEmployeeId(drawerEmployees[newIdx].employeeId);
     }
   };
 
@@ -319,6 +310,16 @@ export default function AdminAttendanceOverview() {
     },
   ];
 
+  // Per-day status chips describe a single date; in range mode only the Live GPS shortcut stays.
+  const visibleCards = isRangeMode ? cards.filter((c) => c.key === FILTER_TYPES.LIVE_TRACKING) : cards;
+
+  if (redirectToTracking) {
+    const rest = new URLSearchParams(searchParams);
+    rest.delete("tab");
+    const qs = rest.toString();
+    return <Navigate to={`/admin/live-tracking${qs ? `?${qs}` : ""}`} replace />;
+  }
+
   return (
     <div className="attendance-page-container">
       {/* Page Header */}
@@ -331,32 +332,23 @@ export default function AdminAttendanceOverview() {
         }
       />
 
-      <div className="module-tabs" role="tablist" aria-label="Attendance sections">
-        <button type="button" className={`module-tab ${section === "records" ? "is-active" : ""}`} onClick={() => setAttendanceSection("records")}>
-          Attendance
-        </button>
-        <button type="button" className={`module-tab ${section === "tracking" ? "is-active" : ""}`} onClick={() => setAttendanceSection("tracking")}>
-          Live Tracking
-        </button>
-      </div>
-
       <ModuleToolbar
         searchValue={tableSearch}
         onSearchChange={(e) => setTableSearch(e.target.value)}
         searchPlaceholder="Search name, code, or department..."
         searchAriaLabel="Search employees"
         leading={
-          <label className="module-toolbar-field">
-            <span>Date</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="module-toolbar-control"
-            />
-          </label>
+          <DateRangePicker
+            label=""
+            placeholder="Select dates"
+            className="module-toolbar-drp"
+            startDate={startDate}
+            endDate={endDate}
+            maxDate={todayBusinessDate}
+            onChange={handleRangeChange}
+          />
         }
-        actions={
+        secondaryActions={
           <button
             type="button"
             className="btn-secondary"
@@ -386,8 +378,12 @@ export default function AdminAttendanceOverview() {
         }
       />
 
-      {section === "records" && (
-      <>
+      {error && (
+        <div className="error" role="alert" style={{ marginBottom: 14 }}>
+          {error}
+        </div>
+      )}
+
       {/* Interactive Compact Attendance Metrics Strip */}
       <div
         style={{
@@ -406,15 +402,24 @@ export default function AdminAttendanceOverview() {
         <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", marginRight: 4 }}>
           Status:
         </span>
-        {cards.map((c) => {
-          const isSelected = activeFilter === c.key;
+        {isRangeMode && (
+          <span style={{ fontSize: 12, color: "var(--muted)", marginRight: 6 }}>
+            {startDate} to {endDate} · {rangeRecords.length} record{rangeRecords.length === 1 ? "" : "s"}
+          </span>
+        )}
+        {visibleCards.map((c) => {
+          const isLiveCard = c.key === FILTER_TYPES.LIVE_TRACKING;
+          const isSelected = !isLiveCard && activeFilter === c.key;
           return (
             <button
               key={c.key}
               type="button"
               onClick={() => {
+                if (isLiveCard) {
+                  navigate("/admin/live-tracking");
+                  return;
+                }
                 setActiveFilter(c.key);
-                if (c.key === FILTER_TYPES.LIVE_TRACKING) setAttendanceSection("tracking");
               }}
               style={{
                 display: "inline-flex",
@@ -430,7 +435,7 @@ export default function AdminAttendanceOverview() {
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
-              title={`Filter by ${c.label}`}
+              title={isLiveCard ? "Open Live Tracking" : `Filter by ${c.label}`}
             >
               <span>{c.label}:</span>
               <strong style={{ color: isSelected ? "var(--g-950, #0d3a23)" : "var(--ink, #131a15)" }}>
@@ -452,144 +457,8 @@ export default function AdminAttendanceOverview() {
         })}
       </div>
 
-      </>
-      )}
 
-      {section === "tracking" && (
-      <div
-        className="att-tracking-layout"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.7fr) minmax(280px, 1fr)",
-          gap: 16,
-          marginBottom: 20,
-          alignItems: "stretch",
-        }}
-      >
-        {/* Left: Projects & Office Attendance Map */}
-        <div
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: 10,
-            padding: "16px 18px",
-            boxShadow: "var(--shadow-sm)",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-              Employee Locations
-            </h3>
-            <span
-              style={{
-                fontSize: 11.5,
-                fontWeight: 600,
-                color: "var(--g-800, #155a37)",
-                background: "var(--g-100, #e3f2e9)",
-                padding: "2px 8px",
-                borderRadius: 10,
-              }}
-            >
-              {overviewData.summary?.withLocationCount || 0} Located
-            </span>
-          </div>
-
-          <div style={{ flex: 1, minHeight: 520, borderRadius: 8, overflow: "hidden", border: "1px solid var(--hair)" }}>
-            <AttendanceMap
-              employees={filteredEmployees}
-              filterLabel={activeFilter === FILTER_TYPES.TOTAL_STAFF ? "" : FILTER_LABELS[activeFilter]}
-              height={520}
-            />
-          </div>
-        </div>
-
-        {/* Right: Exceptions & Live Activity Log */}
-        <div
-          style={{
-            background: "var(--card, #ffffff)",
-            border: "1px solid var(--hair, #e6ede8)",
-            borderRadius: 10,
-            padding: "16px 18px",
-            boxShadow: "var(--shadow-sm)",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-              Exceptions & Activity
-            </h3>
-            <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 500 }}>
-              {exceptionsList.length} items
-            </span>
-          </div>
-
-          {exceptionsList.length === 0 ? (
-            <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#eefaf2", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
-                <IconCheck size={20} />
-              </div>
-              <p style={{ margin: 0, fontWeight: 600, color: "var(--ink)" }}>No attendance exceptions today</p>
-              <p style={{ margin: "4px 0 0", fontSize: 12 }}>All clocked-in staff are on schedule.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", maxHeight: 380 }}>
-              {exceptionsList.map((alert) => (
-                <div
-                  key={alert.id}
-                  onClick={() => {
-                    const absoluteIdx = filteredEmployees.findIndex(
-                      (e) => String(e.employeeId) === String(alert.employee.employeeId)
-                    );
-                    handleOpenDrawer(alert.employee, absoluteIdx >= 0 ? absoluteIdx : 0);
-                  }}
-                  style={{
-                    padding: "12px 14px",
-                    background: "#fbfdfc",
-                    border: "1px solid var(--hair, #e6ede8)",
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "rgba(29, 115, 71, 0.3)";
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--hair, #e6ede8)";
-                    e.currentTarget.style.transform = "none";
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span
-                      style={{
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: alert.type === "TRACKING" ? "#16a34a" : alert.type === "LATE" ? "#b45309" : "#0d9488",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {alert.title}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--faint)" }}>{alert.time}</span>
-                  </div>
-                  <p style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
-                    {alert.desc}
-                  </p>
-                  <span style={{ fontSize: 11.5, color: "var(--g-700, #1d7347)", fontWeight: 600 }}>
-                    Inspect Details →
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      )}
-
-      {section === "records" && (
+      {!isRangeMode && (
       <div
         style={{
           background: "var(--card, #ffffff)",
@@ -617,18 +486,18 @@ export default function AdminAttendanceOverview() {
 
         {/* Table Content */}
         {loading && overviewData.employees.length === 0 ? (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="data-table-container">
+            <table className="data-table">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--hair)", textAlign: "left", color: "var(--muted)" }}>
-                  <th style={{ padding: "10px 14px" }}>Employee</th>
-                  <th style={{ padding: "10px 14px" }}>Status</th>
-                  <th style={{ padding: "10px 14px" }}>Punch In</th>
-                  <th style={{ padding: "10px 14px" }}>Punch Out</th>
-                  <th style={{ padding: "10px 14px" }}>Working Hours</th>
-                  <th style={{ padding: "10px 14px" }}>GPS Location</th>
-                  <th style={{ padding: "10px 14px" }}>Live Tracking</th>
-                  <th style={{ padding: "10px 14px", textAlign: "right" }}>Actions</th>
+                <tr>
+                  <th>Employee</th>
+                  <th>Status</th>
+                  <th>Punch In</th>
+                  <th>Punch Out</th>
+                  <th>Working Hours</th>
+                  <th>GPS Location</th>
+                  <th>Live Tracking</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -712,18 +581,18 @@ export default function AdminAttendanceOverview() {
               );
             })}
           </div>
-          <div className="att-desktop-table" style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="att-desktop-table data-table-container">
+            <table className="data-table">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--hair, #e6ede8)", textAlign: "left", color: "var(--muted, #646d67)" }}>
-                  <th style={{ padding: "12px 14px" }}>Employee</th>
-                  <th style={{ padding: "12px 14px" }}>Status</th>
-                  <th style={{ padding: "12px 14px" }}>Punch In</th>
-                  <th style={{ padding: "12px 14px" }}>Punch Out</th>
-                  <th style={{ padding: "12px 14px" }}>Working Hours</th>
-                  <th style={{ padding: "12px 14px" }}>GPS Location</th>
-                  <th style={{ padding: "12px 14px" }}>Live Tracking</th>
-                  <th style={{ padding: "12px 14px", textAlign: "right" }}>Details</th>
+                <tr>
+                  <th>Employee</th>
+                  <th>Status</th>
+                  <th>Punch In</th>
+                  <th>Punch Out</th>
+                  <th>Working Hours</th>
+                  <th>GPS Location</th>
+                  <th>Live Tracking</th>
+                  <th style={{ textAlign: "right" }}>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -864,11 +733,140 @@ export default function AdminAttendanceOverview() {
       </div>
       )}
 
+      {isRangeMode && (
+        <div
+          style={{
+            background: "var(--card, #ffffff)",
+            border: "1px solid var(--hair, #e6ede8)",
+            borderRadius: 10,
+            padding: "16px 18px",
+            boxShadow: "0 1px 3px rgba(19, 26, 21, 0.04)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 14,
+              flexWrap: "wrap",
+              gap: 10,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
+              Attendance Records ({filteredRangeRecords.length})
+            </h3>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              {startDate} to {endDate}
+            </span>
+          </div>
+
+          {loading ? (
+            <div className="data-table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Employee</th>
+                    <th>Clock In</th>
+                    <th>Clock Out</th>
+                    <th>Working Hours</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <TableSkeletonRows rows={6} cols={6} />
+                </tbody>
+              </table>
+            </div>
+          ) : filteredRangeRecords.length === 0 ? (
+            <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13.5 }}>
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  background: "var(--g-100, #e3f2e9)",
+                  color: "var(--g-800, #155a37)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 12px",
+                }}
+              >
+                <IconClipboardList size={22} />
+              </div>
+              <div style={{ fontWeight: 700, color: "var(--ink)", fontSize: 15, marginBottom: 4 }}>
+                No attendance records in this range
+              </div>
+              <p style={{ margin: 0, fontSize: 13 }}>Try a different date range, department, or search.</p>
+            </div>
+          ) : (
+            <div className="data-table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Employee</th>
+                    <th>Clock In</th>
+                    <th>Clock Out</th>
+                    <th>Working Hours</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedRangeRecords.map((r) => (
+                    <tr
+                      key={String(r._id || `${r.employeeId}-${r.date}`)}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => handleOpenRangeDrawer(r)}
+                    >
+                      <td style={{ padding: "12px 14px", fontWeight: 500, color: "var(--ink)" }}>{r.date}</td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ fontWeight: 600, color: "var(--ink)" }}>{r.fullName || "—"}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                          {r.employeeCode} · {r.department}
+                        </div>
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>{fmtClock(r.checkIn)}</td>
+                      <td style={{ padding: "12px 14px" }}>{fmtClock(r.checkOut)}</td>
+                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "var(--g-800, #155a37)" }}>
+                        {r.workingHours && r.workingHours !== "--" ? r.workingHours : "—"}
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <StatusBadge
+                          status={r.checkIn && !r.checkOut && r.status !== "ON_LEAVE" ? "CHECKED_IN" : r.status}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <Pagination
+            currentPage={attendancePage}
+            totalPages={totalRangePages}
+            totalItems={filteredRangeRecords.length}
+            pageSize={attendancePageSize}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={(p) => setAttendancePage(p)}
+            onPageSizeChange={(s) => {
+              setAttendancePageSize(s);
+              setAttendancePage(1);
+            }}
+            itemLabel="records"
+          />
+        </div>
+      )}
+
       {/* Part 4: HR Employee Attendance Details Drawer (Overlay) */}
       {drawerEmployeeId && (
         <EmployeeAttendanceDrawer
           employeeId={drawerEmployeeId}
-          employeeList={filteredEmployees}
+          employeeList={drawerEmployees}
           currentIndex={drawerIndex}
           onSelectEmployee={handleSelectDrawerIndex}
           onClose={() => {

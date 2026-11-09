@@ -245,27 +245,28 @@ export default function AdminImpactPoints() {
       <AppHeader
         title="Impact Points"
         hideLogout={true}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        actions={
           <SoftRefresh
             active={Boolean(
               (activeTab === "LEADERBOARD" && leaderboardQuery.isFetching && leaderboard.length > 0) ||
                 (activeTab === "LEDGER" && ledgerQuery.isFetching && transactions.length > 0)
             )}
           />
-          {canManageImpact ? (
-          <button
-            className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
-            onClick={toggleRecognizePanel}
-            style={{ whiteSpace: "nowrap" }}
-          >
-            {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
-          </button>
+        }
+        nav={
+          canManageImpact ? (
+            <button
+              className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
+              onClick={toggleRecognizePanel}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
+            </button>
           ) : (
             <AccessRestrictedInline />
-          )}
-        </div>
-      </AppHeader>
+          )
+        }
+      />
 
       {/* Notifications */}
       {(error || successMsg) && (

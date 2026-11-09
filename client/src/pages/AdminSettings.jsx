@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
+import ProfilePhotoField from "../components/ProfilePhotoField";
 import PoliciesSettingsNav from "../components/PoliciesSettingsNav";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -23,7 +24,7 @@ import SignatureCapture, { isSignatureValueComplete } from "../components/Signat
 import { CompanyAdminEmploymentCard } from "../components/PortalEmploymentProfileForm";
 
 const SETTINGS_TABS = [
-  { id: "profile", label: "Profile", icon: IconUser, badge: null },
+  { id: "profile", label: "My Profile", icon: IconUser, badge: null },
   { id: "security", label: "Security", icon: IconShield, badge: null },
   { id: "preferences", label: "Preferences", icon: IconSettings, badge: null },
   { id: "company", label: "Workspace", icon: IconBriefcase, badge: null },
@@ -33,7 +34,11 @@ const SETTINGS_TABS = [
 export default function AdminSettings() {
   const { user, company, restoreSession, updateCompanyBranding } = useAuth();
   const canEditSettings = hrPortalAllows(user, company, "settings.edit");
-  const [activeTab, setActiveTab] = useState("profile");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get("tab");
+    return SETTINGS_TABS.some((tab) => tab.id === requested) ? requested : "profile";
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -109,7 +114,9 @@ export default function AdminSettings() {
         setWeeklyDigest(user.preferences.weeklyDigest !== false);
       }
     }
-  }, [user]);
+    // Photo changes replace the user object; only resync form fields when profile data changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.fullName, user?.name, user?.phoneNumber, user?.preferences]);
 
   // Load Company and Email Settings
   const loadInitialData = async () => {
@@ -637,8 +644,10 @@ export default function AdminSettings() {
           {activeTab === "profile" && (
             <div>
               <div className="settings-panel-head">
-                <h2 className="settings-panel-title">Profile</h2>
+                <h2 className="settings-panel-title">My Profile</h2>
               </div>
+
+              <ProfilePhotoField />
 
               <form onSubmit={handleSaveProfile}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
@@ -721,7 +730,11 @@ export default function AdminSettings() {
                           color: "var(--g-800, #155a37)",
                         }}
                       >
-                        HR Administrator
+                        {user?.role === "COMPANY_ADMIN"
+                          ? "Company Admin"
+                          : user?.role === "HR_ADMIN"
+                            ? "HR Admin"
+                            : user?.role || "—"}
                       </span>
                       <span
                         style={{

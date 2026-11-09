@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AppModal from "../AppModal";
+import ModuleToolbar from "../ModuleToolbar";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { hrPortalAllows } from "../../utils/hrPortalAccess";
@@ -126,14 +127,30 @@ export default function DesignationsSection({ embedded = false }) {
         <span>Inactive: <strong>{loading ? "…" : rows.filter((row) => !row.isActive).length}</strong></span>
       </div>
 
-      <div className="ow-toolbar">
-        <input className="org-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search job titles" aria-label="Search job titles" />
-        <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Job title status">
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="all">All</option>
-        </select>
-      </div>
+      <ModuleToolbar
+        className="ow-module-toolbar"
+        searchValue={query}
+        onSearchChange={(event) => setQuery(event.target.value)}
+        searchPlaceholder="Search job titles"
+        searchAriaLabel="Search job titles"
+        filterCount={status !== "active" ? 1 : 0}
+        onFiltersClear={() => setStatus("active")}
+        filters={
+          <label className="module-toolbar-filter-field">
+            Status
+            <select
+              className="filter-select"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              aria-label="Job title status"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+        }
+      />
 
       {notice ? <p className="ow-feedback" role="status">{notice}</p> : null}
       {error ? (
