@@ -1,0 +1,788 @@
+﻿<!DOCTYPE html>
+
+<html class="scroll-smooth" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>HRMS — Enterprise-grade Human Resource Management</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Public+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "secondary": "#4d6458",
+            "on-surface-variant": "#58615b",
+            "on-tertiary-fixed": "#034a51",
+            "tertiary-container": "#b8f2f9",
+            "secondary-dim": "#42584c",
+            "on-tertiary-fixed-variant": "#2d676e",
+            "on-secondary-fixed-variant": "#4a6054",
+            "on-primary": "#e6ffef",
+            "tertiary-fixed": "#b8f2f9",
+            "on-secondary-container": "#40574b",
+            "surface-variant": "#dbe5dd",
+            "inverse-primary": "#bfffde",
+            "outline": "#737d76",
+            "error": "#a83836",
+            "surface-container-lowest": "#ffffff",
+            "error-dim": "#67040d",
+            "primary-container": "#b1f0d0",
+            "on-error-container": "#6e0a12",
+            "secondary-fixed": "#cfe9d9",
+            "tertiary": "#2d676e",
+            "on-primary-fixed": "#024932",
+            "surface-container": "#e8f0e9",
+            "tertiary-dim": "#1e5b61",
+            "on-surface": "#2b352f",
+            "secondary-container": "#cfe9d9",
+            "error-container": "#fa746f",
+            "on-secondary-fixed": "#2e4439",
+            "on-tertiary-container": "#215d63",
+            "on-primary-container": "#1f5c44",
+            "surface-dim": "#d2ddd5",
+            "inverse-surface": "#0b0f0d",
+            "surface-tint": "#2e6a50",
+            "outline-variant": "#aab4ad",
+            "tertiary-fixed-dim": "#aae4eb",
+            "surface-container-highest": "#dbe5dd",
+            "surface-bright": "#f7faf5",
+            "on-tertiary": "#e9fdff",
+            "background": "#f7faf5",
+            "primary-fixed-dim": "#a4e2c2",
+            "surface": "#f7faf5",
+            "primary-fixed": "#b1f0d0",
+            "primary": "#2e6a50",
+            "on-background": "#2b352f",
+            "surface-container-low": "#eff5ef",
+            "on-error": "#fff7f6",
+            "on-primary-fixed-variant": "#2a664d",
+            "surface-container-high": "#e2eae3",
+            "secondary-fixed-dim": "#c1dacb",
+            "on-secondary": "#e6ffef",
+            "primary-dim": "#205d45",
+            "inverse-on-surface": "#9a9e9a"
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "1rem",
+            "3xl": "1.5rem",
+            "full": "9999px"
+          },
+          fontFamily: {
+            headline: ["Plus Jakarta Sans", "sans-serif"],
+            display: ["Plus Jakarta Sans", "sans-serif"],
+            body: ["Plus Jakarta Sans", "sans-serif"],
+            label: ["Public Sans", "sans-serif"]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      display: inline-block;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    body {
+      -webkit-tap-highlight-color: transparent;
+      background-color: #f7faf5;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body antialiased selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden min-h-screen">
+<!-- Mobile Layout Container: Strictly 390px Max Width Centered -->
+<div class="w-full max-w-[390px] mx-auto bg-background min-h-screen flex flex-col relative overflow-hidden shadow-2xl">
+<!-- TopAppBar Component (from Shared JSON) -->
+<header class="bg-surface/95 dark:bg-inverse-surface/95 backdrop-blur-md text-primary dark:text-inverse-primary docked full-width top-0 sticky z-50 border-b border-outline-variant/30 dark:border-outline/20 shadow-sm">
+<div class="flex justify-between items-center w-full px-5 py-3.5 max-w-screen-md mx-auto">
+<div class="flex items-center gap-3">
+<button aria-label="Open Navigation Menu" class="w-10 h-10 flex items-center justify-center rounded-xl bg-surface-container-high hover:bg-surface-variant text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[22px]">menu</span>
+</button>
+<span class="font-headline font-bold text-xl tracking-tight text-on-surface dark:text-inverse-on-surface">HRMS</span>
+</div>
+<button class="bg-primary text-on-primary text-xs font-semibold px-4 py-2.5 rounded-full hover:bg-primary-dim active:scale-95 transition-all shadow-sm" type="button">
+          Get Started
+        </button>
+</div>
+</header>
+<main class="flex-1 flex flex-col">
+<!-- 1) Hero Section -->
+<section class="px-5 pt-8 pb-10 flex flex-col items-start">
+<!-- Pill badge -->
+<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary-container/70 border border-outline-variant/30 text-on-secondary-container text-[11px] font-medium tracking-wide">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span>Enterprise-grade Human Resource Management</span>
+</div>
+<!-- Headline -->
+<h1 class="mt-4 font-headline text-3xl font-extrabold tracking-tight text-on-surface leading-[1.2]">
+          Everything your people need. <br/><span class="text-primary">All in one place.</span>
+</h1>
+<!-- Subheadline -->
+<p class="mt-3.5 text-sm text-on-surface-variant font-normal leading-relaxed">
+          HRMS connects people management, attendance, leave, payroll, hiring, assets, work management, and everyday employee experience in one connected workspace.
+        </p>
+<!-- Stacked CTAs -->
+<div class="w-full mt-6 flex flex-col gap-3">
+<a class="w-full min-h-[48px] flex items-center justify-center rounded-xl bg-primary text-on-primary font-semibold text-sm shadow-md hover:bg-primary-dim active:scale-[0.98] transition-transform" href="#modules">
+            Get started
+          </a>
+<a class="w-full min-h-[48px] flex items-center justify-center rounded-xl bg-surface-container-lowest border border-outline/30 text-on-surface font-semibold text-sm hover:bg-surface-container active:scale-[0.98] transition-all" href="#modules">
+            Explore modules
+          </a>
+</div>
+<!-- Floating Mobile Dashboard Card Mockup -->
+<div class="w-full mt-8 rounded-3xl bg-surface-container-lowest p-5 border border-outline-variant/30 shadow-lg relative overflow-hidden">
+<div class="flex items-center justify-between pb-3 border-b border-surface-container-high">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center font-bold text-xs">
+                HR
+              </div>
+<div>
+<p class="text-xs font-bold text-on-surface">Live Workspace Pulse</p>
+<p class="text-[10px] text-on-surface-variant">Real-time sync active</p>
+</div>
+</div>
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary">
+              Live
+            </span>
+</div>
+<!-- Quick Metrics Bento Grid -->
+<div class="grid grid-cols-3 gap-2 my-4">
+<div class="p-2.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 flex flex-col">
+<span class="text-[10px] text-on-surface-variant leading-tight">Headcount</span>
+<span class="font-headline font-bold text-base text-on-surface mt-1">248</span>
+<span class="text-[9px] text-primary font-medium mt-0.5">+4 this mo</span>
+</div>
+<div class="p-2.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 flex flex-col">
+<span class="text-[10px] text-on-surface-variant leading-tight">Attendance</span>
+<span class="font-headline font-bold text-base text-primary mt-1">96.4%</span>
+<span class="text-[9px] text-secondary font-medium mt-0.5">239 present</span>
+</div>
+<div class="p-2.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 flex flex-col">
+<span class="text-[10px] text-on-surface-variant leading-tight">Approvals</span>
+<span class="font-headline font-bold text-base text-error mt-1">3</span>
+<span class="text-[9px] text-error font-medium mt-0.5">Action req.</span>
+</div>
+</div>
+<!-- Compact Directory Snippet -->
+<div class="space-y-2 pt-1">
+<p class="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">Live Directory Status</p>
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface-container/60 border border-outline-variant/20">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-secondary-container text-on-secondary-fixed flex items-center justify-center text-xs font-bold">
+                  SL
+                </div>
+<div>
+<p class="text-xs font-semibold text-on-surface leading-tight">Sarah Lin</p>
+<p class="text-[10px] text-on-surface-variant">Lead Product Engineer</p>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary-container text-on-primary-container flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Present
+              </span>
+</div>
+<div class="flex items-center justify-between p-2 rounded-xl bg-surface-container/60 border border-outline-variant/20">
+<div class="flex items-center gap-2.5">
+<div class="w-7 h-7 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center text-xs font-bold">
+                  MK
+                </div>
+<div>
+<p class="text-xs font-semibold text-on-surface leading-tight">Marcus Kane</p>
+<p class="text-[10px] text-on-surface-variant">Staff Product Designer</p>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-variant text-on-surface-variant flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Remote
+              </span>
+</div>
+</div>
+</div>
+</section>
+<!-- 2) Benefit Cards Section -->
+<section class="px-5 py-8 bg-surface-container-low border-y border-outline-variant/20">
+<div class="space-y-1 mb-6">
+<p class="text-xs font-bold uppercase tracking-wider text-secondary">Core Architecture</p>
+<h2 class="font-headline text-2xl font-bold text-on-surface tracking-tight">Built for clarity and pace</h2>
+</div>
+<div class="space-y-3.5">
+<!-- Card 1 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2.5">
+<div class="w-10 h-10 rounded-xl bg-primary-container/60 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[22px]">hub</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Connected HR operations</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              Unified workflows across departments from day one. Say goodbye to disjointed point software.
+            </p>
+</div>
+<!-- Card 2 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2.5">
+<div class="w-10 h-10 rounded-xl bg-secondary-container/70 text-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-[22px]">badge</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Simplified employee self-service</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              One intuitive hub for leave requests, punch logs, payslips, personal assets, and team updates.
+            </p>
+</div>
+<!-- Card 3 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2.5">
+<div class="w-10 h-10 rounded-xl bg-tertiary-container/60 text-tertiary flex items-center justify-center">
+<span class="material-symbols-outlined text-[22px]">visibility</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Clear workforce visibility</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              Real-time tracking of company headcount, active shifts, working models, and departmental capacity.
+            </p>
+</div>
+<!-- Card 4 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2.5">
+<div class="w-10 h-10 rounded-xl bg-surface-container-highest text-on-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-[22px]">database</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Centralized people data</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              A single compliant source of truth for records, contracts, equipment assignments, and payroll.
+            </p>
+</div>
+</div>
+</section>
+<!-- 3) Dark Charcoal Section: Employee Lifecycle -->
+<section class="px-5 py-12 bg-inverse-surface text-surface-bright">
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-dim/40 border border-primary/30 text-inverse-primary text-[10px] font-semibold tracking-wide">
+<span class="material-symbols-outlined text-[14px]">all_inclusive</span>
+<span>End-to-End Orchestration</span>
+</div>
+<h2 class="mt-4 font-headline text-2xl font-bold tracking-tight text-surface-container-lowest leading-tight">
+          One connected workspace for the employee lifecycle
+        </h2>
+<p class="mt-2.5 text-xs text-inverse-on-surface leading-relaxed">
+          From first interview to monthly payroll, every stage transitions seamlessly without manual re-entry.
+        </p>
+<!-- Vertical Timeline Flow -->
+<div class="mt-8 space-y-3 relative pl-3 border-l-2 border-outline/30 ml-2">
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-primary ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">01</span>
+<p class="text-sm font-bold text-surface-container-lowest">Hire</p>
+<p class="text-xs text-inverse-on-surface">Pipelines &amp; offers</p>
+</div>
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">02</span>
+<p class="text-sm font-bold text-surface-container-lowest">Onboard</p>
+<p class="text-xs text-inverse-on-surface">Checklists &amp; assets</p>
+</div>
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">03</span>
+<p class="text-sm font-bold text-surface-container-lowest">Attend</p>
+<p class="text-xs text-inverse-on-surface">Geo-punch &amp; shifts</p>
+</div>
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">04</span>
+<p class="text-sm font-bold text-surface-container-lowest">Leave</p>
+<p class="text-xs text-inverse-on-surface">Balance &amp; approvals</p>
+</div>
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">05</span>
+<p class="text-sm font-bold text-surface-container-lowest">Pay</p>
+<p class="text-xs text-inverse-on-surface">Automated runs</p>
+</div>
+<div class="relative pl-5">
+<span class="absolute -left-[19px] top-1 w-3 h-3 rounded-full bg-primary-fixed ring-4 ring-inverse-surface"></span>
+<span class="text-[10px] font-mono font-bold text-inverse-primary">06</span>
+<p class="text-sm font-bold text-surface-container-lowest">Grow</p>
+<p class="text-xs text-inverse-on-surface">Kudos &amp; milestones</p>
+</div>
+</div>
+<!-- Mobile Employee Profile Card Snippet -->
+<div class="mt-8 p-4 rounded-2xl bg-surface-container-lowest/10 backdrop-blur-md border border-outline/25 space-y-3">
+<div class="flex items-center gap-3">
+<div class="w-11 h-11 rounded-xl bg-primary text-on-primary flex items-center justify-center font-bold text-base shadow-sm">
+              SL
+            </div>
+<div>
+<p class="text-sm font-bold text-surface-container-lowest">Sarah Lin</p>
+<p class="text-xs text-primary-fixed-dim">Lead Product Engineer</p>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2 pt-2 border-t border-outline/20 text-xs">
+<div class="p-2.5 rounded-xl bg-surface-container-lowest/5">
+<span class="text-[10px] text-inverse-on-surface block">Operational time</span>
+<span class="font-semibold text-surface-container-lowest mt-0.5 block">09:00 AM - 06:00 PM</span>
+</div>
+<div class="p-2.5 rounded-xl bg-surface-container-lowest/5">
+<span class="text-[10px] text-inverse-on-surface block">Assigned hardware</span>
+<span class="font-semibold text-surface-container-lowest mt-0.5 block">MacBook Pro 16"</span>
+</div>
+</div>
+<div class="p-2.5 rounded-xl bg-primary-dim/30 border border-primary/20 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-inverse-primary text-[18px]">verified</span>
+<span class="text-xs font-medium text-surface-container-lowest">Current Payroll Cycle</span>
+</div>
+<span class="text-[11px] font-bold text-inverse-primary">Processed</span>
+</div>
+</div>
+</section>
+<!-- 4) Feature Modules (All 10 Modules Stacked) -->
+<section class="px-5 py-10 space-y-6" id="modules">
+<div>
+<span class="text-xs font-bold uppercase tracking-wider text-primary">All-In-One Architecture</span>
+<h2 class="mt-1 font-headline text-2xl font-bold tracking-tight text-on-surface">10 Integrated Modules</h2>
+<p class="text-xs text-on-surface-variant mt-1">Engineered to eliminate siloed logins and fractured operational workflows.</p>
+</div>
+<!-- Module 01 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 01</span>
+<span class="material-symbols-outlined text-outline">group</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">People Management &amp; Organization Directory</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Centralize your global workforce chart, hierarchy reporting lines, and searchable team contacts.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex items-center justify-between text-xs font-semibold text-on-surface">
+<span>Directory Explorer</span>
+<span class="text-[10px] text-secondary">248 active</span>
+</div>
+<div class="flex items-center gap-2 p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/15">
+<div class="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center text-[10px] font-bold">AL</div>
+<div class="flex-1 text-[11px]">
+<span class="font-bold text-on-surface block">Alex Lawson</span>
+<span class="text-[9px] text-on-surface-variant">Director of Infrastructure</span>
+</div>
+<span class="text-[10px] font-medium text-secondary">Tech Ops</span>
+</div>
+</div>
+</article>
+<!-- Module 02 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 02</span>
+<span class="material-symbols-outlined text-outline">timer</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Attendance &amp; Live Shift Tracking</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Geofenced mobile check-ins, flexible shifts, break monitoring, and automated timesheet logs.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex items-center justify-between text-xs font-semibold">
+<span class="text-on-surface">Daily Punch Record</span>
+<span class="text-[10px] font-bold text-primary">On-track</span>
+</div>
+<div class="grid grid-cols-2 gap-2 text-xs">
+<div class="p-2 rounded-xl bg-surface-container-lowest">
+<span class="text-[10px] text-on-surface-variant block">Punch In</span>
+<span class="font-bold text-on-surface mt-0.5 block">09:02 AM</span>
+</div>
+<div class="p-2 rounded-xl bg-surface-container-lowest">
+<span class="text-[10px] text-on-surface-variant block">Expected Out</span>
+<span class="font-bold text-on-surface mt-0.5 block">06:00 PM</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Module 03 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 03</span>
+<span class="material-symbols-outlined text-outline">date_range</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Leave Management &amp; Time Off</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Multi-tier approval matrices, auto-accruals, localized statutory holidays, and self-service balance checks.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2.5">
+<div class="flex items-center justify-between text-xs">
+<span class="font-semibold text-on-surface">Balance Quotas</span>
+<span class="text-[10px] text-on-surface-variant">Annual cycle</span>
+</div>
+<div class="grid grid-cols-3 gap-1.5 text-center">
+<div class="p-1.5 rounded-xl bg-surface-container-lowest">
+<span class="text-[9px] text-on-surface-variant block">Annual</span>
+<span class="font-bold text-xs text-primary">14 days</span>
+</div>
+<div class="p-1.5 rounded-xl bg-surface-container-lowest">
+<span class="text-[9px] text-on-surface-variant block">Sick</span>
+<span class="font-bold text-xs text-on-surface">06 days</span>
+</div>
+<div class="p-1.5 rounded-xl bg-surface-container-lowest">
+<span class="text-[9px] text-on-surface-variant block">Casual</span>
+<span class="font-bold text-xs text-on-surface">04 days</span>
+</div>
+</div>
+<div class="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/15 flex items-center justify-between">
+<div>
+<p class="text-[11px] font-bold text-on-surface">Leave: May 18 - 20</p>
+<p class="text-[9px] text-on-surface-variant">Pending manager sign-off</p>
+</div>
+<div class="flex gap-1">
+<button class="px-2 py-1 bg-primary text-on-primary rounded text-[10px] font-semibold" type="button">Approve</button>
+<button class="px-2 py-1 bg-surface-variant text-on-surface rounded text-[10px] font-semibold" type="button">Reject</button>
+</div>
+</div>
+</div>
+</article>
+<!-- Module 04 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 04</span>
+<span class="material-symbols-outlined text-outline">payments</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Payroll Processing &amp; Payslips</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            One-click runs with automatic deduction calculations, tax withholdings, and instant employee payslips.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex justify-between items-center text-xs">
+<span class="font-bold text-on-surface">Net Disbursement Batch</span>
+<span class="text-[10px] font-semibold text-primary">Ready to wire</span>
+</div>
+<p class="font-headline font-extrabold text-lg text-primary leading-tight">$1,211,900.50</p>
+<div class="flex justify-between text-[10px] text-on-surface-variant pt-1 border-t border-outline-variant/20">
+<span>Gross: $1,420,000.00</span>
+<span>Deductions: $208,099.50</span>
+</div>
+</div>
+</article>
+<!-- Module 05 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 05</span>
+<span class="material-symbols-outlined text-outline">person_search</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Hiring Pipelines &amp; Pre-boarding</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Structured candidate interview stages, digital offer letters, e-signatures, and pre-boarding document collection.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="font-semibold text-on-surface">Candidate Pre-boarding</span>
+<span class="text-[10px] text-secondary font-medium">3 of 4 done</span>
+</div>
+<div class="space-y-1.5 text-[11px]">
+<div class="flex items-center gap-2 text-primary font-medium">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span>Offer accepted &amp; signed</span>
+</div>
+<div class="flex items-center gap-2 text-primary font-medium">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span>Tax withholding declaration</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">radio_button_unchecked</span>
+<span>Hardware selection</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Module 06 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 06</span>
+<span class="material-symbols-outlined text-outline">devices</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Company Hardware &amp; Asset Management</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Track ownership, serial IDs, recovery workflows, and warranty cycles for all issued machines and monitors.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<span class="text-xs font-semibold text-on-surface block">Asset Custody Record</span>
+<div class="space-y-1.5">
+<div class="p-2 rounded-xl bg-surface-container-lowest flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[18px]">laptop_mac</span>
+<div>
+<p class="font-semibold text-on-surface text-[11px]">MacBook Pro 16"</p>
+<p class="text-[9px] text-on-surface-variant">SN: C02G41ABMD6M</p>
+</div>
+</div>
+<span class="text-[10px] font-medium text-primary">Assigned</span>
+</div>
+<div class="p-2 rounded-xl bg-surface-container-lowest flex items-center justify-between text-xs">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[18px]">desktop_windows</span>
+<div>
+<p class="font-semibold text-on-surface text-[11px]">Dell UltraSharp 27"</p>
+<p class="text-[9px] text-on-surface-variant">SN: DL-992384-US</p>
+</div>
+</div>
+<span class="text-[10px] font-medium text-primary">Assigned</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Module 07 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 07</span>
+<span class="material-symbols-outlined text-outline">checklist</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Work Management &amp; Team Objectives</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Align sprint goals, quarterly OKRs, and cross-functional deliverables alongside your core personnel data.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex justify-between items-center text-xs">
+<span class="font-semibold text-on-surface">Sprint Q2 Goal Alignment</span>
+<span class="text-[10px] font-bold text-primary">82%</span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 82%"></div>
+</div>
+<div class="flex justify-between text-[10px] text-on-surface-variant">
+<span>9 tasks in progress</span>
+<span>32 completed</span>
+</div>
+</div>
+</article>
+<!-- Module 08 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 08</span>
+<span class="material-symbols-outlined text-outline">workspace_premium</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Impact Points &amp; Peer Recognition</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Foster high-performance morale with public kudos, quarterly recognition allowances, and team-wide celebration.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="font-semibold text-on-surface">Peer Kudos Feed</span>
+<span class="text-[10px] font-bold text-primary">+50 Impact Points</span>
+</div>
+<div class="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/15 text-[11px]">
+<p class="text-on-surface font-medium">"Thanks Sarah for unblocking the auth rollout seamlessly!"</p>
+<p class="text-[9px] text-secondary mt-1">— Marcus K. to Sarah L.</p>
+</div>
+</div>
+</article>
+<!-- Module 09 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 09</span>
+<span class="material-symbols-outlined text-outline">smartphone</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Employee Experience &amp; Self-Service</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            An award-worthy mobile portal where your staff handles approvals, documents, and communications autonomously.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="grid grid-cols-2 gap-2 text-xs">
+<div class="p-2.5 rounded-xl bg-surface-container-lowest flex flex-col items-center justify-center text-center">
+<span class="material-symbols-outlined text-primary text-[20px] mb-1">touch_app</span>
+<span class="font-semibold text-on-surface text-[11px]">Mobile Punch</span>
+</div>
+<div class="p-2.5 rounded-xl bg-surface-container-lowest flex flex-col items-center justify-center text-center">
+<span class="material-symbols-outlined text-secondary text-[20px] mb-1">badge</span>
+<span class="font-semibold text-on-surface text-[11px]">Digital ID</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Module 10 -->
+<article class="p-5 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm space-y-3">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-bold font-mono text-primary px-2.5 py-0.5 rounded-full bg-primary-container/40">MODULE 10</span>
+<span class="material-symbols-outlined text-outline">campaign</span>
+</div>
+<h3 class="font-headline font-bold text-base text-on-surface">Workspace Messages &amp; Collaboration</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+            Company bulletins, compliance policy acknowledgements, emergency alerts, and team communications in one auditable log.
+          </p>
+<!-- UI Mini Mockup -->
+<div class="p-3 rounded-2xl bg-surface-container-low border border-outline-variant/20 space-y-2">
+<div class="flex items-center justify-between text-xs">
+<span class="font-semibold text-on-surface">Company Broadcast</span>
+<span class="text-[9px] text-error font-bold uppercase">Mandatory</span>
+</div>
+<div class="p-2 rounded-xl bg-surface-container-lowest border border-outline-variant/15 text-[11px]">
+<p class="font-semibold text-on-surface">Annual Data Privacy Policy Review</p>
+<div class="mt-2 flex items-center justify-between">
+<span class="text-[9px] text-on-surface-variant">Due in 3 days</span>
+<span class="px-2 py-0.5 rounded bg-primary-container text-on-primary-container text-[9px] font-bold">Acknowledge</span>
+</div>
+</div>
+</div>
+</article>
+</section>
+<!-- 5) How It Works Section -->
+<section class="px-5 py-10 bg-surface-container-low border-y border-outline-variant/20">
+<div class="mb-6">
+<span class="text-xs font-bold uppercase tracking-wider text-secondary">Implementation</span>
+<h2 class="mt-1 font-headline text-2xl font-bold tracking-tight text-on-surface">How HRMS works</h2>
+<p class="text-xs text-on-surface-variant mt-1">Roll out across your enterprise in three steps.</p>
+</div>
+<div class="space-y-4">
+<!-- Step 1 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-full bg-primary text-on-primary font-headline font-bold text-xs flex items-center justify-center">01</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Create your company workspace</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed pl-11">
+              Configure departments, custom work policies, and standard leave quotas tailored to your jurisdiction.
+            </p>
+</div>
+<!-- Step 2 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-full bg-secondary text-on-secondary font-headline font-bold text-xs flex items-center justify-center">02</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Invite HR admins and employees</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed pl-11">
+              Distribute granular role-based permissions and onboard everyone with secure, passwordless magic links.
+            </p>
+</div>
+<!-- Step 3 -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-full bg-tertiary text-on-tertiary font-headline font-bold text-xs flex items-center justify-center">03</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Run day-to-day people operations</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed pl-11">
+              Automate attendance, execute monthly payroll runs, and maintain complete real-time organizational visibility.
+            </p>
+</div>
+</div>
+</section>
+<!-- 6) Roles & Perspectives Section -->
+<section class="px-5 py-10 space-y-4">
+<div>
+<span class="text-xs font-bold uppercase tracking-wider text-primary">Role-Tailored Views</span>
+<h2 class="mt-1 font-headline text-2xl font-bold tracking-tight text-on-surface">Precision for every stakeholder</h2>
+</div>
+<div class="space-y-3.5">
+<!-- Role 1: Company Admin -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[20px]">admin_panel_settings</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Company Admin</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              Global oversight across multi-entity entities, full SOC2 compliant audit logs, and company-wide governance policies.
+            </p>
+<div class="pt-2 flex flex-wrap gap-1.5">
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Audit logs</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Entity controls</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Billing</span>
+</div>
+</div>
+<!-- Role 2: HR Admin -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2">
+<div class="flex items-center gap-2 text-secondary">
+<span class="material-symbols-outlined text-[20px]">manage_accounts</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">HR Admin</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              Day-to-day command center, pending approval queues, candidate interview pipelines, and payroll reconciliation.
+            </p>
+<div class="pt-2 flex flex-wrap gap-1.5">
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Approvals</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Payroll batches</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Onboarding</span>
+</div>
+</div>
+<!-- Role 3: Employee -->
+<div class="p-5 rounded-2xl bg-surface-container-lowest border border-outline-variant/25 shadow-sm space-y-2">
+<div class="flex items-center gap-2 text-tertiary">
+<span class="material-symbols-outlined text-[20px]">person</span>
+<h3 class="font-headline font-bold text-sm text-on-surface">Employee</h3>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+              Personal self-service, daily check-in with GPS verification, leave quota balances, and instant payslip downloads.
+            </p>
+<div class="pt-2 flex flex-wrap gap-1.5">
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Self-service</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Payslips</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full bg-surface-container text-on-surface font-medium">Time off</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 7) Final CTA Banner -->
+<section class="px-5 py-10">
+<div class="p-6 rounded-3xl bg-[#1B4332] text-on-primary space-y-4 shadow-xl">
+<div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-inverse-primary text-[10px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-inverse-primary"></span>
+<span>Unified Platform</span>
+</div>
+<h2 class="font-headline text-2xl font-extrabold tracking-tight text-white leading-tight">
+            Bring your people operations together.
+          </h2>
+<p class="text-xs text-on-primary/80 leading-relaxed">
+            Streamline the entire employee journey in a single unified platform. No fragmented tools, no manual spreadsheets.
+          </p>
+<div class="pt-2 space-y-2.5">
+<button class="w-full min-h-[48px] rounded-xl bg-surface-container-lowest text-primary font-bold text-sm shadow hover:bg-surface-container active:scale-[0.98] transition-all" type="button">
+              Get started
+            </button>
+<button class="w-full min-h-[48px] rounded-xl border border-white/30 text-white font-semibold text-sm hover:bg-white/10 active:scale-[0.98] transition-all" type="button">
+              Login
+            </button>
+</div>
+<div class="pt-4 border-t border-white/15 flex items-center justify-between text-[10px] text-on-primary/70">
+<span>Self-serve setup</span>
+<span>•</span>
+<span>Granular roles</span>
+<span>•</span>
+<span>2FA security</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer Component (from Shared JSON) -->
+<footer class="bg-inverse-surface dark:bg-inverse-surface w-full rounded-t-2xl border-t border-outline/20">
+<div class="flex flex-col gap-6 px-6 py-8 w-full max-w-screen-md mx-auto">
+<div class="flex items-center justify-between">
+<span class="font-headline font-bold text-lg tracking-tight text-surface-container-lowest">HRMS</span>
+<span class="font-body text-xs text-inverse-on-surface/80">Enterprise Platform</span>
+</div>
+<nav class="flex flex-wrap gap-x-5 gap-y-2 text-xs font-body">
+<a class="text-inverse-on-surface/70 hover:text-surface-container-lowest transition-colors duration-150" href="#">Product</a>
+<a class="text-inverse-on-surface/70 hover:text-surface-container-lowest transition-colors duration-150" href="#">Solutions</a>
+<a class="text-inverse-on-surface/70 hover:text-surface-container-lowest transition-colors duration-150" href="#">Pricing</a>
+<a class="text-inverse-on-surface/70 hover:text-surface-container-lowest transition-colors duration-150" href="#">Privacy</a>
+<a class="text-inverse-on-surface/70 hover:text-surface-container-lowest transition-colors duration-150" href="#">Terms</a>
+</nav>
+<p class="font-body text-xs leading-relaxed text-inverse-on-surface/80 pt-2 border-t border-outline/10">
+          © 2026 HRMS Inc. All rights reserved.
+        </p>
+</div>
+</footer>
+</div>
+</body></html>

@@ -1,0 +1,22 @@
+[
+    {
+        "File":  "company_admin_hr_management.test.js",
+        "Exit":  0
+    },
+    {
+        "File":  "company_admin_hr_access.test.js",
+        "Exit":  0
+    },
+    {
+        "File":  "hr_access_enforcement.test.js",
+        "Exit":  0
+    },
+    {
+        "File":  "hr_access_remediation.test.js",
+        "Exit":  0
+    },
+    {
+        "File":  "hr_access_rollout_readiness.test.js",
+        "Exit":  0
+    }
+]
