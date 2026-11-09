@@ -230,8 +230,9 @@ describe("HR Policies Configuration & Real Downstream Workflows Integration", ()
       .set("Cookie", employeeCookie)
       .send({
         leaveType: "CASUAL",
-        startDate: "2026-11-09", // Mon
-        endDate: "2026-11-16",   // Mon next week (6 working days)
+        // Far-future Mon→Mon span so same-day cutoff cannot shadow maxConsecutiveDays.
+        startDate: "2027-06-07", // Mon
+        endDate: "2027-06-14",   // Mon next week (6 working days)
         reason: "Extended family vacation",
       });
 

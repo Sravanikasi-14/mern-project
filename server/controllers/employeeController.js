@@ -419,6 +419,10 @@ export async function getEmployeeSummary(req, res, next) {
   }
 }
 
+function hasStoredBankDetails(bank) {
+  return Boolean(bank && (bank.accountNumber || bank.bankName || bank.ifscCode));
+}
+
 export async function getEmployeeById(req, res, next) {
   try {
     const { Employee, EmployeeCompensation, Settlement } = req.auth.models;
@@ -500,29 +504,89 @@ export async function getEmployeeById(req, res, next) {
       emergencyContact: employee.emergencyContact || { name: "", relationship: "", phone: "" },
       residentialAddress: employee.residentialAddress || { street: "", city: "", state: "", postalCode: "", country: "India" },
       workAddress: employee.workAddress || { street: "", city: "", state: "", postalCode: "", country: "India" },
-      bankDetails: employee.bankDetails && employee.bankDetails.accountNumber ? employee.bankDetails : {
-        accountHolderName: employee.fullName,
-        accountNumber: "•••• •••• " + (employee.employeeCode ? employee.employeeCode.slice(-4) : "1024"),
-        bankName: "HDFC Bank",
-        ifscCode: "HDFC0001024",
-        accountType: "Salary Account",
-      },
-      taxDetails: employee.taxDetails && employee.taxDetails.panNumber ? employee.taxDetails : {
-        panNumber: "ABCDE1234F",
-        taxRegime: "New Tax Regime (Sec 115BAC)",
-      },
-      identityDetails: employee.identityDetails && employee.identityDetails.idNumber ? employee.identityDetails : {
-        idType: "PAN & Aadhaar (e-KYC)",
-        idNumber: "•••• •••• 9812",
-        isVerified: true,
-      },
-      attendance: employee.attendance || defaultAttendance,
+      // Never invent bank / tax / identity data. Return empty shapes when nothing is on file.
+      bankDetails: hasStoredBankDetails(employee.bankDetails)
+        ? employee.bankDetails
+        : { accountHolderName: "", accountNumber: "", bankName: "", ifscCode: "", accountType: "" },
+      taxDetails: employee.taxDetails && employee.taxDetails.panNumber
+        ? employee.taxDetails
+        : { panNumber: "", taxRegime: "" },
+      identityDetails: employee.identityDetails && employee.identityDetails.idNumber
+        ? employee.identityDetails
+        : { idType: "", idNumber: "", isVerified: false },      attendance: employee.attendance || defaultAttendance,
       currentMonthlySalary,
       salaryComponents,
       settlement,
     });
 
     res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+}
+
+function sendEmployeeAvatar(res, employee) {
+  if (!employee?.avatarData?.length) {
+    throw new HttpError(404, "No profile photo has been uploaded.");
+  }
+  res.setHeader("Content-Type", employee.avatarMimeType || "image/jpeg");
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", "inline");
+  return res.send(Buffer.from(employee.avatarData));
+}
+
+function isOwnEmployeeRecord(user, employee) {
+  return (
+    (employee.userId && String(employee.userId) === String(user._id)) ||
+    (user.employeeId && String(user.employeeId) === String(employee._id))
+  );
+}
+
+/** GET /employees/me/avatar — the caller's own linked employee photo. */
+export async function streamMyEmployeeAvatar(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const user = req.auth.user;
+    const filters = [{ userId: user._id }];
+    if (user.employeeId) filters.push({ _id: user.employeeId });
+    const employee = await Employee.findOne({ $or: filters }).select("+avatarData avatarMimeType userId");
+    if (!employee) {
+      throw new HttpError(404, "Employee record not found for your account.");
+    }
+    return sendEmployeeAvatar(res, employee);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /employees/:id/avatar — self, or HR portal operator with people.view
+ * (and employee scope when HR access enforcement is on). Tenant-scoped by connection.
+ */
+export async function streamEmployeeAvatar(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const user = req.auth.user;
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new HttpError(404, "Employee not found");
+    }
+
+    const employee = await Employee.findById(id).select("+avatarData avatarMimeType userId");
+    if (!employee) {
+      throw new HttpError(404, "Employee not found");
+    }
+
+    if (!isOwnEmployeeRecord(user, employee)) {
+      if (user.role !== USER_ROLES.HR_ADMIN && user.role !== USER_ROLES.COMPANY_ADMIN) {
+        throw new HttpError(403, "You do not have access to this employee photo.");
+      }
+      assertHrPermission(req.hrAccess, "people.view");
+      assertEmployeeInScope(req.hrAccess, id, "You do not have access to this employee.");
+    }
+
+    return sendEmployeeAvatar(res, employee);
   } catch (error) {
     next(error);
   }
@@ -645,6 +709,7 @@ export async function getMyProfile(req, res, next) {
         employeeCode: employee.employeeCode,
         fullName: employee.fullName,
         preferredName: employee.preferredName || "",
+        avatar: employee.avatar || "",
         email: employee.email,
         personalEmail: employee.personalEmail || "",
         phoneNumber: employee.phoneNumber || "",

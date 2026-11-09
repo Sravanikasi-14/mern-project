@@ -12,6 +12,8 @@ import {
   getMyProfile,
   getVisibleEmployeeProfile,
   resendInvitation,
+  streamEmployeeAvatar,
+  streamMyEmployeeAvatar,
   updateEmployee,
   updateMyProfile,
   uploadEmployeeDocument,
@@ -60,6 +62,7 @@ const router = express.Router();
 // Authenticated employee self-service routes
 router.get("/me", authenticate, getMyProfile);
 router.get("/me/dashboard", authenticate, getEmployeeDashboard);
+router.get("/me/avatar", authenticate, streamMyEmployeeAvatar);
 
 // Attendance — authenticate only; controller/service retain geofence and punch guards
 router.post("/me/attendance/punch-in", authenticate, punchIn);
@@ -176,6 +179,9 @@ router.get(
   requireHrPermission("people.view"),
   getVisibleEmployeeProfile
 );
+
+// Employee photo — self, or HR portal operator with people.view (+ scope when enforced)
+router.get("/:id/avatar", authenticate, loadHrAccessContext, streamEmployeeAvatar);
 
 // Document download/upload — controller ownership + CA4-C HR scope/permission remain authoritative
 router.get(

@@ -204,6 +204,53 @@ export async function saveCompanyLogoFile({ databaseName, fileName, fileData, mi
   };
 }
 
+/**
+ * Decode and validate a profile photo payload (PNG/JPEG/WebP, max 2 MB).
+ * Shares the extension/MIME allow-list, size limit, and magic-byte detection used by
+ * company logos. Does not touch disk — callers persist bytes in the tenant database.
+ * The stored MIME type comes from the detected image signature, never the client claim.
+ */
+export function parseProfileImageUpload({ fileName, fileData, mimeType } = {}) {
+  if (!fileName || typeof fileName !== "string") {
+    throw new HttpError(400, "Profile photo file name is required.");
+  }
+  const ext = path.extname(fileName).toLowerCase();
+  if (!LOGO_ALLOWED_EXT.has(ext)) {
+    throw new HttpError(400, "Profile photo must be a PNG, JPEG, or WebP image.");
+  }
+  if (mimeType && !LOGO_ALLOWED_MIME.has(String(mimeType).toLowerCase())) {
+    throw new HttpError(400, "Profile photo must be a PNG, JPEG, or WebP image.");
+  }
+
+  let buffer;
+  if (Buffer.isBuffer(fileData)) {
+    buffer = fileData;
+  } else if (typeof fileData === "string") {
+    const base64Clean = fileData.replace(/^data:[^;]+;base64,/, "");
+    buffer = Buffer.from(base64Clean, "base64");
+  } else {
+    throw new HttpError(400, "Invalid profile photo payload. Expected base64 or Buffer.");
+  }
+
+  if (!buffer.length) {
+    throw new HttpError(400, "Profile photo file is empty.");
+  }
+  if (buffer.length > MAX_LOGO_SIZE) {
+    throw new HttpError(400, "Profile photo must be 2 MB or smaller.");
+  }
+
+  const detected = detectLogoMime(buffer);
+  if (!detected) {
+    throw new HttpError(400, "The uploaded file is not a valid PNG, JPEG, or WebP image.");
+  }
+
+  return {
+    buffer,
+    mimeType: detected,
+    fileName: path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_"),
+  };
+}
+
 export function getCompanyLogoAbsolutePath({ databaseName, storageKey }) {
   if (!storageKey || typeof storageKey !== "string") return null;
   const safeKey = path.basename(storageKey);

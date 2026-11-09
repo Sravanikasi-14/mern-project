@@ -837,17 +837,25 @@ export async function getLiveTrackingStatus({
 /**
  * HR Admin Attendance Overview & Map Data:
  * Aggregates all employee attendance, punch locations, and active live tracking sessions
- * for a specific business date.
+ * for a specific business date. Optional startDate/endDate also returns rangeRecords.
  */
 export async function getAdminAttendanceOverview({
   models,
   companyTimezone = "Asia/Kolkata",
   date,
+  startDate,
+  endDate,
   department,
   hrAccess = null,
 }) {
   const { Attendance, Employee, LiveTrackingSession } = models;
-  const targetDate = date || getCompanyBusinessDate(new Date(), companyTimezone);
+  const rangeStart = civilDateKey(startDate) || civilDateKey(date) || "";
+  const rangeEnd = civilDateKey(endDate) || civilDateKey(date) || "";
+  const targetDate =
+    rangeEnd ||
+    rangeStart ||
+    date ||
+    getCompanyBusinessDate(new Date(), companyTimezone);
 
   let employeeFilter = { status: { $ne: "TERMINATED" } };
   if (department && department !== "ALL") {
@@ -981,8 +989,33 @@ export async function getAdminAttendanceOverview({
     };
   });
 
+  let rangeRecords = [];
+  if (rangeStart && rangeEnd && rangeStart !== rangeEnd && Attendance) {
+    const rangeAttendance = await Attendance.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: rangeStart, $lte: rangeEnd },
+    })
+      .sort({ date: -1, checkIn: -1 })
+      .lean();
+
+    const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
+    rangeRecords = rangeAttendance.map((record) => {
+      const emp = employeeById.get(String(record.employeeId));
+      return {
+        ...formatCollectionAttendance(record),
+        employeeId: record.employeeId,
+        employeeCode: emp?.employeeCode || "",
+        fullName: emp?.fullName || "",
+        department: emp?.job?.department || "General",
+        jobTitle: emp?.job?.jobTitle || "Team Member",
+      };
+    });
+  }
+
   return {
     date: targetDate,
+    startDate: rangeStart || targetDate,
+    endDate: rangeEnd || targetDate,
     summary: {
       totalEmployees: employees.length,
       presentCount,
@@ -991,7 +1024,138 @@ export async function getAdminAttendanceOverview({
       notCheckedInCount: employees.length - presentCount,
       liveTrackingCount,
       withLocationCount,
+      rangeRecordCount: rangeRecords.length,
     },
     employees: employeeOverviews,
+    rangeRecords,
+  };
+}
+
+/**
+ * Live ACTIVE sessions for the map, plus optional historical sessions whose
+ * startedAt falls in [startDate, endDate]. Does not invent locations.
+ */
+export async function getAdminTrackingSessions({
+  models,
+  companyTimezone = "Asia/Kolkata",
+  startDate,
+  endDate,
+  department,
+  status = "ALL",
+  hrAccess = null,
+}) {
+  const { Employee, LiveTrackingSession } = models;
+  if (!LiveTrackingSession) {
+    return {
+      live: [],
+      history: [],
+      summary: { liveCount: 0, historyCount: 0, withLocationCount: 0 },
+      startDate: civilDateKey(startDate) || "",
+      endDate: civilDateKey(endDate) || "",
+      supportsHistory: false,
+    };
+  }
+
+  let employeeFilter = { status: { $ne: "TERMINATED" } };
+  if (department && department !== "ALL") {
+    employeeFilter["job.department"] = department;
+  }
+  if (hrAccess) {
+    const { mergeEmployeeScopeFilter } = await import("./hrAccessEnforcementService.js");
+    employeeFilter = mergeEmployeeScopeFilter(hrAccess, employeeFilter);
+  }
+
+  const employees = await Employee.find(employeeFilter)
+    .select("_id employeeCode fullName email job status")
+    .lean();
+  const employeeIds = employees.map((e) => e._id);
+  const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
+
+  const now = new Date();
+  const activeSessions = await LiveTrackingSession.find({
+    employeeId: { $in: employeeIds },
+    status: "ACTIVE",
+    expiresAt: { $gt: now },
+  }).lean();
+
+  const live = activeSessions.map((session) => {
+    const emp = employeeById.get(String(session.employeeId));
+    return {
+      sessionId: session._id,
+      employeeId: session.employeeId,
+      employeeCode: emp?.employeeCode || "",
+      fullName: emp?.fullName || "",
+      email: emp?.email || "",
+      department: emp?.job?.department || "General",
+      jobTitle: emp?.job?.jobTitle || "Team Member",
+      status: session.status,
+      startedAt: session.startedAt,
+      expiresAt: session.expiresAt,
+      stoppedAt: session.stoppedAt,
+      lastLocation: session.lastLocation || null,
+      isTrackingActive: true,
+      breadcrumbCount: Array.isArray(session.breadcrumbs) ? session.breadcrumbs.length : 0,
+    };
+  });
+
+  const rangeStart = civilDateKey(startDate);
+  const rangeEnd = civilDateKey(endDate);
+  let history = [];
+
+  if (rangeStart && rangeEnd) {
+    const startBound = new Date(`${rangeStart}T00:00:00.000Z`);
+    const endBound = new Date(`${rangeEnd}T23:59:59.999Z`);
+    const historyFilter = {
+      employeeId: { $in: employeeIds },
+      startedAt: { $gte: startBound, $lte: endBound },
+      status: { $in: ["STOPPED", "EXPIRED", "ACTIVE"] },
+    };
+    if (status && status !== "ALL") {
+      historyFilter.status = String(status).toUpperCase();
+    }
+
+    const historySessions = await LiveTrackingSession.find(historyFilter)
+      .sort({ startedAt: -1 })
+      .limit(200)
+      .lean();
+
+    history = historySessions.map((session) => {
+      const emp = employeeById.get(String(session.employeeId));
+      const isLive =
+        session.status === "ACTIVE" && session.expiresAt && new Date(session.expiresAt) > now;
+      return {
+        sessionId: session._id,
+        employeeId: session.employeeId,
+        employeeCode: emp?.employeeCode || "",
+        fullName: emp?.fullName || "",
+        email: emp?.email || "",
+        department: emp?.job?.department || "General",
+        jobTitle: emp?.job?.jobTitle || "Team Member",
+        status: isLive ? "ACTIVE" : session.status,
+        startedAt: session.startedAt,
+        expiresAt: session.expiresAt,
+        stoppedAt: session.stoppedAt,
+        lastLocation: session.lastLocation || null,
+        isTrackingActive: isLive,
+        breadcrumbCount: Array.isArray(session.breadcrumbs) ? session.breadcrumbs.length : 0,
+        source: isLive ? "live" : "history",
+      };
+    });
+  }
+
+  const withLocationCount = live.filter((row) => row.lastLocation).length;
+
+  return {
+    live,
+    history,
+    summary: {
+      liveCount: live.length,
+      historyCount: history.length,
+      withLocationCount,
+    },
+    startDate: rangeStart || "",
+    endDate: rangeEnd || "",
+    supportsHistory: true,
+    companyTimezone,
   };
 }

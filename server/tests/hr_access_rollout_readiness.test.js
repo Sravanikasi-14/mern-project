@@ -8,6 +8,7 @@ process.env.BCRYPT_ROUNDS = "4";
 process.env.AUTH_COOKIE_NAME = "hrms_auth";
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import http from "node:http";
 import { after, before, describe, it } from "node:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -131,10 +132,15 @@ function withLeaveSseSubscription(cookie, onReady, { timeoutMs = 4000 } = {}) {
   });
 }
 
+const DB_PATH = "D:/tmp/hrms-mongo/ca4c6-readiness-iso";
+
 before(async () => {
+  // Clear persisted WiredTiger fixture so fixed company slugs do not collide across runs.
+  fs.rmSync(DB_PATH, { recursive: true, force: true });
+  fs.mkdirSync(DB_PATH, { recursive: true });
   mongo = await MongoMemoryServer.create({
     instance: {
-      dbPath: "D:/tmp/hrms-mongo/ca4c6-readiness-iso",
+      dbPath: DB_PATH,
       storageEngine: "wiredTiger",
     },
   });

@@ -14,6 +14,7 @@ import request from "supertest";
 import { createApp } from "../app.js";
 import { connectCentralDB, disconnectAll, getCompanyModels } from "../config/db.js";
 import Company, { COMPANY_STATUSES } from "../models/Company.js";
+import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES } from "../models/User.js";
 import {
   activateCompanyAdmin,

@@ -8,6 +8,7 @@ process.env.BCRYPT_ROUNDS = "4";
 process.env.AUTH_COOKIE_NAME = "hrms_auth";
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { after, before, describe, it } from "node:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import request from "supertest";
@@ -25,6 +26,7 @@ import { getAuthCookieName } from "../utils/authCookie.js";
 import { hashPassword } from "../utils/password.js";
 
 const PASSWORD = "CompanyAdminPass1!";
+const DB_PATH = "D:/tmp/hrms-mongo/ca2-company-admin-dashboard";
 
 let mongo;
 let app;
@@ -471,10 +473,19 @@ describe("Phase CA2 — Company Admin dashboard API", () => {
     assert.deepEqual(globexRes.body.recentActivity, []);
   });
 
-  it("Company Admin still cannot use HR Admin dashboard endpoint", async () => {
+  it("Company Admin can use same-tenant HR Admin dashboard without cross-tenant leakage", async () => {
+    // Approved design: COMPANY_ADMIN is allowed on /api/admin/* with tenant binding via auth.
     const res = await request(app)
       .get("/api/admin/dashboard")
       .set("Cookie", caCookieAcme);
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 200, res.body?.message);
+    const blob = JSON.stringify(res.body).toLowerCase();
+    assert.equal(blob.includes("globex"), false);
+
+    const globexHrDash = await request(app)
+      .get("/api/admin/dashboard")
+      .set("Cookie", caCookieGlobex);
+    assert.equal(globexHrDash.status, 200, globexHrDash.body?.message);
+    assert.equal(JSON.stringify(globexHrDash.body).toLowerCase().includes("acme"), false);
   });
 });

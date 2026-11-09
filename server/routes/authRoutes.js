@@ -6,6 +6,9 @@ import {
   refreshSession,
   me,
   updateProfile,
+  uploadProfileAvatar,
+  deleteProfileAvatar,
+  streamOwnAvatar,
   changePassword,
   setupInitialAdmin,
   verifyOnboardingInvitation,
@@ -26,6 +29,9 @@ router.post("/logout", logout);
 router.get("/me", authenticate, me);
 router.get("/company-logo", authenticate, streamCompanyLogo);
 router.put("/profile", authenticate, updateProfile);
+router.post("/profile/avatar", authenticate, uploadProfileAvatar);
+router.delete("/profile/avatar", authenticate, deleteProfileAvatar);
+router.get("/avatar", authenticate, streamOwnAvatar);
 router.post("/change-password", authenticate, changePassword);
 
 // Controlled initial HR Admin setup for already-provisioned companies

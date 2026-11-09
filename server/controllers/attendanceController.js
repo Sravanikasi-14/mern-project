@@ -8,6 +8,7 @@ import {
   stopLiveTrackingSession,
   getLiveTrackingStatus,
   getAdminAttendanceOverview,
+  getAdminTrackingSessions,
 } from "../services/attendanceService.js";
 import {
   extractRequestAuthToken,
@@ -302,23 +303,28 @@ export async function getTrackingStatusHandler(req, res, next) {
  * Restricted to HR_ADMIN within their company tenant.
  * Platform Admin is explicitly blocked from routine employee location access.
  */
+function assertCompanyAttendanceAccess(req) {
+  if (req.auth.user.role === "PLATFORM_ADMIN") {
+    throw new HttpError(403, "Platform Admins do not have access to company employee location details.");
+  }
+  if (req.auth.user.role !== "HR_ADMIN" && req.auth.user.role !== "COMPANY_ADMIN") {
+    throw new HttpError(403, "Access denied. Only company HR portal roles may view attendance.");
+  }
+}
+
 export async function getAdminAttendanceOverviewHandler(req, res, next) {
   try {
-    if (req.auth.user.role === "PLATFORM_ADMIN") {
-      throw new HttpError(403, "Platform Admins do not have access to company employee location details.");
-    }
-
-    if (req.auth.user.role !== "HR_ADMIN") {
-      throw new HttpError(403, "Access denied. Only HR Admins may view attendance overview.");
-    }
+    assertCompanyAttendanceAccess(req);
 
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
-    const { date, department } = req.query;
+    const { date, startDate, endDate, department } = req.query;
 
     const overview = await getAdminAttendanceOverview({
       models: req.auth.models,
       companyTimezone,
       date,
+      startDate,
+      endDate,
       department,
       hrAccess: req.hrAccess,
     });
@@ -333,14 +339,42 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
 }
 
 /**
+ * GET /api/admin/attendance/tracking-sessions
+ * Live ACTIVE sessions plus optional historical sessions in a date range.
+ */
+export async function getAdminTrackingSessionsHandler(req, res, next) {
+  try {
+    assertCompanyAttendanceAccess(req);
+
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
+    const { startDate, endDate, department, status } = req.query;
+
+    const payload = await getAdminTrackingSessions({
+      models: req.auth.models,
+      companyTimezone,
+      startDate,
+      endDate,
+      department,
+      status,
+      hrAccess: req.hrAccess,
+    });
+
+    res.status(200).json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * GET /api/admin/attendance/employee/:id
- * Allows HR_ADMIN to fetch an individual employee's attendance history for drawer inspection.
+ * Allows HR portal roles to fetch an individual employee's attendance history for drawer inspection.
  */
 export async function getAdminEmployeeAttendanceHistoryHandler(req, res, next) {
   try {
-    if (req.auth.user.role !== "HR_ADMIN") {
-      throw new HttpError(403, "Access denied. Only HR Admins may view employee attendance history.");
-    }
+    assertCompanyAttendanceAccess(req);
 
     const { Employee } = req.auth.models;
     const employee = await Employee.findById(req.params.id);

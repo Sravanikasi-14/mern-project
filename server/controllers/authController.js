@@ -9,6 +9,7 @@ import { verifyOnboardingToken } from "../utils/onboardingToken.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { createAuthSessionRecord } from "../utils/authSession.js";
 import { stopActiveLiveTrackingSessions } from "../services/attendanceService.js";
+import { parseProfileImageUpload } from "../services/documentStorage.js";
 import { signAuthToken, verifyAuthToken, decodeAuthToken } from "../utils/token.js";
 import {
   generateRefreshToken,
@@ -314,11 +315,19 @@ export async function updateProfile(req, res, next) {
     const user = req.auth.user;
     const company = req.auth.company;
     const models = await getCompanyModels(company);
+    // Candidates may only manage name / phone / photo. They never get an Employee record here.
+    const isCandidate = user.role === USER_ROLES.CANDIDATE;
 
     const updateFields = {};
-    if (fullName !== undefined) updateFields.fullName = String(fullName).trim();
+    if (fullName !== undefined) {
+      const trimmed = String(fullName).trim();
+      if (!trimmed) {
+        throw new HttpError(400, "Full name cannot be empty.");
+      }
+      updateFields.fullName = trimmed;
+    }
     if (phoneNumber !== undefined) updateFields.phoneNumber = String(phoneNumber).trim();
-    if (preferences && typeof preferences === "object") {
+    if (!isCandidate && preferences && typeof preferences === "object") {
       updateFields.preferences = {
         emailNotifications: preferences.emailNotifications !== false,
         weeklyDigest: preferences.weeklyDigest !== false,
@@ -333,17 +342,140 @@ export async function updateProfile(req, res, next) {
     );
 
     // If user is linked to an Employee record, update basic fields on Employee too
-    if (user.employeeId && models.Employee) {
+    if (!isCandidate && user.employeeId && models.Employee) {
       const empUpdate = {};
-      if (fullName !== undefined) empUpdate.fullName = String(fullName).trim();
-      if (phoneNumber !== undefined) empUpdate.phoneNumber = String(phoneNumber).trim();
-      await models.Employee.findByIdAndUpdate(user.employeeId, { $set: empUpdate });
+      if (updateFields.fullName !== undefined) empUpdate.fullName = updateFields.fullName;
+      if (updateFields.phoneNumber !== undefined) empUpdate.phoneNumber = updateFields.phoneNumber;
+      if (Object.keys(empUpdate).length) {
+        await models.Employee.findByIdAndUpdate(user.employeeId, { $set: empUpdate });
+      }
     }
 
     res.json({
       message: "Profile updated successfully",
       user: serializeUser(updatedUser),
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Linked Employee for avatar sync (never creates one). Candidates are never linked. */
+async function findLinkedEmployeeId(models, user) {
+  if (!models.Employee || user.role === USER_ROLES.CANDIDATE) return null;
+  if (user.employeeId) {
+    const byId = await models.Employee.exists({ _id: user.employeeId });
+    if (byId) return byId._id;
+  }
+  const byUser = await models.Employee.exists({ userId: user._id });
+  return byUser ? byUser._id : null;
+}
+
+function sendAvatarBytes(res, { data, mimeType }) {
+  res.setHeader("Content-Type", mimeType || "image/jpeg");
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", "inline");
+  return res.send(Buffer.from(data));
+}
+
+export async function uploadProfileAvatar(req, res, next) {
+  try {
+    const user = req.auth.user;
+    const models = await getCompanyModels(req.auth.company);
+    const { fileName, fileData, mimeType } = req.body || {};
+    const image = parseProfileImageUpload({ fileName, fileData, mimeType });
+    const version = Date.now();
+
+    const updatedUser = await models.User.findByIdAndUpdate(
+      user._id,
+      {
+        $set: {
+          avatar: `/api/auth/avatar?v=${version}`,
+          avatarMimeType: image.mimeType,
+          avatarData: image.buffer,
+        },
+      },
+      { new: true }
+    );
+
+    let employee = null;
+    const employeeId = await findLinkedEmployeeId(models, user);
+    if (employeeId) {
+      const employeeAvatar = `/api/employees/${employeeId}/avatar?v=${version}`;
+      await models.Employee.updateOne(
+        { _id: employeeId },
+        {
+          $set: {
+            avatar: employeeAvatar,
+            avatarMimeType: image.mimeType,
+            avatarData: image.buffer,
+          },
+        }
+      );
+      employee = { _id: employeeId, avatar: employeeAvatar };
+    }
+
+    res.json({
+      message: "Profile photo updated successfully",
+      user: serializeUser(updatedUser),
+      employee,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteProfileAvatar(req, res, next) {
+  try {
+    const user = req.auth.user;
+    const models = await getCompanyModels(req.auth.company);
+    const clear = { $set: { avatar: "", avatarMimeType: "" }, $unset: { avatarData: "" } };
+
+    const updatedUser = await models.User.findByIdAndUpdate(user._id, clear, { new: true });
+
+    let employee = null;
+    const employeeId = await findLinkedEmployeeId(models, user);
+    if (employeeId) {
+      await models.Employee.updateOne({ _id: employeeId }, clear);
+      employee = { _id: employeeId, avatar: "" };
+    }
+
+    res.json({
+      message: "Profile photo removed",
+      user: serializeUser(updatedUser),
+      employee,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Streams the caller's own photo: User first, else linked Employee. */
+export async function streamOwnAvatar(req, res, next) {
+  try {
+    const user = req.auth.user;
+    const models = await getCompanyModels(req.auth.company);
+
+    const account = await models.User.findById(user._id).select("+avatarData avatarMimeType");
+    if (account?.avatarData?.length) {
+      return sendAvatarBytes(res, { data: account.avatarData, mimeType: account.avatarMimeType });
+    }
+
+    const employeeId = await findLinkedEmployeeId(models, user);
+    if (employeeId) {
+      const employee = await models.Employee.findById(employeeId).select(
+        "+avatarData avatarMimeType"
+      );
+      if (employee?.avatarData?.length) {
+        return sendAvatarBytes(res, {
+          data: employee.avatarData,
+          mimeType: employee.avatarMimeType,
+        });
+      }
+    }
+
+    throw new HttpError(404, "No profile photo has been uploaded.");
   } catch (error) {
     next(error);
   }

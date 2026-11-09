@@ -8,6 +8,7 @@ process.env.BCRYPT_ROUNDS = "4";
 process.env.AUTH_COOKIE_NAME = "hrms_auth";
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { after, before, describe, it } from "node:test";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import request from "supertest";
@@ -55,10 +56,15 @@ async function login(companyCode, email) {
   return cookieFrom(res);
 }
 
+const DB_PATH = "D:/tmp/hrms-mongo/ca4c-hr-enforce-iso";
+
 before(async () => {
+  // Clear persisted WiredTiger fixture so fixed company slugs do not collide across runs.
+  fs.rmSync(DB_PATH, { recursive: true, force: true });
+  fs.mkdirSync(DB_PATH, { recursive: true });
   mongo = await MongoMemoryServer.create({
     instance: {
-      dbPath: "D:/tmp/hrms-mongo/ca4c-hr-enforce-iso",
+      dbPath: DB_PATH,
       storageEngine: "wiredTiger",
     },
   });

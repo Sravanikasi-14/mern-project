@@ -339,8 +339,10 @@ describe("CA4-C.10 dashboard permission gating", () => {
   });
 
   it("leaves the Company Admin dashboard and employee self-service unchanged", async () => {
+    // Approved design: Company Admin may use same-tenant HR dashboard modules.
+    // Dedicated company-admin dashboard remains CA-only.
     const hrDashboard = await request(app).get("/api/admin/dashboard").set("Cookie", cookies.ca);
-    assert.equal(hrDashboard.status, 403);
+    assert.equal(hrDashboard.status, 200, hrDashboard.body?.message);
 
     const companyDashboard = await request(app)
       .get("/api/company-admin/dashboard")

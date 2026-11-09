@@ -296,6 +296,10 @@ export function createUserSchema() {
       },
       fullName: { type: String, trim: true, default: "" },
       phoneNumber: { type: String, trim: true, default: "" },
+      /** Account-level profile photo (used when no employee link). Bytes never serialized. */
+      avatar: { type: String, trim: true, default: "" },
+      avatarMimeType: { type: String, trim: true, default: "" },
+      avatarData: { type: Buffer, select: false },
       /**
        * Company Admin → HR Admin invitation lifecycle (Phase CA3).
        * Absent for non–HR-Admin users and for legacy HR Admins created without invite.
@@ -395,6 +399,7 @@ export function createUserSchema() {
   userSchema.set("toJSON", {
     transform(_doc, ret) {
       delete ret.passwordHash;
+      delete ret.avatarData;
       if (ret.onboarding) {
         delete ret.onboarding.onboardingTokenHash;
       }
@@ -417,6 +422,8 @@ export function serializeUser(user) {
 
   const json = typeof user.toJSON === "function" ? user.toJSON() : { ...user };
   delete json.passwordHash;
+  delete json.avatarData;
+  json.avatar = typeof json.avatar === "string" ? json.avatar : "";
   if (json.onboarding) {
     delete json.onboarding.onboardingTokenHash;
   }

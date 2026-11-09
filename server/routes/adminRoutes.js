@@ -3,6 +3,7 @@ import { getAdminOverview, getAdminDashboard } from "../controllers/adminControl
 import {
   getAdminAttendanceOverviewHandler,
   getAdminEmployeeAttendanceHistoryHandler,
+  getAdminTrackingSessionsHandler,
 } from "../controllers/attendanceController.js";
 import { getHrIntelligenceHandler } from "../controllers/hrIntelligenceController.js";
 import { authenticate } from "../middleware/authenticate.js";
@@ -16,6 +17,11 @@ router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADM
 router.get("/overview", requireHrPermission("dashboard.view"), getAdminOverview);
 router.get("/dashboard", requireHrPermission("dashboard.view"), getAdminDashboard);
 router.get("/attendance/overview", requireHrPermission("attendance.view"), getAdminAttendanceOverviewHandler);
+router.get(
+  "/attendance/tracking-sessions",
+  requireHrPermission("attendance.view"),
+  getAdminTrackingSessionsHandler
+);
 router.get(
   "/attendance/employee/:id",
   requireHrPermission("attendance.view"),

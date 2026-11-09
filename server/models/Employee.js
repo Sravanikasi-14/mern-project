@@ -23,6 +23,10 @@ export function createEmployeeSchema() {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
       },
+      /** Public API path used by existing selects (e.g. /api/employees/:id/avatar?v=...). Never raw bytes. */
+      avatar: { type: String, trim: true, default: "" },
+      avatarMimeType: { type: String, trim: true, default: "" },
+      avatarData: { type: Buffer, select: false },
       employeeCode: {
         type: String,
         required: true,
