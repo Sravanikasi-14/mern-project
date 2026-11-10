@@ -28,7 +28,11 @@ export const qk = {
   payslips: () => ["employee", "payslips"],
   settlement: () => ["employee", "settlement"],
   assets: () => ["employee", "assets"],
-  notifications: () => ["shared", "notifications"],
+  // Pass userId for cache isolation; omit (undefined) for prefix invalidation across users.
+  notifications: (userId) =>
+    userId === undefined
+      ? ["shared", "notifications"]
+      : ["shared", "notifications", userId ? String(userId) : "anon"],
   chatConversations: () => ["chat", "conversations"],
   chatMessages: (id) => ["chat", "messages", id],
   chatDirectory: (search) => ["chat", "directory", search],
@@ -116,7 +120,10 @@ export function invalidateAssets(client) {
   ]);
 }
 
-export function invalidateNotifications(client) {
+export function invalidateNotifications(client, userId) {
+  if (userId) {
+    return client.invalidateQueries({ queryKey: ["shared", "notifications", String(userId)] });
+  }
   return client.invalidateQueries({ queryKey: ["shared", "notifications"] });
 }
 

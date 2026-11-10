@@ -20,8 +20,12 @@ export function createNotificationSchema() {
         index: true,
       },
       role: {
-        type: String, // "HR_ADMIN", "EMPLOYEE", or null for all
+        // Role broadcast when userId is null (e.g. "HR_ADMIN").
+        // When userId is set, role is unused for visibility (often null).
+        // userId:null + role:null = intentional company-wide broadcast.
+        type: String,
         index: true,
+        default: null,
       },
       title: {
         type: String,

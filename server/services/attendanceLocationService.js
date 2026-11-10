@@ -495,6 +495,26 @@ export async function applyGeofenceDecision({
         distanceMeters: evaluation.distanceMeters,
         message,
       });
+      // Punch-time outside WARN must notify immediately — live tracking is optional/manual
+      // and must not be required for the first out-of-radius alert.
+      await notifyAttendanceStakeholders({
+        models,
+        employee,
+        title:
+          phase === "PUNCH_OUT"
+            ? "Punch-out outside permitted area"
+            : "Punch-in outside permitted area",
+        message: `${employee.fullName || "Employee"} ${
+          phase === "PUNCH_OUT" ? "punched out" : "punched in"
+        } ${evaluation.distanceMeters}m from ${zone.label} (allowed ${zone.radiusMeters}m).`,
+        link: "/admin/attendance?tab=exceptions",
+        metadata: {
+          sessionId: sessionId ? String(sessionId) : null,
+          type: outsideType,
+          phase,
+          distanceMeters: evaluation.distanceMeters,
+        },
+      }).catch(() => {});
     }
   }
 

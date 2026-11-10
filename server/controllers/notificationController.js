@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import { HttpError } from "../utils/httpError.js";
+import {
+  notificationSubjectEmployeeId,
+  notificationVisibilityFilter,
+} from "../utils/notificationVisibility.js";
 
 /**
  * GET /api/notifications
@@ -35,26 +40,23 @@ export async function getNotifications(req, res, next) {
 
     const items = [];
 
-    // 1. Fetch persisted database notifications
+    // 1. Fetch persisted database notifications owned by / broadcast to this user.
+    // Never match `{ role: null }` alone — personal docs often store role:null with a userId.
     if (Notification) {
-      const persisted = await Notification.find({
-        $or: [
-          { userId: user._id },
-          { role: user.role },
-          { role: null },
-        ],
-      })
+      const persisted = await Notification.find(notificationVisibilityFilter(user))
         .sort({ createdAt: -1 })
-        .limit(20)
+        .limit(40)
         .lean();
 
       for (const notif of persisted) {
+        const subjectEmployeeId = notificationSubjectEmployeeId(notif);
         // When ENFORCED, drop role-broadcast notifications that name an out-of-scope employee
         if (
           user.role === USER_ROLES.HR_ADMIN &&
           hrAccess?.enforced &&
-          notif.employeeId &&
-          !isEmployeeIdInScope(hrAccess, notif.employeeId)
+          subjectEmployeeId &&
+          !notif.userId &&
+          !isEmployeeIdInScope(hrAccess, subjectEmployeeId)
         ) {
           continue;
         }
@@ -207,9 +209,10 @@ export async function getNotifications(req, res, next) {
     // Sort all combined items by createdAt descending
     items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    // Limit to 20 most recent
-    const notifications = items.slice(0, 20);
-    const unreadCount = notifications.filter((n) => !n.isRead).length;
+    // Panel shows unread only. Read docs stay in the DB; mark-read APIs never delete.
+    const unread = items.filter((n) => !n.isRead);
+    const notifications = unread.slice(0, 20);
+    const unreadCount = unread.length;
 
     res.json({
       success: true,
@@ -236,13 +239,20 @@ export async function markNotificationRead(req, res, next) {
     // Scope to notifications this user is allowed to see. Never flip global
     // isRead on shared/role broadcasts — that would mark them read for everyone.
     if (mongoose.Types.ObjectId.isValid(cleanId) && Notification) {
-      await Notification.findOneAndUpdate(
+      const updated = await Notification.findOneAndUpdate(
         {
           _id: cleanId,
-          $or: [{ userId: user._id }, { role: user.role }, { role: null }],
+          ...notificationVisibilityFilter(user),
         },
-        { $addToSet: { readBy: user._id } }
+        { $addToSet: { readBy: user._id } },
+        { new: true }
       );
+      if (!updated) {
+        const exists = await Notification.findById(cleanId).select("_id userId role").lean();
+        if (exists) {
+          throw new HttpError(403, "You cannot modify another user's notification.");
+        }
+      }
     }
 
     // Persist per-user read state (synthetic leave-/task- ids and DB ids)
@@ -271,18 +281,9 @@ export async function markAllNotificationsRead(req, res, next) {
 
     if (Notification) {
       // Per-user read tracking only — do not flip shared/role notifications globally.
-      await Notification.updateMany(
-        {
-          $or: [
-            { userId: user._id },
-            { role: user.role },
-            { role: null },
-          ],
-        },
-        {
-          $addToSet: { readBy: user._id },
-        }
-      );
+      await Notification.updateMany(notificationVisibilityFilter(user), {
+        $addToSet: { readBy: user._id },
+      });
     }
 
     if (User) {

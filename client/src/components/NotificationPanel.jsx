@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { useNotificationsQuery } from "../hooks/useEmployeeQueries";
 import { invalidateNotifications, qk } from "../lib/queryKeys";
 
@@ -29,6 +30,8 @@ function formatTimeAgo(dateStr) {
 export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?._id || user?.id || null;
   const panelRef = useRef(null);
 
   const notificationsQuery = useNotificationsQuery();
@@ -86,24 +89,34 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
     };
   }, [isOpen]);
 
+  const removeFromVisibleList = (notifId) => {
+    queryClient.setQueryData(qk.notifications(userId), (old) => {
+      if (!old) return { notifications: [], unreadCount: 0 };
+      const remaining = (old.notifications || []).filter((n) => n.id !== notifId);
+      return {
+        ...old,
+        notifications: remaining,
+        unreadCount: Math.max(0, Math.min(remaining.length, (old.unreadCount || 1) - 1)),
+      };
+    });
+  };
+
+  const clearVisibleList = () => {
+    queryClient.setQueryData(qk.notifications(userId), {
+      notifications: [],
+      unreadCount: 0,
+    });
+  };
+
   const handleItemClick = async (notif) => {
-    // Optimistically mark as read
+    // Optimistically remove from the unread panel; document stays in DB via mark-read API.
     if (!notif.isRead) {
+      removeFromVisibleList(notif.id);
       try {
         await api.patch(`/notifications/${notif.id}/read`);
-        queryClient.setQueryData(qk.notifications(), (old) => {
-          if (!old) return old;
-          const nextUnread = Math.max(0, (old.unreadCount || 0) - 1);
-          return {
-            ...old,
-            notifications: (old.notifications || []).map((n) =>
-              n.id === notif.id ? { ...n, isRead: true } : n
-            ),
-            unreadCount: nextUnread,
-          };
-        });
       } catch {
-        // ignore read error
+        // Roll back by refetching authoritative unread list.
+        await notificationsQuery.refetch();
       }
     }
 
@@ -115,18 +128,15 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
   };
 
   const handleMarkAllRead = async () => {
+    const previous = queryClient.getQueryData(qk.notifications(userId));
+    clearVisibleList();
     try {
       await api.post("/notifications/mark-all-read");
-      queryClient.setQueryData(qk.notifications(), (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          notifications: (old.notifications || []).map((n) => ({ ...n, isRead: true })),
-          unreadCount: 0,
-        };
-      });
-      await invalidateNotifications(queryClient);
+      await invalidateNotifications(queryClient, userId);
     } catch (err) {
+      if (previous) {
+        queryClient.setQueryData(qk.notifications(userId), previous);
+      }
       console.error("Failed to mark all as read:", err.message);
     }
   };

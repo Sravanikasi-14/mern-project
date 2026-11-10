@@ -468,7 +468,10 @@ export async function punchInEmployee({
     checkInGeofence: geofenceMeta,
     remoteWorkRequestId: approvalId,
     durationMinutes: 0,
-    outsideRadius: false,
+    // Seed monitoring state from punch-in geofence so already-outside punches
+    // do not re-fire LEFT on the first tracking update (return still works).
+    outsideRadius: Boolean(geofenceMeta?.outside),
+    lastOutsideAt: geofenceMeta?.outside ? serverNow : null,
   };
 
   let attendance;

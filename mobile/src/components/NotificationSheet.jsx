@@ -4,27 +4,61 @@ import Modal from "./Modal";
 import EmptyState, { ErrorState, Skeleton } from "./EmptyState";
 import SoftRefresh from "./SoftRefresh";
 import api from "../services/api";
+import { useAuth } from "../app/AuthContext";
 import { useNotificationsQuery } from "../hooks/useEmployeeQueries";
-import { invalidateNotifications } from "../app/queryKeys";
+import { invalidateNotifications, qk } from "../app/queryKeys";
 
 export default function NotificationSheet({ open, onClose }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?._id || user?.id || null;
   const notesQuery = useNotificationsQuery({ enabled: open });
   const items = notesQuery.data?.notifications || [];
+  const unreadCount = notesQuery.data?.unreadCount ?? items.length;
   const error = notesQuery.error?.response?.data?.message || notesQuery.error?.message || "";
 
+  const removeFromVisibleList = (notifId) => {
+    queryClient.setQueryData(qk.notifications(userId), (old) => {
+      if (!old) return { notifications: [], unreadCount: 0 };
+      const remaining = (old.notifications || []).filter(
+        (n) => String(n.id || n._id) !== String(notifId)
+      );
+      return {
+        ...old,
+        notifications: remaining,
+        unreadCount: Math.max(0, Math.min(remaining.length, (old.unreadCount || 1) - 1)),
+      };
+    });
+  };
+
+  const clearVisibleList = () => {
+    queryClient.setQueryData(qk.notifications(userId), {
+      notifications: [],
+      unreadCount: 0,
+    });
+  };
+
   const markAll = async () => {
-    await api.post("/notifications/mark-all-read");
-    await invalidateNotifications(queryClient);
+    const previous = queryClient.getQueryData(qk.notifications(userId));
+    clearVisibleList();
+    try {
+      await api.post("/notifications/mark-all-read");
+      await invalidateNotifications(queryClient, userId);
+    } catch {
+      if (previous) {
+        queryClient.setQueryData(qk.notifications(userId), previous);
+      }
+    }
   };
 
   const markOne = async (item) => {
+    const notifId = item.id || item._id;
+    removeFromVisibleList(notifId);
     try {
-      await api.patch(`/notifications/${item.id || item._id}/read`);
-      await invalidateNotifications(queryClient);
+      await api.patch(`/notifications/${notifId}/read`);
     } catch {
-      // still allow navigation
+      await notesQuery.refetch();
     }
     if (item.link) {
       // Close overlay first so its history entry is released before route push.
@@ -44,7 +78,7 @@ export default function NotificationSheet({ open, onClose }) {
       footer={
         items.length > 0 ? (
           <button type="button" className="btn-secondary" onClick={markAll}>
-            Mark all as read
+            Mark all as read{unreadCount > 0 ? ` (${unreadCount})` : ""}
           </button>
         ) : null
       }

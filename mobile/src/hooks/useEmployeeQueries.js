@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
+import { useAuth } from "../app/AuthContext";
 import { qk } from "../app/queryKeys";
 import { STALE } from "../app/queryClient";
 
@@ -221,17 +222,33 @@ export function useAssetsQuery(options = {}) {
   });
 }
 
+function normalizeUnreadNotificationsPayload(data) {
+  const raw = Array.isArray(data?.notifications)
+    ? data.notifications
+    : Array.isArray(data?.data)
+      ? data.data
+      : [];
+  // Defense in depth: panel is unread-only even if a stale payload includes isRead:true.
+  const notifications = raw.filter((n) => n && n.isRead !== true);
+  const unreadCount =
+    typeof data?.unreadCount === "number"
+      ? data.unreadCount
+      : notifications.length;
+  return { notifications, unreadCount };
+}
+
 export function useNotificationsQuery(options = {}) {
+  const { user } = useAuth();
+  const userId = user?._id || user?.id || null;
+  const { enabled = true, ...rest } = options;
   return useQuery({
-    queryKey: qk.notifications(),
+    queryKey: qk.notifications(userId),
     queryFn: async () => {
       const res = await api.get("/notifications");
-      return {
-        notifications: res.data?.notifications || res.data?.data || [],
-        unreadCount: res.data?.unreadCount ?? 0,
-      };
+      return normalizeUnreadNotificationsPayload(res.data);
     },
     staleTime: STALE.notifications,
-    ...options,
+    ...rest,
+    enabled: Boolean(userId) && enabled,
   });
 }

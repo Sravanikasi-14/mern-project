@@ -11,7 +11,11 @@ export const qk = {
   payslips: () => ["employee", "payslips"],
   settlement: () => ["employee", "settlement"],
   assets: () => ["employee", "assets"],
-  notifications: () => ["employee", "notifications"],
+  // Pass userId for cache isolation; omit (undefined) for prefix invalidation across users.
+  notifications: (userId) =>
+    userId === undefined
+      ? ["employee", "notifications"]
+      : ["employee", "notifications", userId ? String(userId) : "anon"],
   /** HR leave request intelligence — never used on employee screens */
   leaveImpact: (id) => ["hr", "leave-impact", String(id || "")],
   leaveBackup: (id) => ["hr", "leave-backup", String(id || "")],
@@ -73,6 +77,11 @@ export function invalidateAssets(queryClient) {
   return queryClient.invalidateQueries({ queryKey: ["employee", "assets"] });
 }
 
-export function invalidateNotifications(queryClient) {
+export function invalidateNotifications(queryClient, userId) {
+  if (userId) {
+    return queryClient.invalidateQueries({
+      queryKey: ["employee", "notifications", String(userId)],
+    });
+  }
   return queryClient.invalidateQueries({ queryKey: ["employee", "notifications"] });
 }
