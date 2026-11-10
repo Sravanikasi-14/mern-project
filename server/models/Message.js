@@ -40,7 +40,9 @@ export function createMessageSchema() {
             fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
             fileName: { type: String, required: true, maxlength: 180 },
             mimeType: { type: String, required: true, maxlength: 160 },
+            originalMimeType: { type: String, default: "", maxlength: 160 },
             size: { type: Number, required: true, min: 1 },
+            /** GridFS file id in tenant chat_attachments bucket. */
             storageKey: { type: String, required: true, maxlength: 512 },
             uploadedAt: { type: Date, required: true },
             uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

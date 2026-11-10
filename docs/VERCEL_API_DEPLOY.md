@@ -37,6 +37,8 @@ If Vercel assigns a different URL, update the rewrite in root [`vercel.json`](..
 | `SMTP_PORT` | `587` |
 | `SMTP_SECURE` | `false` |
 
+**Messages attachments** use tenant MongoDB **GridFS** (`chat_attachments` bucket) on the same Atlas `MONGO_URI` — no Cloudflare R2 required for chat. Offer documents use a separate GridFS bucket (`offer_docs`).
+
 7. Deploy
 
 ## B. Health check
@@ -69,41 +71,81 @@ Only after health + login work on production:
 
 ## F. Scheduled announcements
 
-This is not configured on the current production deployment. Do not treat scheduled publication as automatic until the steps below are done and a production invocation returns success.
+Announcement due-publish endpoint (same auth pattern as workforce cron):
 
-The production frontend calls:
+`GET|POST /api/announcements/publish-due`
 
-`https://mern-project-backend-woad.vercel.app/api`
+Requires `Authorization: Bearer <CRON_SECRET>` (or `ANNOUNCEMENT_CRON_SECRET`).
 
-After the announcement API is deployed, the scheduler URL is:
+Opening Messages can still publish due announcements for that company when someone loads them; that does not replace a scheduler while the app is idle. A repeated call publishes each due announcement once.
 
-`GET https://mern-project-backend-woad.vercel.app/api/announcements/publish-due`
+On Vercel Hobby, only **one** cron expression is allowed per project and it may run at most **once per day**. Prefer the workforce scheduler daily cron below for Hobby, and call announcements `publish-due` from an external scheduler if you need sub-daily announcement checks on Hobby.
 
-`POST` to the same path is also accepted. Vercel Cron sends `GET`.
+## G. Workforce Task Scheduling Engine (cron)
 
-`https://mern-hrms-api.vercel.app` currently has no deployment. Do not send the cron there. The root rewrite to that host is not the URL the frontend uses.
-
-An unauthenticated call does not publish anything. It returns 401 when `CRON_SECRET` or `ANNOUNCEMENT_CRON_SECRET` is set, and 503 when neither is set. The live API does not have this route yet.
-
-No cron entry is in `server/vercel.json`. The project plan could not be read from this machine. On the Hobby plan, Vercel allows a cron only once per day, and a more frequent expression fails the deployment. A daily job is not precise enough for a chosen publication time, so a cron expression was not added.
-
-To enable it:
-
-1. Open the Vercel project that serves `mern-project-backend-woad.vercel.app`. Its root directory is `server`.
-2. Settings → Environment Variables → Production. Add `CRON_SECRET`: at least 16 letters or numbers, with no spaces or line breaks. Do not add it to the frontend project, and do not commit the value.
-3. On Pro or Enterprise, add this to `server/vercel.json`, then redeploy the API:
+Configured in [`server/vercel.json`](../server/vercel.json):
 
 ```json
 "crons": [
-  { "path": "/api/announcements/publish-due", "schedule": "*/15 * * * *" }
+  {
+    "path": "/api/workforce-scheduler/run",
+    "schedule": "0 2 * * *"
+  }
 ]
 ```
 
-4. On Hobby, upgrade before adding that expression. An external scheduler can call the GET URL with `Authorization: Bearer <CRON_SECRET>` instead.
-5. Redeploy the API after saving the variable. Cron runs only on the production deployment, and only with the secret captured by that deployment.
-6. Opening Messages still publishes due announcements for that company when someone loads them. That does not replace a scheduler while the app is idle.
+| Item | Value |
+|------|--------|
+| Endpoint | `GET` or `POST` `/api/workforce-scheduler/run` |
+| Schedule | `0 2 * * *` (02:00 UTC daily) |
+| Auth | `Authorization: Bearer <CRON_SECRET>` (Vercel injects this automatically when `CRON_SECRET` is set) |
+| Default behavior | Scheduler **disabled** unless `WORKFORCE_SCHEDULER_ENABLED=true`. When enabled, default mode is **dry-run** (no ownership changes). |
 
-A repeated call publishes each due announcement once and does not create a second notification.
+### Feature flags (API project env)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WORKFORCE_SCHEDULER_ENABLED` | unset/false | Master switch. `true` to allow cron/HR runs. |
+| `WORKFORCE_SCHEDULER_MODE` | `dry-run` | `dry-run` = proposals only; `apply` = commit AUTO assignments via `assignUnassignedTaskService`. |
+| `WORKFORCE_SCHEDULER_MAX_ACTIVE_TASKS` | `5` | Soft capacity per employee for automatic scheduling. |
+| `WORKFORCE_SCHEDULER_AUTO_PRIORITIES` | `LOW,MEDIUM` | Priorities eligible for AUTO assign; others need manager approval. |
+| `WORKFORCE_SCHEDULER_LOCK_MS` | `240000` | Per-company run lock TTL. |
+| `CRON_SECRET` | required for cron | Shared with announcement cron auth. |
+
+### Safe enable / disable
+
+1. **Disabled (recommended until reviewed):** omit `WORKFORCE_SCHEDULER_ENABLED` or set `false`. Cron returns `{ skipped: true, reason: "scheduler_disabled" }`. Manual assignment is unchanged.
+2. **Dry-run (review decisions):** `WORKFORCE_SCHEDULER_ENABLED=true` and `WORKFORCE_SCHEDULER_MODE=dry-run` (or omit mode).
+3. **Apply:** set `WORKFORCE_SCHEDULER_MODE=apply` only after dry-run review. HIGH/CRITICAL still require HR approval of proposals.
+4. **Rollback:** set `ENABLED=false` or `MODE=dry-run`. Already-assigned tasks stay assigned; no ownership rewind.
+
+### Deployment steps
+
+1. Open the Vercel project whose **Root Directory** is `server` (production API).
+2. Settings → Environment Variables → Production: set `CRON_SECRET` (≥16 chars). Optionally set `ANNOUNCEMENT_CRON_SECRET` to the same value for announcement routes.
+3. Add scheduler flags as needed (`ENABLED` left false until approved).
+4. Confirm `server/vercel.json` includes the workforce cron entry (already present). Redeploy the API.
+5. Cron runs **only on Production**, not Preview.
+6. Smoke-test manually:
+
+```bash
+curl -X GET "https://<api-host>/api/workforce-scheduler/run" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Expect `401` without the secret, `success` + `skipped` when disabled, or a company results payload when enabled.
+
+### Vercel Hobby limitations
+
+- At most **one** cron job; schedule at most **once per day**.
+- More frequent expressions fail deployment on Hobby — upgrade to Pro/Enterprise or use an external caller with Bearer auth.
+- Function `maxDuration` is 60s in `server/vercel.json`; large tenants may need batching/limits (`limit` on the queue).
+
+HR can also trigger a **tenant dry-run** (authenticated, `people.edit`):
+
+`POST /api/workforce-scheduler/company/run?dryRun=true`
+
+Manual assign of `UNASSIGNED` tasks: `POST /api/tasks/:id/assign` (desktop + mobile Work Management).
 
 ## Local development
 

@@ -1,0 +1,101 @@
+[
+  {
+    "_id": "6ad5fc3727606fbf9d7d7892",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "exitDetails": {
+      "lastWorkingDay": "2026-10-19T00:00:00.000Z",
+      "exitReason": "Resignation",
+      "hrRemarks": "",
+      "initiatedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "initiatedAt": "2026-10-19T11:17:11.723Z"
+    },
+    "status": "DRAFT",
+    "holdReason": "",
+    "statusHistory": [
+      {
+        "status": "DRAFT",
+        "changedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "changedAt": "2026-10-19T11:17:11.723Z",
+        "remarks": "F&F Settlement initiated by HR Admin.",
+        "_id": "6ad5fc3727606fbf9d7d7893"
+      },
+      {
+        "status": "UNDER_REVIEW",
+        "changedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "changedAt": "2026-10-19T11:17:56.464Z",
+        "remarks": "Status changed to UNDER_REVIEW",
+        "_id": "6ad5fc6427606fbf9d7d7897"
+      },
+      {
+        "status": "DRAFT",
+        "changedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "changedAt": "2026-10-19T11:18:03.247Z",
+        "remarks": "Returned to draft for amendments",
+        "_id": "6ad5fc6b27606fbf9d7d789c"
+      }
+    ],
+    "calculationInputs": {
+      "monthlyCtc": 110000,
+      "basicSalary": 55000,
+      "hra": 33000,
+      "specialAllowance": 15400,
+      "workingDaysInExitMonth": 31,
+      "workedDaysInExitMonth": 19,
+      "dailyRate": 3548.39,
+      "earnedLeaveBalance": 12,
+      "leaveEncashmentEligible": true,
+      "leaveEncashmentDailyRate": 1833.33,
+      "missingDataFlags": []
+    },
+    "financialBreakdown": {
+      "earnings": [
+        {
+          "id": "pending_salary",
+          "title": "Pending Salary (19/31 days in exit month)",
+          "category": "SALARY",
+          "amount": 67419,
+          "isSystemCalculated": true,
+          "remarks": "Calculated for 19 days based on monthly CTC of ₹1,10,000"
+        },
+        {
+          "id": "leave_encashment",
+          "title": "Leave Encashment (12 Earned Leaves)",
+          "category": "LEAVE_ENCASHMENT",
+          "amount": 22000,
+          "isSystemCalculated": true,
+          "remarks": "12 leaves at ₹1833.33/day based on basic salary"
+        }
+      ],
+      "deductions": [
+        {
+          "id": "statutory_epf",
+          "title": "Statutory Provident Fund (EPF Deduction)",
+          "category": "STATUTORY",
+          "amount": 4045,
+          "isSystemCalculated": true,
+          "remarks": "12% of pro-rated basic salary"
+        }
+      ],
+      "totalEarnings": 89419,
+      "totalDeductions": 4045,
+      "netSettlementAmount": 85374
+    },
+    "adjustmentsHistory": [],
+    "paymentDetails": {
+      "paymentDate": null,
+      "paymentMethod": "",
+      "referenceNumber": "",
+      "remarks": "",
+      "recordedBy": null,
+      "recordedAt": null
+    },
+    "approvedAt": null,
+    "approvedBy": null,
+    "completedAt": null,
+    "completedBy": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-19T11:17:11.759Z",
+    "updatedAt": "2026-10-19T11:18:03.249Z",
+    "__v": 2
+  }
+]

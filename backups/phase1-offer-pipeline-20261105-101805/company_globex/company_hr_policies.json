@@ -1,0 +1,110 @@
+[
+  {
+    "_id": "6ad45ff295425b7516ac193b",
+    "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+    "leaveTypes": [
+      {
+        "code": "CASUAL",
+        "name": "Casual Leave",
+        "yearlyDays": 8,
+        "isActive": true,
+        "_id": "6ad45ff295425b7516ac193c"
+      },
+      {
+        "code": "SICK",
+        "name": "Sick Leave",
+        "yearlyDays": 6,
+        "isActive": true,
+        "_id": "6ad45ff295425b7516ac193d"
+      },
+      {
+        "code": "EARNED",
+        "name": "Earned / Privilege Leave",
+        "yearlyDays": 12,
+        "isActive": true,
+        "_id": "6ad45ff295425b7516ac193e"
+      }
+    ],
+    "leaveRules": {
+      "probationMonths": 3,
+      "maxConsecutiveDays": 14,
+      "leaveYearStartMonth": 1,
+      "carryForwardLimitDays": 10,
+      "allowEncashment": false
+    },
+    "attendanceRules": {
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "weekendRules": {
+      "saturdayOff": true,
+      "sundayOff": true
+    },
+    "holidays": [
+      {
+        "name": "Republic Day",
+        "date": "2026-01-26T00:00:00.000Z",
+        "type": "National Holiday",
+        "_id": "6ad45ff295425b7516ac193f"
+      },
+      {
+        "name": "Holi",
+        "date": "2026-03-25T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "_id": "6ad45ff295425b7516ac1940"
+      },
+      {
+        "name": "Good Friday",
+        "date": "2026-04-03T00:00:00.000Z",
+        "type": "Observance",
+        "_id": "6ad45ff295425b7516ac1941"
+      },
+      {
+        "name": "May Day",
+        "date": "2026-05-01T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "_id": "6ad45ff295425b7516ac1942"
+      },
+      {
+        "name": "Independence Day",
+        "date": "2026-08-15T00:00:00.000Z",
+        "type": "National Holiday",
+        "_id": "6ad45ff295425b7516ac1943"
+      },
+      {
+        "name": "Gandhi Jayanti",
+        "date": "2026-10-02T00:00:00.000Z",
+        "type": "National Holiday",
+        "_id": "6ad45ff295425b7516ac1944"
+      },
+      {
+        "name": "Dussehra",
+        "date": "2026-10-20T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "_id": "6ad45ff295425b7516ac1945"
+      },
+      {
+        "name": "Diwali / Deepavali",
+        "date": "2026-11-08T00:00:00.000Z",
+        "type": "Festival Holiday",
+        "_id": "6ad45ff295425b7516ac1946"
+      },
+      {
+        "name": "Guru Nanak Jayanti",
+        "date": "2026-11-24T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "_id": "6ad45ff295425b7516ac1947"
+      },
+      {
+        "name": "Christmas Day",
+        "date": "2026-12-25T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "_id": "6ad45ff295425b7516ac1948"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T05:58:10.939Z",
+    "updatedAt": "2026-10-18T05:58:10.939Z",
+    "__v": 0
+  }
+]

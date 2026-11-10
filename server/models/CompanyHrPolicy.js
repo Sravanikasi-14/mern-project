@@ -61,6 +61,26 @@ export const DEFAULT_HR_POLICY = Object.freeze({
     officeLatitude: null,
     officeLongitude: null,
     officeAddress: "",
+    officeName: "Head Office",
+    /** BLOCK rejects punch; WARN records exception and allows; OFF skips geofence. */
+    outOfRadiusPolicy: "BLOCK",
+    maxAccuracyMeters: 100,
+    accuracyFailurePolicy: "WARN",
+    gpsFailurePolicy: "BLOCK",
+    /** Max age of client capturedAt vs server time (seconds). */
+    maxLocationAgeSeconds: 180,
+    /** Allow minor client clock skew into the future (seconds). */
+    maxLocationFutureSkewSeconds: 60,
+  },
+  workArrangementRules: {
+    /** WFH_APPROVED_LOCATION | WFH_UNRESTRICTED */
+    wfhLocationMode: "WFH_UNRESTRICTED",
+    wfhRequireHomeApproval: false,
+    wfhRadiusMeters: 200,
+    wfhMaxAccuracyMeters: 150,
+    hybridRemoteApprovalRequired: true,
+    monitoringEnabled: true,
+    monitoringMinIntervalSeconds: 60,
   },
   payrollRules: {
     currencySymbol: "₹",
@@ -248,6 +268,38 @@ export function createCompanyHrPolicySchema() {
         officeLatitude: { type: Number, default: null },
         officeLongitude: { type: Number, default: null },
         officeAddress: { type: String, default: "", trim: true },
+        officeName: { type: String, default: "Head Office", trim: true },
+        outOfRadiusPolicy: {
+          type: String,
+          enum: ["BLOCK", "WARN", "OFF"],
+          default: "BLOCK",
+        },
+        maxAccuracyMeters: { type: Number, default: 100 },
+        accuracyFailurePolicy: {
+          type: String,
+          enum: ["BLOCK", "WARN", "OFF"],
+          default: "WARN",
+        },
+        gpsFailurePolicy: {
+          type: String,
+          enum: ["BLOCK", "WARN", "OFF"],
+          default: "BLOCK",
+        },
+        maxLocationAgeSeconds: { type: Number, default: 180, min: 30, max: 900 },
+        maxLocationFutureSkewSeconds: { type: Number, default: 60, min: 0, max: 300 },
+      },
+      workArrangementRules: {
+        wfhLocationMode: {
+          type: String,
+          enum: ["WFH_APPROVED_LOCATION", "WFH_UNRESTRICTED"],
+          default: "WFH_UNRESTRICTED",
+        },
+        wfhRequireHomeApproval: { type: Boolean, default: false },
+        wfhRadiusMeters: { type: Number, default: 200 },
+        wfhMaxAccuracyMeters: { type: Number, default: 150 },
+        hybridRemoteApprovalRequired: { type: Boolean, default: true },
+        monitoringEnabled: { type: Boolean, default: true },
+        monitoringMinIntervalSeconds: { type: Number, default: 60 },
       },
       payrollRules: {
         currencySymbol: { type: String, default: "₹", trim: true },

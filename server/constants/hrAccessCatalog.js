@@ -29,7 +29,11 @@ export const HR_ACCESS_MODULES = Object.freeze([
   {
     key: "attendance",
     label: "Attendance",
-    actions: [{ key: "view", label: "View", description: "Attendance overview and history" }],
+    actions: [
+      { key: "view", label: "View", description: "Attendance overview and history" },
+      { key: "approve", label: "Approve remote work", description: "Approve or reject hybrid remote-work requests" },
+      { key: "manage", label: "Manage exceptions", description: "Review location exceptions and regularize attendance" },
+    ],
   },
   {
     key: "leave",

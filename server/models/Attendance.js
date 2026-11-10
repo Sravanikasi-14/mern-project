@@ -7,6 +7,17 @@ export const ATTENDANCE_STATUSES = Object.freeze({
   ABSENT: "ABSENT",
 });
 
+export const ATTENDANCE_SESSION_TYPES = Object.freeze({
+  OFFICE: "OFFICE",
+  REMOTE: "REMOTE",
+});
+
+export const ATTENDANCE_SESSION_STATUSES = Object.freeze({
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  INCOMPLETE: "INCOMPLETE",
+});
+
 const LocationSubSchema = new mongoose.Schema(
   {
     latitude: {
@@ -39,6 +50,53 @@ const LocationSubSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const GeofenceResultSubSchema = new mongoose.Schema(
+  {
+    ok: { type: Boolean, default: true },
+    distanceMeters: { type: Number, default: null },
+    radiusMeters: { type: Number, default: null },
+    reason: { type: String, default: "", trim: true },
+    centerLatitude: { type: Number, default: null },
+    centerLongitude: { type: Number, default: null },
+    label: { type: String, default: "", trim: true },
+  },
+  { _id: false }
+);
+
+const AttendanceSessionSubSchema = new mongoose.Schema(
+  {
+    sessionType: {
+      type: String,
+      enum: Object.values(ATTENDANCE_SESSION_TYPES),
+      default: ATTENDANCE_SESSION_TYPES.OFFICE,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: Object.values(ATTENDANCE_SESSION_STATUSES),
+      default: ATTENDANCE_SESSION_STATUSES.ACTIVE,
+      required: true,
+    },
+    checkIn: { type: Date, required: true },
+    checkOut: { type: Date, default: null },
+    checkInLocation: { type: LocationSubSchema, default: null },
+    checkOutLocation: { type: LocationSubSchema, default: null },
+    checkInGeofence: { type: GeofenceResultSubSchema, default: null },
+    checkOutGeofence: { type: GeofenceResultSubSchema, default: null },
+    remoteWorkRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RemoteWorkRequest",
+      default: null,
+    },
+    durationMinutes: { type: Number, default: 0 },
+    outsideRadius: { type: Boolean, default: false },
+    lastOutsideAt: { type: Date, default: null },
+    lastInsideAt: { type: Date, default: null },
+    notes: { type: String, default: "", trim: true },
+  },
+  { _id: true, timestamps: false }
+);
+
 export function createAttendanceSchema() {
   const attendanceSchema = new mongoose.Schema(
     {
@@ -66,6 +124,7 @@ export function createAttendanceSchema() {
         required: true,
         index: true,
       },
+      /** Denormalized first check-in of the day (payroll/dashboard compatibility). */
       checkIn: {
         type: Date,
         default: null,
@@ -74,6 +133,7 @@ export function createAttendanceSchema() {
         type: LocationSubSchema,
         default: null,
       },
+      /** Denormalized last check-out of the day. */
       checkOut: {
         type: Date,
         default: null,
@@ -86,18 +146,49 @@ export function createAttendanceSchema() {
         type: String,
         default: "",
       },
+      /** Sum of completed session durations (excludes breaks between sessions). */
       durationMinutes: {
         type: Number,
         default: 0,
+      },
+      sessions: {
+        type: [AttendanceSessionSubSchema],
+        default: [],
+      },
+      openSessionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
       },
       notes: {
         type: String,
         default: "",
         trim: true,
       },
+      regularization: {
+        requestedAt: { type: Date, default: null },
+        requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        reason: { type: String, default: "", trim: true },
+        decidedAt: { type: Date, default: null },
+        decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        decision: { type: String, enum: ["", "APPROVED", "REJECTED"], default: "" },
+        remarks: { type: String, default: "", trim: true },
+        /** Append-only trail; originals preserved — never a silent remote-approval bypass. */
+        auditTrail: {
+          type: [
+            {
+              at: { type: Date, default: Date.now },
+              by: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+              action: { type: String, default: "", trim: true },
+              reason: { type: String, default: "", trim: true },
+              original: { type: mongoose.Schema.Types.Mixed, default: null },
+            },
+          ],
+          default: [],
+        },
+      },
       schemaVersion: {
         type: Number,
-        default: 1,
+        default: 2,
       },
     },
     {
@@ -111,6 +202,7 @@ export function createAttendanceSchema() {
   attendanceSchema.index({ date: 1, status: 1 });
   attendanceSchema.index({ date: 1, employeeId: 1 });
   attendanceSchema.index({ employeeId: 1, createdAt: -1 });
+  attendanceSchema.index({ openSessionId: 1 }, { sparse: true });
 
   return attendanceSchema;
 }
@@ -120,4 +212,27 @@ export function getAttendanceModel(connection) {
     connection.models.Attendance ||
     connection.model("Attendance", createAttendanceSchema())
   );
+}
+
+/** Normalize legacy single-pair rows into a sessions view for readers. */
+export function attendanceSessionsView(attendance) {
+  if (!attendance) return [];
+  if (Array.isArray(attendance.sessions) && attendance.sessions.length > 0) {
+    return attendance.sessions;
+  }
+  if (!attendance.checkIn) return [];
+  return [
+    {
+      _id: attendance._id,
+      sessionType: ATTENDANCE_SESSION_TYPES.OFFICE,
+      status: attendance.checkOut
+        ? ATTENDANCE_SESSION_STATUSES.COMPLETED
+        : ATTENDANCE_SESSION_STATUSES.ACTIVE,
+      checkIn: attendance.checkIn,
+      checkOut: attendance.checkOut || null,
+      checkInLocation: attendance.checkInLocation || null,
+      checkOutLocation: attendance.checkOutLocation || null,
+      durationMinutes: attendance.durationMinutes || 0,
+    },
+  ];
 }

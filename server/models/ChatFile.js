@@ -19,9 +19,14 @@ export function createChatFileSchema() {
         required: true,
       },
       fileName: { type: String, required: true, maxlength: 180 },
+      /** Stored content type (may be image/webp after Sharp compression). */
       mimeType: { type: String, required: true, maxlength: 160 },
+      /** Client-facing original MIME before compression (defaults to mimeType). */
+      originalMimeType: { type: String, default: "", maxlength: 160 },
       size: { type: Number, required: true, min: 1 },
+      /** GridFS file id string in chat_attachments bucket (not a filesystem path). */
       storageKey: { type: String, required: true, maxlength: 512 },
+      storageProvider: { type: String, default: "gridfs", maxlength: 32 },
     },
     {
       timestamps: true,

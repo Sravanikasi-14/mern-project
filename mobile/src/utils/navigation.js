@@ -42,6 +42,8 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/admin/reports") return "/admin/more";
   if (path === "/admin/assets") return "/admin/more";
   if (path === "/admin/organization") return "/admin/more";
+  if (path === "/admin/messages") return "/admin/more";
+  if (/^\/admin\/messages\/[^/]+$/.test(path)) return "/admin/messages";
   if (path === "/admin/hiring") return "/admin/more";
   if (path === "/admin/hiring/offer-editor" || path.startsWith("/admin/hiring?")) return "/admin/hiring";
   if (path === "/admin/offers") return "/admin/more";
@@ -58,6 +60,8 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/app/attendance") return "/app";
   if (path === "/app/profile") return "/app/more";
   if (path === "/app/organization") return "/app/more";
+  if (path === "/app/messages") return "/app/more";
+  if (/^\/app\/messages\/[^/]+$/.test(path)) return "/app/messages";
   if (path === "/app/settings") return "/app/more";
   if (path === "/app/assets") return "/app/more";
   if (path === "/app/payslips") return "/app/more";
@@ -65,6 +69,10 @@ export function resolveMobileFallback(pathname = "", search = "") {
   if (path === "/app/impact-points" || path === "/app/work-impact") return "/app/more";
   if (path === "/app/tasks") return "/app";
 
+  if (path === "/company/organization") return "/company";
+  if (path === "/company/hr-admins") return "/company";
+  if (path === "/company/messages") return "/company";
+  if (/^\/company\/messages\/[^/]+$/.test(path)) return "/company/messages";
   if (path.startsWith("/company")) return "/company";
   if (path.startsWith("/admin/")) return "/admin/dashboard";
   if (path.startsWith("/app/")) return "/app";
@@ -109,5 +117,6 @@ export function isTabRootPath(pathname) {
     "/admin",
     "/admin/dashboard",
     "/admin/more",
+    "/company",
   ].includes(pathname);
 }

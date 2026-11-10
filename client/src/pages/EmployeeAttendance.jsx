@@ -138,7 +138,22 @@ export default function EmployeeAttendance() {
       : `${formatDisplayDate(historyRange.startDate)} – ${formatDisplayDate(historyRange.endDate)}`;
   }, [historyRange]);
 
-  const handleCheckIn = async () => {
+  const [remoteRequests, setRemoteRequests] = useState([]);
+
+  const refreshRemoteRequests = async () => {
+    try {
+      const res = await api.get("/employees/me/attendance/remote-requests");
+      setRemoteRequests(Array.isArray(res.data?.requests) ? res.data.requests : []);
+    } catch {
+      setRemoteRequests([]);
+    }
+  };
+
+  useEffect(() => {
+    refreshRemoteRequests();
+  }, []);
+
+  const handleCheckIn = async (sessionType = "OFFICE", remoteWorkRequestId = null) => {
     try {
       setCheckingAttendance(true);
       setActionError("");
@@ -159,11 +174,37 @@ export default function EmployeeAttendance() {
         return;
       }
 
-      const response = await api.post("/employees/me/attendance/punch-in", { location: loc });
+      const response = await api.post("/employees/me/attendance/punch-in", {
+        location: loc,
+        sessionType: sessionType === "REMOTE" ? "REMOTE" : "OFFICE",
+        ...(remoteWorkRequestId ? { remoteWorkRequestId } : {}),
+      });
       setActionSuccess(response.data?.message || "Punched in successfully!");
       await invalidateAttendance(queryClient);
+      await refreshRemoteRequests();
     } catch (err) {
       setActionError(err.response?.data?.message || "Unable to punch in. Please try again.");
+    } finally {
+      setCheckingAttendance(false);
+    }
+  };
+
+  const handleRequestRemote = async () => {
+    try {
+      setCheckingAttendance(true);
+      setActionError("");
+      setActionSuccess("");
+      const loc = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
+      const workDate = attendance?.today?.date || getCompanyBusinessDate(new Date(), timeZone);
+      await api.post("/employees/me/attendance/remote-requests", {
+        workDate,
+        reason: "Remote work session",
+        location: { ...loc, label: "Remote", radiusMeters: 250 },
+      });
+      setActionSuccess("Remote work request submitted. Punch in remotely after HR approval.");
+      await refreshRemoteRequests();
+    } catch (err) {
+      setActionError(err.response?.data?.message || "Unable to submit remote work request.");
     } finally {
       setCheckingAttendance(false);
     }
@@ -364,7 +405,8 @@ export default function EmployeeAttendance() {
     return filteredDays.slice(start, start + attPageSize);
   }, [filteredDays, attPage, attPageSize]);
 
-  // Calculate summary metrics for the selected month
+  // Calculate summary metrics for the selected month.
+  // Worked duration uses completed session totals (excludes gaps), matching backend recomputeDayTotals.
   const metrics = useMemo(() => {
     let daysPresent = 0;
     let lateClockIns = 0;
@@ -374,6 +416,26 @@ export default function EmployeeAttendance() {
     let absentDays = 0;
 
     const todayStr = getCompanyBusinessDate(new Date(), timeZone);
+
+    const dayWorkedHours = (rec) => {
+      if (Array.isArray(rec.sessions) && rec.sessions.length > 0) {
+        let mins = 0;
+        for (const s of rec.sessions) {
+          if (s.checkIn && s.checkOut) {
+            mins +=
+              Number(s.durationMinutes) > 0
+                ? Number(s.durationMinutes)
+                : Math.max(0, Math.round((new Date(s.checkOut) - new Date(s.checkIn)) / 60000));
+          }
+        }
+        return mins / 60;
+      }
+      if (Number(rec.durationMinutes) > 0) return Number(rec.durationMinutes) / 60;
+      if (rec.checkIn && rec.checkOut) {
+        return (new Date(rec.checkOut) - new Date(rec.checkIn)) / (1000 * 3600);
+      }
+      return null;
+    };
 
     for (const rec of monthDaysList) {
       if (rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {
@@ -387,18 +449,20 @@ export default function EmployeeAttendance() {
           }
         }
 
-        if (rec.checkIn && !rec.checkOut && rec.date !== todayStr) {
+        const hasOpen =
+          rec.openSessionId ||
+          (Array.isArray(rec.sessions) && rec.sessions.some((s) => s.checkIn && !s.checkOut)) ||
+          (rec.checkIn && !rec.checkOut && (!rec.sessions || rec.sessions.length === 0));
+        if (hasOpen && rec.date !== todayStr) {
           noClockOuts++;
         }
 
-        if (rec.checkIn && rec.checkOut) {
-          const inDate = new Date(rec.checkIn);
-          const outDate = new Date(rec.checkOut);
-          const workedHours = (outDate - inDate) / (1000 * 3600);
+        const workedHours = dayWorkedHours(rec);
+        if (workedHours != null) {
           if (workedHours > 8) {
             overtimeHours += Math.round(workedHours - 8);
           }
-          if (workedHours < 7.5) {
+          if (workedHours < 7.5 && !hasOpen) {
             earlyDepartures++;
           }
         }
@@ -415,10 +479,23 @@ export default function EmployeeAttendance() {
       overtimeHours,
       absentDays,
     };
-  }, [monthDaysList]);
+  }, [monthDaysList, timeZone]);
 
   const attendance = dashboardData?.attendance;
   const todayStatus = attendance?.today?.status || "NOT_CHECKED_IN";
+  const workMode = String(attendance?.today?.workMode || "OFFICE").toUpperCase();
+  const todayDateKey = String(attendance?.today?.date || "").slice(0, 10);
+  const approvedRemoteForToday = remoteRequests.find(
+    (r) =>
+      String(r.status || "").toUpperCase() === "APPROVED" &&
+      !r.consumedAt &&
+      String(r.workDate || "").slice(0, 10) === todayDateKey
+  );
+  const pendingRemoteForToday = remoteRequests.find(
+    (r) =>
+      String(r.status || "").toUpperCase() === "PENDING" &&
+      String(r.workDate || "").slice(0, 10) === todayDateKey
+  );
   const checkInTimeFormatted = attendance?.today?.checkInTime
     ? new Date(attendance.today.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
@@ -486,16 +563,56 @@ export default function EmployeeAttendance() {
 
           {/* Punch In / Out Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            {todayStatus === "NOT_CHECKED_IN" && (
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleCheckIn}
-                disabled={checkingAttendance}
-                style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
-              >
-                {checkingAttendance ? "Acquiring GPS..." : "Punch In (With GPS)"}
-              </button>
+            {(todayStatus === "NOT_CHECKED_IN" || todayStatus === "CHECKED_OUT") && (
+              <>
+                {workMode !== "WFH" ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => handleCheckIn("OFFICE")}
+                    disabled={checkingAttendance}
+                    style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
+                  >
+                    {checkingAttendance ? "Acquiring GPS..." : todayStatus === "CHECKED_OUT" ? "Start Office Session" : "Punch In (Office)"}
+                  </button>
+                ) : null}
+                {workMode === "WFH" ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => handleCheckIn("REMOTE")}
+                    disabled={checkingAttendance}
+                    style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
+                  >
+                    {checkingAttendance ? "Acquiring GPS..." : "Punch In (WFH)"}
+                  </button>
+                ) : null}
+                {workMode === "HYBRID" && approvedRemoteForToday ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleCheckIn("REMOTE", approvedRemoteForToday.id || approvedRemoteForToday._id)}
+                    disabled={checkingAttendance}
+                    style={{ padding: "10px 18px", fontSize: 14, fontWeight: 600 }}
+                  >
+                    Punch In (Approved remote)
+                  </button>
+                ) : null}
+                {workMode === "HYBRID" && !approvedRemoteForToday && !pendingRemoteForToday ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleRequestRemote}
+                    disabled={checkingAttendance}
+                    style={{ padding: "10px 18px", fontSize: 14, fontWeight: 600 }}
+                  >
+                    Request remote work
+                  </button>
+                ) : null}
+                {workMode === "HYBRID" && pendingRemoteForToday ? (
+                  <span style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600 }}>Remote request pending HR</span>
+                ) : null}
+              </>
             )}
 
             {todayStatus === "CHECKED_IN" && (
@@ -506,15 +623,8 @@ export default function EmployeeAttendance() {
                 disabled={checkingAttendance}
                 style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600, background: "#dc2626", borderColor: "#dc2626" }}
               >
-                {checkingAttendance ? "Acquiring GPS..." : "Punch Out for Day"}
+                {checkingAttendance ? "Acquiring GPS..." : "Punch Out Session"}
               </button>
-            )}
-
-            {todayStatus === "CHECKED_OUT" && (
-              <div style={{ fontSize: 13, color: "#15803d", display: "flex", alignItems: "center", gap: 6, fontWeight: 600, background: "#eefaf2", padding: "8px 14px", borderRadius: 10 }}>
-                <IconCheck size={16} />
-                <span>Punched out for today. See logs below.</span>
-              </div>
             )}
 
             {/* Live Tracking toggle — server requires active punch-in + policy */}

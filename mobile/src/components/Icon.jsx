@@ -17,6 +17,7 @@ import {
   LogOut,
   MailPlus,
   MapPin,
+  MessageCircle,
   Monitor,
   RefreshCw,
   RotateCcw,
@@ -33,6 +34,7 @@ const DEFAULT_STROKE = 1.85;
 
 const ICONS = {
   people: Users,
+  messages: MessageCircle,
   payroll: Wallet,
   assets: Monitor,
   offers: MailPlus,

@@ -1,0 +1,657 @@
+/**
+ * HRMS default master offer-letter template (HRMS_DEFAULT_V1).
+ *
+ * Sanitised, brand-neutral structure modelled on a professional multi-page
+ * Indian employment offer:
+ *   Page 1  – letterhead, OFFER LETTER title, offer body, signatory + acceptance
+ *   Page 2+ – numbered legal sections (uppercase dark-blue titles, bold lead-ins)
+ *   Final   – EXECUTION page with dual signature blocks + footer contacts
+ *
+ * No personal names, phone numbers, or company branding live here. Every
+ * company-specific value is supplied through `{{placeholders}}` (inside the
+ * section text) or through the `context` object passed to `buildMasterOfferHtml`.
+ * All values are HTML-escaped by `buildMasterOfferHtml`; callers pass RAW values.
+ */
+
+export const MASTER_TEMPLATE_CODE = "HRMS_DEFAULT_V1";
+export const MASTER_TEMPLATE_TITLE = "HRMS Default Offer Letter";
+export const MASTER_TEMPLATE_VERSION = 1;
+export const MASTER_TEMPLATE_KIND = "DEFAULT_BUILDER";
+
+/** Placeholders understood inside section text (snake_case). */
+export const MASTER_PLACEHOLDERS = Object.freeze([
+  "company_name",
+  "company_email",
+  "company_phone",
+  "company_website",
+  "company_address",
+  "candidate_name",
+  "candidate_email",
+  "designation",
+  "department",
+  "employment_type",
+  "work_location",
+  "reporting_manager",
+  "joining_date",
+  "offer_date",
+  "monthly_salary",
+  "annual_salary",
+  "probation_months",
+  "probation_notice_days",
+  "notice_period_days",
+  "office_hours",
+  "working_days",
+  "acceptance_days",
+  "signatory_name",
+  "signatory_title",
+  "place",
+]);
+
+/** Cover-letter (page 1) configuration. Terms support **bold** and placeholders. */
+export const MASTER_COVER = Object.freeze({
+  id: "cover_letter",
+  kind: "cover",
+  title: "OFFER LETTER",
+  salutation: "Dear {{candidate_name}},",
+  paragraphs: Object.freeze([
+    "We are pleased to offer you employment with **{{company_name}}** (the \"Company\") in the position of **{{designation}}** on a **{{employment_type}}** basis. Your proposed date of joining is **{{joining_date}}**, and you will be based at **{{work_location}}**.",
+    "Your gross monthly compensation will be **{{monthly_salary}}** (annualised compensation of **{{annual_salary}}**), subject to statutory deductions and the terms set out in the pages that follow.",
+    "This offer is made on the terms and conditions in the enclosed Terms of Employment, which form an integral part of this letter. Please confirm your acceptance by signing below within **{{acceptance_days}} days** of the date of this letter. We look forward to welcoming you to the team.",
+  ]),
+  closing: "Yours sincerely,",
+});
+
+/**
+ * Legal sections (page 2 onwards). Each term has an optional bold `lead`
+ * followed by `text`. Placeholders are resolved at render time.
+ */
+export const DEFAULT_LEGAL_SECTIONS = Object.freeze([
+  {
+    id: "employment_terms",
+    order: 1,
+    title: "1. Employment Terms",
+    isRequired: true,
+    terms: [
+      {
+        id: "position_duties",
+        lead: "Position and Duties.",
+        text: "You will be employed as {{designation}} in the {{department}} function and will report to {{reporting_manager}} or such other person as the Company may designate. You agree to perform the duties assigned to you diligently, in good faith, and in the best interests of the Company.",
+      },
+      {
+        id: "commencement",
+        lead: "Commencement.",
+        text: "Your employment will commence on {{joining_date}}. This offer is conditional on your reporting on that date and on satisfactory completion of the pre-employment formalities described in this letter.",
+      },
+      {
+        id: "place_of_work",
+        lead: "Place of Work.",
+        text: "Your primary place of work will be {{work_location}}. The Company may, based on business needs, require you to work from or travel to other locations, including on a remote or hybrid basis.",
+      },
+      {
+        id: "probation",
+        lead: "Probation.",
+        text: "You will be on probation for {{probation_months}} months from your date of joining. The Company may extend the probation period if performance expectations are not met. Confirmation of employment will be communicated in writing.",
+      },
+      {
+        id: "working_hours",
+        lead: "Working Days and Hours.",
+        text: "Your standard working days are {{working_days}}, with working hours of {{office_hours}}. You may occasionally be required to work additional hours or on other days as business needs require.",
+      },
+    ],
+  },
+  {
+    id: "compensation_benefits_leave",
+    order: 2,
+    title: "2. Compensation, Benefits and Leave",
+    isRequired: true,
+    terms: [
+      {
+        id: "compensation",
+        lead: "Compensation.",
+        text: "Your gross monthly compensation is {{monthly_salary}} ({{annual_salary}} per annum). Salary is paid on or before the last working day of each month by direct bank transfer.",
+      },
+      {
+        id: "statutory_deductions",
+        lead: "Statutory Deductions.",
+        text: "All payments are subject to deductions required by applicable law, including income tax at source, provident fund, employee state insurance, and professional tax, as applicable.",
+      },
+      {
+        id: "benefits",
+        lead: "Benefits.",
+        text: "You will be eligible for benefits made available to employees of your grade under Company policy from time to time. The Company may amend, withdraw, or replace any benefit scheme at its discretion.",
+      },
+      {
+        id: "leave",
+        lead: "Leave.",
+        text: "You will be entitled to leave in accordance with the Company leave policy, which accrues on a pro-rata basis from your date of joining. Leave must be applied for and approved in advance through the HRMS portal.",
+      },
+      {
+        id: "holidays",
+        lead: "Holidays.",
+        text: "You will be entitled to the public and company holidays published by the Company each year.",
+      },
+      {
+        id: "expenses",
+        lead: "Business Expenses.",
+        text: "Reasonable, pre-approved business expenses incurred in the course of your duties will be reimbursed against valid supporting documents in accordance with Company policy.",
+      },
+    ],
+  },
+  {
+    id: "policies_conduct",
+    order: 3,
+    title: "3. Policies and Code of Conduct",
+    isRequired: false,
+    terms: [
+      {
+        id: "company_policies",
+        lead: "Company Policies.",
+        text: "You agree to comply with all Company policies, procedures, and rules as in force from time to time, including those on information security, data protection, anti-harassment (including the Prevention of Sexual Harassment policy), and acceptable use of Company systems.",
+      },
+      {
+        id: "code_of_conduct",
+        lead: "Code of Conduct.",
+        text: "You are expected to maintain the highest standards of integrity, professionalism, and ethical conduct, and to avoid any conflict of interest between your personal interests and those of the Company.",
+      },
+      {
+        id: "background_verification",
+        lead: "Background Verification.",
+        text: "This offer is contingent on satisfactory verification of your identity, qualifications, prior employment, and references. Any false, misleading, or suppressed information may result in withdrawal of this offer or termination of employment without notice.",
+      },
+      {
+        id: "outside_employment",
+        lead: "Outside Activities.",
+        text: "During your employment you will not, without prior written consent of the Company, engage in any other employment, consultancy, or business activity that may conflict with your duties or the interests of the Company.",
+      },
+    ],
+  },
+  {
+    id: "confidentiality",
+    order: 4,
+    title: "4. Confidentiality",
+    isRequired: false,
+    terms: [
+      {
+        id: "confidential_information",
+        lead: "Confidential Information.",
+        text: "You will have access to confidential and proprietary information of {{company_name}}, its clients, and its partners, including business plans, financial data, client details, source code, and trade secrets. You agree to keep all such information strictly confidential during and after your employment.",
+      },
+      {
+        id: "permitted_use",
+        lead: "Permitted Use.",
+        text: "You will use confidential information solely for the performance of your duties and will not copy, disclose, or retain it except as authorised in writing by the Company or as required by law.",
+      },
+      {
+        id: "return_of_materials",
+        lead: "Return of Materials.",
+        text: "On request, and in any event on cessation of employment, you will promptly return all documents, data, and materials containing confidential information in any form.",
+      },
+    ],
+  },
+  {
+    id: "intellectual_property",
+    order: 5,
+    title: "5. Intellectual Property",
+    isRequired: false,
+    terms: [
+      {
+        id: "work_product",
+        lead: "Ownership of Work Product.",
+        text: "All inventions, software, designs, documentation, and other work product created by you in the course of your employment, or using Company resources, will be the sole and exclusive property of {{company_name}} from creation.",
+      },
+      {
+        id: "assignment",
+        lead: "Assignment and Assistance.",
+        text: "You assign to the Company all rights in such work product and agree to sign any document and take any action reasonably required to perfect the Company's rights, during and after your employment.",
+      },
+    ],
+  },
+  {
+    id: "resignation_termination",
+    order: 6,
+    title: "6. Resignation and Termination",
+    isRequired: true,
+    terms: [
+      {
+        id: "notice_probation",
+        lead: "Notice During Probation.",
+        text: "During probation, either party may end the employment by giving {{probation_notice_days}} days' written notice or salary in lieu of notice.",
+      },
+      {
+        id: "notice_confirmed",
+        lead: "Notice After Confirmation.",
+        text: "After confirmation, either party may end the employment by giving {{notice_period_days}} days' written notice or salary in lieu of the unserved period. The Company may require you to serve the full notice period to ensure an orderly handover.",
+      },
+      {
+        id: "termination_for_cause",
+        lead: "Termination for Cause.",
+        text: "The Company may terminate your employment without notice or compensation in lieu for serious misconduct, breach of confidentiality, fraud or dishonesty, wilful neglect of duty, or material breach of this letter or Company policy.",
+      },
+      {
+        id: "return_of_property",
+        lead: "Return of Company Property.",
+        text: "On cessation of employment, you will return all Company property, including equipment, access cards, documents, and accounts, before your final settlement and relieving documents are released.",
+      },
+      {
+        id: "final_settlement",
+        lead: "Full and Final Settlement.",
+        text: "Dues payable to you on separation will be settled in accordance with Company policy and applicable law, after adjustment of any amounts owed to the Company.",
+      },
+    ],
+  },
+  {
+    id: "general",
+    order: 7,
+    title: "7. General",
+    isRequired: false,
+    terms: [
+      {
+        id: "entire_agreement",
+        lead: "Entire Agreement.",
+        text: "This letter, together with the Company policies referred to in it, constitutes the entire understanding between you and the Company and supersedes all prior discussions and representations.",
+      },
+      {
+        id: "amendments",
+        lead: "Amendments.",
+        text: "The terms of this letter may be amended only in writing signed by an authorised representative of the Company, except where changes to policies are communicated generally to employees.",
+      },
+      {
+        id: "severability",
+        lead: "Severability.",
+        text: "If any provision of this letter is held to be invalid or unenforceable, the remaining provisions will continue in full force and effect.",
+      },
+      {
+        id: "governing_law",
+        lead: "Governing Law.",
+        text: "This letter is governed by the laws of India, and the courts at the Company's registered location will have exclusive jurisdiction over any dispute arising out of it.",
+      },
+      {
+        id: "offer_validity",
+        lead: "Validity of Offer.",
+        text: "This offer will lapse if a signed copy is not received within {{acceptance_days}} days of the date of this letter, unless extended in writing by the Company.",
+      },
+    ],
+  },
+]);
+
+/** Execution page configuration. */
+export const MASTER_EXECUTION = Object.freeze({
+  id: "execution",
+  kind: "execution",
+  title: "EXECUTION",
+  statement:
+    "By signing below, the parties confirm that they have read, understood, and agreed to the terms of this Offer Letter and the Terms of Employment set out above.",
+});
+
+/** Full ordered structure: cover → legal sections → execution. */
+export const MASTER_SECTIONS = Object.freeze([
+  MASTER_COVER,
+  ...DEFAULT_LEGAL_SECTIONS.map((s) => ({ ...s, kind: "section" })),
+  MASTER_EXECUTION,
+]);
+
+/** Plain-JSON config persisted on the master and copied into tenant templates. */
+export function getMasterSectionConfig() {
+  return JSON.parse(
+    JSON.stringify({
+      cover: MASTER_COVER,
+      execution: MASTER_EXECUTION,
+      defaults: {
+        probationMonths: 3,
+        probationNoticeDays: 30,
+        noticeDays: 60,
+        officeHours: "09:30 AM to 06:30 PM",
+        workingDays: "Monday to Friday",
+        acceptanceDays: 5,
+      },
+    })
+  );
+}
+
+export function getDefaultLegalSections() {
+  return JSON.parse(JSON.stringify(DEFAULT_LEGAL_SECTIONS));
+}
+
+// ---------------------------------------------------------------------------
+// Rendering helpers
+// ---------------------------------------------------------------------------
+
+export function esc(value) {
+  if (value == null) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function fmtDate(value) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function fmtMoney(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string" && !/^[\d.,\s]+$/.test(value)) return value; // already formatted
+  const n = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(value);
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+/** Only allow safe raster data URLs for the logo <img>. */
+function safeLogoSrc(src) {
+  if (typeof src !== "string") return "";
+  return /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(src) ? src : "";
+}
+
+/** Build the `{{key}}` → raw value map from a render context. */
+export function buildPlaceholderValues(context = {}) {
+  const defaults = context.defaults || {};
+  const monthly = context.monthlySalary;
+  const annualRaw =
+    context.annualSalary != null && context.annualSalary !== ""
+      ? context.annualSalary
+      : Number.isFinite(Number(monthly))
+        ? Number(monthly) * 12
+        : "";
+  return {
+    company_name: context.companyName || "",
+    company_email: context.companyEmail || "",
+    company_phone: context.companyPhone || "",
+    company_website: context.companyWebsite || "",
+    company_address: context.companyAddress || "",
+    candidate_name: context.candidateName || "",
+    candidate_email: context.candidateEmail || "",
+    designation: context.designation || "",
+    department: context.department || "the relevant",
+    employment_type: context.employmentType || "Full-time Permanent",
+    work_location: context.workLocation || "the Company's office",
+    reporting_manager: context.reportingManager || "your designated manager",
+    joining_date: fmtDate(context.joiningDate),
+    offer_date: fmtDate(context.offerDate || new Date()),
+    monthly_salary: fmtMoney(monthly),
+    annual_salary: fmtMoney(annualRaw),
+    probation_months: context.probationMonths ?? defaults.probationMonths ?? 3,
+    probation_notice_days: context.probationNoticeDays ?? defaults.probationNoticeDays ?? 30,
+    notice_period_days: context.noticeDays ?? defaults.noticeDays ?? 60,
+    office_hours: context.officeHours || defaults.officeHours || "09:30 AM to 06:30 PM",
+    working_days: context.workingDays || defaults.workingDays || "Monday to Friday",
+    acceptance_days: context.acceptanceDays ?? defaults.acceptanceDays ?? 5,
+    signatory_name: context.signatoryName || "",
+    signatory_title: context.signatoryTitle || "Authorized Signatory",
+    place: context.place || context.workLocation || "",
+  };
+}
+
+/** Escape text, resolve `{{key}}` placeholders (escaped) and `**bold**` markup. */
+export function renderRichText(text, values) {
+  let out = esc(text || "");
+  out = out.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (match, key) => {
+    const k = key.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(values, k) ? esc(values[k]) : match;
+  });
+  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  return out;
+}
+
+const MASTER_CSS = `
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #ffffff; }
+  body {
+    font-family: "Georgia", "Times New Roman", Times, serif;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #1f2937;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    width: 100%;
+    max-width: 794px;
+    margin: 0 auto;
+    padding: 8px 12px;
+    page-break-after: always;
+    break-after: page;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .letterhead { text-align: center; padding-bottom: 10px; }
+  .letterhead img.logo { max-height: 64px; max-width: 220px; object-fit: contain; margin-bottom: 8px; }
+  .company-name {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 21px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: #0b1f3a;
+  }
+  .contact-line {
+    margin-top: 4px; font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5px; color: #4b5563;
+  }
+  .contact-line .sep { margin: 0 8px; color: #9ca3af; }
+  .rule { border: 0; border-top: 3px solid #0b1f3a; margin: 8px 0 18px; }
+  .doc-title {
+    text-align: center; font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px; font-weight: 700; letter-spacing: 3px; color: #0b1f3a;
+    margin-bottom: 20px;
+  }
+  .meta-row { display: flex; justify-content: space-between; margin-bottom: 14px; }
+  .meta-row div { font-size: 12px; }
+  .addressee { margin-bottom: 12px; }
+  .addressee .name { font-weight: 700; }
+  .salutation { margin-bottom: 10px; font-weight: 700; }
+  .body-para { text-align: justify; margin-bottom: 10px; }
+  .body-para strong { color: #0b1f3a; }
+  .sign-grid {
+    display: flex; justify-content: space-between; gap: 40px; margin-top: 26px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .sign-block { flex: 1; min-width: 0; }
+  .sign-block .heading {
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px; color: #0b1f3a; margin-bottom: 34px;
+  }
+  .sign-line { border-top: 1px solid #374151; padding-top: 4px; font-size: 11.5px; }
+  .sign-line .sub { color: #6b7280; font-size: 10.5px; }
+  .accepted-note {
+    margin-bottom: 8px; padding: 4px 8px; border: 1px solid #a7f3d0; background: #ecfdf5;
+    color: #065f46; font-size: 10.5px; font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+  .section { margin-bottom: 18px; }
+  .section-title {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 12.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: #0b1f3a; border-bottom: 1.5px solid #0b1f3a; padding-bottom: 3px; margin-bottom: 9px;
+    page-break-after: avoid; break-after: avoid;
+  }
+  .term { margin-bottom: 7px; text-align: justify; page-break-inside: avoid; break-inside: avoid; }
+  .term .lead { font-weight: 700; color: #0b1f3a; }
+  .execution-statement { text-align: justify; margin: 14px 0 24px; }
+  .exec-grid { display: flex; justify-content: space-between; gap: 40px; margin-top: 18px; }
+  .exec-box { flex: 1; min-width: 0; border: 1px solid #d1d5db; padding: 14px 16px 12px; }
+  .exec-box .heading {
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px; color: #0b1f3a; margin-bottom: 40px;
+  }
+  .exec-box .line { border-top: 1px solid #374151; padding-top: 4px; font-size: 11.5px; margin-bottom: 14px; }
+  .exec-box .line .sub { color: #6b7280; font-size: 10.5px; }
+  .page-footer {
+    margin-top: 40px; padding-top: 8px; border-top: 1px solid #d1d5db; text-align: center;
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10px; color: #6b7280;
+  }
+  .page-footer .co { font-weight: 700; color: #0b1f3a; text-transform: uppercase; letter-spacing: 1px; }
+`;
+
+function renderContactLine(context) {
+  const parts = [context.companyWebsite, context.companyEmail, context.companyPhone]
+    .map((p) => (p == null ? "" : String(p).trim()))
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  return `<div class="contact-line">${parts
+    .map((p) => esc(p))
+    .join('<span class="sep">|</span>')}</div>`;
+}
+
+function renderLetterhead(context) {
+  const logo = safeLogoSrc(context.logoDataUrl);
+  return `
+    <div class="letterhead">
+      ${logo ? `<img class="logo" src="${logo}" alt="" />` : ""}
+      <div class="company-name">${esc(String(context.companyName || "").toUpperCase())}</div>
+      ${renderContactLine(context)}
+    </div>
+    <hr class="rule" />`;
+}
+
+function renderAcceptance(context, values) {
+  const sig = context.signature;
+  const signed = Boolean(sig && sig.signedAt);
+  return `
+    <div class="sign-block">
+      <div class="heading">Accepted by Candidate</div>
+      ${signed ? `<div class="accepted-note">Accepted electronically on ${esc(fmtDate(sig.signedAt))}</div>` : ""}
+      <div class="sign-line">
+        ${signed ? esc(sig.signerName || values.candidate_name) : "Signature"}
+        <div class="sub">Name: ${esc(values.candidate_name)}</div>
+        <div class="sub">Date: ${signed ? esc(fmtDate(sig.signedAt)) : "____________________"}</div>
+      </div>
+    </div>`;
+}
+
+/**
+ * Build the complete multi-page offer HTML.
+ *
+ * @param {object} context RAW (unescaped) values. Recognised keys:
+ *   companyName, companyWebsite, companyEmail, companyPhone, companyAddress, logoDataUrl,
+ *   candidateName, candidateEmail, designation, department, employmentType, workLocation,
+ *   reportingManager, joiningDate, offerDate, place, monthlySalary, annualSalary,
+ *   signatoryName, signatoryTitle, probationMonths, probationNoticeDays, noticeDays,
+ *   officeHours, workingDays, acceptanceDays, signature{signerName, signedAt},
+ *   sections (override legal sections), cover, execution, defaults
+ * @returns {string} HTML document
+ */
+export function buildMasterOfferHtml(context = {}) {
+  const values = buildPlaceholderValues(context);
+  const cover = context.cover || MASTER_COVER;
+  const execution = context.execution || MASTER_EXECUTION;
+  const sections = (Array.isArray(context.sections) && context.sections.length > 0
+    ? context.sections
+    : DEFAULT_LEGAL_SECTIONS
+  )
+    .filter((s) => s && s.enabled !== false && s.isIncluded !== false)
+    .slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const paragraphsHtml = (cover.paragraphs || [])
+    .map((p) => `<p class="body-para">${renderRichText(p, values)}</p>`)
+    .join("\n");
+
+  const sectionsHtml = sections
+    .map((section) => {
+      const termsHtml = (section.terms || [])
+        .filter((t) => t && t.enabled !== false)
+        .map((t) => {
+          const lead = t.lead ? `<span class="lead">${renderRichText(t.lead, values)}</span> ` : "";
+          return `<div class="term">${lead}${renderRichText(t.text, values)}</div>`;
+        })
+        .join("\n");
+      return `
+      <div class="section">
+        <div class="section-title">${esc(section.title || "")}</div>
+        ${termsHtml}
+      </div>`;
+    })
+    .join("\n");
+
+  const footerParts = [context.companyAddress, context.companyEmail, context.companyPhone, context.companyWebsite]
+    .map((p) => (p == null ? "" : String(p).trim()))
+    .filter(Boolean);
+
+  const title = `${esc(cover.title || "OFFER LETTER")}${values.candidate_name ? ` - ${esc(values.candidate_name)}` : ""}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${title}</title>
+  <style>${MASTER_CSS}</style>
+</head>
+<body>
+  <!-- Page 1: cover letter -->
+  <section class="page" data-section="cover">
+    ${renderLetterhead(context)}
+    <div class="doc-title">${esc(cover.title || "OFFER LETTER")}</div>
+    <div class="meta-row">
+      <div><strong>Date:</strong> ${esc(values.offer_date)}</div>
+      <div>${values.place ? `<strong>Place:</strong> ${esc(values.place)}` : ""}</div>
+    </div>
+    <div class="addressee">
+      <div>To,</div>
+      <div class="name">${esc(values.candidate_name)}</div>
+      ${values.candidate_email ? `<div>${esc(values.candidate_email)}</div>` : ""}
+    </div>
+    <div class="salutation">${renderRichText(cover.salutation || "Dear {{candidate_name}},", values)}</div>
+    ${paragraphsHtml}
+    <div class="body-para">${esc(cover.closing || "Yours sincerely,")}</div>
+    <div class="sign-grid">
+      <div class="sign-block">
+        <div class="heading">For ${esc(values.company_name)}</div>
+        <div class="sign-line">
+          ${values.signatory_name ? esc(values.signatory_name) : "Authorized Signatory"}
+          <div class="sub">${esc(values.signatory_title)}</div>
+        </div>
+      </div>
+      ${renderAcceptance(context, values)}
+    </div>
+  </section>
+
+  <!-- Pages 2+: terms of employment -->
+  <section class="page" data-section="terms">
+    ${sectionsHtml}
+  </section>
+
+  <!-- Final page: execution -->
+  <section class="page" data-section="execution">
+    <div class="section">
+      <div class="section-title">${esc(execution.title || "EXECUTION")}</div>
+      <p class="execution-statement">${renderRichText(execution.statement || "", values)}</p>
+      <div class="exec-grid">
+        <div class="exec-box">
+          <div class="heading">For ${esc(values.company_name)}</div>
+          <div class="line">Signature</div>
+          <div class="line">Name: ${values.signatory_name ? esc(values.signatory_name) : "&nbsp;"}
+            <div class="sub">${esc(values.signatory_title)}</div></div>
+          <div class="line">Date: ____________________</div>
+        </div>
+        <div class="exec-box">
+          <div class="heading">Candidate</div>
+          <div class="line">${context.signature && context.signature.signedAt
+            ? esc(context.signature.signerName || values.candidate_name)
+            : "Signature"}</div>
+          <div class="line">Name: ${esc(values.candidate_name)}</div>
+          <div class="line">Date: ${context.signature && context.signature.signedAt
+            ? esc(fmtDate(context.signature.signedAt))
+            : "____________________"}</div>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <div class="co">${esc(values.company_name)}</div>
+      ${footerParts.length ? `<div>${footerParts.map((p) => esc(p)).join(" &nbsp;|&nbsp; ")}</div>` : ""}
+    </div>
+  </section>
+</body>
+</html>`;
+}
+
+export default {
+  MASTER_TEMPLATE_CODE,
+  MASTER_SECTIONS,
+  DEFAULT_LEGAL_SECTIONS,
+  buildMasterOfferHtml,
+};

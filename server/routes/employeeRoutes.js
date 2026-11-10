@@ -47,6 +47,9 @@ import {
   updateTrackingLocation,
   stopTracking,
   getTrackingStatusHandler,
+  postRemoteWorkRequest,
+  getMyRemoteWorkRequests,
+  cancelMyRemoteWorkRequest,
 } from "../controllers/attendanceController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
@@ -71,6 +74,9 @@ router.post("/me/attendance/check-in", authenticate, handleCheckIn);
 router.post("/me/attendance/check-out", authenticate, handleCheckOut);
 router.get("/me/attendance/status", authenticate, getAttendanceStatus);
 router.get("/me/attendance/history", authenticate, getAttendanceHistory);
+router.post("/me/attendance/remote-requests", authenticate, postRemoteWorkRequest);
+router.get("/me/attendance/remote-requests", authenticate, getMyRemoteWorkRequests);
+router.post("/me/attendance/remote-requests/:id/cancel", authenticate, cancelMyRemoteWorkRequest);
 
 // Live tracking — authenticate only; privacy/lifecycle enforced in service layer
 router.post("/me/tracking/start", authenticate, startTracking);

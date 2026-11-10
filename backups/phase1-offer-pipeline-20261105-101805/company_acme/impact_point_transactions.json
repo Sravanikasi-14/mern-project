@@ -1,0 +1,567 @@
+[
+  {
+    "_id": "6adc8900d70ef99b0bb89094",
+    "employeeId": "6ad0daedd3ae32a099f0d0bf",
+    "employeeSnapshot": {
+      "fullName": "Kavya Patel",
+      "employeeCode": "EMP-010",
+      "department": ""
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "completed the work",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0daedd3ae32a099f0d0bf_1792837888655",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-24T10:31:28.694Z",
+    "updatedAt": "2026-10-24T10:31:28.694Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc8930d70ef99b0bb89096",
+    "employeeId": "6ad0daedd3ae32a099f0d0bf",
+    "employeeSnapshot": {
+      "fullName": "Kavya Patel",
+      "employeeCode": "EMP-010",
+      "department": ""
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "completed the given work",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0daedd3ae32a099f0d0bf_1792837936139",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-24T10:32:16.183Z",
+    "updatedAt": "2026-10-24T10:32:16.183Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc9ac9d70ef99b0bb8909f",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 25,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "Exceptional architecture design and delivery for core platform modernization.",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0b1ee6561c909576537b6_1792842441882",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-24T11:47:21.924Z",
+    "updatedAt": "2026-10-24T11:47:21.924Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adca164fabecdfd027ba929",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "employeeSnapshot": {
+      "fullName": "Sravani Kasi",
+      "employeeCode": "EMP-101",
+      "department": "Engineering"
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "TASK_COMPLETION",
+    "eventType": "ON_TIME_COMPLETION",
+    "reason": "Completed task 'implemtn Oauth' on time",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc71eeff2caf87401f11a9",
+    "idempotencyKey": "task_completion_ontime_6adc71eeff2caf87401f11a9",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-10-25T00:00:00.000Z",
+      "completedAt": "2026-10-24T11:04:10.832Z"
+    },
+    "createdAt": "2026-10-24T12:15:32.823Z",
+    "updatedAt": "2026-10-24T12:15:32.823Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adcd4680ee4c2deb942d6b7",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "employeeSnapshot": {
+      "fullName": "Sravani Kasi",
+      "employeeCode": "EMP-101",
+      "department": "Engineering"
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "TASK_COMPLETION",
+    "eventType": "ON_TIME_COMPLETION",
+    "reason": "Completed task 'Implement OAuth' on time",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc7164ff2caf87401f11a5",
+    "idempotencyKey": "task_completion_ontime_6adc7164ff2caf87401f11a5",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-10-25T00:00:00.000Z",
+      "completedAt": "2026-10-24T15:53:12.642Z"
+    },
+    "createdAt": "2026-10-24T15:53:12.742Z",
+    "updatedAt": "2026-10-24T15:53:12.742Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041ebf5f5241655343b4a",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": "Engineering"
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "TASK_COMPLETION",
+    "eventType": "ON_TIME_COMPLETION",
+    "reason": "Completed task 'Verify Distributed Cache Architecture' on time",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc7edad70ef99b0bb8908a",
+    "idempotencyKey": "task_completion_ontime_6adc7edad70ef99b0bb8908a",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-11-01T00:00:00.000Z",
+      "completedAt": "2026-10-27T06:17:15.559Z"
+    },
+    "createdAt": "2026-10-27T06:17:15.647Z",
+    "updatedAt": "2026-10-27T06:17:15.647Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041ebf5f5241655343b4b",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": "Engineering"
+    },
+    "points": 5,
+    "transactionType": "EARNED",
+    "source": "BONUS",
+    "eventType": "EARLY_COMPLETION_BONUS",
+    "reason": "Early completion bonus for task 'Verify Distributed Cache Architecture' (>24h ahead of deadline)",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc7edad70ef99b0bb8908a",
+    "idempotencyKey": "task_completion_early_6adc7edad70ef99b0bb8908a",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-11-01T00:00:00.000Z",
+      "completedAt": "2026-10-27T06:17:15.559Z"
+    },
+    "createdAt": "2026-10-27T06:17:15.746Z",
+    "updatedAt": "2026-10-27T06:17:15.746Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041ebf5f5241655343b4c",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": "Engineering"
+    },
+    "points": 20,
+    "transactionType": "EARNED",
+    "source": "BONUS",
+    "eventType": "HIGH_PRIORITY_COMPLETION",
+    "reason": "Completed high-priority task 'Verify Distributed Cache Architecture' (HIGH)",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc7edad70ef99b0bb8908a",
+    "idempotencyKey": "task_completion_high_priority_6adc7edad70ef99b0bb8908a",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "priority": "HIGH"
+    },
+    "createdAt": "2026-10-27T06:17:15.822Z",
+    "updatedAt": "2026-10-27T06:17:15.822Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae066f1f5f5241655343b56",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "TASK_COMPLETION",
+    "eventType": "ON_TIME_COMPLETION",
+    "reason": "Completed task 'API Documentation Audit Q4' on time",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc9a6bd70ef99b0bb8909d",
+    "idempotencyKey": "task_completion_ontime_6adc9a6bd70ef99b0bb8909d",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-11-15T00:00:00.000Z",
+      "completedAt": "2026-10-27T08:55:13.008Z"
+    },
+    "createdAt": "2026-10-27T08:55:13.142Z",
+    "updatedAt": "2026-10-27T08:55:13.142Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae066f1f5f5241655343b57",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 5,
+    "transactionType": "EARNED",
+    "source": "BONUS",
+    "eventType": "EARLY_COMPLETION_BONUS",
+    "reason": "Early completion bonus for task 'API Documentation Audit Q4' (>24h ahead of deadline)",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc9a6bd70ef99b0bb8909d",
+    "idempotencyKey": "task_completion_early_6adc9a6bd70ef99b0bb8909d",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-11-15T00:00:00.000Z",
+      "completedAt": "2026-10-27T08:55:13.008Z"
+    },
+    "createdAt": "2026-10-27T08:55:13.254Z",
+    "updatedAt": "2026-10-27T08:55:13.254Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae066f1f5f5241655343b58",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 20,
+    "transactionType": "EARNED",
+    "source": "BONUS",
+    "eventType": "HIGH_PRIORITY_COMPLETION",
+    "reason": "Completed high-priority task 'API Documentation Audit Q4' (HIGH)",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6adc9a6bd70ef99b0bb8909d",
+    "idempotencyKey": "task_completion_high_priority_6adc9a6bd70ef99b0bb8909d",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "priority": "HIGH"
+    },
+    "createdAt": "2026-10-27T08:55:13.362Z",
+    "updatedAt": "2026-10-27T08:55:13.362Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08d6d2cea7badf84e0e8f",
+    "employeeId": "6ad0c7b6cb659753a419679d",
+    "employeeSnapshot": {
+      "fullName": "Maya devi",
+      "employeeCode": "EMP-009",
+      "department": ""
+    },
+    "points": 20,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "kudos",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0c7b6cb659753a419679d_1793101165291",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-27T11:39:25.332Z",
+    "updatedAt": "2026-10-27T11:39:25.332Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08d892cea7badf84e0e91",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 55,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "kudos",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0b1ee6561c909576537b6_1793101193736",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-27T11:39:53.781Z",
+    "updatedAt": "2026-10-27T11:39:53.781Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08da92cea7badf84e0e93",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 80,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "kudos",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0b1ee6561c909576537b6_1793101225450",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-27T11:40:25.486Z",
+    "updatedAt": "2026-10-27T11:40:25.486Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae090872cea7badf84e0e96",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "employeeSnapshot": {
+      "fullName": "Aarav Sharma",
+      "employeeCode": "EMP-001",
+      "department": ""
+    },
+    "points": 50,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "Outstanding contribution to customer success and innovation",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0b1ee6561c909576537b6_1793101959826",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-27T11:52:39.861Z",
+    "updatedAt": "2026-10-27T11:52:39.861Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae095b0070d0b5600a9b691",
+    "employeeId": "6ad0b1ee6561c909576537b7",
+    "employeeSnapshot": {
+      "fullName": "Priya Patel",
+      "employeeCode": "EMP-002",
+      "department": "General"
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "kudos",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ad0b1ee6561c909576537b7_1793103280481",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-27T12:14:40.523Z",
+    "updatedAt": "2026-10-27T12:14:40.523Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae46879c5a6418c517f8b35",
+    "employeeId": "6ae41d5cc5a6418c517f8af2",
+    "employeeSnapshot": {
+      "fullName": "Supriya",
+      "employeeCode": "EMP-015",
+      "department": "Management"
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "MANAGER_RECOGNITION",
+    "eventType": "MANAGER_RECOGNITION",
+    "reason": "Outstanding Q4 delivery and peer collaboration.",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": null,
+    "idempotencyKey": "recog_6ad0ac8cafd4b3a691da3f7f_6ae41d5cc5a6418c517f8af2_1793353849395",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "ruleCode": "MANAGER_RECOGNITION"
+    },
+    "createdAt": "2026-10-30T09:50:49.435Z",
+    "updatedAt": "2026-10-30T09:50:49.435Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae46cd4c5a6418c517f8b3a",
+    "employeeId": "6ad0c7b6cb659753a419679d",
+    "employeeSnapshot": {
+      "fullName": "Maya devi",
+      "employeeCode": "EMP-009",
+      "department": ""
+    },
+    "points": 10,
+    "transactionType": "EARNED",
+    "source": "TASK_COMPLETION",
+    "eventType": "ON_TIME_COMPLETION",
+    "reason": "Completed task 'Initiate the project' on time",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmployeeId": null,
+    "actorSnapshot": {
+      "fullName": "hr@acme.test",
+      "email": "hr@acme.test",
+      "role": "HR_ADMIN"
+    },
+    "taskId": "6ae08d512cea7badf84e0e8d",
+    "idempotencyKey": "task_completion_ontime_6ae08d512cea7badf84e0e8d",
+    "reversalReferenceId": null,
+    "isReversed": false,
+    "metadata": {
+      "deadline": "2026-10-29T00:00:00.000Z",
+      "completedAt": "2026-10-30T10:09:24.829Z"
+    },
+    "createdAt": "2026-10-30T10:09:24.907Z",
+    "updatedAt": "2026-10-30T10:09:24.907Z",
+    "__v": 0
+  }
+]

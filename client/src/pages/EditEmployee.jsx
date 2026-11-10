@@ -46,6 +46,7 @@ export default function EditEmployee() {
     jobGrade: "",
     employmentType: "Full-time Permanent",
     workLocation: "",
+    workArrangementMode: "OFFICE",
     status: "ACTIVE",
     projectName: "",
     projectType: "MANDATE",
@@ -101,6 +102,7 @@ export default function EditEmployee() {
             jobGrade: emp.job?.jobGrade || "",
             employmentType: emp.job?.employmentType || "Full-time Permanent",
             workLocation: emp.job?.workLocation || "",
+            workArrangementMode: emp.job?.workArrangement?.mode || "OFFICE",
             status: emp.status || "ACTIVE",
             projectName: emp.job?.project?.projectName || "",
             projectType: emp.job?.project?.projectType || "MANDATE",
@@ -326,6 +328,15 @@ export default function EditEmployee() {
         },
         monthlySalary: formData.monthlySalary ? parseFloat(formData.monthlySalary) : undefined,
       });
+
+      try {
+        await api.put(`/admin/attendance/employees/${id}/work-arrangement`, {
+          mode: formData.workArrangementMode || "OFFICE",
+        });
+      } catch (arrErr) {
+        // Job update succeeded; surface arrangement errors without blocking save.
+        console.warn("Work arrangement update failed:", arrErr?.response?.data?.message || arrErr.message);
+      }
 
       setSuccessMsg("Employee updated successfully! Redirecting...");
       setIsDirty(false);
@@ -556,6 +567,22 @@ export default function EditEmployee() {
                 setIsDirty(true);
               }}
             />
+
+            <div className="form-group">
+              <label htmlFor="workArrangementMode">Attendance work arrangement</label>
+              <select
+                id="workArrangementMode"
+                className="form-control"
+                value={formData.workArrangementMode}
+                disabled={saving}
+                onChange={(e) => handleChange("workArrangementMode", e.target.value)}
+              >
+                <option value="OFFICE">Office</option>
+                <option value="WFH">Work from home</option>
+                <option value="HYBRID">Hybrid</option>
+              </select>
+              <span className="form-hint">Controls office geofence vs remote / hybrid approval rules.</span>
+            </div>
 
             <div className="form-group" style={{ gridColumn: "1 / -1" }}>
               <ReportingManagerSelect

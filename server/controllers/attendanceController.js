@@ -9,7 +9,17 @@ import {
   getLiveTrackingStatus,
   getAdminAttendanceOverview,
   getAdminTrackingSessions,
+  regularizeAttendanceDay,
 } from "../services/attendanceService.js";
+import {
+  submitRemoteWorkRequest,
+  listMyRemoteWorkRequests,
+  cancelRemoteWorkRequest,
+  listAdminRemoteWorkRequests,
+  decideRemoteWorkRequest,
+  listLocationExceptions,
+  reviewLocationException,
+} from "../services/remoteWorkRequestService.js";
 import {
   extractRequestAuthToken,
   resolveClientPlatformFromAuthSession,
@@ -66,12 +76,17 @@ export async function punchIn(req, res, next) {
       throw new HttpError(400, "Location coordinates (latitude and longitude) are required to punch in.");
     }
 
+    const sessionType = String(req.body?.sessionType || "OFFICE").toUpperCase() === "REMOTE" ? "REMOTE" : "OFFICE";
+    const remoteWorkRequestId = req.body?.remoteWorkRequestId || null;
+
     const result = await punchInEmployee({
       models: req.auth.models,
       employee,
       location,
       requireLocation: true,
       companyTimezone,
+      sessionType,
+      remoteWorkRequestId,
     });
 
     res.status(200).json(result);
@@ -116,6 +131,8 @@ export async function handleCheckIn(req, res, next) {
     const employee = await getTargetEmployee(req);
     const location = extractLocationPayload(req);
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
+    const sessionType = String(req.body?.sessionType || "OFFICE").toUpperCase() === "REMOTE" ? "REMOTE" : "OFFICE";
+    const remoteWorkRequestId = req.body?.remoteWorkRequestId || null;
 
     const result = await punchInEmployee({
       models: req.auth.models,
@@ -123,6 +140,8 @@ export async function handleCheckIn(req, res, next) {
       location,
       requireLocation: Boolean(location),
       companyTimezone,
+      sessionType,
+      remoteWorkRequestId,
     });
 
     res.status(200).json(result);
@@ -407,6 +426,166 @@ export async function getAdminEmployeeAttendanceHistoryHandler(req, res, next) {
       },
       ...history,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function postRemoteWorkRequest(req, res, next) {
+  try {
+    const employee = await getTargetEmployee(req);
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
+    const request = await submitRemoteWorkRequest({
+      models: req.auth.models,
+      employee,
+      user: req.auth.user,
+      payload: req.body || {},
+      companyTimezone,
+    });
+    res.status(201).json({ success: true, request });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getMyRemoteWorkRequests(req, res, next) {
+  try {
+    const employee = await getTargetEmployee(req);
+    const requests = await listMyRemoteWorkRequests({
+      models: req.auth.models,
+      employee,
+      status: req.query.status || null,
+    });
+    res.json({ success: true, requests });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function cancelMyRemoteWorkRequest(req, res, next) {
+  try {
+    const employee = await getTargetEmployee(req);
+    const request = await cancelRemoteWorkRequest({
+      models: req.auth.models,
+      employee,
+      requestId: req.params.id,
+    });
+    res.json({ success: true, request });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getAdminRemoteWorkRequestsHandler(req, res, next) {
+  try {
+    const requests = await listAdminRemoteWorkRequests({
+      models: req.auth.models,
+      status: req.query.status || "PENDING",
+    });
+    res.json({ success: true, requests });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function decideRemoteWorkRequestHandler(req, res, next) {
+  try {
+    const request = await decideRemoteWorkRequest({
+      models: req.auth.models,
+      requestId: req.params.id,
+      actorUser: req.auth.user,
+      decision: req.body?.decision,
+      remarks: req.body?.remarks,
+    });
+    res.json({ success: true, request });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getLocationExceptionsHandler(req, res, next) {
+  try {
+    const exceptions = await listLocationExceptions({
+      models: req.auth.models,
+      status: req.query.status || "OPEN",
+    });
+    res.json({ success: true, exceptions });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function reviewLocationExceptionHandler(req, res, next) {
+  try {
+    const exception = await reviewLocationException({
+      models: req.auth.models,
+      exceptionId: req.params.id,
+      actorUser: req.auth.user,
+      status: req.body?.status,
+      remarks: req.body?.remarks,
+    });
+    res.json({ success: true, exception });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateEmployeeWorkArrangementHandler(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) throw new HttpError(404, "Employee not found.");
+    const mode = String(req.body?.mode || "").toUpperCase();
+    if (!["OFFICE", "WFH", "HYBRID"].includes(mode)) {
+      throw new HttpError(400, "Work arrangement mode must be OFFICE, WFH, or HYBRID.");
+    }
+    employee.job = employee.job || {};
+    employee.job.workArrangement = employee.job.workArrangement || {};
+    employee.job.workArrangement.mode = mode;
+    employee.job.workArrangement.updatedAt = new Date();
+    employee.job.workArrangement.updatedBy = req.auth.user._id;
+    if (req.body?.homeLocation) {
+      const home = req.body.homeLocation;
+      employee.job.workArrangement.homeLocation = {
+        label: String(home.label || "Home").trim().slice(0, 120),
+        address: String(home.address || "").trim().slice(0, 255),
+        latitude: home.latitude != null ? Number(home.latitude) : null,
+        longitude: home.longitude != null ? Number(home.longitude) : null,
+        radiusMeters: home.radiusMeters != null ? Number(home.radiusMeters) : 200,
+        approved: Boolean(home.approved),
+        approvedAt: home.approved ? new Date() : null,
+        approvedBy: home.approved ? req.auth.user._id : null,
+      };
+    }
+    employee.markModified("job");
+    await employee.save();
+    res.json({
+      success: true,
+      workArrangement: employee.job.workArrangement,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/admin/attendance/employees/:id/regularize
+ * Closes or flags incomplete sessions with an auditable reason.
+ * Does not authorize hybrid remote punch-in.
+ */
+export async function regularizeAttendanceHandler(req, res, next) {
+  try {
+    const attendance = await regularizeAttendanceDay({
+      models: req.auth.models,
+      employeeId: req.params.id,
+      actorUser: req.auth.user,
+      workDate: req.body?.workDate,
+      reason: req.body?.reason,
+      closeOpenSession: Boolean(req.body?.closeOpenSession),
+      checkOutAt: req.body?.checkOutAt || null,
+      remarks: req.body?.remarks || "",
+    });
+    res.json({ success: true, attendance });
   } catch (error) {
     next(error);
   }

@@ -1,0 +1,4019 @@
+[
+  {
+    "_id": "6ad3162c474d5251bf15abb6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "BANK_DETAILS_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0dc14d3ae32a099f0d0c6",
+    "changes": {
+      "updatedFields": [
+        "accountHolderName",
+        "bankName",
+        "accountNumber",
+        "ifscCode",
+        "accountType"
+      ]
+    },
+    "ipAddress": "::1",
+    "timestamp": "2026-10-17T06:31:08.487Z",
+    "createdAt": "2026-10-17T06:31:08.505Z",
+    "updatedAt": "2026-10-17T06:31:08.505Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad3162c474d5251bf15abb9",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPENSATION_REVISED",
+    "targetType": "Employee",
+    "targetId": "6ad0dc14d3ae32a099f0d0c6",
+    "changes": {
+      "monthlyCostToCompany": 75000
+    },
+    "ipAddress": "::1",
+    "timestamp": "2026-10-17T06:31:08.876Z",
+    "createdAt": "2026-10-17T06:31:08.878Z",
+    "updatedAt": "2026-10-17T06:31:08.878Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad3162c474d5251bf15abba",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0dc14d3ae32a099f0d0c6",
+    "changes": {
+      "fullName": {
+        "old": "Test Employee",
+        "new": "Test Employee"
+      },
+      "phoneNumber": {
+        "old": "Software Engineer",
+        "new": "Software Engineer"
+      },
+      "city": {
+        "old": "Bengaluru",
+        "new": "Bengaluru"
+      },
+      "jobTitle": {
+        "old": "Software Engineer",
+        "new": "Software Engineer"
+      },
+      "bankDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "::1",
+    "timestamp": "2026-10-17T06:31:08.935Z",
+    "createdAt": "2026-10-17T06:31:08.937Z",
+    "updatedAt": "2026-10-17T06:31:08.937Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad459401d1f2d19955e0782",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ad459401d1f2d19955e0781",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-10-19T00:00:00.000Z",
+      "toDate": "2026-10-19T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T05:29:36.913Z",
+    "createdAt": "2026-10-18T05:29:36.913Z",
+    "updatedAt": "2026-10-18T05:29:36.913Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad459cf1d1f2d19955e0784",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "LEAVE_REJECTED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ad459401d1f2d19955e0781",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-10-19T00:00:00.000Z",
+      "toDate": "2026-10-19T00:00:00.000Z",
+      "daysCount": 1,
+      "decision": {
+        "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "decidedAt": "2026-10-18T05:31:58.979Z",
+        "remarks": "i will grant you work from home,instead of leave.."
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T05:31:59.037Z",
+    "createdAt": "2026-10-18T05:31:59.038Z",
+    "updatedAt": "2026-10-18T05:31:59.038Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad45a021d1f2d19955e0786",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ad45a021d1f2d19955e0785",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-10-19T00:00:00.000Z",
+      "toDate": "2026-10-19T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T05:32:50.891Z",
+    "createdAt": "2026-10-18T05:32:50.891Z",
+    "updatedAt": "2026-10-18T05:32:50.891Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad45a2c1d1f2d19955e0787",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "LEAVE_APPROVED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ad45a021d1f2d19955e0785",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-10-19T00:00:00.000Z",
+      "toDate": "2026-10-19T00:00:00.000Z",
+      "daysCount": 1,
+      "decision": {
+        "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "decidedAt": "2026-10-18T05:33:32.547Z",
+        "remarks": "okay leave granted"
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T05:33:32.607Z",
+    "createdAt": "2026-10-18T05:33:32.608Z",
+    "updatedAt": "2026-10-18T05:33:32.608Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad464e67b41470848af41bc",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ad464e67b41470848af41bb",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "SICK",
+      "fromDate": "2026-10-20T00:00:00.000Z",
+      "toDate": "2026-10-20T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T06:19:18.144Z",
+    "createdAt": "2026-10-18T06:19:18.145Z",
+    "updatedAt": "2026-10-18T06:19:18.145Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad465057b41470848af41bd",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "LEAVE_APPROVED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ad464e67b41470848af41bb",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "SICK",
+      "fromDate": "2026-10-20T00:00:00.000Z",
+      "toDate": "2026-10-20T00:00:00.000Z",
+      "daysCount": 1,
+      "decision": {
+        "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "decidedAt": "2026-10-18T06:19:49.701Z",
+        "remarks": ""
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T06:19:49.766Z",
+    "createdAt": "2026-10-18T06:19:49.766Z",
+    "updatedAt": "2026-10-18T06:19:49.766Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad477161ecce2c6a8909685",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad477161ecce2c6a8909684",
+    "changes": {
+      "candidate": {
+        "fullName": "Maya",
+        "email": "maya@gmail.com"
+      },
+      "position": "senior Developer",
+      "monthlySalary": 19993,
+      "joiningDate": "2026-10-19T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-18T07:36:54.499Z",
+    "createdAt": "2026-10-18T07:36:54.503Z",
+    "updatedAt": "2026-10-18T07:36:54.503Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad607ecf9f3b90078eac88a",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ad607ebf9f3b90078eac886",
+    "changes": {
+      "fullName": "Harsha Polina",
+      "employeeCode": "EMP-09",
+      "email": "harshapolina1@gmail.com",
+      "monthlySalary": 50000
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-19T12:07:08.104Z",
+    "createdAt": "2026-10-19T12:07:08.105Z",
+    "updatedAt": "2026-10-19T12:07:08.105Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad607ecf9f3b90078eac88b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ad607ebf9f3b90078eac886",
+    "changes": {
+      "email": "harshapolina1@gmail.com",
+      "deliveryStatus": "PENDING",
+      "error": null
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-19T12:07:08.349Z",
+    "createdAt": "2026-10-19T12:07:08.349Z",
+    "updatedAt": "2026-10-19T12:07:08.349Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad863f3ff3f486dfd8e0c6f",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad863f3ff3f486dfd8e0c6e",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani Kasi",
+        "email": "sravanikasi14@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2026-11-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T07:04:19.465Z",
+    "createdAt": "2026-10-21T07:04:19.466Z",
+    "updatedAt": "2026-10-21T07:04:19.466Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad863faff3f486dfd8e0c71",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad863f3ff3f486dfd8e0c6e",
+    "changes": {
+      "candidateEmail": "sravanikasi14@gmail.com",
+      "messageId": "<ad20f784-37bf-d034-1d62-77858c78bd92@gmail.com>",
+      "sentAt": "2026-10-21T07:04:26.190Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T07:04:26.316Z",
+    "createdAt": "2026-10-21T07:04:26.317Z",
+    "updatedAt": "2026-10-21T07:04:26.317Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad868349fd9044f64f6575b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad868349fd9044f64f6575a",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani Kasi",
+        "email": "sravanikasi14@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T07:22:28.646Z",
+    "createdAt": "2026-10-21T07:22:28.647Z",
+    "updatedAt": "2026-10-21T07:22:28.647Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8683f9fd9044f64f6575d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad868349fd9044f64f6575a",
+    "changes": {
+      "candidateEmail": "sravanikasi14@gmail.com",
+      "messageId": "<fde0d2ac-8f9e-8546-81e0-19cfffb3d042@gmail.com>",
+      "sentAt": "2026-10-21T07:22:39.216Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T07:22:39.350Z",
+    "createdAt": "2026-10-21T07:22:39.351Z",
+    "updatedAt": "2026-10-21T07:22:39.351Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88445f785841138262c6b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88445f785841138262c6a",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani Kasi",
+        "email": "sravani.140907@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2026-11-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:22:13.631Z",
+    "createdAt": "2026-10-21T09:22:13.632Z",
+    "updatedAt": "2026-10-21T09:22:13.632Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8844ef785841138262c6d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88445f785841138262c6a",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<4e319feb-d3b5-89ba-cd10-4399d500c6fd@gmail.com>",
+      "sentAt": "2026-10-21T09:22:22.152Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:22:22.255Z",
+    "createdAt": "2026-10-21T09:22:22.256Z",
+    "updatedAt": "2026-10-21T09:22:22.256Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88485f785841138262c72",
+    "actorUserId": null,
+    "actorEmail": "sravani.140907@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88445f785841138262c6a",
+    "changes": {
+      "signature": {
+        "signerName": "Sravani Kasi",
+        "signerEmail": "sravani.140907@gmail.com",
+        "signedAt": "2026-10-21T09:23:13.452Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "8dfa76c529c667d4b7385a72a1866e4e71898ef5d18f42082c3276b67b7a045e",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad88481f785841138262c71",
+      "onboardingId": "6ad88481f785841138262c71"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:23:17.569Z",
+    "createdAt": "2026-10-21T09:23:17.570Z",
+    "updatedAt": "2026-10-21T09:23:17.570Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88b6b4450062ec8798b98",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88b6b4450062ec8798b97",
+    "changes": {
+      "candidate": {
+        "fullName": "john",
+        "email": "sravani.140907@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:52:43.912Z",
+    "createdAt": "2026-10-21T09:52:43.913Z",
+    "updatedAt": "2026-10-21T09:52:43.913Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88b744450062ec8798b9a",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88b6b4450062ec8798b97",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<dfd7961b-40fe-24b4-9a47-2c3e7a6769ec@gmail.com>",
+      "sentAt": "2026-10-21T09:52:52.531Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:52:52.609Z",
+    "createdAt": "2026-10-21T09:52:52.610Z",
+    "updatedAt": "2026-10-21T09:52:52.610Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88c084450062ec8798ba1",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88c084450062ec8798ba0",
+    "changes": {
+      "candidate": {
+        "fullName": "john",
+        "email": "clippyclueai@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:55:20.418Z",
+    "createdAt": "2026-10-21T09:55:20.418Z",
+    "updatedAt": "2026-10-21T09:55:20.418Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88c114450062ec8798ba3",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88c084450062ec8798ba0",
+    "changes": {
+      "candidateEmail": "clippyclueai@gmail.com",
+      "messageId": "<151f371f-14f0-4d88-581e-1c7da18ddb0f@gmail.com>",
+      "sentAt": "2026-10-21T09:55:29.420Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:55:29.570Z",
+    "createdAt": "2026-10-21T09:55:29.571Z",
+    "updatedAt": "2026-10-21T09:55:29.571Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad88c284450062ec8798ba8",
+    "actorUserId": null,
+    "actorEmail": "clippyclueai@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88c084450062ec8798ba0",
+    "changes": {
+      "signature": {
+        "signerName": "john",
+        "signerEmail": "clippyclueai@gmail.com",
+        "signedAt": "2026-10-21T09:55:48.279Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "f19ea05cb460ad17bc6c7989f3f5da13bbbdf44c22a1f0ffc2627f14f94ad7fb",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad88c244450062ec8798ba7",
+      "onboardingId": "6ad88c244450062ec8798ba7"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T09:55:52.549Z",
+    "createdAt": "2026-10-21T09:55:52.550Z",
+    "updatedAt": "2026-10-21T09:55:52.550Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8909e12062479c645c116",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_STATUS_CHANGED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad88b6b4450062ec8798b97",
+    "changes": {
+      "oldStatus": "SENT",
+      "newStatus": "REJECTED",
+      "decisionNotes": ""
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T10:14:54.603Z",
+    "createdAt": "2026-10-21T10:14:54.605Z",
+    "updatedAt": "2026-10-21T10:14:54.605Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad890a812062479c645c118",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_STATUS_CHANGED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad868349fd9044f64f6575a",
+    "changes": {
+      "oldStatus": "SENT",
+      "newStatus": "REJECTED",
+      "decisionNotes": ""
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T10:15:04.317Z",
+    "createdAt": "2026-10-21T10:15:04.318Z",
+    "updatedAt": "2026-10-21T10:15:04.318Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8a9da3c2a695eca484743",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8a9da3c2a695eca484742",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani Kasi",
+        "email": "sravanikasi14@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:02:34.146Z",
+    "createdAt": "2026-10-21T12:02:34.148Z",
+    "updatedAt": "2026-10-21T12:02:34.148Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8a9e73c2a695eca484745",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8a9da3c2a695eca484742",
+    "changes": {
+      "candidateEmail": "sravanikasi14@gmail.com",
+      "messageId": "<771891a5-be94-dc12-7fa2-a92cada65961@gmail.com>",
+      "sentAt": "2026-10-21T12:02:47.059Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:02:47.134Z",
+    "createdAt": "2026-10-21T12:02:47.136Z",
+    "updatedAt": "2026-10-21T12:02:47.136Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8a9fc3c2a695eca48474a",
+    "actorUserId": null,
+    "actorEmail": "sravanikasi14@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8a9da3c2a695eca484742",
+    "changes": {
+      "signature": {
+        "signerName": "Sravani Kasi",
+        "signerEmail": "sravanikasi14@gmail.com",
+        "signedAt": "2026-10-21T12:03:05.854Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "b1f478597d3c69c2e4136cdd4be40b04ab137125ed94cdece850f899b41d0b86",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad8a9f93c2a695eca484749",
+      "onboardingId": "6ad8a9f93c2a695eca484749"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:03:08.890Z",
+    "createdAt": "2026-10-21T12:03:08.891Z",
+    "updatedAt": "2026-10-21T12:03:08.891Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8aa493c2a695eca48474b",
+    "actorUserId": null,
+    "actorEmail": "sravanikasi14@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "ONBOARDING_SUBMITTED",
+    "targetType": "User",
+    "targetId": "6ad8a9f93c2a695eca484749",
+    "changes": {
+      "wasChangesRequested": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:04:25.420Z",
+    "createdAt": "2026-10-21T12:04:25.421Z",
+    "updatedAt": "2026-10-21T12:04:25.421Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b0480bea4f30cebaa599",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b0480bea4f30cebaa598",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani",
+        "email": "sravani.140907@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:30:00.250Z",
+    "createdAt": "2026-10-21T12:30:00.252Z",
+    "updatedAt": "2026-10-21T12:30:00.252Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b0510bea4f30cebaa59b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b0480bea4f30cebaa598",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<11f30509-c74a-ed55-f9ba-075ca7b4f098@gmail.com>",
+      "sentAt": "2026-10-21T12:30:09.432Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:30:09.469Z",
+    "createdAt": "2026-10-21T12:30:09.470Z",
+    "updatedAt": "2026-10-21T12:30:09.470Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b07a0bea4f30cebaa5a0",
+    "actorUserId": null,
+    "actorEmail": "sravani.140907@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b0480bea4f30cebaa598",
+    "changes": {
+      "signature": {
+        "signerName": "Sravani",
+        "signerEmail": "sravani.140907@gmail.com",
+        "signedAt": "2026-10-21T12:30:46.753Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "4db2b31d34b30ab89d4f7c12279ce6022442ca5ab6c4ef4563703e2b6a1163da",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad8b0760bea4f30cebaa59f",
+      "onboardingId": "6ad8b0760bea4f30cebaa59f"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:30:50.535Z",
+    "createdAt": "2026-10-21T12:30:50.536Z",
+    "updatedAt": "2026-10-21T12:30:50.536Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b0c50bea4f30cebaa5a2",
+    "actorUserId": null,
+    "actorEmail": "sravani.140907@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "ONBOARDING_SUBMITTED",
+    "targetType": "User",
+    "targetId": "6ad8b0760bea4f30cebaa59f",
+    "changes": {
+      "wasChangesRequested": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:32:05.415Z",
+    "createdAt": "2026-10-21T12:32:05.416Z",
+    "updatedAt": "2026-10-21T12:32:05.416Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b1540bea4f30cebaa5a6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b1540bea4f30cebaa5a5",
+    "changes": {
+      "candidate": {
+        "fullName": "Sreedhar",
+        "email": "sreedharkasi356@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:34:28.938Z",
+    "createdAt": "2026-10-21T12:34:28.939Z",
+    "updatedAt": "2026-10-21T12:34:28.939Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b15c0bea4f30cebaa5a8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b1540bea4f30cebaa5a5",
+    "changes": {
+      "candidateEmail": "sreedharkasi356@gmail.com",
+      "messageId": "<9ce5a2df-fc02-7455-19ab-eb4981e33005@gmail.com>",
+      "sentAt": "2026-10-21T12:34:36.552Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:34:36.584Z",
+    "createdAt": "2026-10-21T12:34:36.585Z",
+    "updatedAt": "2026-10-21T12:34:36.585Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b1ac0bea4f30cebaa5aa",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_STATUS_CHANGED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b1540bea4f30cebaa5a5",
+    "changes": {
+      "oldStatus": "SENT",
+      "newStatus": "REJECTED",
+      "decisionNotes": ""
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:35:56.327Z",
+    "createdAt": "2026-10-21T12:35:56.327Z",
+    "updatedAt": "2026-10-21T12:35:56.327Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b2130bea4f30cebaa5ac",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2130bea4f30cebaa5ab",
+    "changes": {
+      "candidate": {
+        "fullName": "sreedhar",
+        "email": "clippyclueai@gmail.com"
+      },
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:37:39.639Z",
+    "createdAt": "2026-10-21T12:37:39.640Z",
+    "updatedAt": "2026-10-21T12:37:39.640Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b21b0bea4f30cebaa5ae",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2130bea4f30cebaa5ab",
+    "changes": {
+      "candidateEmail": "clippyclueai@gmail.com",
+      "messageId": "<ed0f9bce-1fe3-05a2-8898-339b4f5ea786@gmail.com>",
+      "sentAt": "2026-10-21T12:37:47.129Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:37:47.159Z",
+    "createdAt": "2026-10-21T12:37:47.160Z",
+    "updatedAt": "2026-10-21T12:37:47.160Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b2420bea4f30cebaa5b3",
+    "actorUserId": null,
+    "actorEmail": "clippyclueai@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2130bea4f30cebaa5ab",
+    "changes": {
+      "signature": {
+        "signerName": "sreedhar",
+        "signerEmail": "clippyclueai@gmail.com",
+        "signedAt": "2026-10-21T12:38:23.974Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "49596daf1f6f179e39a5e761964deac9c5abaacce652a3150f870dbc12c9da34",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad8b2400bea4f30cebaa5b2",
+      "onboardingId": "6ad8b2400bea4f30cebaa5b2"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:38:26.748Z",
+    "createdAt": "2026-10-21T12:38:26.749Z",
+    "updatedAt": "2026-10-21T12:38:26.749Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b2bb0bea4f30cebaa5b6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2bb0bea4f30cebaa5b5",
+    "changes": {
+      "candidate": {
+        "fullName": "sumanth",
+        "email": "cheentupakdumdum@gmail.com"
+      },
+      "employeeId": null,
+      "position": "engineer",
+      "monthlySalary": 100000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:40:27.567Z",
+    "createdAt": "2026-10-21T12:40:27.568Z",
+    "updatedAt": "2026-10-21T12:40:27.568Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b2c30bea4f30cebaa5b8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2bb0bea4f30cebaa5b5",
+    "changes": {
+      "candidateEmail": "cheentupakdumdum@gmail.com",
+      "messageId": "<b06910f4-2109-d9f0-8739-d4c40d55972c@gmail.com>",
+      "sentAt": "2026-10-21T12:40:35.744Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:40:35.781Z",
+    "createdAt": "2026-10-21T12:40:35.781Z",
+    "updatedAt": "2026-10-21T12:40:35.781Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b37b0bea4f30cebaa5ba",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b37b0bea4f30cebaa5b9",
+    "changes": {
+      "candidate": {
+        "fullName": "sirisha",
+        "email": "2025eb01909@online.bits-pilani.ac.in"
+      },
+      "employeeId": null,
+      "position": "Senior Software Engineer",
+      "monthlySalary": 100000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:43:39.288Z",
+    "createdAt": "2026-10-21T12:43:39.289Z",
+    "updatedAt": "2026-10-21T12:43:39.289Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b3830bea4f30cebaa5bc",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b37b0bea4f30cebaa5b9",
+    "changes": {
+      "candidateEmail": "2025eb01909@online.bits-pilani.ac.in",
+      "messageId": "<4983d3e1-2fe1-f281-9179-9a986fbc4850@gmail.com>",
+      "sentAt": "2026-10-21T12:43:47.458Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:43:47.497Z",
+    "createdAt": "2026-10-21T12:43:47.497Z",
+    "updatedAt": "2026-10-21T12:43:47.497Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b3e70bea4f30cebaa5c1",
+    "actorUserId": null,
+    "actorEmail": "2025eb01909@online.bits-pilani.ac.in",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b37b0bea4f30cebaa5b9",
+    "changes": {
+      "signature": {
+        "signerName": "sirisha",
+        "signerEmail": "2025eb01909@online.bits-pilani.ac.in",
+        "signedAt": "2026-10-21T12:45:24.841Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+        "documentHash": "a4cd57ade56c78bcce7f274ceab83390c2d0a4867039677f13bfd351d0390011",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6ad8b3e40bea4f30cebaa5c0",
+      "onboardingId": "6ad8b3e40bea4f30cebaa5c0"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:45:27.972Z",
+    "createdAt": "2026-10-21T12:45:27.973Z",
+    "updatedAt": "2026-10-21T12:45:27.973Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b41c0bea4f30cebaa5c3",
+    "actorUserId": null,
+    "actorEmail": "2025eb01909@online.bits-pilani.ac.in",
+    "actorRole": "CANDIDATE",
+    "action": "ONBOARDING_SUBMITTED",
+    "targetType": "User",
+    "targetId": "6ad8b3e40bea4f30cebaa5c0",
+    "changes": {
+      "wasChangesRequested": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:46:20.450Z",
+    "createdAt": "2026-10-21T12:46:20.451Z",
+    "updatedAt": "2026-10-21T12:46:20.451Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b42e0bea4f30cebaa5ca",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "ONBOARDING_APPROVED",
+    "targetType": "User",
+    "targetId": "6ad8b3e40bea4f30cebaa5c0",
+    "changes": {
+      "employeeId": "6ad8b42c0bea4f30cebaa5c5",
+      "employeeCode": "ACM-009",
+      "activationEmailSent": true
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:46:38.948Z",
+    "createdAt": "2026-10-21T12:46:38.949Z",
+    "updatedAt": "2026-10-21T12:46:38.949Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b42e0bea4f30cebaa5cb",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ad8b42c0bea4f30cebaa5c5",
+    "changes": {
+      "employeeCode": "ACM-009",
+      "fullName": "sirisha",
+      "email": "2025eb01909@online.bits-pilani.ac.in",
+      "joiningDate": "2026-10-21T00:00:00.000Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-21T12:46:38.979Z",
+    "createdAt": "2026-10-21T12:46:38.979Z",
+    "updatedAt": "2026-10-21T12:46:38.979Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b7f7a30d78ee263c551f",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b7f6a30d78ee263c551e",
+    "changes": {
+      "candidate": {
+        "fullName": "sreedhar",
+        "email": "sreedharkasi356@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Senior Software Engineer",
+      "monthlySalary": 200000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T13:02:47.431Z",
+    "createdAt": "2026-10-21T13:02:47.431Z",
+    "updatedAt": "2026-10-21T13:02:47.431Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b8c4a30d78ee263c5521",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_STATUS_CHANGED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b2bb0bea4f30cebaa5b5",
+    "changes": {
+      "oldStatus": "SENT",
+      "newStatus": "REJECTED",
+      "decisionNotes": ""
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T13:06:12.436Z",
+    "createdAt": "2026-10-21T13:06:12.436Z",
+    "updatedAt": "2026-10-21T13:06:12.436Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8bc402ecff3170ce3a455",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8b7f6a30d78ee263c551e",
+    "changes": {
+      "candidateEmail": "sreedharkasi356@gmail.com",
+      "messageId": "sim_1792588864154_tbgfllj",
+      "sentAt": "2026-10-21T13:21:04.157Z"
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T13:21:04.493Z",
+    "createdAt": "2026-10-21T13:21:04.494Z",
+    "updatedAt": "2026-10-21T13:21:04.494Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8bcce2ecff3170ce3a457",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8bcce2ecff3170ce3a456",
+    "changes": {
+      "candidate": {
+        "fullName": "lokesh",
+        "email": "chindhamlokesh491@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Software Engineer",
+      "monthlySalary": 200000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T13:23:26.503Z",
+    "createdAt": "2026-10-21T13:23:26.504Z",
+    "updatedAt": "2026-10-21T13:23:26.504Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8bcd02ecff3170ce3a459",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8bcce2ecff3170ce3a456",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "sim_1792589008655_08ahk4l",
+      "sentAt": "2026-10-21T13:23:28.656Z"
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T13:23:28.902Z",
+    "createdAt": "2026-10-21T13:23:28.903Z",
+    "updatedAt": "2026-10-21T13:23:28.903Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8be58a3c3b01873e1035f",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidate": {
+        "fullName": "lokesh",
+        "email": "chindhamlokesh491@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Senior Software Engineering",
+      "monthlySalary": 200000,
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T13:30:00.716Z",
+    "createdAt": "2026-10-21T13:30:00.717Z",
+    "updatedAt": "2026-10-21T13:30:00.717Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8bed3a3c3b01873e10361",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T13:32:03.283Z",
+    "createdAt": "2026-10-21T13:32:03.284Z",
+    "updatedAt": "2026-10-21T13:32:03.284Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8befba3c3b01873e10364",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T13:32:43.787Z",
+    "createdAt": "2026-10-21T13:32:43.788Z",
+    "updatedAt": "2026-10-21T13:32:43.788Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8bf6ba3c3b01873e10366",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T13:34:35.878Z",
+    "createdAt": "2026-10-21T13:34:35.879Z",
+    "updatedAt": "2026-10-21T13:34:35.879Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c63f46694277813b569e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:03:43.794Z",
+    "createdAt": "2026-10-21T14:03:43.795Z",
+    "updatedAt": "2026-10-21T14:03:43.795Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c64946694277813b56a4",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-21T14:03:53.663Z",
+    "createdAt": "2026-10-21T14:03:53.664Z",
+    "updatedAt": "2026-10-21T14:03:53.664Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c65d46694277813b56ab",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:04:13.500Z",
+    "createdAt": "2026-10-21T14:04:13.500Z",
+    "updatedAt": "2026-10-21T14:04:13.500Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c67a46694277813b56b3",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:04:42.712Z",
+    "createdAt": "2026-10-21T14:04:42.712Z",
+    "updatedAt": "2026-10-21T14:04:42.712Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c70bceecbbe74167f100",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:07:07.432Z",
+    "createdAt": "2026-10-21T14:07:07.495Z",
+    "updatedAt": "2026-10-21T14:07:07.495Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c9d4ceecbbe74167f103",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidate": {
+        "fullName": "Harsha Polina",
+        "email": "harshapolina1@gmail.com"
+      },
+      "employeeId": "6ad607ebf9f3b90078eac886",
+      "position": "SDE",
+      "monthlySalary": 50000,
+      "joiningDate": "2026-10-19T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:19:00.972Z",
+    "createdAt": "2026-10-21T14:19:00.974Z",
+    "updatedAt": "2026-10-21T14:19:00.974Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c9d7ceecbbe74167f105",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidateEmail": "harshapolina1@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:19:03.523Z",
+    "createdAt": "2026-10-21T14:19:03.524Z",
+    "updatedAt": "2026-10-21T14:19:03.524Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8c9e3ceecbbe74167f108",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidateEmail": "harshapolina1@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:19:15.509Z",
+    "createdAt": "2026-10-21T14:19:15.510Z",
+    "updatedAt": "2026-10-21T14:19:15.510Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8cd5eceecbbe74167f10c",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidateEmail": "harshapolina1@gmail.com",
+      "error": "You can only send testing emails to your own email address (sravanikasi14@gmail.com). To send emails to other recipients, please verify a domain at resend.com/domains, and change the `from` address to an email using this domain."
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:34:06.680Z",
+    "createdAt": "2026-10-21T14:34:06.681Z",
+    "updatedAt": "2026-10-21T14:34:06.681Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8d0bbb77c48c88374bcf3",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidateEmail": "harshapolina1@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:48:27.174Z",
+    "createdAt": "2026-10-21T14:48:27.175Z",
+    "updatedAt": "2026-10-21T14:48:27.175Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8d0e5b77c48c88374bcf9",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8c9d4ceecbbe74167f102",
+    "changes": {
+      "candidateEmail": "harshapolina1@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:49:09.148Z",
+    "createdAt": "2026-10-21T14:49:09.149Z",
+    "updatedAt": "2026-10-21T14:49:09.149Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8d1aab77c48c88374bd03",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:52:26.455Z",
+    "createdAt": "2026-10-21T14:52:26.455Z",
+    "updatedAt": "2026-10-21T14:52:26.455Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8d1d0b77c48c88374bd0e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.192.117.149",
+    "timestamp": "2026-10-21T14:53:04.543Z",
+    "createdAt": "2026-10-21T14:53:04.545Z",
+    "updatedAt": "2026-10-21T14:53:04.545Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8d295b77c48c88374bd1a",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SEND_FAILED",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.195.250.39",
+    "timestamp": "2026-10-21T14:56:21.052Z",
+    "createdAt": "2026-10-21T14:56:21.053Z",
+    "updatedAt": "2026-10-21T14:56:21.053Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ada0689ab37882693d8c863",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ada0679ab37882693d8c861",
+    "changes": {
+      "fullName": "harsha polina1",
+      "employeeCode": "EMP_09",
+      "email": "harshapolinax@gmail.com",
+      "monthlySalary": null
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-22T12:50:17.365Z",
+    "createdAt": "2026-10-22T12:50:17.365Z",
+    "updatedAt": "2026-10-22T12:50:17.365Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ada0689ab37882693d8c864",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ada0679ab37882693d8c861",
+    "changes": {
+      "email": "harshapolinax@gmail.com",
+      "deliveryStatus": "DELIVERY_FAILED",
+      "error": "Connection timeout"
+    },
+    "ipAddress": "10.197.30.213",
+    "timestamp": "2026-10-22T12:50:17.619Z",
+    "createdAt": "2026-10-22T12:50:17.620Z",
+    "updatedAt": "2026-10-22T12:50:17.620Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adb202331d3088e4826ebe2",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "PAYROLL_FINALIZED",
+    "targetType": "PayrollCycle",
+    "targetId": "6adb176931d3088e4826ebb3",
+    "changes": {
+      "periodMonth": 10,
+      "periodYear": 2026,
+      "employeeCount": 7,
+      "totalNetPayable": 527594
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-23T08:51:47.936Z",
+    "createdAt": "2026-10-23T08:51:47.937Z",
+    "updatedAt": "2026-10-23T08:51:47.937Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adb2b6fdc7772c85ce4d95c",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPANY_ASSET_CREATED",
+    "targetType": "CompanyAsset",
+    "targetId": "6adb2b6fdc7772c85ce4d95b",
+    "changes": {
+      "assetTag": "AST-001",
+      "name": "MacBOOK-000",
+      "category": "LAPTOP"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-23T09:39:59.484Z",
+    "createdAt": "2026-10-23T09:39:59.485Z",
+    "updatedAt": "2026-10-23T09:39:59.485Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adb3476dc7772c85ce4d983",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-23T10:18:30.156Z",
+    "createdAt": "2026-10-23T10:18:30.157Z",
+    "updatedAt": "2026-10-23T10:18:30.157Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adb34c3dc7772c85ce4d9aa",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-23T10:19:47.568Z",
+    "createdAt": "2026-10-23T10:19:47.568Z",
+    "updatedAt": "2026-10-23T10:19:47.568Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc7164ff2caf87401f11a6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6adc7164ff2caf87401f11a5",
+    "changes": {
+      "title": "Implement OAuth",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-10-25T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T08:50:44.656Z",
+    "createdAt": "2026-10-24T08:50:44.658Z",
+    "updatedAt": "2026-10-24T08:50:44.658Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc719dff2caf87401f11a8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6adc719dff2caf87401f11a7",
+    "changes": {
+      "title": "Implement OAuth",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-10-25T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T08:51:41.789Z",
+    "createdAt": "2026-10-24T08:51:41.790Z",
+    "updatedAt": "2026-10-24T08:51:41.790Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc71eeff2caf87401f11aa",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6adc71eeff2caf87401f11a9",
+    "changes": {
+      "title": "implemtn Oauth",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-10-25T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T08:53:02.122Z",
+    "createdAt": "2026-10-24T08:53:02.123Z",
+    "updatedAt": "2026-10-24T08:53:02.123Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc7edad70ef99b0bb8908b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "title": "Verify Distributed Cache Architecture",
+      "assignee": "Aarav Sharma",
+      "deadline": "2026-11-01T00:00:00.000Z",
+      "priority": "HIGH"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T09:48:10.235Z",
+    "createdAt": "2026-10-24T09:48:10.237Z",
+    "updatedAt": "2026-10-24T09:48:10.237Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc8900d70ef99b0bb89095",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0daedd3ae32a099f0d0bf",
+    "changes": {
+      "points": 10,
+      "reason": "completed the work"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T10:31:28.769Z",
+    "createdAt": "2026-10-24T10:31:28.770Z",
+    "updatedAt": "2026-10-24T10:31:28.770Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc8930d70ef99b0bb89097",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0daedd3ae32a099f0d0bf",
+    "changes": {
+      "points": 10,
+      "reason": "completed the given work"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T10:32:16.221Z",
+    "createdAt": "2026-10-24T10:32:16.222Z",
+    "updatedAt": "2026-10-24T10:32:16.222Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc8e22d70ef99b0bb89099",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6adc71eeff2caf87401f11a9",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T10:53:22.264Z",
+    "createdAt": "2026-10-24T10:53:22.265Z",
+    "updatedAt": "2026-10-24T10:53:22.265Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc90aad70ef99b0bb8909b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6adc71eeff2caf87401f11a9",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "Verified and approved",
+      "pointsAwarded": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T11:04:10.907Z",
+    "createdAt": "2026-10-24T11:04:10.908Z",
+    "updatedAt": "2026-10-24T11:04:10.908Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc9a6bd70ef99b0bb8909e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6adc9a6bd70ef99b0bb8909d",
+    "changes": {
+      "title": "API Documentation Audit Q4",
+      "assignee": "Aarav Sharma",
+      "deadline": "2026-11-15T00:00:00.000Z",
+      "priority": "HIGH"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T11:45:47.625Z",
+    "createdAt": "2026-10-24T11:45:47.628Z",
+    "updatedAt": "2026-10-24T11:45:47.628Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc9acad70ef99b0bb890a0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "points": 25,
+      "reason": "Exceptional architecture design and delivery for core platform modernization."
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T11:47:22.021Z",
+    "createdAt": "2026-10-24T11:47:22.022Z",
+    "updatedAt": "2026-10-24T11:47:22.022Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adc9c95d70ef99b0bb890a5",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6adc7164ff2caf87401f11a5",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 1
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T11:55:01.872Z",
+    "createdAt": "2026-10-24T11:55:01.873Z",
+    "updatedAt": "2026-10-24T11:55:01.873Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adcd4680ee4c2deb942d6b8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6adc7164ff2caf87401f11a5",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "",
+      "pointsAwarded": 10
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T15:53:12.860Z",
+    "createdAt": "2026-10-24T15:53:12.861Z",
+    "updatedAt": "2026-10-24T15:53:12.861Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce06751c4d627e9df7eb2",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "DOCUMENT_UPLOADED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b8",
+    "changes": {
+      "documentId": "6adce06751c4d627e9df7eb1",
+      "documentType": "OFFER_LETTER",
+      "fileName": "Offer_Letter_Maya.pdf",
+      "fileSize": 74086,
+      "uploadedByRole": "HR_ADMIN"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-24T16:44:23.554Z",
+    "createdAt": "2026-10-24T16:44:23.556Z",
+    "updatedAt": "2026-10-24T16:44:23.556Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce07451c4d627e9df7eb4",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "BANK_DETAILS_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b8",
+    "changes": {
+      "updatedFields": [
+        "accountHolderName",
+        "bankName",
+        "accountNumber",
+        "ifscCode",
+        "accountType"
+      ]
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-24T16:44:36.342Z",
+    "createdAt": "2026-10-24T16:44:36.343Z",
+    "updatedAt": "2026-10-24T16:44:36.343Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce07451c4d627e9df7eb7",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPENSATION_REVISED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b8",
+    "changes": {
+      "monthlyCostToCompany": 85000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-24T16:44:36.492Z",
+    "createdAt": "2026-10-24T16:44:36.493Z",
+    "updatedAt": "2026-10-24T16:44:36.493Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce07451c4d627e9df7eb8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b8",
+    "changes": {
+      "fullName": {
+        "old": "Rohan Verma",
+        "new": "Rohan Verma"
+      },
+      "phoneNumber": {
+        "old": "+91 98765 43212",
+        "new": "+91 98765 43212"
+      },
+      "city": {
+        "old": "Mumbai",
+        "new": "Mumbai"
+      },
+      "jobTitle": {
+        "old": "QA Specialist",
+        "new": "QA Specialist"
+      },
+      "bankDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-24T16:44:36.536Z",
+    "createdAt": "2026-10-24T16:44:36.536Z",
+    "updatedAt": "2026-10-24T16:44:36.536Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce09651c4d627e9df7ebc",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "PAYROLL_PAYMENT_RECORDED",
+    "targetType": "PayrollCycle",
+    "targetId": "6adb176931d3088e4826ebb3",
+    "changes": {
+      "amount": 527594,
+      "paymentMethod": "NEFT_RTGS",
+      "referenceNumber": ""
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-24T16:45:10.950Z",
+    "createdAt": "2026-10-24T16:45:10.950Z",
+    "updatedAt": "2026-10-24T16:45:10.950Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aded69fd3660b918611c3a0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "136.232.227.202",
+    "timestamp": "2026-10-26T04:27:11.607Z",
+    "createdAt": "2026-10-26T04:27:11.607Z",
+    "updatedAt": "2026-10-26T04:27:11.607Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adf6cf887f209074de14408",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6adc719dff2caf87401f11a7",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-26T15:08:40.569Z",
+    "createdAt": "2026-10-26T15:08:40.570Z",
+    "updatedAt": "2026-10-26T15:08:40.570Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041a5f5f5241655343b43",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "ASSIGNED"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:05.651Z",
+    "createdAt": "2026-10-27T06:16:05.652Z",
+    "updatedAt": "2026-10-27T06:16:05.652Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041abf5f5241655343b44",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "ASSIGNED"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:11.184Z",
+    "createdAt": "2026-10-27T06:16:11.185Z",
+    "updatedAt": "2026-10-27T06:16:11.185Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041b0f5f5241655343b45",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:16.211Z",
+    "createdAt": "2026-10-27T06:16:16.212Z",
+    "updatedAt": "2026-10-27T06:16:16.212Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041b6f5f5241655343b46",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "IN_PROGRESS"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:22.946Z",
+    "createdAt": "2026-10-27T06:16:22.947Z",
+    "updatedAt": "2026-10-27T06:16:22.947Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041bef5f5241655343b47",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "IN_PROGRESS"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:30.576Z",
+    "createdAt": "2026-10-27T06:16:30.576Z",
+    "updatedAt": "2026-10-27T06:16:30.576Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041c7f5f5241655343b48",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "ASSIGNED"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:39.031Z",
+    "createdAt": "2026-10-27T06:16:39.032Z",
+    "updatedAt": "2026-10-27T06:16:39.032Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041dbf5f5241655343b49",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc9a6bd70ef99b0bb8909d",
+    "changes": {
+      "status": "ASSIGNED"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:16:59.176Z",
+    "createdAt": "2026-10-27T06:16:59.177Z",
+    "updatedAt": "2026-10-27T06:16:59.177Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae041ebf5f5241655343b4d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6adc7edad70ef99b0bb8908a",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "",
+      "pointsAwarded": 35
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T06:17:15.907Z",
+    "createdAt": "2026-10-27T06:17:15.908Z",
+    "updatedAt": "2026-10-27T06:17:15.908Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae066e8f5f5241655343b55",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6adc9a6bd70ef99b0bb8909d",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T08:55:04.401Z",
+    "createdAt": "2026-10-27T08:55:04.402Z",
+    "updatedAt": "2026-10-27T08:55:04.402Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae066f1f5f5241655343b59",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6adc9a6bd70ef99b0bb8909d",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "",
+      "pointsAwarded": 35
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T08:55:13.469Z",
+    "createdAt": "2026-10-27T08:55:13.470Z",
+    "updatedAt": "2026-10-27T08:55:13.470Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae06ef4f5f5241655343b88",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-27T09:29:24.055Z",
+    "createdAt": "2026-10-27T09:29:24.056Z",
+    "updatedAt": "2026-10-27T09:29:24.056Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae06f4bf5f5241655343bb4",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-27T09:30:51.379Z",
+    "createdAt": "2026-10-27T09:30:51.381Z",
+    "updatedAt": "2026-10-27T09:30:51.381Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae06f53f5f5241655343bb5",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6adc719dff2caf87401f11a7",
+    "changes": {
+      "status": "IN_PROGRESS"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T09:30:59.990Z",
+    "createdAt": "2026-10-27T09:30:59.991Z",
+    "updatedAt": "2026-10-27T09:30:59.991Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae07bab6ab72b1fd7dffb3c",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "EMPLOYEE_SELF_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad44c04e4c4120b5f519892",
+    "changes": {
+      "phoneNumber": {
+        "old": "+91 9876543210",
+        "new": "+91 9876543210"
+      },
+      "bankDetails": {
+        "updated": true
+      },
+      "taxDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-27T10:23:39.577Z",
+    "createdAt": "2026-10-27T10:23:39.578Z",
+    "updatedAt": "2026-10-27T10:23:39.578Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae07baf6ab72b1fd7dffb3d",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "EMPLOYEE_SELF_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad44c04e4c4120b5f519892",
+    "changes": {
+      "phoneNumber": {
+        "old": "+91 9876543210",
+        "new": "+91 9876543210"
+      },
+      "bankDetails": {
+        "updated": true
+      },
+      "taxDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-27T10:23:43.441Z",
+    "createdAt": "2026-10-27T10:23:43.441Z",
+    "updatedAt": "2026-10-27T10:23:43.441Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08d512cea7badf84e0e8e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae08d512cea7badf84e0e8d",
+    "changes": {
+      "title": "Initiate the project",
+      "assignee": "Maya devi",
+      "deadline": "2026-10-29T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T11:38:57.470Z",
+    "createdAt": "2026-10-27T11:38:57.473Z",
+    "updatedAt": "2026-10-27T11:38:57.473Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08d6d2cea7badf84e0e90",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0c7b6cb659753a419679d",
+    "changes": {
+      "points": 20,
+      "reason": "kudos"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T11:39:25.391Z",
+    "createdAt": "2026-10-27T11:39:25.392Z",
+    "updatedAt": "2026-10-27T11:39:25.392Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08d892cea7badf84e0e92",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "points": 55,
+      "reason": "kudos"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T11:39:53.833Z",
+    "createdAt": "2026-10-27T11:39:53.834Z",
+    "updatedAt": "2026-10-27T11:39:53.834Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae08da92cea7badf84e0e94",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "points": 80,
+      "reason": "kudos"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T11:40:25.524Z",
+    "createdAt": "2026-10-27T11:40:25.525Z",
+    "updatedAt": "2026-10-27T11:40:25.525Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae090872cea7badf84e0e97",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "points": 50,
+      "reason": "Outstanding contribution to customer success and innovation"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T11:52:39.902Z",
+    "createdAt": "2026-10-27T11:52:39.903Z",
+    "updatedAt": "2026-10-27T11:52:39.903Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae095b0070d0b5600a9b692",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b7",
+    "changes": {
+      "points": 10,
+      "reason": "kudos"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-27T12:14:40.580Z",
+    "createdAt": "2026-10-27T12:14:40.581Z",
+    "updatedAt": "2026-10-27T12:14:40.581Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae09703486f01cc6aa27bfd",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ae09702486f01cc6aa27bf9",
+    "changes": {
+      "fullName": "yashika",
+      "employeeCode": "EMP-011",
+      "email": "yashika@email.com",
+      "monthlySalary": 80000
+    },
+    "ipAddress": "202.164.135.206",
+    "timestamp": "2026-10-27T12:20:19.240Z",
+    "createdAt": "2026-10-27T12:20:19.240Z",
+    "updatedAt": "2026-10-27T12:20:19.240Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae09703486f01cc6aa27bfe",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ae09702486f01cc6aa27bf9",
+    "changes": {
+      "email": "yashika@email.com",
+      "deliveryStatus": "DELIVERY_FAILED",
+      "error": "Email settings are not configured for this company. Please configure your sender email and password under Settings → Email."
+    },
+    "ipAddress": "202.164.135.206",
+    "timestamp": "2026-10-27T12:20:19.430Z",
+    "createdAt": "2026-10-27T12:20:19.430Z",
+    "updatedAt": "2026-10-27T12:20:19.430Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae185e45df52170841077da",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_UPDATED",
+    "targetType": "Task",
+    "targetId": "6ae08d512cea7badf84e0e8d",
+    "changes": {
+      "status": "ASSIGNED"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-28T05:19:32.931Z",
+    "createdAt": "2026-10-28T05:19:32.933Z",
+    "updatedAt": "2026-10-28T05:19:32.933Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae18d777545c26cfccf7083",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T05:51:51.351Z",
+    "createdAt": "2026-10-28T05:51:51.352Z",
+    "updatedAt": "2026-10-28T05:51:51.352Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1cb5ef11a8979fa536f07",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6ae08d512cea7badf84e0e8d",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-28T10:15:58.955Z",
+    "createdAt": "2026-10-28T10:15:58.956Z",
+    "updatedAt": "2026-10-28T10:15:58.956Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1d075f11a8979fa536f08",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "BANK_DETAILS_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ada0679ab37882693d8c861",
+    "changes": {
+      "updatedFields": [
+        "accountHolderName",
+        "bankName",
+        "accountNumber",
+        "ifscCode",
+        "accountType"
+      ]
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T10:37:41.575Z",
+    "createdAt": "2026-10-28T10:37:41.578Z",
+    "updatedAt": "2026-10-28T10:37:41.578Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1d075f11a8979fa536f0b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPENSATION_REVISED",
+    "targetType": "Employee",
+    "targetId": "6ada0679ab37882693d8c861",
+    "changes": {
+      "monthlyCostToCompany": 75000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T10:37:41.731Z",
+    "createdAt": "2026-10-28T10:37:41.732Z",
+    "updatedAt": "2026-10-28T10:37:41.732Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1d075f11a8979fa536f0c",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ada0679ab37882693d8c861",
+    "changes": {
+      "fullName": {
+        "old": "harsha polina1",
+        "new": "harsha polina1"
+      },
+      "phoneNumber": {
+        "old": "",
+        "new": ""
+      },
+      "city": {
+        "old": "",
+        "new": ""
+      },
+      "jobTitle": {
+        "old": "",
+        "new": ""
+      },
+      "bankDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T10:37:41.783Z",
+    "createdAt": "2026-10-28T10:37:41.783Z",
+    "updatedAt": "2026-10-28T10:37:41.783Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1e8801949ef1f9385d88d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "BANK_DETAILS_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "updatedFields": [
+        "accountHolderName",
+        "bankName",
+        "accountNumber",
+        "ifscCode",
+        "accountType"
+      ]
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T12:20:16.782Z",
+    "createdAt": "2026-10-28T12:20:16.784Z",
+    "updatedAt": "2026-10-28T12:20:16.784Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1e8801949ef1f9385d88e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad0b1ee6561c909576537b6",
+    "changes": {
+      "fullName": {
+        "old": "Aarav Sharma",
+        "new": "Aarav Sharma"
+      },
+      "phoneNumber": {
+        "old": "+91 98765 43210",
+        "new": "+91 98765 43210"
+      },
+      "city": {
+        "old": "Bengaluru",
+        "new": "Bengaluru"
+      },
+      "jobTitle": {
+        "old": "Senior Full Stack Engineer",
+        "new": "Senior Full Stack Engineer"
+      },
+      "bankDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-28T12:20:16.841Z",
+    "createdAt": "2026-10-28T12:20:16.842Z",
+    "updatedAt": "2026-10-28T12:20:16.842Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2d7a05dcf3e6de9173bb4",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ae2d7a05dcf3e6de9173bb3",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-11-05T00:00:00.000Z",
+      "toDate": "2026-11-05T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-29T05:20:32.386Z",
+    "createdAt": "2026-10-29T05:20:32.387Z",
+    "updatedAt": "2026-10-29T05:20:32.387Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2da695dcf3e6de9173bb5",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "EMPLOYEE_SELF_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad44c04e4c4120b5f519892",
+    "changes": {
+      "preferredName": {
+        "old": "",
+        "new": "Sravani"
+      },
+      "personalEmail": {
+        "old": "",
+        "new": ""
+      },
+      "phoneNumber": {
+        "old": "+91 9876543210",
+        "new": "+91 9876543210"
+      },
+      "city": {
+        "old": "",
+        "new": ""
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-29T05:32:25.949Z",
+    "createdAt": "2026-10-29T05:32:25.950Z",
+    "updatedAt": "2026-10-29T05:32:25.950Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2da8a5dcf3e6de9173bb6",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "EMPLOYEE_SELF_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ad44c04e4c4120b5f519892",
+    "changes": {
+      "preferredName": {
+        "old": "Sravani",
+        "new": ""
+      },
+      "personalEmail": {
+        "old": "",
+        "new": ""
+      },
+      "phoneNumber": {
+        "old": "+91 9876543210",
+        "new": "+91 9876543210"
+      },
+      "city": {
+        "old": "",
+        "new": ""
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-29T05:32:58.788Z",
+    "createdAt": "2026-10-29T05:32:58.788Z",
+    "updatedAt": "2026-10-29T05:32:58.788Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae31db66751e53d2f75fe66",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae31db66751e53d2f75fe65",
+    "changes": {
+      "title": "Improve the UI",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-10-30T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-29T10:19:34.829Z",
+    "createdAt": "2026-10-29T10:19:34.830Z",
+    "updatedAt": "2026-10-29T10:19:34.830Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae33e413aec564fcd3ea707",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6ae31db66751e53d2f75fe65",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-29T12:38:25.735Z",
+    "createdAt": "2026-10-29T12:38:25.739Z",
+    "updatedAt": "2026-10-29T12:38:25.739Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae41d5dc5a6418c517f8af6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ae41d5cc5a6418c517f8af2",
+    "changes": {
+      "fullName": "Supriya",
+      "employeeCode": "EMP-015",
+      "email": "supriyadevi@gmail.com",
+      "monthlySalary": 25000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-30T04:30:21.181Z",
+    "createdAt": "2026-10-30T04:30:21.182Z",
+    "updatedAt": "2026-10-30T04:30:21.182Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae41d5dc5a6418c517f8af7",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ae41d5cc5a6418c517f8af2",
+    "changes": {
+      "email": "supriyadevi@gmail.com",
+      "deliveryStatus": "DELIVERY_FAILED",
+      "error": "Email settings are not configured for this company. Please configure your sender email and password under Settings → Email."
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-30T04:30:21.237Z",
+    "createdAt": "2026-10-30T04:30:21.237Z",
+    "updatedAt": "2026-10-30T04:30:21.237Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae42e82c5a6418c517f8b01",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPANY_ASSET_ASSIGNED",
+    "targetType": "CompanyAsset",
+    "targetId": "6adb2b6fdc7772c85ce4d95b",
+    "changes": {
+      "assetTag": "AST-001",
+      "assignedTo": "Supriya",
+      "employeeCode": "EMP-015",
+      "assignedDate": "2026-10-30T05:43:30.271Z"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T05:43:30.455Z",
+    "createdAt": "2026-10-30T05:43:30.455Z",
+    "updatedAt": "2026-10-30T05:43:30.455Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae42e8cc5a6418c517f8b03",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPANY_ASSET_RETURNED",
+    "targetType": "CompanyAsset",
+    "targetId": "6adb2b6fdc7772c85ce4d95b",
+    "changes": {
+      "assetTag": "AST-001",
+      "returnedFrom": "Supriya",
+      "conditionAtReturn": "GOOD",
+      "nextStatus": "AVAILABLE"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T05:43:40.598Z",
+    "createdAt": "2026-10-30T05:43:40.598Z",
+    "updatedAt": "2026-10-30T05:43:40.598Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae4315ec5a6418c517f8b30",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HR_POLICY_UPDATED",
+    "targetType": "CompanyHrPolicy",
+    "targetId": "6ad458fa1d1f2d19955e0773",
+    "changes": {
+      "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+      "leaveTypesCount": 3,
+      "holidaysCount": 10,
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-10-30T05:55:42.400Z",
+    "createdAt": "2026-10-30T05:55:42.401Z",
+    "updatedAt": "2026-10-30T05:55:42.401Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae46879c5a6418c517f8b36",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "IMPACT_POINTS_RECOGNIZED",
+    "targetType": "Employee",
+    "targetId": "6ae41d5cc5a6418c517f8af2",
+    "changes": {
+      "points": 10,
+      "reason": "Outstanding Q4 delivery and peer collaboration."
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T09:50:49.501Z",
+    "createdAt": "2026-10-30T09:50:49.502Z",
+    "updatedAt": "2026-10-30T09:50:49.502Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae468fdc5a6418c517f8b38",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae468fdc5a6418c517f8b37",
+    "changes": {
+      "title": "Mobile UX polish follow-up",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-11-15T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T09:53:01.782Z",
+    "createdAt": "2026-10-30T09:53:01.783Z",
+    "updatedAt": "2026-10-30T09:53:01.783Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae46972c5a6418c517f8b39",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6adc719dff2caf87401f11a7",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "Approved",
+      "pointsAwarded": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T09:54:58.427Z",
+    "createdAt": "2026-10-30T09:54:58.427Z",
+    "updatedAt": "2026-10-30T09:54:58.427Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae46cd5c5a6418c517f8b3b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_APPROVED",
+    "targetType": "Task",
+    "targetId": "6ae08d512cea7badf84e0e8d",
+    "changes": {
+      "status": "APPROVED",
+      "comments": "Approved",
+      "pointsAwarded": 10
+    },
+    "ipAddress": "",
+    "timestamp": "2026-10-30T10:09:25.015Z",
+    "createdAt": "2026-10-30T10:09:25.016Z",
+    "updatedAt": "2026-10-30T10:09:25.016Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae8171eb428cb622d8403d0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_RESENT",
+    "targetType": "Employee",
+    "targetId": "6ae41d5cc5a6418c517f8af2",
+    "changes": {
+      "email": "supriyadevi@gmail.com",
+      "deliveryStatus": "PENDING",
+      "emailSent": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:52:46.333Z",
+    "createdAt": "2026-11-02T04:52:46.334Z",
+    "updatedAt": "2026-11-02T04:52:46.334Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81767b428cb622d8403d6",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ae81766b428cb622d8403d2",
+    "changes": {
+      "fullName": "TestEmployee2",
+      "employeeCode": "TEMP-002",
+      "email": "employee2@acme.test",
+      "source": "MANUAL",
+      "monthlySalary": 30000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:53:59.054Z",
+    "createdAt": "2026-11-02T04:53:59.054Z",
+    "updatedAt": "2026-11-02T04:53:59.054Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81767b428cb622d8403d7",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ae81766b428cb622d8403d2",
+    "changes": {
+      "email": "employee2@acme.test",
+      "deliveryStatus": "PENDING",
+      "emailSent": false,
+      "source": "MANUAL"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:53:59.103Z",
+    "createdAt": "2026-11-02T04:53:59.103Z",
+    "updatedAt": "2026-11-02T04:53:59.103Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae817adb428cb622d8403d9",
+    "actorUserId": "6ae81766b428cb622d8403d1",
+    "actorEmail": "employee2@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "ACCOUNT_ACTIVATED",
+    "targetType": "User",
+    "targetId": "6ae81766b428cb622d8403d1",
+    "changes": {
+      "employeeId": "6ae81766b428cb622d8403d2",
+      "activatedAt": "2026-11-02T04:55:09.326Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:55:09.326Z",
+    "createdAt": "2026-11-02T04:55:09.327Z",
+    "updatedAt": "2026-11-02T04:55:09.327Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae8183fb428cb622d8403e0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_CREATED",
+    "targetType": "Employee",
+    "targetId": "6ae8183fb428cb622d8403dc",
+    "changes": {
+      "fullName": "TestEmployee3",
+      "employeeCode": "TEMP-003",
+      "email": "employee3@acme.test",
+      "source": "MANUAL",
+      "monthlySalary": 30000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:57:35.517Z",
+    "createdAt": "2026-11-02T04:57:35.518Z",
+    "updatedAt": "2026-11-02T04:57:35.518Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae8183fb428cb622d8403e1",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "INVITATION_SENT",
+    "targetType": "Employee",
+    "targetId": "6ae8183fb428cb622d8403dc",
+    "changes": {
+      "email": "employee3@acme.test",
+      "deliveryStatus": "PENDING",
+      "emailSent": false,
+      "source": "MANUAL"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:57:35.560Z",
+    "createdAt": "2026-11-02T04:57:35.560Z",
+    "updatedAt": "2026-11-02T04:57:35.560Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81862b428cb622d8403e3",
+    "actorUserId": "6ae8183fb428cb622d8403db",
+    "actorEmail": "employee3@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "ACCOUNT_ACTIVATED",
+    "targetType": "User",
+    "targetId": "6ae8183fb428cb622d8403db",
+    "changes": {
+      "employeeId": "6ae8183fb428cb622d8403dc",
+      "activatedAt": "2026-11-02T04:58:10.368Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T04:58:10.368Z",
+    "createdAt": "2026-11-02T04:58:10.368Z",
+    "updatedAt": "2026-11-02T04:58:10.368Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81b609068e19a5cda9c1a",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "LEAVE_APPROVED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae2d7a05dcf3e6de9173bb3",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-11-05T00:00:00.000Z",
+      "toDate": "2026-11-05T00:00:00.000Z",
+      "daysCount": 1,
+      "decision": {
+        "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "decidedAt": "2026-11-02T05:10:55.837Z",
+        "remarks": ""
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T05:10:56.051Z",
+    "createdAt": "2026-11-02T05:10:56.052Z",
+    "updatedAt": "2026-11-02T05:10:56.052Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81dd4ad8d5e4e9bce46f9",
+    "actorUserId": "6ae8183fb428cb622d8403db",
+    "actorEmail": "employee3@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ae81dd4ad8d5e4e9bce46f8",
+    "changes": {
+      "employeeId": "6ae8183fb428cb622d8403dc",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-11-03T00:00:00.000Z",
+      "toDate": "2026-11-03T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T05:21:24.445Z",
+    "createdAt": "2026-11-02T05:21:24.446Z",
+    "updatedAt": "2026-11-02T05:21:24.446Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81f9cad8d5e4e9bce46fc",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae81f9cad8d5e4e9bce46fb",
+    "changes": {
+      "title": "Test app",
+      "assignee": "TestEmployee3",
+      "deadline": "2026-11-04T00:00:00.000Z",
+      "priority": "HIGH"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T05:29:00.791Z",
+    "createdAt": "2026-11-02T05:29:00.793Z",
+    "updatedAt": "2026-11-02T05:29:00.793Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae82c87ae9b2a1b1f71fea2",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_CREATED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae81dd4ad8d5e4e9bce46f8",
+    "changes": {
+      "leaveRequestId": "6ae81dd4ad8d5e4e9bce46f8",
+      "itemCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T06:24:07.311Z",
+    "createdAt": "2026-11-02T06:24:07.312Z",
+    "updatedAt": "2026-11-02T06:24:07.312Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86abd79378dcffc37d2b6",
+    "actorUserId": "6ae81766b428cb622d8403d1",
+    "actorEmail": "employee2@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "employeeId": "6ae81766b428cb622d8403d2",
+      "leaveTypeCode": "EARNED",
+      "fromDate": "2026-11-03T00:00:00.000Z",
+      "toDate": "2026-11-03T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T10:49:33.021Z",
+    "createdAt": "2026-11-02T10:49:33.023Z",
+    "updatedAt": "2026-11-02T10:49:33.023Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86aff79378dcffc37d2b8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae86aff79378dcffc37d2b7",
+    "changes": {
+      "title": "Implement leave management",
+      "assignee": "TestEmployee2",
+      "deadline": "2026-11-03T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T10:50:39.468Z",
+    "createdAt": "2026-11-02T10:50:39.469Z",
+    "updatedAt": "2026-11-02T10:50:39.469Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86b2879378dcffc37d2ba",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_CREATED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "leaveRequestId": "6ae86abc79378dcffc37d2b5",
+      "itemCount": 1
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T10:51:20.156Z",
+    "createdAt": "2026-11-02T10:51:20.156Z",
+    "updatedAt": "2026-11-02T10:51:20.156Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86d26c91eb01e4b9df61b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_UPDATED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "fields": [
+        "items"
+      ]
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T10:59:50.327Z",
+    "createdAt": "2026-11-02T10:59:50.327Z",
+    "updatedAt": "2026-11-02T10:59:50.327Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86d54c91eb01e4b9df61f",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_UPDATED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "fields": [
+        "items"
+      ]
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T11:00:36.715Z",
+    "createdAt": "2026-11-02T11:00:36.715Z",
+    "updatedAt": "2026-11-02T11:00:36.715Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86d6bc91eb01e4b9df628",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_SUBMITTED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "itemCount": 1
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T11:00:59.344Z",
+    "createdAt": "2026-11-02T11:00:59.344Z",
+    "updatedAt": "2026-11-02T11:00:59.344Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86dcec91eb01e4b9df62d",
+    "actorUserId": "6ae8183fb428cb622d8403db",
+    "actorEmail": "employee3@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "HANDOVER_ITEM_ACKNOWLEDGED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "itemId": "6ae86b2879378dcffc37d2b9",
+      "decision": "ACKNOWLEDGE"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T11:02:38.678Z",
+    "createdAt": "2026-11-02T11:02:38.679Z",
+    "updatedAt": "2026-11-02T11:02:38.679Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86e40c91eb01e4b9df634",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "HANDOVER_APPROVED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "ipAddress": "",
+    "timestamp": "2026-11-02T11:04:32.022Z",
+    "createdAt": "2026-11-02T11:04:32.023Z",
+    "updatedAt": "2026-11-02T11:04:32.023Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86e40c91eb01e4b9df635",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_DELEGATED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "items": 1
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T11:04:32.136Z",
+    "createdAt": "2026-11-02T11:04:32.136Z",
+    "updatedAt": "2026-11-02T11:04:32.136Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86e50c91eb01e4b9df639",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "LEAVE_APPROVED",
+    "targetType": "LeaveRequest",
+    "targetId": "6ae86abc79378dcffc37d2b5",
+    "changes": {
+      "employeeId": "6ae81766b428cb622d8403d2",
+      "leaveTypeCode": "EARNED",
+      "fromDate": "2026-11-03T00:00:00.000Z",
+      "toDate": "2026-11-03T00:00:00.000Z",
+      "daysCount": 1,
+      "decision": {
+        "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "decidedAt": "2026-11-02T11:04:47.908Z",
+        "remarks": ""
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T11:04:48.115Z",
+    "createdAt": "2026-11-02T11:04:48.115Z",
+    "updatedAt": "2026-11-02T11:04:48.115Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae88bceaf39aefb8876195d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae88bceaf39aefb8876195c",
+    "changes": {
+      "title": "Check Database models and schema",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-11-02T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T13:10:38.859Z",
+    "createdAt": "2026-11-02T13:10:38.860Z",
+    "updatedAt": "2026-11-02T13:10:38.860Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae88c2daf39aefb8876195f",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_CREATED",
+    "targetType": "Task",
+    "targetId": "6ae88c2daf39aefb8876195e",
+    "changes": {
+      "title": "Check Database",
+      "assignee": "Sravani Kasi",
+      "deadline": "2026-11-03T00:00:00.000Z",
+      "priority": "MEDIUM"
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-02T13:12:13.888Z",
+    "createdAt": "2026-11-02T13:12:13.889Z",
+    "updatedAt": "2026-11-02T13:12:13.889Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae88c5e91dfdfb8a00df0ef",
+    "actorUserId": "6ad302edafd4b3a691dad7dd",
+    "actorEmail": "employee@acme.test",
+    "actorRole": "EMPLOYEE",
+    "action": "LEAVE_REQUESTED",
+    "targetType": "Employee",
+    "targetId": "6ae88c5e91dfdfb8a00df0ee",
+    "changes": {
+      "employeeId": "6ad44c04e4c4120b5f519892",
+      "leaveTypeCode": "CASUAL",
+      "fromDate": "2026-11-03T00:00:00.000Z",
+      "toDate": "2026-11-03T00:00:00.000Z",
+      "daysCount": 1
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-02T13:13:02.730Z",
+    "createdAt": "2026-11-02T13:13:02.731Z",
+    "updatedAt": "2026-11-02T13:13:02.731Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeabe8f5a8f2e42b20d174e",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "BANK_DETAILS_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ae8183fb428cb622d8403dc",
+    "changes": {
+      "updatedFields": [
+        "accountHolderName",
+        "bankName",
+        "accountNumber",
+        "ifscCode",
+        "accountType"
+      ]
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T05:11:43.703Z",
+    "createdAt": "2026-11-04T05:11:43.705Z",
+    "updatedAt": "2026-11-04T05:11:43.705Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeabe8f5a8f2e42b20d1751",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "COMPENSATION_REVISED",
+    "targetType": "Employee",
+    "targetId": "6ae8183fb428cb622d8403dc",
+    "changes": {
+      "monthlyCostToCompany": 30000
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T05:11:43.931Z",
+    "createdAt": "2026-11-04T05:11:43.932Z",
+    "updatedAt": "2026-11-04T05:11:43.932Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeabe905a8f2e42b20d1752",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "EMPLOYEE_UPDATED",
+    "targetType": "Employee",
+    "targetId": "6ae8183fb428cb622d8403dc",
+    "changes": {
+      "fullName": {
+        "old": "TestEmployee3",
+        "new": "TestEmployee3"
+      },
+      "jobTitle": {
+        "old": "Software Developer",
+        "new": "Software Developer"
+      },
+      "bankDetails": {
+        "updated": true
+      }
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T05:11:44.010Z",
+    "createdAt": "2026-11-04T05:11:44.011Z",
+    "updatedAt": "2026-11-04T05:11:44.011Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb0478e572d0882fff128d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "TASK_SUBMITTED",
+    "targetType": "Task",
+    "targetId": "6ae86aff79378dcffc37d2b7",
+    "changes": {
+      "status": "SUBMITTED",
+      "deliverablesCount": 0
+    },
+    "ipAddress": "",
+    "timestamp": "2026-11-04T10:10:00.217Z",
+    "createdAt": "2026-11-04T10:10:00.218Z",
+    "updatedAt": "2026-11-04T10:10:00.218Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb0e7e28c0a8f623421879",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "<36c17cbb-9853-4d25-6981-99fd3103c785@gmail.com>",
+      "sentAt": "2026-11-04T10:52:46.316Z"
+    },
+    "ipAddress": "136.232.227.202",
+    "timestamp": "2026-11-04T10:52:46.343Z",
+    "createdAt": "2026-11-04T10:52:46.344Z",
+    "updatedAt": "2026-11-04T10:52:46.344Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb0f4828c0a8f62342187b",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb0f4828c0a8f62342187a",
+    "changes": {
+      "candidate": {
+        "fullName": "NishithaSri",
+        "email": "nishithasri851@gmail.com"
+      },
+      "employeeId": null,
+      "position": "SDE",
+      "monthlySalary": 100000,
+      "joiningDate": "2026-11-04T00:00:00.000Z",
+      "status": "DRAFT"
+    },
+    "ipAddress": "136.232.227.202",
+    "timestamp": "2026-11-04T10:56:08.989Z",
+    "createdAt": "2026-11-04T10:56:08.989Z",
+    "updatedAt": "2026-11-04T10:56:08.989Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb0f4c28c0a8f62342187d",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb0f4828c0a8f62342187a",
+    "changes": {
+      "candidateEmail": "nishithasri851@gmail.com",
+      "messageId": "<10d83bf4-4799-9356-40cf-adca41f4fbd2@gmail.com>",
+      "sentAt": "2026-11-04T10:56:12.407Z"
+    },
+    "ipAddress": "136.232.227.202",
+    "timestamp": "2026-11-04T10:56:12.414Z",
+    "createdAt": "2026-11-04T10:56:12.415Z",
+    "updatedAt": "2026-11-04T10:56:12.415Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb109b67dd45be4ee58658",
+    "actorUserId": null,
+    "actorEmail": "nishithasri851@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb0f4828c0a8f62342187a",
+    "changes": {
+      "signature": {
+        "signerName": "NishithaSri",
+        "signerEmail": "nishithasri851@gmail.com",
+        "signedAt": "2026-11-04T11:01:42.622Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+        "documentHash": "1f0854e4b5fe24b97d88e975a735da91dc019e2e5ea2c4ce557b7fabd043118e",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6aeb109667dd45be4ee58657",
+      "onboardingId": "6aeb109667dd45be4ee58657"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T11:01:47.049Z",
+    "createdAt": "2026-11-04T11:01:47.051Z",
+    "updatedAt": "2026-11-04T11:01:47.051Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb4f297b2e1a5ca9ddc9bc",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb4f277b2e1a5ca9ddc9bb",
+    "changes": {
+      "candidate": {
+        "fullName": "Sravani",
+        "email": "sravanikasi14@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Software Development Engineer",
+      "monthlySalary": 100000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT",
+      "templateId": "6aeb4b4d7b2e1a5ca9ddc9b6"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:28:41.687Z",
+    "createdAt": "2026-11-04T15:28:41.689Z",
+    "updatedAt": "2026-11-04T15:28:41.689Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb4f417b2e1a5ca9ddc9c3",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb4f277b2e1a5ca9ddc9bb",
+    "changes": {
+      "candidateEmail": "sravanikasi14@gmail.com",
+      "messageId": "<6b8ae5d4-88ba-d113-7ec4-fb3ad76f235a@gmail.com>",
+      "sentAt": "2026-11-04T15:29:05.552Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:29:05.601Z",
+    "createdAt": "2026-11-04T15:29:05.602Z",
+    "updatedAt": "2026-11-04T15:29:05.602Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb50b57b2e1a5ca9ddc9c9",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb50b57b2e1a5ca9ddc9c8",
+    "changes": {
+      "candidate": {
+        "fullName": "nishithasri",
+        "email": "nishithasri851@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Senior Software Engineer",
+      "monthlySalary": 90000,
+      "joiningDate": "2026-11-04T00:00:00.000Z",
+      "status": "DRAFT",
+      "templateId": "6aeb4b4d7b2e1a5ca9ddc9b6"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:35:17.994Z",
+    "createdAt": "2026-11-04T15:35:17.996Z",
+    "updatedAt": "2026-11-04T15:35:17.996Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb50cb7b2e1a5ca9ddc9d0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb50b57b2e1a5ca9ddc9c8",
+    "changes": {
+      "candidateEmail": "nishithasri851@gmail.com",
+      "messageId": "<e8698780-3b46-6722-ab67-cc112e545812@gmail.com>",
+      "sentAt": "2026-11-04T15:35:39.505Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:35:39.563Z",
+    "createdAt": "2026-11-04T15:35:39.564Z",
+    "updatedAt": "2026-11-04T15:35:39.564Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb50e07b2e1a5ca9ddc9d3",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb50b57b2e1a5ca9ddc9c8",
+    "changes": {
+      "candidateEmail": "nishithasri851@gmail.com",
+      "messageId": "<c9d11bb6-e2e7-cd93-2f7b-21a1fc10b84a@gmail.com>",
+      "sentAt": "2026-11-04T15:35:59.996Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:36:00.260Z",
+    "createdAt": "2026-11-04T15:36:00.261Z",
+    "updatedAt": "2026-11-04T15:36:00.261Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb51d27b2e1a5ca9ddc9e9",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "<264f8c5f-0caa-adc1-b283-7f878aa2ae3e@gmail.com>",
+      "sentAt": "2026-11-04T15:40:02.175Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:40:02.260Z",
+    "createdAt": "2026-11-04T15:40:02.261Z",
+    "updatedAt": "2026-11-04T15:40:02.261Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb542b7b2e1a5ca9ddc9f8",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "<056298b3-8991-c21c-8d8d-09963d245b0f@gmail.com>",
+      "sentAt": "2026-11-04T15:50:02.953Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:50:03.015Z",
+    "createdAt": "2026-11-04T15:50:03.016Z",
+    "updatedAt": "2026-11-04T15:50:03.016Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb558d7b2e1a5ca9ddc9fd",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8bcce2ecff3170ce3a456",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "<807b69b0-cc58-aa50-5fd2-ee98ddd3160a@gmail.com>",
+      "sentAt": "2026-11-04T15:55:57.070Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:55:57.111Z",
+    "createdAt": "2026-11-04T15:55:57.113Z",
+    "updatedAt": "2026-11-04T15:55:57.113Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb56337b2e1a5ca9ddc9fe",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "ONBOARDING_REJECTED",
+    "targetType": "User",
+    "targetId": "6ad8b0760bea4f30cebaa59f",
+    "changes": {
+      "reason": "i will create you again",
+      "emailDelivered": true
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T15:58:43.679Z",
+    "createdAt": "2026-11-04T15:58:43.680Z",
+    "updatedAt": "2026-11-04T15:58:43.680Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb568d7b2e1a5ca9ddca00",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb568d7b2e1a5ca9ddc9ff",
+    "changes": {
+      "candidate": {
+        "fullName": "srav",
+        "email": "sravani.140907@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Senior Software Engineer",
+      "monthlySalary": 90000,
+      "joiningDate": "2026-11-04T00:00:00.000Z",
+      "status": "DRAFT",
+      "templateId": "6aeb4b4d7b2e1a5ca9ddc9b6"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:00:13.410Z",
+    "createdAt": "2026-11-04T16:00:13.411Z",
+    "updatedAt": "2026-11-04T16:00:13.411Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb56a17b2e1a5ca9ddca07",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb568d7b2e1a5ca9ddc9ff",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<aaf815c7-d401-6d24-1fb4-519da43e818b@gmail.com>",
+      "sentAt": "2026-11-04T16:00:33.692Z"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:00:33.735Z",
+    "createdAt": "2026-11-04T16:00:33.736Z",
+    "updatedAt": "2026-11-04T16:00:33.736Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5bf2421d7bac0cccdc91",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb568d7b2e1a5ca9ddc9ff",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<0a19790b-62ae-1f5a-03b9-4a05d69f2e50@gmail.com>",
+      "sentAt": "2026-11-04T16:23:14.152Z",
+      "tokenReused": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:23:14.300Z",
+    "createdAt": "2026-11-04T16:23:14.301Z",
+    "updatedAt": "2026-11-04T16:23:14.301Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5c1b421d7bac0cccdca1",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6ad8be58a3c3b01873e1035e",
+    "changes": {
+      "candidateEmail": "chindhamlokesh491@gmail.com",
+      "messageId": "<4501ac36-ae40-fddb-2582-ea18d4f6592a@gmail.com>",
+      "sentAt": "2026-11-04T16:23:55.738Z",
+      "tokenReused": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:23:55.779Z",
+    "createdAt": "2026-11-04T16:23:55.780Z",
+    "updatedAt": "2026-11-04T16:23:55.780Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5f03421d7bac0cccdca5",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb568d7b2e1a5ca9ddc9ff",
+    "changes": {
+      "candidateEmail": "sravani.140907@gmail.com",
+      "messageId": "<e4546b42-55e7-8ffc-1f96-2bb1399266b4@gmail.com>",
+      "sentAt": "2026-11-04T16:36:19.411Z",
+      "tokenReused": true
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:36:19.507Z",
+    "createdAt": "2026-11-04T16:36:19.508Z",
+    "updatedAt": "2026-11-04T16:36:19.508Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5f98421d7bac0cccdca7",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb5f98421d7bac0cccdca6",
+    "changes": {
+      "candidate": {
+        "fullName": "Vaibhavi",
+        "email": "dugguvaaibhavi26@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Software Development Engineer",
+      "monthlySalary": 90000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT",
+      "templateId": "6aeb4b4d7b2e1a5ca9ddc9b6"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:38:48.365Z",
+    "createdAt": "2026-11-04T16:38:48.366Z",
+    "updatedAt": "2026-11-04T16:38:48.366Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5fb1421d7bac0cccdcae",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb5f98421d7bac0cccdca6",
+    "changes": {
+      "candidateEmail": "dugguvaaibhavi26@gmail.com",
+      "messageId": "<28fa7c60-fbd5-c0d2-d99c-499bbf88b4c4@gmail.com>",
+      "sentAt": "2026-11-04T16:39:13.436Z",
+      "tokenReused": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:39:13.508Z",
+    "createdAt": "2026-11-04T16:39:13.509Z",
+    "updatedAt": "2026-11-04T16:39:13.509Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb5fee421d7bac0cccdcb0",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_STATUS_CHANGED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb5f98421d7bac0cccdca6",
+    "changes": {
+      "oldStatus": "SENT",
+      "newStatus": "REJECTED",
+      "decisionNotes": ""
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:40:14.269Z",
+    "createdAt": "2026-11-04T16:40:14.271Z",
+    "updatedAt": "2026-11-04T16:40:14.271Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb6012421d7bac0cccdcb2",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_CREATED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb6012421d7bac0cccdcb1",
+    "changes": {
+      "candidate": {
+        "fullName": "Vaibhavi",
+        "email": "dugguvaibhavi26@gmail.com"
+      },
+      "employeeId": null,
+      "position": "Software Development Engineer",
+      "monthlySalary": 110000,
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "status": "DRAFT",
+      "templateId": "6aeb4b4d7b2e1a5ca9ddc9b6"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:40:50.514Z",
+    "createdAt": "2026-11-04T16:40:50.516Z",
+    "updatedAt": "2026-11-04T16:40:50.516Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb602b421d7bac0cccdcb9",
+    "actorUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "actorEmail": "hr@acme.test",
+    "actorRole": "HR_ADMIN",
+    "action": "OFFER_LETTER_SENT",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb6012421d7bac0cccdcb1",
+    "changes": {
+      "candidateEmail": "dugguvaibhavi26@gmail.com",
+      "messageId": "<e24363ad-9480-d992-63ba-3098b98410c1@gmail.com>",
+      "sentAt": "2026-11-04T16:41:15.298Z",
+      "tokenReused": false
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:41:15.349Z",
+    "createdAt": "2026-11-04T16:41:15.350Z",
+    "updatedAt": "2026-11-04T16:41:15.350Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb60a8421d7bac0cccdcbe",
+    "actorUserId": null,
+    "actorEmail": "dugguvaibhavi26@gmail.com",
+    "actorRole": "CANDIDATE",
+    "action": "OFFER_LETTER_SIGNED",
+    "targetType": "OfferLetter",
+    "targetId": "6aeb6012421d7bac0cccdcb1",
+    "changes": {
+      "signature": {
+        "signerName": "Vaibhavi",
+        "signerEmail": "dugguvaibhavi26@gmail.com",
+        "signedAt": "2026-11-04T16:43:15.996Z",
+        "ipAddress": "127.0.0.1",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+        "documentHash": "b8cf03a2ea2424587cae6981c258f1b7cf5ed010ff90da32c8d64a3f22fbe4dc",
+        "legalStatement": "I hereby accept the offer of employment and agree to the terms, compensation, and conditions outlined in this document."
+      },
+      "candidateUserId": "6aeb60a4421d7bac0cccdcbd",
+      "onboardingId": "6aeb60a4421d7bac0cccdcbd"
+    },
+    "ipAddress": "127.0.0.1",
+    "timestamp": "2026-11-04T16:43:20.001Z",
+    "createdAt": "2026-11-04T16:43:20.002Z",
+    "updatedAt": "2026-11-04T16:43:20.002Z",
+    "__v": 0
+  }
+]

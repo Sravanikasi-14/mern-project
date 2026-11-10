@@ -1,0 +1,28 @@
+[
+  {
+    "_id": "6ae86d3a23f102eaed449975",
+    "taskId": "6ae86aff79378dcffc37d2b7",
+    "leaveRequestId": "6ae86abc79378dcffc37d2b5",
+    "__v": 0,
+    "createdAt": "2026-11-02T11:00:10.430Z",
+    "explanationSnapshot": {
+      "suitability": {
+        "code": "INCOMPLETE_INFORMATION",
+        "label": "Incomplete information"
+      },
+      "why": [
+        "Task skill requirements are not recorded; skill matching is unavailable.",
+        "Available based on approved leave; has pending leave overlapping this period (not treated as confirmed absence).",
+        "Manageable current workload.",
+        "Same department as the employee on leave. Aligned to the same project."
+      ],
+      "score": 0.89
+    },
+    "originalEmployeeId": "6ae81766b428cb622d8403d2",
+    "proposedBackupEmployeeId": "6ae8183fb428cb622d8403dc",
+    "proposedByUserId": "6ad0ac8cafd4b3a691da3f7f",
+    "schemaVersion": 1,
+    "status": "PROPOSED",
+    "updatedAt": "2026-11-02T11:00:51.750Z"
+  }
+]

@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Home, LayoutDashboard, Menu, Users } from "lucide-react";
+import { Building2, Home, LayoutDashboard, Menu, Users } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
 
 const EMP = [
@@ -26,6 +26,18 @@ const HR = [
     Icon: Users,
   },
   { id: "more", label: "More", path: "/admin/more", matchPrefix: ["/admin/"], Icon: Menu },
+];
+
+const COMPANY = [
+  { id: "home", label: "Home", path: "/company", match: ["/company"], Icon: Home },
+  {
+    id: "organization",
+    label: "Org",
+    path: "/company/organization",
+    match: ["/company/organization"],
+    Icon: Building2,
+  },
+  { id: "more", label: "More", path: "/company", matchPrefix: ["/company/"], Icon: Menu },
 ];
 
 function isPrimaryActive(item, pathname) {
@@ -60,12 +72,13 @@ export default function BottomNav() {
   if (!user) return null;
 
   const isEmployee = user.role === "EMPLOYEE";
-  const tabs = isEmployee ? EMP : HR;
+  const isCompanyAdmin = user.role === "COMPANY_ADMIN";
+  const tabs = isEmployee ? EMP : isCompanyAdmin ? COMPANY : HR;
   const activeId = resolveActive(tabs, location.pathname);
 
   return (
     <nav
-      className={`bottom-nav is-pill${isEmployee ? " is-employee" : " is-hr"}`}
+      className={`bottom-nav is-pill${isEmployee ? " is-employee" : isCompanyAdmin ? " is-company" : " is-hr"}`}
       aria-label="Primary"
     >
       {tabs.map((item) => {

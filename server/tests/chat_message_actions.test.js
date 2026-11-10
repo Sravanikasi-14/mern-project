@@ -14,13 +14,12 @@ import request from "supertest";
 import { createApp } from "../app.js";
 import { connectCentralDB, disconnectAll, getCompanyModels } from "../config/db.js";
 import Company, { COMPANY_STATUSES } from "../models/Company.js";
+import { ObjectId } from "mongodb";
 import { NOTIFICATION_TYPES } from "../models/Notification.js";
 import { USER_ROLES } from "../models/User.js";
-import { setStorageAdapter } from "../services/r2StorageService.js";
+import { CHAT_ATTACHMENTS_BUCKET } from "../services/chatGridFsStorageService.js";
 import { getAuthCookieName } from "../utils/authCookie.js";
 import { hashPassword } from "../utils/password.js";
-
-const objects = new Map();
 
 let mongo;
 let app;
@@ -68,26 +67,9 @@ async function direct(cookie, userId) {
 }
 
 before(async () => {
-  setStorageAdapter({
-    async putObject({ key, body }) {
-      objects.set(key, Buffer.from(body));
-      return { etag: "test" };
-    },
-    async getObjectBuffer(key) {
-      if (!objects.has(key)) {
-        const error = new Error("missing");
-        error.name = "NoSuchKey";
-        throw error;
-      }
-      return objects.get(key);
-    },
-    async deleteObject(key) {
-      objects.delete(key);
-    },
-    async getPresignedGetUrl() {
-      throw new Error("presigned URLs are not used");
-    },
-  });
+  delete process.env.R2_ACCESS_KEY_ID;
+  delete process.env.R2_SECRET_ACCESS_KEY;
+  delete process.env.R2_BUCKET;
   mongo = await MongoMemoryServer.create();
   process.env.MONGO_URI = mongo.getUri();
   await connectCentralDB();
@@ -124,10 +106,17 @@ before(async () => {
 });
 
 after(async () => {
-  setStorageAdapter(null);
   await disconnectAll();
   if (mongo) await mongo.stop();
 });
+
+async function gridFileExists(models, storageKey) {
+  return Boolean(
+    await models.connection.db.collection(`${CHAT_ATTACHMENTS_BUCKET}.files`).findOne({
+      _id: new ObjectId(storageKey),
+    })
+  );
+}
 
 describe("message replies, edits, and deletion", () => {
   it("replies to text and attachment-only messages and rejects other conversations", async () => {
@@ -246,10 +235,11 @@ describe("message replies, edits, and deletion", () => {
     const messageId = created.body.message.id;
     const fileId = created.body.message.attachments[0].id;
 
-    const { Message } = await getCompanyModels(acme);
+    const models = await getCompanyModels(acme);
+    const { Message } = models;
     const stored = await Message.findById(messageId).lean();
     const storageKey = stored.attachments[0].storageKey;
-    assert.equal(objects.has(storageKey), true);
+    assert.equal(await gridFileExists(models, storageKey), true);
     await Message.create({
       conversationId,
       senderUserId: ada._id,
@@ -265,7 +255,8 @@ describe("message replies, edits, and deletion", () => {
     assert.equal(removed.body.message.deleted, true);
     assert.equal(removed.body.message.body, "");
     assert.deepEqual(removed.body.message.attachments, []);
-    assert.equal(objects.has(storageKey), true);
+    // Shared storageKey still referenced by the second message copy — bytes retained.
+    assert.equal(await gridFileExists(models, storageKey), true);
 
     const raw = await Message.findById(messageId).lean();
     assert.equal(raw.body, "");
@@ -306,7 +297,7 @@ describe("message replies, edits, and deletion", () => {
     const copies = await Message.find({ "attachments.storageKey": storageKey, deletedAt: null });
     assert.equal(copies.length, 1);
     await request(app).delete(`/api/conversations/${conversationId}/messages/${copies[0]._id}`).set("Cookie", adaCookie);
-    assert.equal(objects.has(storageKey), false);
+    assert.equal(await gridFileExists(models, storageKey), false);
   });
 
   it("updates an existing unread preview in place and counts replies as new messages", async () => {

@@ -16,25 +16,43 @@ function fileUrl(conversationId, messageId, fileId) {
 
 async function fetchFile(conversationId, messageId, fileId) {
   const response = await api.get(fileUrl(conversationId, messageId, fileId), { responseType: "blob" });
-  return response.data;
+  const blob = response.data;
+  const contentType = String(response.headers?.["content-type"] || blob?.type || "");
+  // Axios blob responses can hide JSON API errors (e.g. legacy R2 STORAGE_NOT_CONFIGURED).
+  if (contentType.includes("application/json")) {
+    const text = await blob.text();
+    let message = "Attachment unavailable.";
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.message) message = parsed.message;
+    } catch {
+      if (text.trim()) message = text.trim().slice(0, 180);
+    }
+    const error = new Error(message);
+    error.response = { data: { message }, status: response.status };
+    throw error;
+  }
+  return blob;
 }
 
 function ChatImage({ conversationId, messageId, file }) {
   const [url, setUrl] = useState("");
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
 
   useEffect(() => {
     let objectUrl = "";
     let cancelled = false;
-    setFailed(false);
+    setFailed("");
     fetchFile(conversationId, messageId, file.id)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
+      .catch((err) => {
+        if (!cancelled) {
+          setFailed(err?.response?.data?.message || err?.message || "Image could not be loaded.");
+        }
       });
     return () => {
       cancelled = true;
@@ -42,7 +60,7 @@ function ChatImage({ conversationId, messageId, file }) {
     };
   }, [conversationId, messageId, file.id]);
 
-  if (failed) return <p className="msg-muted">Image could not be loaded.</p>;
+  if (failed) return <p className="msg-muted">{failed}</p>;
   if (!url) return <p className="msg-muted">Loading image…</p>;
   return <img className="msg-attachment-image" src={url} alt={file.fileName} />;
 }

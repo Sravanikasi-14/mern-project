@@ -6,6 +6,7 @@ import {
   getTasks,
   getTaskById,
   updateTask,
+  assignTask,
   startTask,
   submitEvidence,
   reviewTask,
@@ -27,6 +28,8 @@ router.post("/", requireHrPermission("people.edit"), createTask);
 router.get("/", getTasks);
 router.get("/:id", getTaskById);
 router.patch("/:id", requireHrPermission("people.edit"), updateTask);
+/** Manual assign for UNASSIGNED queue only — reuses assignUnassignedTaskService. */
+router.post("/:id/assign", requireHrPermission("people.edit"), assignTask);
 
 // Lifecycle actions. Employees pass through; enforced HR needs people.edit.
 router.post("/:id/start", requireHrPermission("people.edit"), startTask);

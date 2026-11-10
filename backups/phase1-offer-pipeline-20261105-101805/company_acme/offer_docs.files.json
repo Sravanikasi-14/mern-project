@@ -1,0 +1,100 @@
+[
+  {
+    "_id": "6aeb4f307b2e1a5ca9ddc9bd",
+    "length": 826713,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T15:28:50.003Z",
+    "filename": "offer_6aeb4f277b2e1a5ca9ddc9bb_issued.pdf",
+    "metadata": {
+      "offerId": "6aeb4f277b2e1a5ca9ddc9bb",
+      "templateVersion": 1,
+      "purpose": "issued_pdf",
+      "checksumSha256": "e7664afe945d796b0d3508c5e40f6eac9fdc4e96667ad2b0d51e39166d36712c",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb50bb7b2e1a5ca9ddc9ca",
+    "length": 827761,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T15:35:24.327Z",
+    "filename": "offer_6aeb50b57b2e1a5ca9ddc9c8_issued.pdf",
+    "metadata": {
+      "offerId": "6aeb50b57b2e1a5ca9ddc9c8",
+      "templateVersion": 1,
+      "purpose": "issued_pdf",
+      "checksumSha256": "ac0031203e174624e480851b2add38c9aa72eed0c93cf72fa27bb99f48c51d9d",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb51cc7b2e1a5ca9ddc9e6",
+    "length": 74470,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T15:39:56.758Z",
+    "filename": "offer_6ad8be58a3c3b01873e1035e_issued.pdf",
+    "metadata": {
+      "offerId": "6ad8be58a3c3b01873e1035e",
+      "templateVersion": null,
+      "purpose": "issued_pdf",
+      "checksumSha256": "1f635e3b3b8c911bbbcec807e344b7c9232fae68ee7c0b6f1907b74e21a08027",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb55887b2e1a5ca9ddc9fa",
+    "length": 74424,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T15:55:52.429Z",
+    "filename": "offer_6ad8bcce2ecff3170ce3a456_issued.pdf",
+    "metadata": {
+      "offerId": "6ad8bcce2ecff3170ce3a456",
+      "templateVersion": null,
+      "purpose": "issued_pdf",
+      "checksumSha256": "2b861bb4ee676402445b349b0208e0bc171bc5f1114ea1a5fbed78095fe94e9c",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb56937b2e1a5ca9ddca01",
+    "length": 827931,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T16:00:19.439Z",
+    "filename": "offer_6aeb568d7b2e1a5ca9ddc9ff_issued.pdf",
+    "metadata": {
+      "offerId": "6aeb568d7b2e1a5ca9ddc9ff",
+      "templateVersion": 1,
+      "purpose": "issued_pdf",
+      "checksumSha256": "768d59c18ab2d3d45c81b5abdda20fef233e82f6464c77e277e1ee2c43a791ea",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb5fa1421d7bac0cccdca8",
+    "length": 828087,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T16:38:58.219Z",
+    "filename": "offer_6aeb5f98421d7bac0cccdca6_issued.pdf",
+    "metadata": {
+      "offerId": "6aeb5f98421d7bac0cccdca6",
+      "templateVersion": 1,
+      "purpose": "issued_pdf",
+      "checksumSha256": "4ef36e92fbf57ea56bc137fa21b772c0c9cfcebb29dd745d73becc7f85822e78",
+      "refCount": null
+    }
+  },
+  {
+    "_id": "6aeb601b421d7bac0cccdcb3",
+    "length": 827300,
+    "chunkSize": 261120,
+    "uploadDate": "2026-11-04T16:40:59.986Z",
+    "filename": "offer_6aeb6012421d7bac0cccdcb1_issued.pdf",
+    "metadata": {
+      "offerId": "6aeb6012421d7bac0cccdcb1",
+      "templateVersion": 1,
+      "purpose": "issued_pdf",
+      "checksumSha256": "3e5a7f3a9176f64b4d0e5ecaf5e824fe84b3b3818722961aa51588630a541b9b",
+      "refCount": null
+    }
+  }
+]

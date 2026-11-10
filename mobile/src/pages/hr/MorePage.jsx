@@ -5,9 +5,11 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 import Icon from "../../components/Icon";
 import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
+import { useChatUnreadQuery } from "../../hooks/useChatQueries";
 import { getCompanyBrandName } from "../../utils/companyBrand";
 
 const MODULES = [
+  { id: "messages", label: "Messages", path: "/admin/messages", icon: "messages", color: "#e3f2e9", ink: "#155a37" },
   { id: "attendance", label: "Attendance", path: "/admin/attendance", icon: "clock", color: "#eff6ff", ink: "#2563eb" },
   { id: "live", label: "Live Tracking", path: "/admin/attendance/live", icon: "location", color: "#e3f2e9", ink: "#155a37" },
   { id: "leave", label: "Leave Management", path: "/admin/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a" },
@@ -31,6 +33,7 @@ export default function HrMorePage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const closeLogout = useCallback(() => setLogoutOpen(false), []);
+  const chatUnread = Number(useChatUnreadQuery().data || 0);
 
   const handleLogout = async () => {
     try {
@@ -65,6 +68,9 @@ export default function HrMorePage() {
           >
             <span className="mo-card-ico" style={{ background: item.color, color: item.ink }}>
               <Icon name={item.icon} size={18} />
+              {item.id === "messages" && chatUnread > 0 ? (
+                <span className="mo-card-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
+              ) : null}
             </span>
             <strong>{item.label}</strong>
           </button>

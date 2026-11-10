@@ -1,0 +1,14 @@
+[
+  {
+    "_id": "6ad0ad0d149a285c19bb8c85",
+    "email": "hr@globex.test",
+    "passwordHash": "$2b$12$P0GyPQjdHxN3tmVwFPmrDOjeaC5obZjqSEc/BqEeCjHfQkoZDaTde",
+    "role": "HR_ADMIN",
+    "isActive": true,
+    "lastLoginAt": "2026-10-15T10:38:05.689Z",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:38:05.255Z",
+    "updatedAt": "2026-10-15T10:38:05.690Z",
+    "__v": 0
+  }
+]

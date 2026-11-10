@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
 export const TASK_STATUSES = Object.freeze({
+  /** Eligible for Workforce Scheduler assignment only — never an active worker state. */
+  UNASSIGNED: "UNASSIGNED",
   ASSIGNED: "ASSIGNED",
   IN_PROGRESS: "IN_PROGRESS",
   SUBMITTED: "SUBMITTED",
@@ -33,7 +35,14 @@ export function createTaskSchema() {
       assigneeId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Employee",
-        required: [true, "Responsible employee is required"],
+        default: null,
+        /**
+         * Required for all statuses except UNASSIGNED.
+         * Workforce Scheduler claims UNASSIGNED → ASSIGNED atomically.
+         */
+        required: function requiredAssignee() {
+          return this.status !== TASK_STATUSES.UNASSIGNED;
+        },
       },
       assigneeSnapshot: {
         fullName: { type: String, default: "" },
@@ -199,6 +208,7 @@ export function createTaskSchema() {
   taskSchema.index({ status: 1, createdAt: -1 });
   taskSchema.index({ status: 1, completedAt: -1 });
   taskSchema.index({ completedAt: -1 });
+  taskSchema.index({ status: 1, assigneeId: 1, deadline: 1 });
 
   return taskSchema;
 }

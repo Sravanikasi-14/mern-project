@@ -8,6 +8,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   HANDOVER: "HANDOVER",
   MESSAGE: "MESSAGE",
   ANNOUNCEMENT: "ANNOUNCEMENT",
+  ATTENDANCE: "ATTENDANCE",
 });
 
 export function createNotificationSchema() {

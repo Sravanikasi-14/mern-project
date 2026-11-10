@@ -295,16 +295,86 @@ export function validatePolicyPayload(body, existingPolicy = null) {
       ? body.locationRules
       : existingPolicy?.locationRules || DEFAULT_HR_POLICY.locationRules;
 
+  const coerceCoord = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const officeLat = coerceCoord(rawLoc.officeLatitude);
+  const officeLng = coerceCoord(rawLoc.officeLongitude);
+  if (officeLat != null && (officeLat < -90 || officeLat > 90)) {
+    throw new HttpError(400, "Office latitude must be between -90 and 90.");
+  }
+  if (officeLng != null && (officeLng < -180 || officeLng > 180)) {
+    throw new HttpError(400, "Office longitude must be between -180 and 180.");
+  }
+  const radius = rawLoc.geofenceRadiusMeters !== undefined ? Number(rawLoc.geofenceRadiusMeters) : 200;
+  if (!Number.isFinite(radius) || radius < 25 || radius > 5000) {
+    throw new HttpError(400, "Geofence radius must be between 25 and 5000 metres.");
+  }
+  const outOfRadiusPolicy = ["BLOCK", "WARN", "OFF"].includes(String(rawLoc.outOfRadiusPolicy || "").toUpperCase())
+    ? String(rawLoc.outOfRadiusPolicy).toUpperCase()
+    : "BLOCK";
+  const accuracyFailurePolicy = ["BLOCK", "WARN", "OFF"].includes(String(rawLoc.accuracyFailurePolicy || "").toUpperCase())
+    ? String(rawLoc.accuracyFailurePolicy).toUpperCase()
+    : "WARN";
+  const gpsFailurePolicy = ["BLOCK", "WARN", "OFF"].includes(String(rawLoc.gpsFailurePolicy || "").toUpperCase())
+    ? String(rawLoc.gpsFailurePolicy).toUpperCase()
+    : "BLOCK";
+
   const sanitizedLocationRules = {
     requireLocationForPunch:
       rawLoc.requireLocationForPunch !== undefined ? Boolean(rawLoc.requireLocationForPunch) : true,
     allowWebTracking: rawLoc.allowWebTracking !== undefined ? Boolean(rawLoc.allowWebTracking) : true,
     geofenceEnabled: Boolean(rawLoc.geofenceEnabled),
-    geofenceRadiusMeters:
-      rawLoc.geofenceRadiusMeters !== undefined ? Number(rawLoc.geofenceRadiusMeters) : 200,
-    officeLatitude: rawLoc.officeLatitude !== undefined ? rawLoc.officeLatitude : null,
-    officeLongitude: rawLoc.officeLongitude !== undefined ? rawLoc.officeLongitude : null,
+    geofenceRadiusMeters: Math.round(radius),
+    officeLatitude: officeLat,
+    officeLongitude: officeLng,
     officeAddress: String(rawLoc.officeAddress || "").trim(),
+    officeName: String(rawLoc.officeName || "Head Office").trim().slice(0, 120) || "Head Office",
+    outOfRadiusPolicy,
+    maxAccuracyMeters:
+      rawLoc.maxAccuracyMeters !== undefined
+        ? Math.max(10, Math.min(1000, Number(rawLoc.maxAccuracyMeters) || 100))
+        : 100,
+    accuracyFailurePolicy,
+    gpsFailurePolicy,
+    maxLocationAgeSeconds:
+      rawLoc.maxLocationAgeSeconds !== undefined
+        ? Math.max(30, Math.min(900, Number(rawLoc.maxLocationAgeSeconds) || 180))
+        : 180,
+    maxLocationFutureSkewSeconds:
+      rawLoc.maxLocationFutureSkewSeconds !== undefined
+        ? Math.max(0, Math.min(300, Number(rawLoc.maxLocationFutureSkewSeconds) || 60))
+        : 60,
+  };
+
+  const rawWorkArr =
+    body.workArrangementRules !== undefined
+      ? body.workArrangementRules
+      : existingPolicy?.workArrangementRules || DEFAULT_HR_POLICY.workArrangementRules;
+  const wfhMode = String(rawWorkArr.wfhLocationMode || "WFH_UNRESTRICTED").toUpperCase();
+  const sanitizedWorkArrangementRules = {
+    wfhLocationMode: wfhMode === "WFH_APPROVED_LOCATION" ? "WFH_APPROVED_LOCATION" : "WFH_UNRESTRICTED",
+    wfhRequireHomeApproval: Boolean(rawWorkArr.wfhRequireHomeApproval),
+    wfhRadiusMeters:
+      rawWorkArr.wfhRadiusMeters !== undefined
+        ? Math.max(25, Math.min(5000, Number(rawWorkArr.wfhRadiusMeters) || 200))
+        : 200,
+    wfhMaxAccuracyMeters:
+      rawWorkArr.wfhMaxAccuracyMeters !== undefined
+        ? Math.max(10, Math.min(1000, Number(rawWorkArr.wfhMaxAccuracyMeters) || 150))
+        : 150,
+    hybridRemoteApprovalRequired:
+      rawWorkArr.hybridRemoteApprovalRequired !== undefined
+        ? Boolean(rawWorkArr.hybridRemoteApprovalRequired)
+        : true,
+    monitoringEnabled:
+      rawWorkArr.monitoringEnabled !== undefined ? Boolean(rawWorkArr.monitoringEnabled) : true,
+    monitoringMinIntervalSeconds:
+      rawWorkArr.monitoringMinIntervalSeconds !== undefined
+        ? Math.max(30, Math.min(600, Number(rawWorkArr.monitoringMinIntervalSeconds) || 60))
+        : 60,
   };
 
   // 9. Payroll Rules
@@ -533,6 +603,7 @@ export function validatePolicyPayload(body, existingPolicy = null) {
     weekendRules: sanitizedWeekendRules,
     holidays: sanitizedHolidays,
     locationRules: sanitizedLocationRules,
+    workArrangementRules: sanitizedWorkArrangementRules,
     payrollRules: sanitizedPayrollRules,
     salaryComponentRules: sanitizedSalaryComponentRules,
     taxStatutoryRules: sanitizedTaxStatutoryRules,
@@ -752,6 +823,7 @@ export async function updatePolicyRevision(req, res, next) {
     existingPolicy.weekendRules = sanitized.weekendRules;
     existingPolicy.holidays = sanitized.holidays;
     existingPolicy.locationRules = sanitized.locationRules;
+    existingPolicy.workArrangementRules = sanitized.workArrangementRules;
     existingPolicy.payrollRules = sanitized.payrollRules;
     existingPolicy.salaryComponentRules = sanitized.salaryComponentRules;
     existingPolicy.taxStatutoryRules = sanitized.taxStatutoryRules;

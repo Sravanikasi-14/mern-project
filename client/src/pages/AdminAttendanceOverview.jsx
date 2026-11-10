@@ -5,6 +5,7 @@ import SoftRefresh from "../components/SoftRefresh";
 import StatusBadge from "../components/StatusBadge";
 import DateRangePicker from "../components/DateRangePicker";
 import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
+import AttendanceLocationWorkspace from "../components/AttendanceLocationWorkspace";
 import ModuleToolbar from "../components/ModuleToolbar";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
@@ -13,6 +14,12 @@ import { useAuth } from "../context/AuthContext";
 import { useAttendanceOverviewQuery } from "../hooks/useAdminQueries";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import "./Attendance.css";
+
+const WORKSPACES = [
+  { key: "roster", label: "Daily roster" },
+  { key: "remote", label: "Remote approvals" },
+  { key: "exceptions", label: "Location exceptions" },
+];
 
 const FILTER_TYPES = {
   TOTAL_STAFF: "TOTAL_STAFF",
@@ -42,6 +49,8 @@ export default function AdminAttendanceOverview() {
   // Live Tracking moved to its own page. Old ?tab=tracking links redirect there.
   const requestedTab = (searchParams.get("tab") || "").toLowerCase();
   const redirectToTracking = requestedTab === "tracking";
+  const workspaceParam = (searchParams.get("workspace") || "roster").toLowerCase();
+  const workspace = WORKSPACES.some((w) => w.key === workspaceParam) ? workspaceParam : "roster";
 
   // Legacy ?tab=overview / ?tab=records bookmarks: drop the obsolete param.
   useEffect(() => {
@@ -56,6 +65,18 @@ export default function AdminAttendanceOverview() {
       );
     }
   }, [requestedTab, setSearchParams]);
+
+  const setWorkspace = (next) => {
+    setSearchParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        if (!next || next === "roster") nextParams.delete("workspace");
+        else nextParams.set("workspace", next);
+        return nextParams;
+      },
+      { replace: true }
+    );
+  };
 
   const handleRangeChange = ({ startDate: s, endDate: e }) => {
     const nextStart = s || todayBusinessDate;
@@ -74,7 +95,7 @@ export default function AdminAttendanceOverview() {
   const attendanceQuery = useAttendanceOverviewQuery(
     { startDate, endDate, department },
     {
-      enabled: !redirectToTracking,
+      enabled: !redirectToTracking && workspace === "roster",
       // Live tracking needs refresh, but 30s fought staleTime and hammered the full roster.
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
@@ -332,6 +353,25 @@ export default function AdminAttendanceOverview() {
         }
       />
 
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {WORKSPACES.map((w) => (
+          <button
+            key={w.key}
+            type="button"
+            className={workspace === w.key ? "btn-primary" : "btn-secondary"}
+            onClick={() => setWorkspace(w.key)}
+            style={{ padding: "7px 14px", fontSize: 13 }}
+          >
+            {w.label}
+          </button>
+        ))}
+      </div>
+
+      {workspace === "remote" ? <AttendanceLocationWorkspace mode="remote" /> : null}
+      {workspace === "exceptions" ? <AttendanceLocationWorkspace mode="exceptions" /> : null}
+
+      {workspace === "roster" ? (
+        <>
       <ModuleToolbar
         searchValue={tableSearch}
         onSearchChange={(e) => setTableSearch(e.target.value)}
@@ -861,6 +901,8 @@ export default function AdminAttendanceOverview() {
           />
         </div>
       )}
+        </>
+      ) : null}
 
       {/* Part 4: HR Employee Attendance Details Drawer (Overlay) */}
       {drawerEmployeeId && (

@@ -265,8 +265,11 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
       .set("Cookie", employeeCookieA)
       .send({ location: validLocationA });
 
-    assert.equal(res.status, 400);
-    assert.match(res.body.message, /already punched in for today/i);
+    assert.ok([400, 409].includes(res.status), JSON.stringify(res.body));
+    assert.match(
+      res.body.message,
+      /already punched in for today|active attendance session/i
+    );
   });
 
   it("5. Handles concurrent duplicate punch-in requests safely", async () => {
@@ -321,8 +324,11 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
       .set("Cookie", employeeCookieA)
       .send({ location: validLocationOut });
 
-    assert.equal(res.status, 400);
-    assert.match(res.body.message, /already checked out for today|already punched out for today/i);
+    assert.ok([400, 409].includes(res.status), JSON.stringify(res.body));
+    assert.match(
+      res.body.message,
+      /already checked out for today|already punched out for today|no active attendance session/i
+    );
   });
 
   it("8. Returns current attendance state via GET /me/attendance/status", async () => {
@@ -335,7 +341,8 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     assert.equal(res.body.attendance.status, "CHECKED_OUT");
     assert.ok(res.body.attendance.checkInTime);
     assert.ok(res.body.attendance.checkOutTime);
-    assert.equal(res.body.attendance.canPunchIn, false);
+    // Multi-session days: after punch-out the employee may start another session.
+    assert.equal(res.body.attendance.canPunchIn, true);
     assert.equal(res.body.attendance.canPunchOut, false);
   });
 

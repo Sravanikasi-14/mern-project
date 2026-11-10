@@ -10,6 +10,8 @@ import EmptyState, { ErrorState, Skeleton } from "../../components/EmptyState";
 import Pagination from "../../components/Pagination";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import { useToast } from "../../components/Toast";
+import { useAuth } from "../../app/AuthContext";
+import { hrPortalAllows } from "../../utils/hrPortalAccess";
 import api from "../../services/api";
 import { formatDisplayDate } from "../../utils/dateUtils";
 
@@ -70,6 +72,8 @@ function priorityLabel(priority) {
 export default function HrWorkPage() {
   const goBack = useSmartBack("/admin/more");
   const toast = useToast();
+  const { user, company } = useAuth();
+  const canEditPeople = hrPortalAllows(user, company, "people.edit");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -92,6 +96,9 @@ export default function HrWorkPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [defaultedTab, setDefaultedTab] = useState(false);
+  const [assignAssigneeId, setAssignAssigneeId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -151,6 +158,7 @@ export default function HrWorkPage() {
   const grouped = useMemo(() => {
     if (tab !== "ALL") return null;
     return {
+      unassigned: visible.filter((t) => String(t.status).toUpperCase() === "UNASSIGNED"),
       review: visible.filter((t) => String(t.status).toUpperCase() === "SUBMITTED"),
       active: visible.filter((t) =>
         ["ASSIGNED", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(String(t.status).toUpperCase())
@@ -219,6 +227,50 @@ export default function HrWorkPage() {
     setCreateOpen(true);
   };
 
+  const openTask = (task) => {
+    setSelected(task);
+    setAssignAssigneeId("");
+    setAssignError("");
+  };
+
+  const assignSelectedTask = async () => {
+    if (!selected?._id || !assignAssigneeId || !canEditPeople) return;
+    try {
+      setAssigning(true);
+      setAssignError("");
+      await api.post(`/tasks/${selected._id}/assign`, { assigneeId: assignAssigneeId });
+      toast.push("Task assigned.");
+      setSelected(null);
+      setAssignAssigneeId("");
+      await load();
+    } catch (err) {
+      const message = err.response?.data?.message || "Could not assign this task.";
+      setAssignError(message);
+      toast.push(message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const approveSchedulerProposal = async () => {
+    if (!selected?._id || !canEditPeople) return;
+    try {
+      setAssigning(true);
+      setAssignError("");
+      await api.post(`/workforce-scheduler/tasks/${selected._id}/approve`);
+      toast.push("Scheduler proposal approved.");
+      setSelected(null);
+      setAssignAssigneeId("");
+      await load();
+    } catch (err) {
+      const message = err.response?.data?.message || "Could not approve the proposal.";
+      setAssignError(message);
+      toast.push(message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const renderTask = (task, index, stackSize) => {
     const tone = folderTone(task.status);
     const name = assigneeName(task);
@@ -228,7 +280,7 @@ export default function HrWorkPage() {
 
     return (
       <div key={task._id} className="hr-work-item" style={{ zIndex: stackSize - index }}>
-        <button type="button" className={`tk-folder ${tone}`} onClick={() => setSelected(task)}>
+        <button type="button" className={`tk-folder ${tone}`} onClick={() => openTask(task)}>
           <span className="tk-folder-ico" aria-hidden="true">
             {needsReview ? (
               <Clock size={18} strokeWidth={2} />
@@ -291,10 +343,12 @@ export default function HrWorkPage() {
 
       <div className="hr-work-toolbar">
         <SearchBar value={search} onChange={setSearch} placeholder="Search tasks" />
-        <button type="button" className="btn-primary hr-work-create" onClick={openCreate}>
-          <Plus size={18} strokeWidth={2.25} aria-hidden="true" />
-          Create
-        </button>
+        {canEditPeople ? (
+          <button type="button" className="btn-primary hr-work-create" onClick={openCreate}>
+            <Plus size={18} strokeWidth={2.25} aria-hidden="true" />
+            Create
+          </button>
+        ) : null}
       </div>
       {error ? <div className="alert alert-error">{error}</div> : null}
 
@@ -333,6 +387,7 @@ export default function HrWorkPage() {
         />
       ) : tab === "ALL" && grouped ? (
         <>
+          {renderStack("Unassigned", "is-upcoming", grouped.unassigned)}
           {renderStack("To review", "is-upcoming", grouped.review)}
           {renderStack("In progress", "is-today", grouped.active)}
           {renderStack("Completed", "is-done", grouped.done)}
@@ -364,6 +419,60 @@ export default function HrWorkPage() {
               {priorityLabel(selected.priority) ? ` · ${priorityLabel(selected.priority)}` : ""}
             </p>
             <StatusBadge status={selected.status} />
+            {String(selected.status).toUpperCase() === "UNASSIGNED" && canEditPeople ? (
+              <div className="form-grid">
+                {assignError ? <div className="alert alert-error">{assignError}</div> : null}
+                {selected.auditMetadata?.workforceScheduler?.status === "PENDING_APPROVAL" ? (
+                  <p className="caption">
+                    Scheduler proposed{" "}
+                    <strong>
+                      {selected.auditMetadata.workforceScheduler.proposedAssigneeName || "an employee"}
+                    </strong>
+                    .
+                  </p>
+                ) : (
+                  <p className="caption">Assign this queue task to an eligible employee.</p>
+                )}
+                <label>
+                  Assignee
+                  <select
+                    value={assignAssigneeId}
+                    onChange={(event) => setAssignAssigneeId(event.target.value)}
+                    disabled={assigning}
+                  >
+                    <option value="">Select</option>
+                    {people.map((person) => (
+                      <option key={person._id} value={person._id}>
+                        {person.fullName || person.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="row-actions">
+                  {selected.auditMetadata?.workforceScheduler?.status === "PENDING_APPROVAL" ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={assigning}
+                      onClick={approveSchedulerProposal}
+                    >
+                      {assigning ? "Working…" : "Approve proposal"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={assigning || !assignAssigneeId}
+                    onClick={assignSelectedTask}
+                  >
+                    {assigning ? "Assigning…" : "Assign"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {String(selected.status).toUpperCase() === "UNASSIGNED" && !canEditPeople ? (
+              <p className="caption">This task is unassigned. You need people.edit to assign it.</p>
+            ) : null}
             {String(selected.status).toUpperCase() === "SUBMITTED" ? (
               <div className="row-actions">
                 <button type="button" className="btn-danger" onClick={() => setReview("CHANGES_REQUESTED")}>

@@ -1,0 +1,47 @@
+﻿Atlas atlas-12gwuh-shard-0 [primary] test> | | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> [
+  { slug: 'acme', databaseName: 'company_acme' },
+  { slug: 'globex', databaseName: 'company_globex' },
+  { slug: 'suspended-co', databaseName: 'company_suspended_test' }
+]
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | [Function: _arrayWithHoles]
+Atlas atlas-12gwuh-shard-0 [primary] test> {
+  "uriHosts": "ac-ghbaxox-shard-00-00.y54vdji.mongodb.net:27017,ac-ghbaxox-shard-00-01.y54vdji.mongodb.net:27017,ac-ghbaxox-shard-00-02.y54vdji.mongodb.net:27017",
+  "replicaSet": "atlas-12gwuh-shard-0",
+  "isWritablePrimary": true,
+  "databases": [
+    "admin",
+    "company_acme",
+    "company_globex",
+    "company_suspended_test",
+    "local",
+    "platform",
+    "test"
+  ],
+  "stop": false,
+  "reasons": [],
+  "companyDatabases": [
+    {
+      "slug": "acme",
+      "databaseName": "company_acme"
+    },
+    {
+      "slug": "globex",
+      "databaseName": "company_globex"
+    },
+    {
+      "slug": "suspended-co",
+      "databaseName": "company_suspended_test"
+    }
+  ]
+}
+
+Atlas atlas-12gwuh-shard-0 [primary] test> 

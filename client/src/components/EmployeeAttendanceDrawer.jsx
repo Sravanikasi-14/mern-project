@@ -456,15 +456,62 @@ export default function EmployeeAttendanceDrawer({
               </div>
               {selectedMeta.record &&
               (selectedMeta.record.checkIn || selectedMeta.record.checkOut) ? (
-                <AttendanceTimeline
-                  date={selectedMeta.record.date || selectedDay}
-                  checkIn={selectedMeta.record.checkIn}
-                  checkOut={selectedMeta.record.checkOut}
-                  workingHours={selectedMeta.record.workingHours}
-                  durationMinutes={selectedMeta.record.durationMinutes}
-                  status={selectedMeta.record.status}
-                  notes={selectedMeta.record.notes}
-                />
+                <>
+                  <AttendanceTimeline
+                    date={selectedMeta.record.date || selectedDay}
+                    checkIn={selectedMeta.record.checkIn}
+                    checkOut={selectedMeta.record.checkOut}
+                    workingHours={selectedMeta.record.workingHours}
+                    durationMinutes={selectedMeta.record.durationMinutes}
+                    status={selectedMeta.record.status}
+                    notes={selectedMeta.record.notes}
+                    sessions={selectedMeta.record.sessions || []}
+                  />
+                  {Array.isArray(selectedMeta.record.sessions) && selectedMeta.record.sessions.length > 0 ? (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase" }}>
+                        Sessions
+                      </div>
+                      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+                        {selectedMeta.record.sessions.map((s, idx) => (
+                          <li
+                            key={s.id || idx}
+                            style={{
+                              border: "1px solid var(--hair, #e6ede8)",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              fontSize: 13,
+                            }}
+                          >
+                            <strong>{s.sessionType || "OFFICE"}</strong>
+                            {" · "}
+                            {s.status || "—"}
+                            <div style={{ color: "var(--muted)", marginTop: 2 }}>
+                              In {s.checkIn ? new Date(s.checkIn).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                              {" · Out "}
+                              {s.checkOut ? new Date(s.checkOut).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                              {s.durationMinutes ? ` · ${s.durationMinutes}m` : ""}
+                              {s.remoteWorkRequestId ? " · remote approval linked" : ""}
+                              {s.outsideRadius ? " · outside radius flagged" : ""}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {selectedMeta.record.hasIncompleteSessions || selectedMeta.record.openSessionId ? (
+                    <AttendanceRegularizePanel
+                      employeeId={employeeId}
+                      workDate={selectedMeta.record.date || selectedDay}
+                      regularization={selectedMeta.record.regularization}
+                      onDone={fetchEmployeeData}
+                    />
+                  ) : selectedMeta.record.regularization?.decision ? (
+                    <p className="att-drawer-day-note" style={{ marginTop: 12 }}>
+                      Regularized: {selectedMeta.record.regularization.reason || "—"}
+                    </p>
+                  ) : null}
+                </>
               ) : (
                 <p className="att-drawer-day-note">{selectedMeta.tooltip}</p>
               )}
@@ -477,5 +524,58 @@ export default function EmployeeAttendanceDrawer({
         </div>
       </div>
     </AppModal>
+  );
+}
+
+function AttendanceRegularizePanel({ employeeId, workDate, regularization, onDone }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (closeOpenSession) => {
+    try {
+      setBusy(true);
+      setError("");
+      await api.post(`/admin/attendance/employees/${employeeId}/regularize`, {
+        workDate,
+        reason,
+        closeOpenSession,
+      });
+      setReason("");
+      onDone?.();
+    } catch (err) {
+      setError(err.response?.data?.message || "Regularization failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--hair)", paddingTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase" }}>
+        HR regularization
+      </div>
+      {regularization?.decision ? (
+        <p className="caption" style={{ marginBottom: 8 }}>
+          Last: {regularization.decision} — {regularization.reason || "—"}
+        </p>
+      ) : null}
+      <textarea
+        className="policies-input-control"
+        rows={2}
+        placeholder="Reason (required). Does not bypass hybrid remote approval."
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      {error ? <div className="error" style={{ marginTop: 6 }}>{error}</div> : null}
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="btn-primary btn-sm" disabled={busy || reason.trim().length < 3} onClick={() => submit(true)}>
+          Close open session
+        </button>
+        <button type="button" className="btn-secondary btn-sm" disabled={busy || reason.trim().length < 3} onClick={() => submit(false)}>
+          Flag for review
+        </button>
+      </div>
+    </div>
   );
 }

@@ -14,6 +14,7 @@ export default function AttendanceTimeline({
   durationMinutes,
   status = "PRESENT",
   notes = "",
+  sessions = [],
   startHour = 8,
   endHour = 24,
 }) {
@@ -290,6 +291,11 @@ export default function AttendanceTimeline({
         <div className="att-duration-badge">
           <span className="att-duration-sub">Duration</span>
           <span>{displayDuration}</span>
+          {Array.isArray(sessions) && sessions.length > 1 ? (
+            <span className="att-duration-sub" style={{ marginTop: 4 }}>
+              {sessions.length} sessions
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

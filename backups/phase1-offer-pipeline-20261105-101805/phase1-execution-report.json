@@ -1,0 +1,499 @@
+﻿Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | | | | | | | | [Function: counts]
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | | {
+  company_acme: {
+    offer_letters: 9,
+    offer_templates: 1,
+    'offer_docs.files': 7,
+    'offer_docs.chunks': 22,
+    users: 18,
+    candidates: 5,
+    hrAdmins: 1,
+    employeesUsers: 12,
+    employees: 14,
+    authTokens: 11,
+    authSessions: 252,
+    leave_requests: 7,
+    tasks: 12
+  },
+  company_globex: {
+    offer_letters: 0,
+    offer_templates: 1,
+    'offer_docs.files': 0,
+    'offer_docs.chunks': 0,
+    users: 1,
+    candidates: 0,
+    hrAdmins: 1,
+    employeesUsers: 0,
+    employees: 0,
+    authTokens: 0,
+    authSessions: 0,
+    leave_requests: 0,
+    tasks: 0
+  },
+  company_suspended_test: {
+    offer_letters: 0,
+    offer_templates: 1,
+    'offer_docs.files': 0,
+    'offer_docs.chunks': 0,
+    users: 0,
+    candidates: 0,
+    hrAdmins: 0,
+    employeesUsers: 0,
+    employees: 0,
+    authTokens: 0,
+    authSessions: 0,
+    leave_requests: 0,
+    tasks: 0
+  },
+  platform: { companies: 3, offer_template_masters: 1 },
+  test: { companies: 0, tasks: 1 }
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | Set(8) {
+  'sreedharkasi356@gmail.com',
+  'chindhamlokesh491@gmail.com',
+  'harshapolina1@gmail.com',
+  'sravanikasi14@gmail.com',
+  'nishithasri851@gmail.com',
+  'sravani.140907@gmail.com',
+  'dugguvaaibhavi26@gmail.com',
+  'dugguvaibhavi26@gmail.com'
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | 4
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> [
+  '6ad8a9f93c2a695eca484749',
+  '6ad8b0760bea4f30cebaa59f',
+  '6aeb109667dd45be4ee58657',
+  '6aeb60a4421d7bac0cccdcbd',
+  '6ad8b2400bea4f30cebaa5b2'
+]
+Atlas atlas-12gwuh-shard-0 [primary] test> []
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 9
+Atlas atlas-12gwuh-shard-0 [primary] test> 1
+Atlas atlas-12gwuh-shard-0 [primary] test> 7
+Atlas atlas-12gwuh-shard-0 [primary] test> 22
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 0
+Atlas atlas-12gwuh-shard-0 [primary] test> 0
+Atlas atlas-12gwuh-shard-0 [primary] test> 5
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | | | | {
+  ok: true,
+  matched: 1,
+  modified: 1,
+  employeeId: '6ad8b3e40bea4f30cebaa5c0',
+  email: '2025eb01909@online.bits-pilani.ac.in'
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 1
+Atlas atlas-12gwuh-shard-0 [primary] test> 1
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | | | {
+  company_acme: {
+    offer_letters: 0,
+    offer_templates: 0,
+    'offer_docs.files': 0,
+    'offer_docs.chunks': 0,
+    users: 13,
+    candidates: 0,
+    hrAdmins: 1,
+    employeesUsers: 12,
+    employees: 14,
+    authTokens: 11,
+    authSessions: 252,
+    leave_requests: 7,
+    tasks: 12
+  },
+  company_globex: {
+    offer_letters: 0,
+    offer_templates: 0,
+    'offer_docs.files': 0,
+    'offer_docs.chunks': 0,
+    users: 1,
+    candidates: 0,
+    hrAdmins: 1,
+    employeesUsers: 0,
+    employees: 0,
+    authTokens: 0,
+    authSessions: 0,
+    leave_requests: 0,
+    tasks: 0
+  },
+  company_suspended_test: {
+    offer_letters: 0,
+    offer_templates: 0,
+    'offer_docs.files': 0,
+    'offer_docs.chunks': 0,
+    users: 0,
+    candidates: 0,
+    hrAdmins: 0,
+    employeesUsers: 0,
+    employees: 0,
+    authTokens: 0,
+    authSessions: 0,
+    leave_requests: 0,
+    tasks: 0
+  },
+  platform: {
+    companies: 3,
+    offer_template_masters: 1,
+    masterCode: { _id: ObjectId('6aeb4b4d7b2e1a5ca9ddc9b5'), code: 'HRMS_DEFAULT_V1' }
+  },
+  test: { companies: 0, tasks: 1 }
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | | | | | | | | | | {
+  acmeOffersCleared: true,
+  acmeTemplatesCleared: true,
+  acmeGridFsFilesCleared: true,
+  acmeGridFsChunksCleared: true,
+  acmeCandidatesRemaining: 0,
+  acmeHrAdminPreserved: true,
+  acmeEmployeeUsersPreserved: true,
+  acmeEmployeesCollPreserved: true,
+  globexTemplatesCleared: true,
+  suspendedTemplatesCleared: true,
+  platformCompaniesPreserved: true,
+  platformMasterPreserved: true,
+  testDbUntouched: true,
+  remainingCandidateEmails: [],
+  employeeOnboardingGone: true,
+  leftoverOfferRefsOnUsers: 0
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> | | | | | | | | | {
+  platformCompanies: 3,
+  platformMaster: { _id: ObjectId('6aeb4b4d7b2e1a5ca9ddc9b5'), code: 'HRMS_DEFAULT_V1' },
+  acmeHrAdmin: 1,
+  acmeEmployeeUsers: 12,
+  acmeEmployees: 14,
+  acmeLeaveRequests: 7,
+  acmeTasks: 12,
+  issuedPdfCodeUntouched: true
+}
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> Invalid REPL keyword
+Atlas atlas-12gwuh-shard-0 [primary] test> Invalid REPL keyword
+Atlas atlas-12gwuh-shard-0 [primary] test> false
+Atlas atlas-12gwuh-shard-0 [primary] test> [
+  [ 'acmeOffersCleared', true ],
+  [ 'acmeTemplatesCleared', true ],
+  [ 'acmeGridFsFilesCleared', true ],
+  [ 'acmeGridFsChunksCleared', true ],
+  [ 'acmeCandidatesRemaining', 0 ],
+  [ 'acmeHrAdminPreserved', true ],
+  [ 'acmeEmployeeUsersPreserved', true ],
+  [ 'acmeEmployeesCollPreserved', true ],
+  [ 'globexTemplatesCleared', true ],
+  [ 'suspendedTemplatesCleared', true ],
+  [ 'platformCompaniesPreserved', true ],
+  [ 'platformMasterPreserved', true ],
+  [ 'testDbUntouched', true ],
+  [ 'remainingCandidateEmails', [] ],
+  [ 'employeeOnboardingGone', true ],
+  [ 'leftoverOfferRefsOnUsers', 0 ]
+]
+Atlas atlas-12gwuh-shard-0 [primary] test> 
+Atlas atlas-12gwuh-shard-0 [primary] test> {
+  "mode": "PHASE_1_EXECUTE",
+  "deletionsExecuted": true,
+  "usedDropDatabase": false,
+  "host": "ac-ghbaxox-shard-00-00.y54vdji.mongodb.net:27017,ac-ghbaxox-shard-00-01.y54vdji.mongodb.net:27017,ac-ghbaxox-shard-00-02.y54vdji.mongodb.net:27017",
+  "replicaSet": "atlas-12gwuh-shard-0",
+  "before": {
+    "company_acme": {
+      "offer_letters": 9,
+      "offer_templates": 1,
+      "offer_docs.files": 7,
+      "offer_docs.chunks": 22,
+      "users": 18,
+      "candidates": 5,
+      "hrAdmins": 1,
+      "employeesUsers": 12,
+      "employees": 14,
+      "authTokens": 11,
+      "authSessions": 252,
+      "leave_requests": 7,
+      "tasks": 12
+    },
+    "company_globex": {
+      "offer_letters": 0,
+      "offer_templates": 1,
+      "offer_docs.files": 0,
+      "offer_docs.chunks": 0,
+      "users": 1,
+      "candidates": 0,
+      "hrAdmins": 1,
+      "employeesUsers": 0,
+      "employees": 0,
+      "authTokens": 0,
+      "authSessions": 0,
+      "leave_requests": 0,
+      "tasks": 0
+    },
+    "company_suspended_test": {
+      "offer_letters": 0,
+      "offer_templates": 1,
+      "offer_docs.files": 0,
+      "offer_docs.chunks": 0,
+      "users": 0,
+      "candidates": 0,
+      "hrAdmins": 0,
+      "employeesUsers": 0,
+      "employees": 0,
+      "authTokens": 0,
+      "authSessions": 0,
+      "leave_requests": 0,
+      "tasks": 0
+    },
+    "platform": {
+      "companies": 3,
+      "offer_template_masters": 1
+    },
+    "test": {
+      "companies": 0,
+      "tasks": 1
+    }
+  },
+  "actions": {
+    "candidateDeletes": [
+      "6ad8a9f93c2a695eca484749",
+      "6ad8b0760bea4f30cebaa59f",
+      "6aeb109667dd45be4ee58657",
+      "6aeb60a4421d7bac0cccdcbd",
+      "6ad8b2400bea4f30cebaa5b2"
+    ],
+    "preservedCandidates": [],
+    "acme_offer_letters": 9,
+    "acme_offer_templates": 1,
+    "acme_offer_docs_files": 7,
+    "acme_offer_docs_chunks": 22,
+    "acme_authTokens": 0,
+    "acme_authSessions": 0,
+    "acme_candidate_users": 5,
+    "employeeOnboardingClear": {
+      "ok": true,
+      "matched": 1,
+      "modified": 1,
+      "employeeId": "6ad8b3e40bea4f30cebaa5c0",
+      "email": "2025eb01909@online.bits-pilani.ac.in"
+    },
+    "globex_offer_templates": 1,
+    "suspended_offer_templates": 1
+  },
+  "after": {
+    "company_acme": {
+      "offer_letters": 0,
+      "offer_templates": 0,
+      "offer_docs.files": 0,
+      "offer_docs.chunks": 0,
+      "users": 13,
+      "candidates": 0,
+      "hrAdmins": 1,
+      "employeesUsers": 12,
+      "employees": 14,
+      "authTokens": 11,
+      "authSessions": 252,
+      "leave_requests": 7,
+      "tasks": 12
+    },
+    "company_globex": {
+      "offer_letters": 0,
+      "offer_templates": 0,
+      "offer_docs.files": 0,
+      "offer_docs.chunks": 0,
+      "users": 1,
+      "candidates": 0,
+      "hrAdmins": 1,
+      "employeesUsers": 0,
+      "employees": 0,
+      "authTokens": 0,
+      "authSessions": 0,
+      "leave_requests": 0,
+      "tasks": 0
+    },
+    "company_suspended_test": {
+      "offer_letters": 0,
+      "offer_templates": 0,
+      "offer_docs.files": 0,
+      "offer_docs.chunks": 0,
+      "users": 0,
+      "candidates": 0,
+      "hrAdmins": 0,
+      "employeesUsers": 0,
+      "employees": 0,
+      "authTokens": 0,
+      "authSessions": 0,
+      "leave_requests": 0,
+      "tasks": 0
+    },
+    "platform": {
+      "companies": 3,
+      "offer_template_masters": 1,
+      "masterCode": {
+        "_id": {
+          "$oid": "6aeb4b4d7b2e1a5ca9ddc9b5"
+        },
+        "code": "HRMS_DEFAULT_V1"
+      }
+    },
+    "test": {
+      "companies": 0,
+      "tasks": 1
+    }
+  },
+  "verification": {
+    "acmeOffersCleared": true,
+    "acmeTemplatesCleared": true,
+    "acmeGridFsFilesCleared": true,
+    "acmeGridFsChunksCleared": true,
+    "acmeCandidatesRemaining": 0,
+    "acmeHrAdminPreserved": true,
+    "acmeEmployeeUsersPreserved": true,
+    "acmeEmployeesCollPreserved": true,
+    "globexTemplatesCleared": true,
+    "suspendedTemplatesCleared": true,
+    "platformCompaniesPreserved": true,
+    "platformMasterPreserved": true,
+    "testDbUntouched": true,
+    "remainingCandidateEmails": [],
+    "employeeOnboardingGone": true,
+    "leftoverOfferRefsOnUsers": 0
+  },
+  "preserved": {
+    "platformCompanies": 3,
+    "platformMaster": {
+      "_id": {
+        "$oid": "6aeb4b4d7b2e1a5ca9ddc9b5"
+      },
+      "code": "HRMS_DEFAULT_V1"
+    },
+    "acmeHrAdmin": 1,
+    "acmeEmployeeUsers": 12,
+    "acmeEmployees": 14,
+    "acmeLeaveRequests": 7,
+    "acmeTasks": 12,
+    "issuedPdfCodeUntouched": true
+  },
+  "verificationAllPassed": false,
+  "verificationFailures": [
+    [
+      "acmeOffersCleared",
+      true
+    ],
+    [
+      "acmeTemplatesCleared",
+      true
+    ],
+    [
+      "acmeGridFsFilesCleared",
+      true
+    ],
+    [
+      "acmeGridFsChunksCleared",
+      true
+    ],
+    [
+      "acmeCandidatesRemaining",
+      0
+    ],
+    [
+      "acmeHrAdminPreserved",
+      true
+    ],
+    [
+      "acmeEmployeeUsersPreserved",
+      true
+    ],
+    [
+      "acmeEmployeesCollPreserved",
+      true
+    ],
+    [
+      "globexTemplatesCleared",
+      true
+    ],
+    [
+      "suspendedTemplatesCleared",
+      true
+    ],
+    [
+      "platformCompaniesPreserved",
+      true
+    ],
+    [
+      "platformMasterPreserved",
+      true
+    ],
+    [
+      "testDbUntouched",
+      true
+    ],
+    [
+      "remainingCandidateEmails",
+      []
+    ],
+    [
+      "employeeOnboardingGone",
+      true
+    ],
+    [
+      "leftoverOfferRefsOnUsers",
+      0
+    ]
+  ]
+}
+
+Atlas atlas-12gwuh-shard-0 [primary] test> 

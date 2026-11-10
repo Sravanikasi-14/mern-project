@@ -5,9 +5,14 @@ import HrPortalHeader from "../../components/HrPortalHeader";
 import Modal from "../../components/Modal";
 import ReportingManagerSelect from "../../components/ReportingManagerSelect";
 import SoftRefresh from "../../components/SoftRefresh";
+import SegmentedTabs from "../../components/SegmentedTabs";
 import { ErrorState, Skeleton } from "../../components/EmptyState";
 import { useToast } from "../../components/Toast";
 import { useSmartBack } from "../../hooks/useSmartBack";
+import { useAuth } from "../../app/AuthContext";
+import { hrPortalAllows } from "../../utils/hrPortalAccess";
+import DepartmentsPanel from "../organization/DepartmentsPanel";
+import DesignationsPanel from "../organization/DesignationsPanel";
 import api from "../../services/api";
 
 function initials(name = "") {
@@ -138,10 +143,19 @@ function Branch({
   );
 }
 
-export default function HrOrganizationPage() {
+const ORG_TABS = [
+  { value: "hierarchy", label: "Hierarchy" },
+  { value: "departments", label: "Departments" },
+  { value: "titles", label: "Job titles" },
+];
+
+export default function HrOrganizationPage({ backFallback = "/admin/more", title = "Organization" }) {
   const navigate = useNavigate();
-  const goBack = useSmartBack("/admin/more");
+  const goBack = useSmartBack(backFallback);
   const toast = useToast();
+  const { user, company } = useAuth();
+  const canViewStructure = hrPortalAllows(user, company, "organization.view");
+  const [tab, setTab] = useState("hierarchy");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -301,7 +315,7 @@ export default function HrOrganizationPage() {
   if (loading && !data) {
     return (
       <>
-        <HrPortalHeader title="Organization" showBack onBack={() => goBack()} />
+        <HrPortalHeader title={title} showBack onBack={() => goBack()} />
         <Skeleton />
       </>
     );
@@ -310,7 +324,7 @@ export default function HrOrganizationPage() {
   if (error && !data) {
     return (
       <>
-        <HrPortalHeader title="Organization" showBack onBack={() => goBack()} />
+        <HrPortalHeader title={title} showBack onBack={() => goBack()} />
         <ErrorState message={error} onRetry={() => load()} />
       </>
     );
@@ -318,9 +332,22 @@ export default function HrOrganizationPage() {
 
   return (
     <div className="hr-org">
-      <HrPortalHeader title="Organization" showBack onBack={() => goBack()} />
-      {loading ? <SoftRefresh active label="Refreshing" /> : null}
+      <HrPortalHeader title={title} showBack onBack={() => goBack()} />
+      {loading && tab === "hierarchy" ? <SoftRefresh active label="Refreshing" /> : null}
 
+      <div style={{ padding: "0 0 12px" }}>
+        <SegmentedTabs
+          value={tab}
+          onChange={setTab}
+          options={canViewStructure ? ORG_TABS : ORG_TABS.filter((item) => item.value === "hierarchy")}
+        />
+      </div>
+
+      {tab === "departments" ? <DepartmentsPanel /> : null}
+      {tab === "titles" ? <DesignationsPanel /> : null}
+
+      {tab === "hierarchy" ? (
+        <>
       <div className="row-actions" style={{ marginBottom: 10, gap: 8 }}>
         <button type="button" className="btn-secondary" onClick={() => load()} disabled={loading}>
           <RefreshCw size={14} style={{ marginRight: 4 }} />
@@ -491,14 +518,16 @@ export default function HrOrganizationPage() {
                 View direct reports
                 {selected.directReportCount ? ` (${selected.directReportCount})` : ""}
               </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={saving}
-                onClick={() => navigate(`/admin/employees/${selected.id}`)}
-              >
-                Open profile
-              </button>
+              {user?.role === "COMPANY_ADMIN" ? null : (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={saving}
+                  onClick={() => navigate(`/admin/employees/${selected.id}`)}
+                >
+                  Open profile
+                </button>
+              )}
             </>
           ) : null
         }
@@ -550,6 +579,8 @@ export default function HrOrganizationPage() {
           </div>
         ) : null}
       </Modal>
+        </>
+      ) : null}
     </div>
   );
 }

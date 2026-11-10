@@ -106,6 +106,29 @@ export function createEmployeeSchema() {
           trim: true,
           default: "",
         },
+        /**
+         * Attendance work arrangement (Version 1 location-based attendance).
+         * OFFICE | WFH | HYBRID. Default OFFICE preserves historical behaviour.
+         */
+        workArrangement: {
+          mode: {
+            type: String,
+            enum: ["OFFICE", "WFH", "HYBRID"],
+            default: "OFFICE",
+          },
+          homeLocation: {
+            label: { type: String, default: "Home", trim: true },
+            address: { type: String, default: "", trim: true },
+            latitude: { type: Number, default: null },
+            longitude: { type: Number, default: null },
+            radiusMeters: { type: Number, default: 200 },
+            approved: { type: Boolean, default: false },
+            approvedAt: { type: Date, default: null },
+            approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          },
+          updatedAt: { type: Date, default: null },
+          updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        },
         joiningDate: {
           type: Date,
           default: null,

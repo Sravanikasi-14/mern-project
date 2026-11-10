@@ -103,6 +103,7 @@ export function formatStatusLabel(statusRaw, customLabel) {
     ABSENT: "Absent",
     LATE: "Late",
     AVAILABLE: "Available",
+    UNASSIGNED: "Unassigned",
     ASSIGNED: "Assigned",
     IN_PROGRESS: "In Progress",
     UNDER_MAINTENANCE: "Maintenance",

@@ -5,10 +5,12 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 import Icon from "../../components/Icon";
 import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
+import { useChatUnreadQuery } from "../../hooks/useChatQueries";
 import api from "../../services/api";
 
 const FEATURES = [
   { id: "tasks", label: "My Tasks", path: "/app/tasks", icon: "tasks", color: "#e3f2e9", ink: "#155a37" },
+  { id: "messages", label: "Messages", path: "/app/messages", icon: "messages", color: "#e3f2e9", ink: "#155a37" },
   { id: "attendance", label: "Attendance", path: "/app/attendance", icon: "clock", color: "#eff6ff", ink: "#2563eb" },
   { id: "leave", label: "My Leave", path: "/app/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a" },
   { id: "payslips", label: "My Payslips", path: "/app/payslips", icon: "payslips", color: "#e3f2e9", ink: "#155a37" },
@@ -29,6 +31,8 @@ export default function EmployeeMorePage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const closeLogout = useCallback(() => setLogoutOpen(false), []);
+  const chatUnreadQuery = useChatUnreadQuery();
+  const chatUnread = Number(chatUnreadQuery.data || 0);
 
   useEffect(() => {
     let active = true;
@@ -83,6 +87,9 @@ export default function EmployeeMorePage() {
               <Icon name={item.icon} size={18} />
               {item.id === "assets" && assetCount > 0 ? (
                 <span className="mo-card-badge">{assetCount > 99 ? "99+" : assetCount}</span>
+              ) : null}
+              {item.id === "messages" && chatUnread > 0 ? (
+                <span className="mo-card-badge">{chatUnread > 99 ? "99+" : chatUnread}</span>
               ) : null}
             </span>
             <strong>{item.label}</strong>

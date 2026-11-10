@@ -1,12 +1,21 @@
 import path from "node:path";
 import mongoose from "mongoose";
-import { buildTenantKey, deleteObject, getObjectBuffer, putObject } from "./r2StorageService.js";
+import sharp from "sharp";
+import {
+  chatFileIdFromStorageKey,
+  deleteChatFile,
+  getChatFileBuffer,
+  isChatStorageConfigured,
+  putChatFile,
+} from "./chatGridFsStorageService.js";
 import { HttpError } from "../utils/httpError.js";
 import { isStrictObjectId } from "./reportingManagerService.js";
 
 const DEFAULT_MAX_BYTES = 3 * 1024 * 1024;
 const DEFAULT_MAX_COUNT = 5;
 const ABSOLUTE_MAX_BYTES = 8 * 1024 * 1024;
+const IMAGE_MAX_EDGE = 1920;
+const IMAGE_WEBP_QUALITY = 80;
 
 const MIME_FOR_EXT = Object.freeze({
   ".png": "image/png",
@@ -18,6 +27,8 @@ const MIME_FOR_EXT = Object.freeze({
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".xls": "application/vnd.ms-excel",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ".csv": "text/csv",
   ".txt": "text/plain",
 });
@@ -76,7 +87,8 @@ function detectImageMime(buffer) {
 function detectDocumentMime(buffer, ext) {
   if (!buffer || buffer.length < 1) return null;
   if (buffer.length >= 5 && buffer.subarray(0, 5).toString("latin1") === "%PDF-") return "application/pdf";
-  const zip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07);
+  const zip =
+    buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07);
   const ole = buffer.length >= 8 && buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
   const sample = buffer.subarray(0, Math.min(buffer.length, 65536)).toString("latin1");
   if (zip && sample.includes("word/")) {
@@ -85,14 +97,71 @@ function detectDocumentMime(buffer, ext) {
   if (zip && sample.includes("xl/")) {
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   }
+  if (zip && (sample.includes("ppt/") || sample.includes("presentation"))) {
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  }
   if (ole && ext === ".doc") return "application/msword";
   if (ole && ext === ".xls") return "application/vnd.ms-excel";
+  if (ole && ext === ".ppt") return "application/vnd.ms-powerpoint";
   if (ext === ".csv" || ext === ".txt") {
     if (zip || ole || detectImageMime(buffer) || buffer.subarray(0, 5).toString("latin1") === "%PDF-") return null;
     if (buffer.includes(0)) return null;
     return ext === ".csv" ? "text/csv" : "text/plain";
   }
   return null;
+}
+
+/**
+ * Compress oversized images with Sharp → WebP when possible.
+ * Preserves original filename and original MIME in metadata; documents are untouched.
+ */
+export async function prepareStoredBytes(buffer, originalMimeType) {
+  if (!originalMimeType?.startsWith("image/")) {
+    return {
+      buffer,
+      storedMimeType: originalMimeType,
+      originalMimeType,
+      compressed: false,
+    };
+  }
+
+  try {
+    let pipeline = sharp(buffer, { failOn: "none" }).rotate();
+    const meta = await pipeline.metadata();
+    const width = meta.width || 0;
+    const height = meta.height || 0;
+    if (width > IMAGE_MAX_EDGE || height > IMAGE_MAX_EDGE) {
+      pipeline = pipeline.resize({
+        width: IMAGE_MAX_EDGE,
+        height: IMAGE_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      });
+    }
+    const compressed = await pipeline.webp({ quality: IMAGE_WEBP_QUALITY }).toBuffer();
+    if (!compressed.length || compressed.length >= buffer.length * 1.05) {
+      // Keep original when WebP is not smaller (or decode produced nothing useful).
+      return {
+        buffer,
+        storedMimeType: originalMimeType,
+        originalMimeType,
+        compressed: false,
+      };
+    }
+    return {
+      buffer: compressed,
+      storedMimeType: "image/webp",
+      originalMimeType,
+      compressed: true,
+    };
+  } catch {
+    return {
+      buffer,
+      storedMimeType: originalMimeType,
+      originalMimeType,
+      compressed: false,
+    };
+  }
 }
 
 export function inspectAttachment(fileName, fileData) {
@@ -125,6 +194,7 @@ function publicFile(file) {
     id: String(file._id || file.fileId),
     fileName: file.fileName,
     mimeType: file.mimeType,
+    originalMimeType: file.originalMimeType || file.mimeType,
     size: file.size,
     uploadedAt: file.uploadedAt || file.createdAt,
     uploadedBy: String(file.uploadedBy),
@@ -137,6 +207,7 @@ export function publicAttachments(message) {
     id: String(file.fileId),
     fileName: file.fileName,
     mimeType: file.mimeType,
+    originalMimeType: file.originalMimeType || file.mimeType,
     size: file.size,
     uploadedAt: file.uploadedAt,
     uploadedBy: String(file.uploadedBy),
@@ -145,10 +216,15 @@ export function publicAttachments(message) {
 
 export async function uploadConversationFile(req, conversationId) {
   assertObjectId(conversationId, "Conversation not found");
-  const { user, models, company } = req.auth;
+  const { user, models } = req.auth;
+  const connection = models.connection;
+  if (!isChatStorageConfigured(connection)) {
+    throw new HttpError(503, "Document storage is not configured", { code: "STORAGE_NOT_CONFIGURED" });
+  }
+
   await requireActiveMember(models, conversationId, user._id);
   const inspected = inspectAttachment(req.body?.fileName, req.body?.fileData);
-  const { maxCount } = attachmentLimits();
+  const { maxCount, maxBytes } = attachmentLimits();
   const pending = await models.ChatFile.countDocuments({
     conversationId,
     uploadedBy: user._id,
@@ -158,22 +234,44 @@ export async function uploadConversationFile(req, conversationId) {
     throw new HttpError(400, `You can attach up to ${maxCount} files.`);
   }
 
+  const prepared = await prepareStoredBytes(inspected.buffer, inspected.mimeType);
+  if (prepared.buffer.length > maxBytes) {
+    throw new HttpError(400, `Each file must be ${sizeLabel(maxBytes)} or smaller after optimization.`);
+  }
+
   const fileId = new mongoose.Types.ObjectId();
-  const storageKey = buildTenantKey(company.databaseName, "chat", String(conversationId), String(fileId));
-  await putObject({ key: storageKey, body: inspected.buffer, contentType: inspected.mimeType });
+  const stored = await putChatFile({
+    connection,
+    body: prepared.buffer,
+    contentType: prepared.storedMimeType,
+    filename: inspected.fileName,
+    metadata: {
+      chatFileId: String(fileId),
+      conversationId: String(conversationId),
+      uploadedBy: String(user._id),
+      originalMimeType: prepared.originalMimeType,
+      originalFileName: inspected.fileName,
+      compressed: prepared.compressed,
+    },
+  });
+
+  // Prefer pre-allocated ChatFile _id; store GridFS id in storageKey.
+  const storageKey = String(stored.fileId);
   try {
     const saved = await models.ChatFile.create({
       _id: fileId,
       conversationId,
       uploadedBy: user._id,
       fileName: inspected.fileName,
-      mimeType: inspected.mimeType,
-      size: inspected.buffer.length,
+      mimeType: prepared.storedMimeType,
+      originalMimeType: prepared.originalMimeType,
+      size: prepared.buffer.length,
       storageKey,
+      storageProvider: "gridfs",
     });
     return publicFile(saved);
   } catch (error) {
-    await deleteObject(storageKey).catch(() => {});
+    await deleteChatFile({ connection, fileId: stored.fileId }).catch(() => {});
     throw error;
   }
 }
@@ -190,7 +288,10 @@ export async function discardConversationFile(req, conversationId, fileId) {
     messageId: null,
   });
   if (!file) throw new HttpError(404, "File not found");
-  await deleteObject(file.storageKey);
+  const gridId = chatFileIdFromStorageKey(file.storageKey);
+  if (gridId) {
+    await deleteChatFile({ connection: models.connection, fileId: gridId });
+  }
   await file.deleteOne();
   return { id: String(file._id), deleted: true };
 }
@@ -221,6 +322,7 @@ export async function prepareMessageAttachments(req, conversationId, rawIds) {
       fileId: file._id,
       fileName: file.fileName,
       mimeType: file.mimeType,
+      originalMimeType: file.originalMimeType || file.mimeType,
       size: file.size,
       storageKey: file.storageKey,
       uploadedAt: file.createdAt,
@@ -251,8 +353,10 @@ export async function releaseMessageAttachments(models, message) {
       "attachments.storageKey": file.storageKey,
     });
     if (shared > 0) continue;
+    const gridId = chatFileIdFromStorageKey(file.storageKey);
+    if (!gridId) continue;
     try {
-      await deleteObject(file.storageKey);
+      await deleteChatFile({ connection: models.connection, fileId: gridId });
     } catch (error) {
       if (process.env.NODE_ENV !== "test") {
         console.warn("[chat] attachment was not removed:", error.message);
@@ -277,10 +381,16 @@ export async function readMessageAttachment(req, conversationId, messageId, file
   if (!message) throw new HttpError(404, "File not found");
   const attachment = (message.attachments || []).find((file) => String(file.fileId) === String(fileId));
   if (!attachment?.storageKey) throw new HttpError(404, "File not found");
-  const body = await getObjectBuffer(attachment.storageKey);
+  const gridId = chatFileIdFromStorageKey(attachment.storageKey);
+  if (!gridId) {
+    // Legacy R2 object keys (e.g. tenants/.../chat/...) are not GridFS ids — do not call R2.
+    throw new HttpError(404, "File not found");
+  }
+  const body = await getChatFileBuffer({ connection: models.connection, fileId: gridId });
   return {
     fileName: attachment.fileName,
-    mimeType: attachment.mimeType,
+    // Prefer stored mime (e.g. image/webp after Sharp); fall back to original.
+    mimeType: attachment.mimeType || attachment.originalMimeType || "application/octet-stream",
     body,
   };
 }

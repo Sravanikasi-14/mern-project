@@ -219,7 +219,50 @@ export default function EmployeeAttendancePage() {
     setTracking(false);
   };
 
-  const punch = async (kind) => {
+  const [remoteRequests, setRemoteRequests] = useState([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+
+  const refreshRemoteRequests = async () => {
+    try {
+      setRemoteLoading(true);
+      const res = await api.get("/employees/me/attendance/remote-requests");
+      setRemoteRequests(Array.isArray(res.data?.requests) ? res.data.requests : []);
+    } catch {
+      setRemoteRequests([]);
+    } finally {
+      setRemoteLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (today?.workMode === "HYBRID" || today?.workMode === "WFH") {
+      refreshRemoteRequests();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today?.workMode, today?.date]);
+
+  const approvedRemoteForToday = useMemo(() => {
+    const dateKey = String(today?.date || "").slice(0, 10);
+    if (!dateKey) return null;
+    return remoteRequests.find(
+      (r) =>
+        String(r.status || "").toUpperCase() === "APPROVED" &&
+        !r.consumedAt &&
+        String(r.workDate || "").slice(0, 10) === dateKey
+    );
+  }, [remoteRequests, today?.date]);
+
+  const pendingRemoteForToday = useMemo(() => {
+    const dateKey = String(today?.date || "").slice(0, 10);
+    if (!dateKey) return null;
+    return remoteRequests.find(
+      (r) =>
+        String(r.status || "").toUpperCase() === "PENDING" &&
+        String(r.workDate || "").slice(0, 10) === dateKey
+    );
+  }, [remoteRequests, today?.date]);
+
+  const punch = async (kind, sessionType = "OFFICE", remoteWorkRequestId = null) => {
     if (punching) return;
     try {
       setPunching(true);
@@ -231,6 +274,12 @@ export default function EmployeeAttendancePage() {
         longitude: loc.longitude,
         accuracy: loc.accuracy,
         location: loc,
+        ...(kind === "in"
+          ? {
+              sessionType: sessionType === "REMOTE" ? "REMOTE" : "OFFICE",
+              ...(remoteWorkRequestId ? { remoteWorkRequestId } : {}),
+            }
+          : {}),
       });
       if (kind === "out") {
         // Server stops tracking on punch-out; clear local watcher immediately.
@@ -241,6 +290,7 @@ export default function EmployeeAttendancePage() {
       }
       toast.push(kind === "in" ? "Punched in." : "Punched out.");
       await invalidateAttendance(queryClient);
+      await refreshRemoteRequests();
     } catch (err) {
       setActionError(err.response?.data?.message || err.message || "Could not record punch.");
     } finally {
@@ -373,8 +423,15 @@ export default function EmployeeAttendancePage() {
   }
 
   const todayStatus = String(today?.status || "").toUpperCase();
-  const canPunchIn = !punching && todayStatus !== "CHECKED_IN" && todayStatus !== "ON_LEAVE" && todayStatus !== "CHECKED_OUT";
-  const canPunchOut = !punching && todayStatus === "CHECKED_IN";
+  const canPunchIn =
+    !punching &&
+    todayStatus !== "ON_LEAVE" &&
+    (today?.canPunchIn === true ||
+      (today?.canPunchIn == null && todayStatus !== "CHECKED_IN"));
+  const canPunchOut =
+    !punching &&
+    (today?.canPunchOut === true ||
+      (today?.canPunchOut == null && todayStatus === "CHECKED_IN"));
   const barTotal = Math.max(distribution.total, 1);
 
   return (
@@ -398,16 +455,78 @@ export default function EmployeeAttendancePage() {
           <StatusBadge status={todayStatus || "NOT_CHECKED_IN"} />
         </div>
         {canPunchIn ? (
-          <button type="button" className="btn-primary btn-block" style={{ marginTop: 10 }} disabled={punching} onClick={() => punch("in")}>
-            {punching ? "Recording..." : "Punch in"}
-          </button>
+          <>
+            <button type="button" className="btn-primary btn-block" style={{ marginTop: 10 }} disabled={punching} onClick={() => punch("in", "OFFICE")}>
+              {punching ? "Recording..." : "Punch in (Office)"}
+            </button>
+            {today?.workMode === "WFH" ? (
+              <button type="button" className="btn-secondary btn-block" style={{ marginTop: 8 }} disabled={punching} onClick={() => punch("in", "REMOTE")}>
+                {punching ? "Recording..." : "Punch in (Remote / WFH)"}
+              </button>
+            ) : null}
+            {today?.workMode === "HYBRID" ? (
+              <>
+                {approvedRemoteForToday ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-block"
+                    style={{ marginTop: 8 }}
+                    disabled={punching}
+                    onClick={() => punch("in", "REMOTE", approvedRemoteForToday.id || approvedRemoteForToday._id)}
+                  >
+                    {punching ? "Recording..." : "Punch in (Approved remote)"}
+                  </button>
+                ) : pendingRemoteForToday ? (
+                  <p className="caption" style={{ marginTop: 8 }}>
+                    Remote request pending HR approval{remoteLoading ? "…" : "."}
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-block"
+                    style={{ marginTop: 8 }}
+                    disabled={punching}
+                    onClick={async () => {
+                      try {
+                        setPunching(true);
+                        setActionError("");
+                        const loc = await geo.readPosition();
+                        await api.post("/employees/me/attendance/remote-requests", {
+                          workDate: today?.date || todayStr,
+                          reason: "Remote work session",
+                          location: { ...loc, label: "Remote", radiusMeters: 250 },
+                        });
+                        toast.push("Remote request submitted. Punch in remotely after HR approval.");
+                        await refreshRemoteRequests();
+                        await invalidateAttendance(queryClient);
+                      } catch (err) {
+                        setActionError(err.response?.data?.message || err.message || "Remote request failed.");
+                      } finally {
+                        setPunching(false);
+                      }
+                    }}
+                  >
+                    Request remote work
+                  </button>
+                )}
+              </>
+            ) : null}
+          </>
         ) : null}
         {canPunchOut ? (
           <button type="button" className="btn-danger btn-block" style={{ marginTop: 10 }} disabled={punching} onClick={() => punch("out")}>
             {punching ? "Recording..." : "Punch out"}
           </button>
         ) : null}
-        {todayStatus === "CHECKED_OUT" ? <p className="caption" style={{ marginTop: 8 }}>Shift completed for today.</p> : null}
+        {Array.isArray(today?.sessions) && today.sessions.length > 0 ? (
+          <div className="caption" style={{ marginTop: 10 }}>
+            {today.sessions.length} session{today.sessions.length === 1 ? "" : "s"} today
+            {today.durationMinutes ? ` · ${today.workingHours || `${today.durationMinutes}m`}` : ""}
+          </div>
+        ) : null}
+        {todayStatus === "CHECKED_OUT" && !canPunchIn ? (
+          <p className="caption" style={{ marginTop: 8 }}>No active session. You can punch in again to start another session.</p>
+        ) : null}
         {todayStatus === "ON_LEAVE" ? <p className="caption" style={{ marginTop: 8 }}>You are on leave today.</p> : null}
       </section>
 

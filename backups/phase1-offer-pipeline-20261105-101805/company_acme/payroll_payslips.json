@@ -1,0 +1,654 @@
+[
+  {
+    "_id": "6adb201c31d3088e4826ebda",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "payslipNumber": "PAY-202610-EMP-001",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-001",
+      "fullName": "Aarav Sharma",
+      "email": "aarav.sharma@acme.test",
+      "department": "General",
+      "jobTitle": "Senior Full Stack Engineer",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": null,
+    "monthlyCostToCompany": 125000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 60000,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 30000,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 10000,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 20000,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [
+      {
+        "name": "Provident Fund (EPF)",
+        "code": "EPF",
+        "amount": 5000,
+        "isTaxable": true
+      }
+    ],
+    "employerContributions": [
+      {
+        "name": "Employer Provident Fund",
+        "code": "PF_EMPLOYER",
+        "amount": 5000,
+        "isTaxable": true
+      }
+    ],
+    "grossEarnings": 120000,
+    "totalDeductions": 5000,
+    "totalEmployerContributions": 5000,
+    "netPayable": 115000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.009Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201c31d3088e4826ebdb",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad0b1ee6561c909576537b7",
+    "payslipNumber": "PAY-202610-EMP-002",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-002",
+      "fullName": "Priya Patel",
+      "email": "priya.patel@acme.test",
+      "department": "General",
+      "jobTitle": "UI/UX Designer",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": null,
+    "monthlyCostToCompany": 95000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 45000,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 22500,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 8000,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 15500,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [
+      {
+        "name": "Provident Fund (EPF)",
+        "code": "EPF",
+        "amount": 4000,
+        "isTaxable": true
+      }
+    ],
+    "employerContributions": [
+      {
+        "name": "Employer Provident Fund",
+        "code": "PF_EMPLOYER",
+        "amount": 4000,
+        "isTaxable": true
+      }
+    ],
+    "grossEarnings": 91000,
+    "totalDeductions": 4000,
+    "totalEmployerContributions": 4000,
+    "netPayable": 87000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.009Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201c31d3088e4826ebdc",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad0c7b6cb659753a419679d",
+    "payslipNumber": "PAY-202610-EMP-009",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-009",
+      "fullName": "Maya devi",
+      "email": "mayadevi@gmail.com",
+      "department": "General",
+      "jobTitle": "developer",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": "6ad0c7b6cb659753a419679f",
+    "monthlyCostToCompany": 60000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 30000,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 15000,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 6000,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 9000,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [],
+    "employerContributions": [],
+    "grossEarnings": 60000,
+    "totalDeductions": 0,
+    "totalEmployerContributions": 0,
+    "netPayable": 60000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.010Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201c31d3088e4826ebdd",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad0daedd3ae32a099f0d0bf",
+    "payslipNumber": "PAY-202610-EMP-010",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-010",
+      "fullName": "Kavya Patel",
+      "email": "kavya@acme.test",
+      "department": "General",
+      "jobTitle": "Developer",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": "6ad0daedd3ae32a099f0d0c1",
+    "monthlyCostToCompany": 75000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 37500,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 18750,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 7500,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 11250,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [],
+    "employerContributions": [],
+    "grossEarnings": 75000,
+    "totalDeductions": 0,
+    "totalEmployerContributions": 0,
+    "netPayable": 75000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.010Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201d31d3088e4826ebde",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "payslipNumber": "PAY-202610-EMP-101",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-101",
+      "fullName": "Sravani Kasi",
+      "email": "employee@acme.test",
+      "department": "Engineering",
+      "jobTitle": "Software Development Engineer",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": "6ad44c04e4c4120b5f519894",
+    "monthlyCostToCompany": 110000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 1,
+      "paidLeaveDays": 2,
+      "lossOfPayDays": 18,
+      "payableDays": 13
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 23065,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 13839,
+        "isTaxable": true
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 6458,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [
+      {
+        "name": "Provident Fund (EPF)",
+        "code": "EPF",
+        "amount": 2768,
+        "isTaxable": true
+      }
+    ],
+    "employerContributions": [
+      {
+        "name": "Employer Provident Fund",
+        "code": "PF_EMPLOYER",
+        "amount": 2768,
+        "isTaxable": true
+      }
+    ],
+    "grossEarnings": 43362,
+    "totalDeductions": 2768,
+    "totalEmployerContributions": 2768,
+    "netPayable": 40594,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.010Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201d31d3088e4826ebdf",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad607ebf9f3b90078eac886",
+    "payslipNumber": "PAY-202610-EMP-09",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "EMP-09",
+      "fullName": "Harsha Polina",
+      "email": "harshapolina1@gmail.com",
+      "department": "TECH",
+      "jobTitle": "SDE",
+      "bankAccountNumber": "",
+      "bankName": "",
+      "bankIfsc": "",
+      "panNumber": ""
+    },
+    "compensationRevisionId": "6ad607ebf9f3b90078eac889",
+    "monthlyCostToCompany": 50000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 25000,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 12500,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 5000,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 7500,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [],
+    "employerContributions": [],
+    "grossEarnings": 50000,
+    "totalDeductions": 0,
+    "totalEmployerContributions": 0,
+    "netPayable": 50000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.010Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  },
+  {
+    "_id": "6adb201d31d3088e4826ebe0",
+    "payrollCycleId": "6adb176931d3088e4826ebb3",
+    "employeeId": "6ad8b42c0bea4f30cebaa5c5",
+    "payslipNumber": "PAY-202610-ACM-009",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "employeeSnapshot": {
+      "employeeCode": "ACM-009",
+      "fullName": "sirisha",
+      "email": "2025eb01909@online.bits-pilani.ac.in",
+      "department": "Engineering",
+      "jobTitle": "Senior Software Engineer",
+      "bankAccountNumber": "741",
+      "bankName": "784512",
+      "bankIfsc": "820",
+      "panNumber": ""
+    },
+    "compensationRevisionId": "6ad8b42c0bea4f30cebaa5c8",
+    "monthlyCostToCompany": 100000,
+    "daysBreakdown": {
+      "totalDaysInMonth": 31,
+      "workingDays": 20,
+      "weekendDays": 9,
+      "holidayDays": 2,
+      "presentDays": 20,
+      "paidLeaveDays": 0,
+      "lossOfPayDays": 0,
+      "payableDays": 31
+    },
+    "earnings": [
+      {
+        "name": "Basic Salary",
+        "code": "BASIC",
+        "amount": 50000,
+        "isTaxable": true
+      },
+      {
+        "name": "House Rent Allowance (HRA)",
+        "code": "HRA",
+        "amount": 25000,
+        "isTaxable": true
+      },
+      {
+        "name": "Conveyance Allowance",
+        "code": "CONVEYANCE",
+        "amount": 10000,
+        "isTaxable": false
+      },
+      {
+        "name": "Special Allowance",
+        "code": "SPECIAL",
+        "amount": 15000,
+        "isTaxable": true
+      }
+    ],
+    "employeeDeductions": [],
+    "employerContributions": [],
+    "grossEarnings": 100000,
+    "totalDeductions": 0,
+    "totalEmployerContributions": 0,
+    "netPayable": 100000,
+    "currency": "INR",
+    "currencySymbol": "₹",
+    "status": "PAID",
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7ebb"
+      }
+    ],
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "notes": "",
+    "schemaVersion": 1,
+    "__v": 0,
+    "createdAt": "2026-10-23T08:51:41.010Z",
+    "updatedAt": "2026-10-24T16:45:10.880Z"
+  }
+]

@@ -126,6 +126,17 @@ const companySchema = new mongoose.Schema(
           default: [],
         },
       },
+      /**
+       * Workforce Task Scheduling Engine run lock + last-run telemetry.
+       * Feature enablement remains env-driven (WORKFORCE_SCHEDULER_*); this stores
+       * concurrency locks only — no separate Mongo collection.
+       */
+      workforceScheduler: {
+        lockUntil: { type: Date, default: null },
+        lockToken: { type: String, default: "" },
+        lastRunAt: { type: Date, default: null },
+        lastRunSummary: { type: mongoose.Schema.Types.Mixed, default: null },
+      },
     },
     primaryContact: {
       fullName: { type: String, default: "" },

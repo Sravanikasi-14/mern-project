@@ -4,7 +4,10 @@ import { TASK_STATUSES, TASK_PRIORITIES } from "../models/Task.js";
 import { TRANSACTION_TYPES, TRANSACTION_SOURCES } from "../models/ImpactPointTransaction.js";
 import { getActiveCompanyHrPolicy, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
 import { USER_ROLES, isHrPortalOperator } from "../models/User.js";
+import { NOTIFICATION_TYPES } from "../models/Notification.js";
 import { assertEmployeeInScope, assertHrPermission } from "./hrAccessEnforcementService.js";
+import { assertAssigneeEligibleForTask } from "./workforceScheduler/eligibility.js";
+import { maxActiveTasks } from "./workforceScheduler/config.js";
 
 /**
  * Resolves the Employee document for the currently authenticated User.
@@ -55,17 +58,21 @@ export function isAuthorizedReviewer(task, user, actorEmployee, hrAccess = null)
 }
 
 /**
- * Validates whether an assigner can assign a task to the target employee.
+ * Human authorization only — does NOT encode business eligibility
+ * (active status, leave, skills, capacity). Those live in
+ * assertAssigneeEligibleForTask / evaluateAssigneeEligibility.
+ *
+ * Returns true when:
+ * - Actor is an HR portal operator (HR_ADMIN / COMPANY_ADMIN), or
+ * - Actor employee is the target's direct reporting manager.
  */
 export async function canAssignTask(models, user, actorEmployee, targetEmployee) {
   if (!user || !targetEmployee) return false;
 
-  // HR_ADMIN can assign tasks across the company
   if (isHrPortalOperator(user.role)) {
     return true;
   }
 
-  // Manager can assign to their direct reporting subordinates
   if (actorEmployee && targetEmployee.job?.reportingManagerId) {
     if (String(targetEmployee.job.reportingManagerId) === String(actorEmployee._id)) {
       return true;
@@ -76,7 +83,52 @@ export async function canAssignTask(models, user, actorEmployee, targetEmployee)
 }
 
 /**
+ * Notifies the assignee's user account after a committed assignment.
+ * Idempotent on (userId, type=TASK, metadata.taskId, metadata.event=TASK_ASSIGNED).
+ * Dry-run / failed assigns never call this.
+ */
+export async function notifyTaskAssigned(models, { task, employee, source = "MANUAL" }) {
+  const { Notification } = models;
+  if (!Notification || !task || !employee?.userId) return { notified: false, reason: "no_user" };
+
+  const taskId = String(task._id);
+  const existing = await Notification.findOne({
+    userId: employee.userId,
+    type: NOTIFICATION_TYPES.TASK,
+    "metadata.taskId": taskId,
+    "metadata.event": "TASK_ASSIGNED",
+  }).select("_id");
+
+  if (existing) {
+    return { notified: false, reason: "already_notified", notificationId: existing._id };
+  }
+
+  try {
+    const doc = await Notification.create({
+      userId: employee.userId,
+      title: "New task assigned",
+      message: `You have been assigned: ${task.title}`,
+      type: NOTIFICATION_TYPES.TASK,
+      link: "/app/tasks",
+      metadata: {
+        event: "TASK_ASSIGNED",
+        taskId,
+        source,
+        priority: task.priority,
+        deadline: task.deadline,
+      },
+    });
+    return { notified: true, notificationId: doc._id };
+  } catch (err) {
+    console.error("[workManagement] task assignment notification failed", err.message);
+    return { notified: false, reason: "error" };
+  }
+}
+
+/**
  * Creates and assigns a new task.
+ * Optional: leaveUnassigned / unassigned=true (HR only) creates UNASSIGNED queue work
+ * for the Workforce Scheduler without changing the default assigned creation path.
  */
 export async function createTaskService({ models, user, data }) {
   const { Task, Employee, AuditLog } = models;
@@ -92,6 +144,9 @@ export async function createTaskService({ models, user, data }) {
     acceptanceCriteria = [],
     startDate,
     deadline,
+    requiredSkills,
+    leaveUnassigned = false,
+    unassigned = false,
   } = data;
 
   if (!title || typeof title !== "string" || !title.trim()) {
@@ -99,9 +154,6 @@ export async function createTaskService({ models, user, data }) {
   }
   if (!description || typeof description !== "string" || !description.trim()) {
     throw new HttpError(400, "Task description is required");
-  }
-  if (!assigneeId) {
-    throw new HttpError(400, "Assignee employee ID is required");
   }
   if (!deadline) {
     throw new HttpError(400, "Task deadline is required");
@@ -112,17 +164,13 @@ export async function createTaskService({ models, user, data }) {
     throw new HttpError(400, "Invalid deadline date format");
   }
 
-  const targetEmployee = await Employee.findById(assigneeId);
-  if (!targetEmployee) {
-    throw new HttpError(404, "Assignee employee record not found in tenant database");
+  const wantUnassigned = Boolean(leaveUnassigned || unassigned);
+  if (wantUnassigned && !isHrPortalOperator(user.role)) {
+    throw new HttpError(403, "Only HR Admins can create unassigned tasks for scheduling.");
   }
 
-  const authorized = await canAssignTask(models, user, actorEmployee, targetEmployee);
-  if (!authorized) {
-    throw new HttpError(
-      403,
-      "You are not authorized to assign tasks to this employee. Only HR Admins and direct reporting managers can assign tasks."
-    );
+  if (!wantUnassigned && !assigneeId) {
+    throw new HttpError(400, "Assignee employee ID is required");
   }
 
   const parsedCriteria = Array.isArray(acceptanceCriteria)
@@ -131,16 +179,45 @@ export async function createTaskService({ models, user, data }) {
     ? [acceptanceCriteria.trim()]
     : [];
 
+  const parsedSkills = Array.isArray(requiredSkills)
+    ? requiredSkills.map((s) => String(s).trim()).filter(Boolean)
+    : typeof requiredSkills === "string" && requiredSkills.trim()
+    ? [requiredSkills.trim()]
+    : [];
+
+  let targetEmployee = null;
+  if (!wantUnassigned) {
+    targetEmployee = await Employee.findById(assigneeId);
+    if (!targetEmployee) {
+      throw new HttpError(404, "Assignee employee record not found in tenant database");
+    }
+
+    const authorized = await canAssignTask(models, user, actorEmployee, targetEmployee);
+    if (!authorized) {
+      throw new HttpError(
+        403,
+        "You are not authorized to assign tasks to this employee. Only HR Admins and direct reporting managers can assign tasks."
+      );
+    }
+  }
+
   const task = await Task.create({
     title: title.trim(),
     description: description.trim(),
-    assigneeId: targetEmployee._id,
-    assigneeSnapshot: {
-      fullName: targetEmployee.fullName,
-      employeeCode: targetEmployee.employeeCode,
-      email: targetEmployee.email,
-      department: targetEmployee.job?.department || department || "",
-    },
+    assigneeId: targetEmployee?._id || null,
+    assigneeSnapshot: targetEmployee
+      ? {
+          fullName: targetEmployee.fullName,
+          employeeCode: targetEmployee.employeeCode,
+          email: targetEmployee.email,
+          department: targetEmployee.job?.department || department || "",
+        }
+      : {
+          fullName: "",
+          employeeCode: "",
+          email: "",
+          department: department || "",
+        },
     assignedByUserId: user._id,
     assignedByEmployeeId: actorEmployee?._id || null,
     assignedBySnapshot: {
@@ -148,11 +225,12 @@ export async function createTaskService({ models, user, data }) {
       role: user.role,
       email: user.email,
     },
-    department: department || targetEmployee.job?.department || "",
-    projectName: projectName || targetEmployee.job?.project?.projectName || "",
+    department: department || targetEmployee?.job?.department || "",
+    projectName: projectName || targetEmployee?.job?.project?.projectName || "",
     priority: Object.values(TASK_PRIORITIES).includes(priority) ? priority : TASK_PRIORITIES.MEDIUM,
-    status: TASK_STATUSES.ASSIGNED,
+    status: wantUnassigned ? TASK_STATUSES.UNASSIGNED : TASK_STATUSES.ASSIGNED,
     acceptanceCriteria: parsedCriteria,
+    requiredSkills: parsedSkills,
     startDate: startDate ? new Date(startDate) : null,
     deadline: parsedDeadline,
   });
@@ -168,7 +246,8 @@ export async function createTaskService({ models, user, data }) {
         targetId: task._id,
         changes: {
           title: task.title,
-          assignee: targetEmployee.fullName,
+          assignee: targetEmployee?.fullName || null,
+          unassigned: wantUnassigned,
           deadline: task.deadline,
           priority: task.priority,
         },
@@ -180,6 +259,199 @@ export async function createTaskService({ models, user, data }) {
   }
 
   return task;
+}
+
+/**
+ * Atomically assigns an UNASSIGNED task to an eligible employee.
+ * Single assignment persistence path used by Workforce Scheduler (apply mode)
+ * and by manager approval of a scheduler proposal.
+ * Does not bypass canAssignTask when a human user is provided.
+ */
+export async function assignUnassignedTaskService({
+  models,
+  taskId,
+  assigneeId,
+  user = null,
+  hrAccess = null,
+  source = "MANUAL",
+  schedulerMeta = null,
+  company = null,
+}) {
+  const { Task, Employee, AuditLog } = models;
+
+  if (!taskId || !assigneeId) {
+    throw new HttpError(400, "Task ID and assignee employee ID are required");
+  }
+
+  const task = await Task.findById(taskId);
+  if (!task) {
+    throw new HttpError(404, "Task not found");
+  }
+
+  const targetEmployee = await Employee.findById(assigneeId);
+  if (!targetEmployee) {
+    throw new HttpError(404, "Assignee employee record not found in tenant database");
+  }
+
+  // Idempotent success if already assigned to the same employee (concurrent/retry safe).
+  if (
+    task.status === TASK_STATUSES.ASSIGNED &&
+    String(task.assigneeId) === String(targetEmployee._id)
+  ) {
+    return { task, idempotent: true, notified: false };
+  }
+
+  if (task.status !== TASK_STATUSES.UNASSIGNED) {
+    throw new HttpError(
+      409,
+      "Task is not available for assignment (already assigned or not in UNASSIGNED status)."
+    );
+  }
+
+  // Human authorization (skipped for system/cron actors — no user session).
+  if (user) {
+    const actorEmployee = await getAuthenticatedEmployee(models, user);
+    const authorized = await canAssignTask(models, user, actorEmployee, targetEmployee);
+    if (!authorized) {
+      throw new HttpError(
+        403,
+        "You are not authorized to assign tasks to this employee. Only HR Admins and direct reporting managers can assign tasks."
+      );
+    }
+    if (isHrPortalOperator(user.role) && hrAccess?.enforced) {
+      assertHrPermission(hrAccess, "people.edit");
+      assertEmployeeInScope(
+        hrAccess,
+        targetEmployee._id,
+        "You cannot assign tasks outside your employee scope."
+      );
+    }
+  }
+
+  // Business eligibility — enforced for all actors (manual + scheduler).
+  // Capacity soft-limit is required for automatic scheduler commits; manual HR may override.
+  const schedulerSource = String(source || "").startsWith("WORKFORCE_SCHEDULER");
+  await assertAssigneeEligibleForTask(models, task, targetEmployee, {
+    company,
+    maxActive: maxActiveTasks(),
+    enforceCapacity: schedulerSource,
+  });
+
+  const assigneeSnapshot = {
+    fullName: targetEmployee.fullName,
+    employeeCode: targetEmployee.employeeCode,
+    email: targetEmployee.email,
+    department: targetEmployee.job?.department || "",
+  };
+
+  const setFields = {
+    assigneeId: targetEmployee._id,
+    assigneeSnapshot,
+    status: TASK_STATUSES.ASSIGNED,
+    department: targetEmployee.job?.department || "",
+    "auditMetadata.workforceScheduler.lastAssignment": {
+      source,
+      assignedAt: new Date().toISOString(),
+      ...(schedulerMeta || {}),
+    },
+  };
+
+  const updated = await Task.findOneAndUpdate(
+    {
+      _id: taskId,
+      status: TASK_STATUSES.UNASSIGNED,
+      $or: [{ assigneeId: null }, { assigneeId: { $exists: false } }],
+    },
+    {
+      $set: setFields,
+      $unset: { "auditMetadata.workforceScheduler.status": 1 },
+    },
+    { returnDocument: "after" }
+  );
+
+  if (!updated) {
+    const existing = await Task.findById(taskId);
+    if (
+      existing &&
+      existing.status === TASK_STATUSES.ASSIGNED &&
+      String(existing.assigneeId) === String(targetEmployee._id)
+    ) {
+      return { task: existing, idempotent: true, notified: false };
+    }
+    throw new HttpError(
+      409,
+      "Task is not available for assignment (already assigned or not in UNASSIGNED status)."
+    );
+  }
+
+  if (AuditLog) {
+    try {
+      await AuditLog.create({
+        actorUserId: user?._id || null,
+        actorEmail: user?.email || "system@scheduler",
+        actorRole: user?.role || "SYSTEM",
+        action: "TASK_SCHEDULER_ASSIGNED",
+        targetType: "Task",
+        targetId: updated._id,
+        changes: {
+          assigneeId: targetEmployee._id,
+          assignee: targetEmployee.fullName,
+          source,
+          schedulerMeta,
+        },
+        timestamp: new Date(),
+      });
+    } catch {
+      // non-blocking
+    }
+  }
+
+  const notifyResult = await notifyTaskAssigned(models, {
+    task: updated,
+    employee: targetEmployee,
+    source,
+  });
+
+  return { task: updated, idempotent: false, notified: Boolean(notifyResult?.notified) };
+}
+
+/**
+ * Approves a pending Workforce Scheduler proposal and assigns via assignUnassignedTaskService.
+ */
+export async function approveSchedulerAssignmentService({
+  models,
+  user,
+  taskId,
+  hrAccess = null,
+  company = null,
+}) {
+  const { Task } = models;
+  const task = await Task.findById(taskId);
+  if (!task) throw new HttpError(404, "Task not found");
+  if (task.status !== TASK_STATUSES.UNASSIGNED) {
+    throw new HttpError(400, "Task is not awaiting scheduler assignment.");
+  }
+
+  const proposal = task.auditMetadata?.workforceScheduler;
+  const proposedId = proposal?.proposedAssigneeId;
+  if (!proposedId || proposal?.status !== "PENDING_APPROVAL") {
+    throw new HttpError(400, "No pending scheduler proposal on this task.");
+  }
+
+  return assignUnassignedTaskService({
+    models,
+    taskId,
+    assigneeId: proposedId,
+    user,
+    hrAccess,
+    company,
+    source: "WORKFORCE_SCHEDULER_APPROVED",
+    schedulerMeta: {
+      score: proposal.score,
+      components: proposal.components,
+      reason: proposal.reason,
+    },
+  });
 }
 
 /**

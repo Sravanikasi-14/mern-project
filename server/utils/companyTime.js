@@ -7,6 +7,40 @@ export function resolveCompanyTimezone(company) {
 /**
  * Civil YYYY-MM-DD for an instant in a named IANA timezone.
  */
+/**
+ * Minutes since local midnight in the company timezone (0–1439).
+ */
+export function getCompanyMinutesOfDay(date = new Date(), timezone = DEFAULT_COMPANY_TIMEZONE) {
+  const instant = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(instant.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(instant);
+    let hour = Number(parts.find((p) => p.type === "hour")?.value);
+    const minute = Number(parts.find((p) => p.type === "minute")?.value);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    if (hour === 24) hour = 0;
+    return hour * 60 + minute;
+  } catch {
+    return instant.getUTCHours() * 60 + instant.getUTCMinutes();
+  }
+}
+
+/** Parse HH:mm (24h) to minutes since midnight. Returns null if malformed. */
+export function parseHmToMinutes(value) {
+  if (value == null || value === "") return null;
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
 export function getCompanyBusinessDate(date = new Date(), timezone = DEFAULT_COMPANY_TIMEZONE) {
   const instant = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(instant.getTime())) return "";

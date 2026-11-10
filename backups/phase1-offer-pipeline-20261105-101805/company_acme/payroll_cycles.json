@@ -1,0 +1,47 @@
+[
+  {
+    "_id": "6adb176931d3088e4826ebb3",
+    "periodMonth": 10,
+    "periodYear": 2026,
+    "periodStartDate": "2026-10-01T00:00:00.000Z",
+    "periodEndDate": "2026-10-31T23:59:59.999Z",
+    "status": "PAID",
+    "employeeCount": 7,
+    "totalGrossEarnings": 539362,
+    "totalEmployeeDeductions": 11768,
+    "totalEmployerContributions": 11768,
+    "totalNetPayable": 527594,
+    "totalPaidAmount": 527594,
+    "paymentStatus": "PAID",
+    "payments": [
+      {
+        "paymentDate": "2026-10-24T00:00:00.000Z",
+        "paymentMethod": "NEFT_RTGS",
+        "referenceNumber": "",
+        "amount": 527594,
+        "remarks": "Disbursement for October 2026",
+        "recordedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "recordedAt": "2026-10-24T16:45:10.833Z",
+        "_id": "6adce09651c4d627e9df7eba"
+      }
+    ],
+    "validationIssues": [
+      {
+        "employeeId": "6ada0679ab37882693d8c861",
+        "employeeCode": "EMP_09",
+        "fullName": "harsha polina1",
+        "issue": "No compensation revision or monthly CTC configured for employee",
+        "_id": "6adb201c31d3088e4826ebd9"
+      }
+    ],
+    "notes": "",
+    "createdBy": "6ad0ac8cafd4b3a691da3f7f",
+    "calculatedAt": "2026-10-23T08:51:40.921Z",
+    "finalizedAt": "2026-10-23T08:51:47.821Z",
+    "finalizedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-23T08:14:33.365Z",
+    "updatedAt": "2026-10-24T16:45:10.836Z",
+    "__v": 5
+  }
+]

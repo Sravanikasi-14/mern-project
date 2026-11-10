@@ -1,0 +1,221 @@
+[
+  {
+    "_id": "6ad9fb9a14fc39b5b8319c18",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-22",
+    "status": "PRESENT",
+    "checkIn": "2026-10-22T12:03:38.232Z",
+    "checkInLocation": {
+      "latitude": 15.796074,
+      "longitude": 78.031494,
+      "accuracy": 292,
+      "capturedAt": "2026-10-22T12:03:37.960Z",
+      "address": ""
+    },
+    "checkOut": "2026-10-22T12:04:35.069Z",
+    "checkOutLocation": {
+      "latitude": 15.795045,
+      "longitude": 78.031008,
+      "accuracy": 158,
+      "capturedAt": "2026-10-22T12:04:34.738Z",
+      "address": ""
+    },
+    "workingHours": "0h 0m",
+    "durationMinutes": 1,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-22T12:03:38.234Z",
+    "updatedAt": "2026-10-22T12:04:35.072Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ada06d0ab37882693d8c867",
+    "employeeId": "6ada0679ab37882693d8c861",
+    "date": "2026-10-22",
+    "status": "PRESENT",
+    "checkIn": "2026-10-22T12:51:28.254Z",
+    "checkInLocation": {
+      "latitude": 17.4184,
+      "longitude": 78.349333,
+      "accuracy": 95,
+      "capturedAt": "2026-10-22T12:51:26.712Z",
+      "address": ""
+    },
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-22T12:51:28.258Z",
+    "updatedAt": "2026-10-22T12:51:28.258Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adf30e531b0dc020bbd86ab",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-26",
+    "status": "PRESENT",
+    "checkIn": "2026-10-26T10:52:21.493Z",
+    "checkInLocation": null,
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-26T10:52:21.516Z",
+    "updatedAt": "2026-10-26T10:52:21.516Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae07b946ab72b1fd7dffb3b",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-27",
+    "status": "PRESENT",
+    "checkIn": "2026-10-27T10:23:16.899Z",
+    "checkInLocation": {
+      "latitude": 17.421179,
+      "longitude": 78.34768,
+      "accuracy": 107,
+      "capturedAt": "2026-10-27T10:23:16.640Z",
+      "address": ""
+    },
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-27T10:23:16.906Z",
+    "updatedAt": "2026-10-27T10:23:16.906Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1a55805d65c276a4b92f5",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-28",
+    "status": "PRESENT",
+    "checkIn": "2026-10-28T07:33:44.398Z",
+    "checkInLocation": {
+      "latitude": 17.42112,
+      "longitude": 78.34767,
+      "accuracy": 92,
+      "capturedAt": "2026-10-28T07:33:44.280Z",
+      "address": ""
+    },
+    "checkOut": "2026-10-28T14:28:55.178Z",
+    "checkOutLocation": {
+      "latitude": 17.418163,
+      "longitude": 78.381506,
+      "accuracy": 79,
+      "capturedAt": "2026-10-28T14:28:54.571Z",
+      "address": ""
+    },
+    "workingHours": "6h 55m",
+    "durationMinutes": 415,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-28T07:33:44.403Z",
+    "updatedAt": "2026-10-28T14:28:55.186Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2c4611949ef1f9385d891",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-29",
+    "status": "PRESENT",
+    "checkIn": "2026-10-29T03:58:25.761Z",
+    "checkInLocation": {
+      "latitude": 17.421046,
+      "longitude": 78.347694,
+      "accuracy": 85,
+      "capturedAt": "2026-10-29T03:58:24.827Z",
+      "address": ""
+    },
+    "checkOut": "2026-10-29T04:01:55.860Z",
+    "checkOutLocation": {
+      "latitude": 17.421078,
+      "longitude": 78.347713,
+      "accuracy": 98,
+      "capturedAt": "2026-10-29T04:01:54.339Z",
+      "address": ""
+    },
+    "workingHours": "0h 3m",
+    "durationMinutes": 4,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-29T03:58:25.774Z",
+    "updatedAt": "2026-10-29T04:01:55.861Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae57b9dc5ae6b30fbdd66e0",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "date": "2026-10-31",
+    "status": "PRESENT",
+    "checkIn": "2026-10-31T05:24:45.360Z",
+    "checkInLocation": {
+      "latitude": 17.4213,
+      "longitude": 78.347727,
+      "accuracy": 37.3,
+      "capturedAt": "2026-10-31T05:24:43.486Z",
+      "address": ""
+    },
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-31T05:24:45.363Z",
+    "updatedAt": "2026-10-31T05:24:45.363Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae817f2b428cb622d8403da",
+    "employeeId": "6ae81766b428cb622d8403d2",
+    "date": "2026-11-02",
+    "status": "PRESENT",
+    "checkIn": "2026-11-02T04:56:18.968Z",
+    "checkInLocation": {
+      "latitude": 17.418284,
+      "longitude": 78.381655,
+      "accuracy": 75,
+      "capturedAt": "2026-11-02T04:56:18.765Z",
+      "address": ""
+    },
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T04:56:18.971Z",
+    "updatedAt": "2026-11-02T04:56:18.971Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81d79ad8d5e4e9bce46f7",
+    "employeeId": "6ae8183fb428cb622d8403dc",
+    "date": "2026-11-02",
+    "status": "PRESENT",
+    "checkIn": "2026-11-02T05:19:53.912Z",
+    "checkInLocation": {
+      "latitude": 17.418216,
+      "longitude": 78.38147,
+      "accuracy": 68,
+      "capturedAt": "2026-11-02T05:19:53.760Z",
+      "address": ""
+    },
+    "checkOut": null,
+    "checkOutLocation": null,
+    "workingHours": "",
+    "durationMinutes": 0,
+    "notes": "",
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T05:19:53.914Z",
+    "updatedAt": "2026-11-02T05:19:53.914Z",
+    "__v": 0
+  }
+]

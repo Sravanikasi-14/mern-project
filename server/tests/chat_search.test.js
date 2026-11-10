@@ -16,11 +16,9 @@ import { createApp } from "../app.js";
 import { connectCentralDB, disconnectAll, getCompanyModels } from "../config/db.js";
 import Company, { COMPANY_STATUSES } from "../models/Company.js";
 import { USER_ROLES } from "../models/User.js";
-import { setStorageAdapter } from "../services/r2StorageService.js";
 import { getAuthCookieName } from "../utils/authCookie.js";
 import { hashPassword } from "../utils/password.js";
 
-const objects = new Map();
 let mongo;
 let app;
 let acme;
@@ -61,26 +59,9 @@ async function upload(cookie, conversationId, fileName) {
 }
 
 before(async () => {
-  setStorageAdapter({
-    async putObject({ key, body }) {
-      objects.set(key, Buffer.from(body));
-      return { etag: "test" };
-    },
-    async getObjectBuffer(key) {
-      if (!objects.has(key)) {
-        const error = new Error("missing");
-        error.name = "NoSuchKey";
-        throw error;
-      }
-      return objects.get(key);
-    },
-    async deleteObject(key) {
-      objects.delete(key);
-    },
-    async getPresignedGetUrl() {
-      throw new Error("presigned URLs are not used");
-    },
-  });
+  delete process.env.R2_ACCESS_KEY_ID;
+  delete process.env.R2_SECRET_ACCESS_KEY;
+  delete process.env.R2_BUCKET;
   mongo = await MongoMemoryServer.create();
   process.env.MONGO_URI = mongo.getUri();
   await connectCentralDB();
@@ -114,7 +95,6 @@ before(async () => {
 });
 
 after(async () => {
-  setStorageAdapter(null);
   await disconnectAll();
   if (mongo) await mongo.stop();
 });

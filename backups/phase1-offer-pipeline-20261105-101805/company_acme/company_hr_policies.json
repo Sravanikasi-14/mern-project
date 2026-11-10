@@ -1,0 +1,307 @@
+[
+  {
+    "_id": "6ad458fa1d1f2d19955e0773",
+    "effectiveFromDate": "2026-01-01T00:00:00.000Z",
+    "leaveTypes": [
+      {
+        "code": "CASUAL",
+        "name": "Casual Leave",
+        "yearlyDays": 8,
+        "isPaid": true,
+        "isActive": true,
+        "_id": "6ae4315ec5a6418c517f8b1d"
+      },
+      {
+        "code": "SICK",
+        "name": "Sick Leave",
+        "yearlyDays": 6,
+        "isPaid": true,
+        "isActive": true,
+        "_id": "6ae4315ec5a6418c517f8b1e"
+      },
+      {
+        "code": "EARNED",
+        "name": "Earned / Privilege Leave",
+        "yearlyDays": 12,
+        "isPaid": true,
+        "isActive": true,
+        "_id": "6ae4315ec5a6418c517f8b1f"
+      }
+    ],
+    "leaveRules": {
+      "probationMonths": 3,
+      "maxConsecutiveDays": 14,
+      "leaveYearStartMonth": 1,
+      "carryForwardLimitDays": 10,
+      "allowEncashment": false,
+      "encashmentMinBalanceDays": 15,
+      "accrualFrequency": "YEARLY",
+      "priorNoticeDays": 1
+    },
+    "weekendRules": {
+      "saturdayOff": true,
+      "sundayOff": true,
+      "alternateSaturdaysOff": false,
+      "isPaidWeekend": true
+    },
+    "holidays": [
+      {
+        "name": "Republic Day",
+        "date": "2026-01-26T00:00:00.000Z",
+        "type": "National Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b20"
+      },
+      {
+        "name": "Holi",
+        "date": "2026-03-25T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b21"
+      },
+      {
+        "name": "Good Friday",
+        "date": "2026-04-03T00:00:00.000Z",
+        "type": "Observance",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b22"
+      },
+      {
+        "name": "May Day",
+        "date": "2026-05-01T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b23"
+      },
+      {
+        "name": "Independence Day",
+        "date": "2026-08-15T00:00:00.000Z",
+        "type": "National Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b24"
+      },
+      {
+        "name": "Gandhi Jayanti",
+        "date": "2026-10-02T00:00:00.000Z",
+        "type": "National Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b25"
+      },
+      {
+        "name": "Dussehra",
+        "date": "2026-10-20T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b26"
+      },
+      {
+        "name": "Diwali / Deepavali",
+        "date": "2026-11-08T00:00:00.000Z",
+        "type": "Festival Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b27"
+      },
+      {
+        "name": "Guru Nanak Jayanti",
+        "date": "2026-11-24T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b28"
+      },
+      {
+        "name": "Christmas Day",
+        "date": "2026-12-25T00:00:00.000Z",
+        "type": "Gazetted Holiday",
+        "isPaid": true,
+        "_id": "6ae4315ec5a6418c517f8b29"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T05:28:26.843Z",
+    "updatedAt": "2026-10-30T05:55:42.361Z",
+    "__v": 7,
+    "attendanceRules": {
+      "officeStartTime": "09:30",
+      "officeEndTime": "18:30",
+      "gracePeriodMinutes": 15,
+      "lateArrivalThresholdMinutes": 30,
+      "breakDurationMinutes": 60,
+      "halfDayThresholdHours": 4.5,
+      "fullDayThresholdHours": 8,
+      "autoCheckoutEnabled": false,
+      "autoCheckoutTime": ""
+    },
+    "documentRules": {
+      "mandatoryDocumentTypes": [
+        "ID_PROOF",
+        "APPOINTMENT_LETTER",
+        "OFFER_LETTER",
+        "RELIEVING_LETTER",
+        "TAX_DOCUMENT"
+      ],
+      "maxFileSizeMB": 10,
+      "allowedFileFormats": [
+        "pdf",
+        "png",
+        "jpg",
+        "jpeg"
+      ]
+    },
+    "generalRules": {
+      "policyTitle": "Company Human Resources Operations & Employment Policy",
+      "policyCode": "POL-HR-2026",
+      "description": "Standard operating guidelines governing attendance, leaves, lifecycle, and workplace conduct.",
+      "emergencyContactMandatory": true,
+      "workFromHomeAllowed": false
+    },
+    "lifecycleRules": {
+      "probationDurationMonths": 1,
+      "confirmationReviewRequired": true,
+      "noticePeriodDays": 30,
+      "noticePeriodServingRequired": true,
+      "resignationApprovalLevels": 1
+    },
+    "locationRules": {
+      "requireLocationForPunch": true,
+      "allowWebTracking": true,
+      "geofenceEnabled": false,
+      "geofenceRadiusMeters": 200,
+      "officeLatitude": null,
+      "officeLongitude": null,
+      "officeAddress": ""
+    },
+    "notes": "",
+    "payrollRules": {
+      "currencySymbol": "₹",
+      "currencyCode": "INR",
+      "payCycleStartDay": 1,
+      "salaryCalculationBasis": "ACTUAL_MONTH_DAYS",
+      "standardWorkingHoursPerWeek": 40,
+      "deductLopForUnpaidLeave": true,
+      "lateDeductionGraceCount": 3,
+      "halfDayDeductionRate": 50,
+      "areHolidaysPaid": true
+    },
+    "recruitmentRules": {
+      "offerValidityDays": 7,
+      "requireCandidateSignature": true,
+      "autoExpireOffers": true,
+      "approvalRequiredBeforeDispatch": false
+    },
+    "salaryComponentRules": {
+      "allowances": [
+        {
+          "name": "Basic Salary",
+          "code": "BASIC",
+          "taxable": true,
+          "percentageOfCtc": 40,
+          "_id": "6ae4315ec5a6418c517f8b2a"
+        },
+        {
+          "name": "House Rent Allowance",
+          "code": "HRA",
+          "taxable": true,
+          "percentageOfCtc": 20,
+          "_id": "6ae4315ec5a6418c517f8b2b"
+        },
+        {
+          "name": "Conveyance Allowance",
+          "code": "CONVEYANCE",
+          "taxable": false,
+          "percentageOfCtc": 10,
+          "_id": "6ae4315ec5a6418c517f8b2c"
+        },
+        {
+          "name": "Special Allowance",
+          "code": "SPECIAL",
+          "taxable": true,
+          "percentageOfCtc": 30,
+          "_id": "6ae4315ec5a6418c517f8b2d"
+        }
+      ],
+      "deductions": [
+        {
+          "name": "Provident Fund (EPF)",
+          "code": "EPF",
+          "ratePercent": 12,
+          "_id": "6ae4315ec5a6418c517f8b2e"
+        },
+        {
+          "name": "Professional Tax (PT)",
+          "code": "PT",
+          "ratePercent": 0,
+          "_id": "6ae4315ec5a6418c517f8b2f"
+        }
+      ]
+    },
+    "taxStatutoryRules": {
+      "panRequiredForPayroll": true,
+      "pfApplicable": true,
+      "pfDeductionRatePercent": 12,
+      "esiApplicable": false,
+      "esiThresholdAmount": 21000,
+      "ptApplicable": true,
+      "disclaimer": "Company deductions configure baseline statutory payroll rules and do not substitute for formal fiscal counsel."
+    },
+    "updatedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "workHoursRules": {
+      "standardDailyHours": 8,
+      "standardWeeklyHours": 40,
+      "overtimeAllowed": false,
+      "overtimeThresholdDailyHours": 9,
+      "shiftName": "General Day Shift"
+    },
+    "impactPointRules": {
+      "allowRuleStacking": true,
+      "enabled": true,
+      "managerMonthlyCap": 100,
+      "rules": [
+        {
+          "_id": "6aded69fd3660b918611c388",
+          "ruleCode": "ON_TIME_COMPLETION",
+          "name": "On-Time Completion",
+          "description": "Awarded when a task is approved and completed on or before its deadline",
+          "points": 10,
+          "eventType": "TASK_COMPLETION",
+          "isEnabled": true
+        },
+        {
+          "_id": "6aded69fd3660b918611c389",
+          "ruleCode": "EARLY_COMPLETION_BONUS",
+          "name": "Early Completion Bonus",
+          "description": "Additional bonus awarded when a task is submitted and approved before deadline",
+          "points": 5,
+          "eventType": "TASK_COMPLETION",
+          "isEnabled": true
+        },
+        {
+          "_id": "6aded69fd3660b918611c38a",
+          "ruleCode": "HIGH_PRIORITY_COMPLETION",
+          "name": "High Priority Task Completion",
+          "description": "Awarded when a HIGH or CRITICAL priority task is approved and completed",
+          "points": 20,
+          "eventType": "TASK_COMPLETION",
+          "isEnabled": true
+        },
+        {
+          "_id": "6aded69fd3660b918611c38b",
+          "ruleCode": "MANAGER_RECOGNITION",
+          "name": "Manager Recognition",
+          "description": "Points awarded by a manager or HR Admin for outstanding contribution",
+          "points": 10,
+          "eventType": "MANAGER_RECOGNITION",
+          "isEnabled": true
+        },
+        {
+          "_id": "6aded69fd3660b918611c38c",
+          "ruleCode": "MISSED_DEADLINE_DEDUCTION",
+          "name": "Verified Missed Deadline",
+          "description": "Deduction applied for a verified missed deadline without an approved extension or exception",
+          "points": -5,
+          "eventType": "DEADLINE_BREACH",
+          "isEnabled": false
+        }
+      ]
+    }
+  }
+]

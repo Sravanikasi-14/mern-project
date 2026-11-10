@@ -1,0 +1,220 @@
+[
+  {
+    "_id": "6ad459401d1f2d19955e0781",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "leaveTypeCode": "CASUAL",
+    "fromDate": "2026-10-19T00:00:00.000Z",
+    "toDate": "2026-10-19T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "I am feeling sick .I request you to approve leave for today..kindly grant me.",
+    "status": "REJECTED",
+    "decision": {
+      "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "decidedAt": "2026-10-18T05:31:58.979Z",
+      "remarks": "i will grant you work from home,instead of leave.."
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T05:29:36.881Z",
+    "updatedAt": "2026-10-18T05:31:58.980Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad45a021d1f2d19955e0785",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "leaveTypeCode": "CASUAL",
+    "fromDate": "2026-10-19T00:00:00.000Z",
+    "toDate": "2026-10-19T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "I am feeling really sick.I cant work even from home.kindly grant me leave.",
+    "status": "APPROVED",
+    "decision": {
+      "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "decidedAt": "2026-10-18T05:33:32.547Z",
+      "remarks": "okay leave granted"
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T05:32:50.850Z",
+    "updatedAt": "2026-10-18T05:33:32.548Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad464e67b41470848af41bb",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "leaveTypeCode": "SICK",
+    "fromDate": "2026-10-20T00:00:00.000Z",
+    "toDate": "2026-10-20T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "i want to continue my leave for the next day....",
+    "status": "APPROVED",
+    "decision": {
+      "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "decidedAt": "2026-10-18T06:19:49.701Z",
+      "remarks": ""
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T06:19:18.111Z",
+    "updatedAt": "2026-10-18T06:19:49.703Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2d7a05dcf3e6de9173bb3",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "leaveTypeCode": "CASUAL",
+    "fromDate": "2026-11-05T00:00:00.000Z",
+    "toDate": "2026-11-05T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "Family function",
+    "status": "APPROVED",
+    "decision": {
+      "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "decidedAt": "2026-11-02T05:10:55.837Z",
+      "remarks": ""
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-29T05:20:32.265Z",
+    "updatedAt": "2026-11-02T05:10:55.841Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81dd4ad8d5e4e9bce46f8",
+    "employeeId": "6ae8183fb428cb622d8403dc",
+    "leaveTypeCode": "CASUAL",
+    "fromDate": "2026-11-03T00:00:00.000Z",
+    "toDate": "2026-11-03T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "kindly grant me leave since i need to attend my kid's annual day",
+    "status": "PENDING",
+    "decision": {
+      "decidedBy": null,
+      "decidedAt": null,
+      "remarks": ""
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T05:21:24.383Z",
+    "updatedAt": "2026-11-02T06:24:07.236Z",
+    "__v": 0,
+    "handover": {
+      "status": "DRAFT",
+      "managerEmployeeId": null,
+      "generalNotes": "",
+      "items": [],
+      "createdByUserId": "6ad0ac8cafd4b3a691da3f7f",
+      "submittedAt": null,
+      "submittedByUserId": null,
+      "approvedAt": null,
+      "approvedByUserId": null,
+      "activatedAt": null,
+      "completedAt": null,
+      "cancelledAt": null,
+      "cancelReason": "",
+      "revisionReason": "",
+      "migratedFromHandoverId": null,
+      "schemaVersion": 1
+    }
+  },
+  {
+    "_id": "6ae86abc79378dcffc37d2b5",
+    "employeeId": "6ae81766b428cb622d8403d2",
+    "leaveTypeCode": "EARNED",
+    "fromDate": "2026-11-03T00:00:00.000Z",
+    "toDate": "2026-11-03T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "I boutght a new house ,kindly grant me leave",
+    "status": "APPROVED",
+    "decision": {
+      "decidedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "decidedAt": "2026-11-02T11:04:47.908Z",
+      "remarks": ""
+    },
+    "handover": {
+      "status": "COMPLETED",
+      "managerEmployeeId": null,
+      "generalNotes": "",
+      "items": [
+        {
+          "taskSnapshot": {
+            "title": "Implement leave management",
+            "priority": "MEDIUM",
+            "deadline": "2026-11-03T00:00:00.000Z",
+            "status": "ASSIGNED"
+          },
+          "backupResponse": {
+            "decision": "ACKNOWLEDGE",
+            "comment": "",
+            "respondedAt": "2026-11-02T11:02:38.677Z",
+            "respondedByUserId": "6ae8183fb428cb622d8403db"
+          },
+          "managerDecision": {
+            "decision": "APPROVE",
+            "reason": "",
+            "decidedAt": "2026-11-02T11:04:31.622Z",
+            "decidedByUserId": "6ad0ac8cafd4b3a691da3f7f"
+          },
+          "taskId": "6ae86aff79378dcffc37d2b7",
+          "proposalId": null,
+          "backupEmployeeId": "6ae8183fb428cb622d8403dc",
+          "status": "COMPLETED",
+          "coverageFrom": "2026-11-03T00:00:00.000Z",
+          "coverageTo": "2026-11-03T00:00:00.000Z",
+          "instructions": "complete the implementation of leave management",
+          "outstandingWork": "",
+          "importantDeadlines": "Deadline: 2026-11-03",
+          "dependencies": "",
+          "documentLinks": [],
+          "attachments": [],
+          "delegation": {
+            "originalAssigneeId": "6ae81766b428cb622d8403d2",
+            "delegateEmployeeId": "6ae8183fb428cb622d8403dc",
+            "fromDate": "2026-11-03T00:00:00.000Z",
+            "toDate": "2026-11-03T00:00:00.000Z",
+            "status": "ENDED",
+            "activatedAt": null,
+            "endedAt": "2026-11-04T06:05:40.462Z",
+            "endReason": "RETURN_DATE",
+            "createdByUserId": "6ad0ac8cafd4b3a691da3f7f",
+            "endedByUserId": null,
+            "outcomeNote": "",
+            "migratedFromDelegationId": null
+          },
+          "_id": "6ae86b2879378dcffc37d2b9"
+        }
+      ],
+      "createdByUserId": "6ad0ac8cafd4b3a691da3f7f",
+      "submittedAt": "2026-11-02T11:00:59.037Z",
+      "submittedByUserId": "6ad0ac8cafd4b3a691da3f7f",
+      "approvedAt": "2026-11-02T11:04:31.622Z",
+      "approvedByUserId": "6ad0ac8cafd4b3a691da3f7f",
+      "activatedAt": null,
+      "completedAt": "2026-11-04T06:05:40.461Z",
+      "cancelledAt": null,
+      "cancelReason": "",
+      "revisionReason": "",
+      "migratedFromHandoverId": null,
+      "schemaVersion": 1
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T10:49:32.958Z",
+    "updatedAt": "2026-11-04T06:05:40.471Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae88c5e91dfdfb8a00df0ee",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "leaveTypeCode": "CASUAL",
+    "fromDate": "2026-11-03T00:00:00.000Z",
+    "toDate": "2026-11-03T00:00:00.000Z",
+    "daysCount": 1,
+    "reason": "I am really sick, kindly grant me leave",
+    "status": "PENDING",
+    "decision": {
+      "decidedBy": null,
+      "decidedAt": null,
+      "remarks": ""
+    },
+    "handover": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T13:13:02.577Z",
+    "updatedAt": "2026-11-02T13:13:02.577Z",
+    "__v": 0
+  }
+]

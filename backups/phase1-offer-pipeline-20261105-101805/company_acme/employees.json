@@ -1,0 +1,1300 @@
+[
+  {
+    "_id": "6ad0b1ee6561c909576537b6",
+    "employeeCode": "EMP-001",
+    "fullName": "Aarav Sharma",
+    "email": "aarav.sharma@acme.test",
+    "phoneNumber": "+91 98765 43210",
+    "dateOfBirth": "1995-04-12T00:00:00.000Z",
+    "city": "Bengaluru",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Senior Full Stack Engineer",
+      "joiningDate": "2023-03-01T00:00:00.000Z",
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "department": "",
+      "employmentType": "Full-time Permanent",
+      "jobGrade": "",
+      "workLocation": ""
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:58:54.068Z",
+    "updatedAt": "2026-10-28T12:20:16.720Z",
+    "__v": 1,
+    "attendance": {
+      "daysPresent": 21,
+      "leaveBalance": {
+        "casual": 8,
+        "earned": 12,
+        "sick": 6
+      },
+      "totalWorkingDays": 22
+    },
+    "bankDetails": {
+      "accountHolderName": "Aarav Sharma",
+      "accountNumber": "•••• •••• -001",
+      "bankName": "HDFC Bank",
+      "ifscCode": "HDFC0001024",
+      "accountType": "SAVINGS"
+    },
+    "documents": [],
+    "emergencyContact": {
+      "name": "",
+      "phone": "",
+      "relationship": ""
+    },
+    "exit": {
+      "reason": ""
+    },
+    "gender": "",
+    "identityDetails": {
+      "idNumber": "",
+      "idType": "PAN / AADHAAR",
+      "isVerified": true
+    },
+    "invitation": {
+      "status": "PENDING",
+      "token": ""
+    },
+    "personalEmail": "",
+    "personalPhone": "",
+    "preferredName": "",
+    "previousEmploymentPeriods": [],
+    "residentialAddress": {
+      "street": "",
+      "city": "Bengaluru",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "taxDetails": {
+      "panNumber": "ABCDE1234F",
+      "taxRegime": "New Tax Regime (Sec 115BAC)"
+    },
+    "uniqueId": "",
+    "workAddress": {
+      "city": "",
+      "country": "India",
+      "postalCode": "",
+      "state": "",
+      "street": ""
+    }
+  },
+  {
+    "_id": "6ad0b1ee6561c909576537b7",
+    "employeeCode": "EMP-002",
+    "fullName": "Priya Patel",
+    "email": "priya.patel@acme.test",
+    "phoneNumber": "+91 98765 43211",
+    "dateOfBirth": "1998-08-23T00:00:00.000Z",
+    "city": "Hyderabad",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "UI/UX Designer",
+      "joiningDate": "2023-06-15T00:00:00.000Z",
+      "project": {
+        "projectName": "Retail Experience Redesign",
+        "projectType": "RETAIL"
+      }
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:58:54.113Z",
+    "updatedAt": "2026-10-15T10:58:54.113Z"
+  },
+  {
+    "_id": "6ad0b1ee6561c909576537b8",
+    "employeeCode": "EMP-003",
+    "fullName": "Rohan Verma",
+    "email": "rohan.verma@acme.test",
+    "phoneNumber": "+91 98765 43212",
+    "dateOfBirth": "1992-11-05T00:00:00.000Z",
+    "city": "Mumbai",
+    "status": "INACTIVE",
+    "job": {
+      "jobTitle": "QA Specialist",
+      "joiningDate": "2022-09-01T00:00:00.000Z",
+      "project": {
+        "projectName": "Modernization",
+        "projectType": "MANDATE"
+      },
+      "department": "Engineering",
+      "employmentType": "Full-time Permanent",
+      "jobGrade": "L4",
+      "workLocation": "Tech Park"
+    },
+    "exit": {
+      "inactiveDate": "2024-02-15T00:00:00.000Z",
+      "reason": "Career Transition"
+    },
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:58:54.144Z",
+    "updatedAt": "2026-10-24T16:44:36.300Z",
+    "__v": 1,
+    "attendance": {
+      "daysPresent": 21,
+      "leaveBalance": {
+        "casual": 8,
+        "earned": 12,
+        "sick": 6
+      },
+      "totalWorkingDays": 22
+    },
+    "bankDetails": {
+      "accountHolderName": "Rohan Verma",
+      "accountNumber": "•••• •••• -003",
+      "bankName": "HDFC Bank",
+      "ifscCode": "HDFC0001024",
+      "accountType": "SAVINGS"
+    },
+    "documents": [
+      {
+        "documentType": "OFFER_LETTER",
+        "title": "Signed offer letter",
+        "content": "",
+        "fileUrl": "",
+        "fileName": "Offer_Letter_Maya.pdf",
+        "fileSize": 74086,
+        "mimeType": "application/pdf",
+        "storageKey": "1792860263436_43d6a731dbcc_Offer_Letter_Maya.pdf",
+        "uploadedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "uploadedByRole": "HR_ADMIN",
+        "emailedAt": null,
+        "_id": "6adce06751c4d627e9df7eb1",
+        "createdAt": "2026-10-24T16:44:23.459Z"
+      }
+    ],
+    "emergencyContact": {
+      "name": "Rajesh",
+      "relationship": "7891355498",
+      "phone": ""
+    },
+    "gender": "",
+    "identityDetails": {
+      "idNumber": "",
+      "idType": "PAN / AADHAAR",
+      "isVerified": true
+    },
+    "invitation": {
+      "status": "PENDING",
+      "token": ""
+    },
+    "personalEmail": "rohanverma@gmail.com",
+    "personalPhone": "78654123333",
+    "preferredName": "Rohan",
+    "previousEmploymentPeriods": [],
+    "residentialAddress": {
+      "street": "",
+      "city": "Mumbai",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "taxDetails": {
+      "panNumber": "ABCDE1234F",
+      "taxRegime": "New Tax Regime (Sec 115BAC)"
+    },
+    "uniqueId": "",
+    "workAddress": {
+      "city": "",
+      "country": "India",
+      "postalCode": "",
+      "state": "",
+      "street": ""
+    }
+  },
+  {
+    "_id": "6ad0c7b6cb659753a419679d",
+    "userId": "6ad0c7b6cb659753a419679b",
+    "employeeCode": "EMP-009",
+    "uniqueId": "",
+    "fullName": "Maya devi",
+    "email": "mayadevi@gmail.com",
+    "phoneNumber": "3993549633",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "developer",
+      "joiningDate": "2026-10-11T00:00:00.000Z",
+      "project": {
+        "projectName": "titan",
+        "projectType": "MANDATE"
+      },
+      "reportingManagerId": null
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-15T12:31:50.586Z",
+    "updatedAt": "2026-10-15T12:31:50.586Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0daedd3ae32a099f0d0bf",
+    "userId": "6ad0daedd3ae32a099f0d0bd",
+    "employeeCode": "EMP-010",
+    "uniqueId": "",
+    "fullName": "Kavya Patel",
+    "email": "kavya@acme.test",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Developer",
+      "joiningDate": "2026-10-15T13:53:49.361Z",
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "reportingManagerId": null
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-15T13:53:49.377Z",
+    "updatedAt": "2026-10-15T13:53:49.377Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0dc14d3ae32a099f0d0c6",
+    "userId": "6ad0dc14d3ae32a099f0d0c4",
+    "employeeCode": "EMP-020",
+    "uniqueId": "",
+    "fullName": "Test Employee",
+    "email": "test.employee@acme.test",
+    "phoneNumber": "Software Engineer",
+    "dateOfBirth": null,
+    "city": "Bengaluru",
+    "status": "INACTIVE",
+    "job": {
+      "jobTitle": "Software Engineer",
+      "joiningDate": "2026-10-15T13:58:44.850Z",
+      "project": {
+        "projectName": "75000",
+        "projectType": "MANDATE"
+      },
+      "reportingManagerId": null,
+      "department": "Core Platform Engineering",
+      "employmentType": "Full-time Permanent",
+      "jobGrade": "",
+      "workLocation": ""
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-15T13:58:44.854Z",
+    "updatedAt": "2026-10-17T06:31:08.245Z",
+    "__v": 0,
+    "attendance": {
+      "daysPresent": 21,
+      "leaveBalance": {
+        "casual": 8,
+        "earned": 12,
+        "sick": 6
+      },
+      "totalWorkingDays": 22
+    },
+    "bankDetails": {
+      "accountHolderName": "Test Employee",
+      "accountNumber": "•••• •••• -020",
+      "bankName": "HDFC Bank",
+      "ifscCode": "HDFC0001024",
+      "accountType": "SAVINGS"
+    },
+    "emergencyContact": {
+      "name": "",
+      "phone": "",
+      "relationship": ""
+    },
+    "gender": "",
+    "identityDetails": {
+      "idNumber": "",
+      "idType": "PAN / AADHAAR",
+      "isVerified": true
+    },
+    "personalEmail": "",
+    "personalPhone": "",
+    "preferredName": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "Bengaluru",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "taxDetails": {
+      "panNumber": "ABCDE1234F",
+      "taxRegime": "New Tax Regime (Sec 115BAC)"
+    },
+    "workAddress": {
+      "city": "",
+      "country": "India",
+      "postalCode": "",
+      "state": "",
+      "street": ""
+    }
+  },
+  {
+    "_id": "6ad44c04e4c4120b5f519892",
+    "userId": "6ad302edafd4b3a691dad7dd",
+    "employeeCode": "EMP-101",
+    "uniqueId": "",
+    "fullName": "Sravani Kasi",
+    "email": "employee@acme.test",
+    "phoneNumber": "+91 9876543210",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Software Development Engineer",
+      "department": "Engineering",
+      "employmentType": "Full-time",
+      "workLocation": "Hyderabad",
+      "joiningDate": "2024-03-01T00:00:00.000Z",
+      "jobGrade": "",
+      "terminationDate": null,
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "",
+        "projectType": ""
+      }
+    },
+    "invitation": {
+      "status": "PENDING",
+      "token": "",
+      "sentAt": null,
+      "acceptedAt": null
+    },
+    "exit": {
+      "inactiveDate": "2026-10-19T00:00:00.000Z",
+      "reason": "Resignation",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "Sravani Kasi",
+      "accountNumber": "",
+      "bankName": "",
+      "ifscCode": "",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 7,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 28
+    },
+    "customFields": {
+      "assignedAssets": [
+        {
+          "name": "Apple MacBook Pro 16-inch M3",
+          "serial": "APL-M3-99812",
+          "assignedDate": "2024-03-01"
+        },
+        {
+          "name": "Dell UltraSharp 27-inch 4K Monitor",
+          "serial": "DEL-US-44120",
+          "assignedDate": "2024-03-02"
+        }
+      ],
+      "attendanceLogs": [
+        {
+          "date": "2026-10-18",
+          "checkIn": "2026-10-18T04:52:47.636Z",
+          "checkOut": "2026-10-18T06:22:24.734Z",
+          "status": "PRESENT",
+          "workingHours": "1h 29m"
+        },
+        {
+          "date": "2026-10-22",
+          "checkIn": "2026-10-22T12:03:38.232Z",
+          "checkOut": "2026-10-22T12:04:35.069Z",
+          "status": "PRESENT",
+          "workingHours": "0h 0m",
+          "checkInLocation": {
+            "latitude": 15.796074,
+            "longitude": 78.031494,
+            "accuracy": 292,
+            "capturedAt": "2026-10-22T12:03:37.960Z",
+            "address": ""
+          },
+          "checkOutLocation": {
+            "latitude": 15.795045,
+            "longitude": 78.031008,
+            "accuracy": 158,
+            "capturedAt": "2026-10-22T12:04:34.738Z",
+            "address": ""
+          }
+        },
+        {
+          "date": "2026-10-26",
+          "checkIn": "2026-10-26T10:52:21.493Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": null
+        },
+        {
+          "date": "2026-10-27",
+          "checkIn": "2026-10-27T10:23:16.899Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": {
+            "latitude": 17.421179,
+            "longitude": 78.34768,
+            "accuracy": 107,
+            "capturedAt": "2026-10-27T10:23:16.640Z",
+            "address": ""
+          }
+        },
+        {
+          "date": "2026-10-28",
+          "checkIn": "2026-10-28T07:33:44.398Z",
+          "checkOut": "2026-10-28T14:28:55.178Z",
+          "status": "PRESENT",
+          "workingHours": "6h 55m",
+          "checkInLocation": {
+            "latitude": 17.42112,
+            "longitude": 78.34767,
+            "accuracy": 92,
+            "capturedAt": "2026-10-28T07:33:44.280Z",
+            "address": ""
+          },
+          "checkOutLocation": {
+            "latitude": 17.418163,
+            "longitude": 78.381506,
+            "accuracy": 79,
+            "capturedAt": "2026-10-28T14:28:54.571Z",
+            "address": ""
+          }
+        },
+        {
+          "date": "2026-10-29",
+          "checkIn": "2026-10-29T03:58:25.761Z",
+          "checkOut": "2026-10-29T04:01:55.860Z",
+          "status": "PRESENT",
+          "workingHours": "0h 3m",
+          "checkInLocation": {
+            "latitude": 17.421046,
+            "longitude": 78.347694,
+            "accuracy": 85,
+            "capturedAt": "2026-10-29T03:58:24.827Z",
+            "address": ""
+          },
+          "checkOutLocation": {
+            "latitude": 17.421078,
+            "longitude": 78.347713,
+            "accuracy": 98,
+            "capturedAt": "2026-10-29T04:01:54.339Z",
+            "address": ""
+          }
+        },
+        {
+          "date": "2026-10-31",
+          "checkIn": "2026-10-31T05:24:45.360Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": {
+            "latitude": 17.4213,
+            "longitude": 78.347727,
+            "accuracy": 37.3,
+            "capturedAt": "2026-10-31T05:24:43.486Z",
+            "address": ""
+          }
+        }
+      ],
+      "leaveRequests": [
+        {
+          "id": "LR-MVDCQCT8",
+          "leaveType": "CASUAL",
+          "startDate": "2026-10-19",
+          "endDate": "2026-10-19",
+          "days": 1,
+          "reason": "I am feeling very sick..kindly give me a leave for today",
+          "status": "PENDING",
+          "requestedAt": "2026-10-18T04:55:07.868Z"
+        }
+      ]
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-18T04:33:08.530Z",
+    "updatedAt": "2026-10-31T05:24:45.562Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad607ebf9f3b90078eac886",
+    "userId": "6ad607eaf9f3b90078eac885",
+    "employeeCode": "EMP-09",
+    "uniqueId": "",
+    "fullName": "Harsha Polina",
+    "email": "harshapolina1@gmail.com",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "SDE",
+      "department": "TECH",
+      "jobGrade": "",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-10-19T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "PENDING",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoYXJzaGFwb2xpbmExQGdtYWlsLmNvbSIsImNvbXBhbnlJZCI6IjZhZDBhYzhiYWZkNGIzYTY5MWRhM2Y3ZCIsImVtcGxveWVlSWQiOiI2YWQ2MDdlYmY5ZjNiOTAwNzhlYWM4ODYiLCJyb2xlIjoiRU1QTE9ZRUUiLCJwdXJwb3NlIjoiZW1wbG95ZWVfb25ib2FyZGluZyIsImp0aSI6ImRkNTNkOGZiLWYxNWYtNDE5My1iN2QwLTE2MGQyNzVjYjAyYSIsImlhdCI6MTc5MjQxMTYyNywiZXhwIjoxNzkzMDE2NDI3LCJhdWQiOiJocm1zLWNvbXBhbnktdXNlcnMiLCJpc3MiOiJocm1zLXBsYXRmb3JtIn0.Ykf6FOA0hHX3xdEsZLl2exZbSdPukQRGO1ihhCs90Yw",
+      "sentAt": "2026-10-19T12:07:07.617Z"
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "",
+      "accountNumber": "",
+      "bankName": "",
+      "ifscCode": "",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 21
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-19T12:07:07.128Z",
+    "updatedAt": "2026-10-19T12:07:07.618Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b42c0bea4f30cebaa5c5",
+    "userId": "6ad8b3e40bea4f30cebaa5c0",
+    "employeeCode": "ACM-009",
+    "uniqueId": "",
+    "fullName": "sirisha",
+    "email": "2025eb01909@online.bits-pilani.ac.in",
+    "phoneNumber": "drftgjukilo;",
+    "dateOfBirth": "2026-10-21T00:00:00.000Z",
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Senior Software Engineer",
+      "department": "Engineering",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-10-21T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "jobGrade": "",
+      "terminationDate": null
+    },
+    "documents": [
+      {
+        "documentType": "ID_PROOF",
+        "title": "Probability And Statistics.pdf",
+        "content": "",
+        "fileUrl": "",
+        "fileName": "Probability_And_Statistics.pdf",
+        "fileSize": 553521,
+        "mimeType": "application/pdf",
+        "storageKey": "1792586775486_949dc7fa7ff3_Probability_And_Statistics.pdf",
+        "uploadedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "uploadedByRole": "HR_ADMIN",
+        "createdAt": "2026-10-21T12:46:15.490Z",
+        "emailedAt": null,
+        "_id": "6ad8b42c0bea4f30cebaa5c6"
+      }
+    ],
+    "invitation": {
+      "status": "PENDING",
+      "token": "",
+      "sentAt": null,
+      "acceptedAt": null
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "2025eb01909@online.bits-pilani.ac.in",
+    "personalPhone": "",
+    "gender": "Female",
+    "residentialAddress": {
+      "street": "azsxdnjmk,",
+      "city": "bnm,l",
+      "state": "dfghj",
+      "postalCode": "dfghj",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "dfghjk",
+      "relationship": "Contact",
+      "phone": "xcvbnm"
+    },
+    "bankDetails": {
+      "accountHolderName": "sirisha",
+      "accountNumber": "741",
+      "bankName": "784512",
+      "ifscCode": "820",
+      "accountType": "Salary Account"
+    },
+    "taxDetails": {
+      "panNumber": "\\741",
+      "taxRegime": "New Tax Regime (Sec 115BAC)"
+    },
+    "identityDetails": {
+      "idType": "PAN / Aadhaar",
+      "idNumber": "\\741",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 21
+    },
+    "schemaVersion": 1,
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-21T12:46:36.073Z",
+    "updatedAt": "2026-10-21T12:46:36.073Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ada0679ab37882693d8c861",
+    "userId": "6ada0679ab37882693d8c860",
+    "employeeCode": "EMP_09",
+    "uniqueId": "",
+    "fullName": "harsha polina1",
+    "email": "harshapolinax@gmail.com",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "",
+      "department": "",
+      "jobGrade": "",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-10-22T12:50:01.616Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "DELIVERY_FAILED",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoYXJzaGFwb2xpbmF4QGdtYWlsLmNvbSIsImNvbXBhbnlJZCI6IjZhZDBhYzhiYWZkNGIzYTY5MWRhM2Y3ZCIsImVtcGxveWVlSWQiOiI2YWRhMDY3OWFiMzc4ODI2OTNkOGM4NjEiLCJyb2xlIjoiRU1QTE9ZRUUiLCJwdXJwb3NlIjoiZW1wbG95ZWVfb25ib2FyZGluZyIsImp0aSI6IjkwMjJkMmIyLTFkNTItNDg1ZS1hZDAwLWUxM2QwZWVkYjM3OSIsImlhdCI6MTc5MjY3MzQwMSwiZXhwIjoxNzkzMjc4MjAxLCJhdWQiOiJocm1zLWNvbXBhbnktdXNlcnMiLCJpc3MiOiJocm1zLXBsYXRmb3JtIn0.8j2rohyvYEXB-EPKm646X3G8XK63Mq6EJ5KONlWhEho",
+      "sentAt": "2026-10-22T12:50:17.125Z"
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "harsha polina1",
+      "accountNumber": "•••• •••• P_09",
+      "bankName": "HDFC Bank",
+      "ifscCode": "HDFC0001024",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "ABCDE1234F",
+      "taxRegime": "New Tax Regime (Sec 115BAC)"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 22
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-22T12:50:01.619Z",
+    "updatedAt": "2026-10-28T10:37:41.488Z",
+    "__v": 0,
+    "customFields": {
+      "attendanceLogs": [
+        {
+          "date": "2026-10-22",
+          "checkIn": "2026-10-22T12:51:28.254Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": {
+            "latitude": 17.4184,
+            "longitude": 78.349333,
+            "accuracy": 95,
+            "capturedAt": "2026-10-22T12:51:26.712Z",
+            "address": ""
+          }
+        }
+      ]
+    }
+  },
+  {
+    "_id": "6ae09702486f01cc6aa27bf9",
+    "userId": "6ae09702486f01cc6aa27bf8",
+    "employeeCode": "EMP-011",
+    "uniqueId": "",
+    "fullName": "yashika",
+    "email": "yashika@email.com",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "software developer",
+      "department": "engineering",
+      "jobGrade": "",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-10-27T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "sustainability",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "DELIVERY_FAILED",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ5YXNoaWthQGVtYWlsLmNvbSIsImNvbXBhbnlJZCI6IjZhZDBhYzhiYWZkNGIzYTY5MWRhM2Y3ZCIsImVtcGxveWVlSWQiOiI2YWUwOTcwMjQ4NmYwMWNjNmFhMjdiZjkiLCJyb2xlIjoiRU1QTE9ZRUUiLCJwdXJwb3NlIjoiZW1wbG95ZWVfb25ib2FyZGluZyIsImp0aSI6Ijk2Njc5MzJlLWVjZmMtNGRkOC05NTE4LWUyZDk4NzJhODMzZSIsImlhdCI6MTc5MzEwMzYxOCwiZXhwIjoxNzkzNzA4NDE4LCJhdWQiOiJocm1zLWNvbXBhbnktdXNlcnMiLCJpc3MiOiJocm1zLXBsYXRmb3JtIn0.nbFbF0RBtati6zWesa_vXWNxxkAIbvvu5NpcI63u1LE",
+      "sentAt": "2026-10-27T12:20:18.850Z"
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "",
+      "accountNumber": "",
+      "bankName": "",
+      "ifscCode": "",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 21
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-27T12:20:18.440Z",
+    "updatedAt": "2026-10-27T12:20:18.851Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae41d5cc5a6418c517f8af2",
+    "userId": "6ae41d5cc5a6418c517f8af1",
+    "employeeCode": "EMP-015",
+    "uniqueId": "",
+    "fullName": "Supriya",
+    "email": "supriyadevi@gmail.com",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Success Coach",
+      "department": "Management",
+      "jobGrade": "",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-10-30T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "PENDING",
+      "token": "",
+      "sentAt": "2026-11-02T04:52:46.278Z",
+      "acceptedAt": null
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "",
+      "accountNumber": "",
+      "bankName": "",
+      "ifscCode": "",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 21
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-10-30T04:30:20.972Z",
+    "updatedAt": "2026-11-02T04:52:46.281Z",
+    "__v": 0,
+    "customFields": {
+      "assignedAssets": []
+    }
+  },
+  {
+    "_id": "6ae81766b428cb622d8403d2",
+    "userId": "6ae81766b428cb622d8403d1",
+    "employeeCode": "TEMP-002",
+    "uniqueId": "",
+    "fullName": "TestEmployee2",
+    "email": "employee2@acme.test",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Software engineer",
+      "department": "Engineering",
+      "jobGrade": "",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-11-02T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "Core Platform",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "ACCEPTED",
+      "token": "",
+      "sentAt": "2026-11-02T04:53:59.001Z",
+      "acceptedAt": "2026-11-02T04:55:08.539Z"
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "",
+      "accountNumber": "",
+      "bankName": "",
+      "ifscCode": "",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 22
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-11-02T04:53:58.704Z",
+    "updatedAt": "2026-11-02T04:56:19.024Z",
+    "__v": 0,
+    "customFields": {
+      "attendanceLogs": [
+        {
+          "date": "2026-11-02",
+          "checkIn": "2026-11-02T04:56:18.968Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": {
+            "latitude": 17.418284,
+            "longitude": 78.381655,
+            "accuracy": 75,
+            "capturedAt": "2026-11-02T04:56:18.765Z",
+            "address": ""
+          }
+        }
+      ]
+    }
+  },
+  {
+    "_id": "6ae8183fb428cb622d8403dc",
+    "userId": "6ae8183fb428cb622d8403db",
+    "employeeCode": "TEMP-003",
+    "uniqueId": "",
+    "fullName": "TestEmployee3",
+    "email": "employee3@acme.test",
+    "phoneNumber": "",
+    "dateOfBirth": null,
+    "city": "",
+    "status": "ACTIVE",
+    "job": {
+      "jobTitle": "Software Developer",
+      "department": "Engineering",
+      "jobGrade": "Level L3",
+      "employmentType": "Full-time",
+      "workLocation": "",
+      "joiningDate": "2026-11-02T00:00:00.000Z",
+      "reportingManagerId": null,
+      "project": {
+        "projectName": "Core Platform",
+        "projectType": "MANDATE"
+      },
+      "terminationDate": null
+    },
+    "invitation": {
+      "status": "ACCEPTED",
+      "token": "",
+      "sentAt": "2026-11-02T04:57:35.468Z",
+      "acceptedAt": "2026-11-02T04:58:09.461Z"
+    },
+    "exit": {
+      "inactiveDate": null,
+      "reason": "",
+      "fullAndFinalGeneratedAt": null,
+      "anonymizedAt": null
+    },
+    "preferredName": "",
+    "personalEmail": "",
+    "personalPhone": "",
+    "gender": "Not specified",
+    "residentialAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "workAddress": {
+      "street": "",
+      "city": "",
+      "state": "",
+      "postalCode": "",
+      "country": "India"
+    },
+    "emergencyContact": {
+      "name": "",
+      "relationship": "",
+      "phone": ""
+    },
+    "bankDetails": {
+      "accountHolderName": "TestEmployee3",
+      "accountNumber": "•••• •••• -003",
+      "bankName": "HDFC Bank",
+      "ifscCode": "HDFC0001024",
+      "accountType": "SAVINGS"
+    },
+    "taxDetails": {
+      "panNumber": "ABCDE1234F",
+      "taxRegime": "NEW"
+    },
+    "identityDetails": {
+      "idType": "PAN / AADHAAR",
+      "idNumber": "",
+      "isVerified": true
+    },
+    "attendance": {
+      "leaveBalance": {
+        "casual": 8,
+        "sick": 6,
+        "earned": 12
+      },
+      "totalWorkingDays": 22,
+      "daysPresent": 22
+    },
+    "schemaVersion": 1,
+    "documents": [],
+    "previousEmploymentPeriods": [],
+    "createdAt": "2026-11-02T04:57:35.243Z",
+    "updatedAt": "2026-11-04T05:11:43.618Z",
+    "__v": 1,
+    "customFields": {
+      "attendanceLogs": [
+        {
+          "date": "2026-11-02",
+          "checkIn": "2026-11-02T05:19:53.912Z",
+          "checkOut": null,
+          "status": "PRESENT",
+          "workingHours": "In Progress",
+          "checkInLocation": {
+            "latitude": 17.418216,
+            "longitude": 78.38147,
+            "accuracy": 68,
+            "capturedAt": "2026-11-02T05:19:53.760Z",
+            "address": ""
+          }
+        }
+      ]
+    },
+    "skills": []
+  }
+]

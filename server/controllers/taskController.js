@@ -4,6 +4,7 @@ import { TASK_STATUSES, TASK_PRIORITIES } from "../models/Task.js";
 import { saveDocumentFile, validateDocumentFile } from "../services/documentStorage.js";
 import {
   createTaskService,
+  assignUnassignedTaskService,
   startTaskService,
   submitTaskEvidenceService,
   reviewTaskService,
@@ -126,8 +127,16 @@ export async function getTasks(req, res, next) {
         "../services/hrAccessEnforcementService.js"
       );
       assertHrPermission(req.hrAccess, "people.view");
-      // Scope filter applied below via assigneeId when CUSTOM
-      req._hrTaskScopeFilter = mergeEmployeeIdScopeFilter(req.hrAccess, {}, "assigneeId");
+      // Scope filter applied below via assigneeId when CUSTOM.
+      // UNASSIGNED queue tasks have null assigneeId — include them so HR can see/assign the queue.
+      const scoped = mergeEmployeeIdScopeFilter(req.hrAccess, {}, "assigneeId");
+      if (scoped && scoped.$and) {
+        req._hrTaskScopeFilter = {
+          $or: [scoped, { status: TASK_STATUSES.UNASSIGNED }],
+        };
+      } else {
+        req._hrTaskScopeFilter = scoped;
+      }
     }
 
     const conditions = [];
@@ -311,14 +320,58 @@ export async function getTaskById(req, res, next) {
         "../services/hrAccessEnforcementService.js"
       );
       assertHrPermission(req.hrAccess, "people.view");
-      assertEmployeeInScope(
-        req.hrAccess,
-        task.assigneeId,
-        "You do not have access to this task."
-      );
+      // Unassigned queue items have no assignee — still viewable with people.view.
+      if (task.status !== TASK_STATUSES.UNASSIGNED) {
+        assertEmployeeInScope(
+          req.hrAccess,
+          task.assigneeId,
+          "You do not have access to this task."
+        );
+      }
     }
 
     res.status(200).json({ success: true, task });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Manually assigns an UNASSIGNED task (reuses assignUnassignedTaskService).
+ * Does not reassign already-owned tasks.
+ */
+export async function assignTask(req, res, next) {
+  try {
+    const assigneeId = req.body?.assigneeId || req.body?.assigneeEmployeeId;
+    if (!assigneeId) {
+      throw new HttpError(400, "Assignee employee ID is required");
+    }
+    if (isHrPortalOperator(req.auth.user.role)) {
+      const { assertHrPermission, assertEmployeeInScope } = await import(
+        "../services/hrAccessEnforcementService.js"
+      );
+      assertHrPermission(req.hrAccess, "people.edit");
+      assertEmployeeInScope(
+        req.hrAccess,
+        assigneeId,
+        "You cannot assign tasks outside your employee scope."
+      );
+    }
+    const result = await assignUnassignedTaskService({
+      models: req.auth.models,
+      user: req.auth.user,
+      hrAccess: req.hrAccess,
+      company: req.auth.company,
+      taskId: req.params.id,
+      assigneeId,
+      source: "MANUAL",
+    });
+    res.status(200).json({
+      success: true,
+      message: "Task assigned successfully",
+      task: result.task,
+      idempotent: result.idempotent,
+    });
   } catch (error) {
     next(error);
   }
@@ -353,11 +406,13 @@ export async function updateTask(req, res, next) {
         "../services/hrAccessEnforcementService.js"
       );
       assertHrPermission(req.hrAccess, "people.edit");
-      assertEmployeeInScope(
-        req.hrAccess,
-        task.assigneeId,
-        "You do not have access to this task."
-      );
+      if (task.status !== TASK_STATUSES.UNASSIGNED) {
+        assertEmployeeInScope(
+          req.hrAccess,
+          task.assigneeId,
+          "You do not have access to this task."
+        );
+      }
     }
 
     const { title, description, priority, deadline, acceptanceCriteria, projectName } = req.body;

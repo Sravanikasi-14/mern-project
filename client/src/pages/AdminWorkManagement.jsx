@@ -92,6 +92,10 @@ export default function AdminWorkManagement() {
   const [reviewError, setReviewError] = useState("");
   const [showReviewForm, setShowReviewForm] = useState(false);
 
+  // Manual assign for UNASSIGNED queue
+  const [manualAssigneeId, setManualAssigneeId] = useState("");
+  const [assigningTask, setAssigningTask] = useState(false);
+
   // Auto-dismiss floating notifications after 4 seconds
   useEffect(() => {
     if (error) {
@@ -229,6 +233,11 @@ export default function AdminWorkManagement() {
 
     const task = tasks.find((t) => t._id === taskId);
     if (!task || task.status === targetStatus) return;
+    // Scheduler queue items need explicit assign/approve — do not patch status via board.
+    if (task.status === "UNASSIGNED" || targetStatus === "UNASSIGNED") {
+      setError("Unassigned tasks must be assigned via the task details panel or scheduler approval.");
+      return;
+    }
 
     // Optimistic UI update
     const prevTasks = [...tasks];
@@ -256,8 +265,34 @@ export default function AdminWorkManagement() {
   };
 
   // Accessible fallback status change
+  const handleManualAssign = async () => {
+    if (!canEditPeople || !selectedTask || selectedTask.status !== "UNASSIGNED") return;
+    if (!manualAssigneeId) {
+      setError("Select an employee to assign this task.");
+      return;
+    }
+    try {
+      setAssigningTask(true);
+      setError("");
+      await api.post(`/tasks/${selectedTask._id}/assign`, { assigneeId: manualAssigneeId });
+      setSuccessMsg(`Task "${selectedTask.title}" assigned successfully`);
+      setManualAssigneeId("");
+      setSidePanelMode("none");
+      setSelectedTask(null);
+      await invalidateEmployeeWork(queryClient);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to assign task");
+    } finally {
+      setAssigningTask(false);
+    }
+  };
+
   const handleStatusChange = async (task, targetStatus) => {
     if (!canEditPeople || task.status === targetStatus) return;
+    if (task.status === "UNASSIGNED" || targetStatus === "UNASSIGNED") {
+      setError("Unassigned tasks must be assigned via the task details panel or scheduler approval.");
+      return;
+    }
     const prevTasks = [...tasks];
     setLocalTasks(tasks.map((t) => (t._id === task._id ? { ...t, status: targetStatus } : t)));
     try {
@@ -362,7 +397,9 @@ export default function AdminWorkManagement() {
     }).length;
 
     return {
-      activeTasks: list.filter((t) => t.status !== "APPROVED" && t.status !== "REJECTED").length,
+      activeTasks: list.filter(
+        (t) => t.status !== "APPROVED" && t.status !== "REJECTED" && t.status !== "UNASSIGNED"
+      ).length,
       completedTasks: list.filter((t) => isCompletedToday(t, timeZone)).length,
       overdueTasks: overdueCount,
       reviewQueueCount: list.filter((t) => t.status === "SUBMITTED" || t.status === "CHANGES_REQUESTED").length,
@@ -415,8 +452,14 @@ export default function AdminWorkManagement() {
     }));
   }, [tasks, timeZone]);
 
-  // Kanban Columns
+  // Kanban Columns (UNASSIGNED = Workforce Scheduler queue; does not alter lifecycle columns)
   const kanbanColumns = [
+    {
+      id: "UNASSIGNED",
+      title: "Unassigned",
+      dotClass: "col-assigned",
+      tasks: displayedTasks.filter((t) => t.status === "UNASSIGNED"),
+    },
     {
       id: "ASSIGNED",
       title: "Draft / Backlog",
@@ -1033,6 +1076,70 @@ export default function AdminWorkManagement() {
                         <li key={idx} style={{ marginBottom: 4 }}>{c}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {selectedTask.status === "UNASSIGNED" && canEditPeople && (
+                  <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
+                    <div className="wm-section-divider">Assign employee</div>
+                    {selectedTask.auditMetadata?.workforceScheduler?.status === "PENDING_APPROVAL" && (
+                      <p style={{ fontSize: 12, color: "#64748b", margin: "8px 0" }}>
+                        Scheduler proposed{" "}
+                        <strong>
+                          {selectedTask.auditMetadata.workforceScheduler.proposedAssigneeName || "an employee"}
+                        </strong>
+                        . You can approve that proposal or pick someone else below.
+                      </p>
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                      <select
+                        className="wm-select"
+                        value={manualAssigneeId}
+                        onChange={(e) => setManualAssigneeId(e.target.value)}
+                        style={{ flex: 1, minWidth: 180 }}
+                      >
+                        <option value="">Select team member...</option>
+                        {(meta?.assignableEmployees || []).map((emp) => (
+                          <option key={emp._id} value={emp._id}>
+                            {emp.fullName}
+                            {emp.job?.department ? ` · ${emp.job.department}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="wm-btn-primary"
+                        disabled={assigningTask || !manualAssigneeId}
+                        onClick={handleManualAssign}
+                      >
+                        {assigningTask ? "Assigning…" : "Assign"}
+                      </button>
+                      {selectedTask.auditMetadata?.workforceScheduler?.status === "PENDING_APPROVAL" && (
+                        <button
+                          type="button"
+                          className="wm-btn-secondary"
+                          disabled={assigningTask}
+                          onClick={async () => {
+                            try {
+                              setAssigningTask(true);
+                              await api.post(
+                                `/workforce-scheduler/tasks/${selectedTask._id}/approve`
+                              );
+                              setSuccessMsg("Scheduler proposal approved");
+                              setSidePanelMode("none");
+                              setSelectedTask(null);
+                              await invalidateEmployeeWork(queryClient);
+                            } catch (err) {
+                              setError(err.response?.data?.message || "Failed to approve proposal");
+                            } finally {
+                              setAssigningTask(false);
+                            }
+                          }}
+                        >
+                          Approve proposal
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 

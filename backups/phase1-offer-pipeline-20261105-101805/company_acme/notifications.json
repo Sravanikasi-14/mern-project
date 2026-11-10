@@ -1,0 +1,76 @@
+[
+  {
+    "_id": "6ae86d6bc91eb01e4b9df627",
+    "userId": "6ae8183fb428cb622d8403db",
+    "title": "Handover acknowledgement requested",
+    "message": "You have been proposed as a backup for leave coverage. Please review and acknowledge.",
+    "type": "HANDOVER",
+    "link": "/app/leave?tab=handovers",
+    "isRead": true,
+    "readBy": [
+      "6ae8183fb428cb622d8403db"
+    ],
+    "metadata": {
+      "handoverId": "6ae86abc79378dcffc37d2b5"
+    },
+    "createdAt": "2026-11-02T11:00:59.244Z",
+    "updatedAt": "2026-11-02T11:19:05.723Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86dcec91eb01e4b9df62e",
+    "userId": "6ae81766b428cb622d8403d1",
+    "title": "Backup acknowledged handover",
+    "message": "Backup response: ACKNOWLEDGE",
+    "type": "HANDOVER",
+    "link": "/app/leave?tab=handovers",
+    "isRead": true,
+    "readBy": [
+      "6ae8183fb428cb622d8403db"
+    ],
+    "metadata": {
+      "handoverId": "6ae86abc79378dcffc37d2b5",
+      "itemId": "6ae86b2879378dcffc37d2b9"
+    },
+    "createdAt": "2026-11-02T11:02:38.982Z",
+    "updatedAt": "2026-11-02T11:19:05.723Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86e40c91eb01e4b9df636",
+    "userId": "6ae81766b428cb622d8403d1",
+    "title": "Handover approved",
+    "message": "Your leave handover was approved by a manager.",
+    "type": "HANDOVER",
+    "link": "/app/leave?tab=handovers",
+    "isRead": true,
+    "readBy": [
+      "6ae8183fb428cb622d8403db"
+    ],
+    "metadata": {
+      "handoverId": "6ae86abc79378dcffc37d2b5"
+    },
+    "createdAt": "2026-11-02T11:04:32.268Z",
+    "updatedAt": "2026-11-02T11:19:05.723Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae86e40c91eb01e4b9df637",
+    "userId": "6ae8183fb428cb622d8403db",
+    "title": "Handover approved",
+    "message": "A handover you acknowledged was approved and will activate for the leave period.",
+    "type": "HANDOVER",
+    "link": "/app/tasks?scope=covering",
+    "isRead": true,
+    "readBy": [
+      "6ae8183fb428cb622d8403db"
+    ],
+    "metadata": {
+      "handoverId": "6ae86abc79378dcffc37d2b5",
+      "taskId": "6ae86aff79378dcffc37d2b7"
+    },
+    "createdAt": "2026-11-02T11:04:32.442Z",
+    "updatedAt": "2026-11-02T11:19:05.723Z",
+    "__v": 0
+  }
+]

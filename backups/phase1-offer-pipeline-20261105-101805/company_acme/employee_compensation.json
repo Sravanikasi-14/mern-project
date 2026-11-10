@@ -1,0 +1,600 @@
+[
+  {
+    "_id": "6ad0b1ee6561c909576537b9",
+    "employeeId": "6ad0b1ee6561c909576537b6",
+    "revisions": [
+      {
+        "effectiveFromDate": "2023-03-01T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "125000"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "60000"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "30000"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "10000"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "20000"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "5000"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedAt": "2026-10-15T10:58:54.187Z"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:58:54.187Z",
+    "updatedAt": "2026-10-15T10:58:54.187Z"
+  },
+  {
+    "_id": "6ad0b1ee6561c909576537ba",
+    "employeeId": "6ad0b1ee6561c909576537b7",
+    "revisions": [
+      {
+        "effectiveFromDate": "2023-06-15T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "95000"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "45000"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "22500"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "8000"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "15500"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "4000"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedAt": "2026-10-15T10:58:54.218Z"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T10:58:54.218Z",
+    "updatedAt": "2026-10-15T10:58:54.218Z"
+  },
+  {
+    "_id": "6ad0c7b6cb659753a419679e",
+    "employeeId": "6ad0c7b6cb659753a419679d",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-11T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "60000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "30000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "15000.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "6000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "9000.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-15T12:31:50.684Z",
+        "_id": "6ad0c7b6cb659753a419679f"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T12:31:50.693Z",
+    "updatedAt": "2026-10-15T12:31:50.693Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0daedd3ae32a099f0d0c0",
+    "employeeId": "6ad0daedd3ae32a099f0d0bf",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-15T13:53:49.444Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "75000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "37500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "18750.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "11250.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-15T13:53:49.452Z",
+        "_id": "6ad0daedd3ae32a099f0d0c1"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T13:53:49.465Z",
+    "updatedAt": "2026-10-15T13:53:49.465Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0dc14d3ae32a099f0d0c7",
+    "employeeId": "6ad0dc14d3ae32a099f0d0c6",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-15T13:58:44.900Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "75000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "37500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "18750.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "11250.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-15T13:58:44.901Z",
+        "_id": "6ad0dc14d3ae32a099f0d0c8"
+      },
+      {
+        "effectiveFromDate": "2026-10-17T06:31:08.717Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "75000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "37500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "18750.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "11250.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-17T06:31:08.725Z",
+        "_id": "6ad3162c474d5251bf15abb8"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T13:58:44.911Z",
+    "updatedAt": "2026-10-17T06:31:08.793Z",
+    "__v": 1
+  },
+  {
+    "_id": "6ad44c04e4c4120b5f519893",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "revisions": [
+      {
+        "effectiveFromDate": "2024-03-01T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "110000"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "55000"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "33000"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "15400"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "6600"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": null,
+        "_id": "6ad44c04e4c4120b5f519894",
+        "revisedAt": "2026-10-18T04:33:08.601Z"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-18T04:33:08.602Z",
+    "updatedAt": "2026-10-18T04:33:08.602Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad607ebf9f3b90078eac888",
+    "employeeId": "6ad607ebf9f3b90078eac886",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-19T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "50000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "25000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "12500.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "5000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-19T12:07:07.859Z",
+        "_id": "6ad607ebf9f3b90078eac889"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-19T12:07:07.863Z",
+    "updatedAt": "2026-10-19T12:07:07.863Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b42c0bea4f30cebaa5c7",
+    "employeeId": "6ad8b42c0bea4f30cebaa5c5",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-21T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "100000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "50000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "25000.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "10000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "15000.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-21T12:46:36.110Z",
+        "_id": "6ad8b42c0bea4f30cebaa5c8"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T12:46:36.115Z",
+    "updatedAt": "2026-10-21T12:46:36.115Z",
+    "__v": 0
+  },
+  {
+    "_id": "6adce07451c4d627e9df7eb5",
+    "employeeId": "6ad0b1ee6561c909576537b8",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-24T16:44:36.434Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "85000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "42500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "21250.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "8500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "12750.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-24T16:44:36.439Z",
+        "_id": "6adce07451c4d627e9df7eb6"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-24T16:44:36.445Z",
+    "updatedAt": "2026-10-24T16:44:36.445Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae09703486f01cc6aa27bfb",
+    "employeeId": "6ae09702486f01cc6aa27bf9",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-27T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "80000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "40000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "20000.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "8000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "12000.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-27T12:20:19.043Z",
+        "_id": "6ae09703486f01cc6aa27bfc"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-27T12:20:19.046Z",
+    "updatedAt": "2026-10-27T12:20:19.046Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae1d075f11a8979fa536f09",
+    "employeeId": "6ada0679ab37882693d8c861",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-28T10:37:41.668Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "75000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "37500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "18750.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "11250.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-28T10:37:41.673Z",
+        "_id": "6ae1d075f11a8979fa536f0a"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-28T10:37:41.682Z",
+    "updatedAt": "2026-10-28T10:37:41.682Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae41d5dc5a6418c517f8af4",
+    "employeeId": "6ae41d5cc5a6418c517f8af2",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-10-30T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "25000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "12500.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "6250.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "2500.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "3750.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-10-30T04:30:21.128Z",
+        "_id": "6ae41d5dc5a6418c517f8af5"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-10-30T04:30:21.136Z",
+    "updatedAt": "2026-10-30T04:30:21.136Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81766b428cb622d8403d3",
+    "employeeId": "6ae81766b428cb622d8403d2",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-11-02T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "30000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "15000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "3000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "4500.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-11-02T04:53:58.808Z",
+        "_id": "6ae81766b428cb622d8403d4"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T04:53:58.811Z",
+    "updatedAt": "2026-11-02T04:53:58.811Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae8183fb428cb622d8403dd",
+    "employeeId": "6ae8183fb428cb622d8403dc",
+    "revisions": [
+      {
+        "effectiveFromDate": "2026-11-02T00:00:00.000Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "30000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "15000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "3000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "4500.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-11-02T04:57:35.324Z",
+        "_id": "6ae8183fb428cb622d8403de"
+      },
+      {
+        "effectiveFromDate": "2026-11-04T05:11:43.877Z",
+        "monthlyCostToCompany": {
+          "$numberDecimal": "30000.00"
+        },
+        "salaryComponents": {
+          "basicSalary": {
+            "$numberDecimal": "15000.00"
+          },
+          "houseRentAllowance": {
+            "$numberDecimal": "7500.00"
+          },
+          "conveyanceAllowance": {
+            "$numberDecimal": "3000.00"
+          },
+          "specialAllowance": {
+            "$numberDecimal": "4500.00"
+          },
+          "employerProvidentFund": {
+            "$numberDecimal": "0"
+          },
+          "otherDeductions": {
+            "$numberDecimal": "0"
+          }
+        },
+        "revisedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "revisedAt": "2026-11-04T05:11:43.877Z",
+        "_id": "6aeabe8f5a8f2e42b20d1750"
+      }
+    ],
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T04:57:35.326Z",
+    "updatedAt": "2026-11-04T05:11:43.882Z",
+    "__v": 1
+  }
+]

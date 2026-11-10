@@ -1,0 +1,336 @@
+[
+  {
+    "_id": "6ada06a6ab37882693d8c866",
+    "employeeId": "6ada0679ab37882693d8c861",
+    "status": "STOPPED",
+    "startedAt": "2026-10-22T12:50:46.960Z",
+    "expiresAt": "2026-10-22T13:20:46.960Z",
+    "stoppedAt": "2026-10-22T13:20:10.081Z",
+    "lastLocation": {
+      "latitude": 17.418423,
+      "longitude": 78.349412,
+      "accuracy": 86,
+      "capturedAt": "2026-10-22T13:20:06.747Z",
+      "receivedAt": "2026-10-22T13:20:08.276Z"
+    },
+    "deviceInfo": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+    },
+    "schemaVersion": 1,
+    "breadcrumbs": [
+      {
+        "latitude": 17.4184,
+        "longitude": 78.349333,
+        "accuracy": 95,
+        "capturedAt": "2026-10-22T12:51:26.712Z",
+        "receivedAt": "2026-10-22T12:51:28.260Z"
+      },
+      {
+        "latitude": 17.418423,
+        "longitude": 78.349412,
+        "accuracy": 86,
+        "capturedAt": "2026-10-22T13:20:06.747Z",
+        "receivedAt": "2026-10-22T13:20:08.276Z"
+      }
+    ],
+    "createdAt": "2026-10-22T12:50:46.962Z",
+    "updatedAt": "2026-10-22T13:20:10.082Z",
+    "__v": 2
+  },
+  {
+    "_id": "6ae2c4821949ef1f9385d892",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "status": "STOPPED",
+    "startedAt": "2026-10-29T03:58:58.358Z",
+    "expiresAt": "2026-10-29T04:28:58.358Z",
+    "stoppedAt": "2026-10-29T03:58:58.606Z",
+    "lastLocation": null,
+    "deviceInfo": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.27.22 Chrome/148.0.7778.280 Electron/42.11.16 Safari/537.36"
+    },
+    "schemaVersion": 1,
+    "breadcrumbs": [],
+    "createdAt": "2026-10-29T03:58:58.362Z",
+    "updatedAt": "2026-10-29T03:58:58.606Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae2c4821949ef1f9385d893",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "status": "STOPPED",
+    "startedAt": "2026-10-29T03:58:58.688Z",
+    "expiresAt": "2026-10-29T04:28:58.688Z",
+    "stoppedAt": "2026-10-29T03:58:58.795Z",
+    "lastLocation": {
+      "latitude": 17.421078,
+      "longitude": 78.347675,
+      "accuracy": 90,
+      "capturedAt": "2026-10-29T03:58:57.846Z",
+      "receivedAt": "2026-10-29T03:58:58.783Z"
+    },
+    "deviceInfo": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.27.22 Chrome/148.0.7778.280 Electron/42.11.16 Safari/537.36"
+    },
+    "schemaVersion": 1,
+    "breadcrumbs": [
+      {
+        "latitude": 17.421078,
+        "longitude": 78.347675,
+        "accuracy": 90,
+        "capturedAt": "2026-10-29T03:58:57.846Z",
+        "receivedAt": "2026-10-29T03:58:58.783Z"
+      }
+    ],
+    "createdAt": "2026-10-29T03:58:58.689Z",
+    "updatedAt": "2026-10-29T03:58:58.795Z",
+    "__v": 1
+  },
+  {
+    "_id": "6ae2c4821949ef1f9385d894",
+    "employeeId": "6ad44c04e4c4120b5f519892",
+    "status": "EXPIRED",
+    "startedAt": "2026-10-29T03:58:58.881Z",
+    "expiresAt": "2026-10-29T04:28:58.881Z",
+    "stoppedAt": "2026-10-29T04:28:58.881Z",
+    "lastLocation": {
+      "latitude": 17.421143,
+      "longitude": 78.347676,
+      "accuracy": 93,
+      "capturedAt": "2026-10-29T04:02:39.413Z",
+      "receivedAt": "2026-10-29T04:02:40.194Z"
+    },
+    "deviceInfo": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.27.22 Chrome/148.0.7778.280 Electron/42.11.16 Safari/537.36"
+    },
+    "schemaVersion": 1,
+    "breadcrumbs": [
+      {
+        "latitude": 17.421078,
+        "longitude": 78.347675,
+        "accuracy": 90,
+        "capturedAt": "2026-10-29T03:58:58.545Z",
+        "receivedAt": "2026-10-29T03:58:59.191Z"
+      },
+      {
+        "latitude": 17.421076,
+        "longitude": 78.347674,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T03:59:07.932Z",
+        "receivedAt": "2026-10-29T03:59:08.571Z"
+      },
+      {
+        "latitude": 17.421076,
+        "longitude": 78.347674,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T03:59:07.932Z",
+        "receivedAt": "2026-10-29T03:59:08.595Z"
+      },
+      {
+        "latitude": 17.421102,
+        "longitude": 78.347671,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T03:59:37.344Z",
+        "receivedAt": "2026-10-29T03:59:38.621Z"
+      },
+      {
+        "latitude": 17.421136,
+        "longitude": 78.347673,
+        "accuracy": 90,
+        "capturedAt": "2026-10-29T03:59:51.648Z",
+        "receivedAt": "2026-10-29T03:59:52.454Z"
+      },
+      {
+        "latitude": 17.421136,
+        "longitude": 78.347673,
+        "accuracy": 90,
+        "capturedAt": "2026-10-29T03:59:51.648Z",
+        "receivedAt": "2026-10-29T03:59:52.465Z"
+      },
+      {
+        "latitude": 17.421075,
+        "longitude": 78.347673,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:00:02.231Z",
+        "receivedAt": "2026-10-29T04:00:03.459Z"
+      },
+      {
+        "latitude": 17.421075,
+        "longitude": 78.347673,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:00:02.231Z",
+        "receivedAt": "2026-10-29T04:00:03.457Z"
+      },
+      {
+        "latitude": 17.421202,
+        "longitude": 78.347686,
+        "accuracy": 108,
+        "capturedAt": "2026-10-29T04:00:14.060Z",
+        "receivedAt": "2026-10-29T04:00:14.841Z"
+      },
+      {
+        "latitude": 17.421202,
+        "longitude": 78.347686,
+        "accuracy": 108,
+        "capturedAt": "2026-10-29T04:00:14.060Z",
+        "receivedAt": "2026-10-29T04:00:14.850Z"
+      },
+      {
+        "latitude": 17.421129,
+        "longitude": 78.347675,
+        "accuracy": 96,
+        "capturedAt": "2026-10-29T04:00:25.310Z",
+        "receivedAt": "2026-10-29T04:00:26.230Z"
+      },
+      {
+        "latitude": 17.421129,
+        "longitude": 78.347675,
+        "accuracy": 96,
+        "capturedAt": "2026-10-29T04:00:25.310Z",
+        "receivedAt": "2026-10-29T04:00:26.233Z"
+      },
+      {
+        "latitude": 17.421135,
+        "longitude": 78.347673,
+        "accuracy": 92,
+        "capturedAt": "2026-10-29T04:00:36.585Z",
+        "receivedAt": "2026-10-29T04:00:37.045Z"
+      },
+      {
+        "latitude": 17.421135,
+        "longitude": 78.347673,
+        "accuracy": 92,
+        "capturedAt": "2026-10-29T04:00:36.585Z",
+        "receivedAt": "2026-10-29T04:00:37.142Z"
+      },
+      {
+        "latitude": 17.421075,
+        "longitude": 78.347673,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:00:46.807Z",
+        "receivedAt": "2026-10-29T04:00:50.641Z"
+      },
+      {
+        "latitude": 17.421075,
+        "longitude": 78.347673,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:00:46.807Z",
+        "receivedAt": "2026-10-29T04:00:50.792Z"
+      },
+      {
+        "latitude": 17.421166,
+        "longitude": 78.347672,
+        "accuracy": 99,
+        "capturedAt": "2026-10-29T04:00:57.997Z",
+        "receivedAt": "2026-10-29T04:01:02.599Z"
+      },
+      {
+        "latitude": 17.421166,
+        "longitude": 78.347672,
+        "accuracy": 99,
+        "capturedAt": "2026-10-29T04:00:57.997Z",
+        "receivedAt": "2026-10-29T04:01:02.619Z"
+      },
+      {
+        "latitude": 17.421187,
+        "longitude": 78.347679,
+        "accuracy": 103,
+        "capturedAt": "2026-10-29T04:01:09.305Z",
+        "receivedAt": "2026-10-29T04:01:13.935Z"
+      },
+      {
+        "latitude": 17.421187,
+        "longitude": 78.347679,
+        "accuracy": 103,
+        "capturedAt": "2026-10-29T04:01:09.305Z",
+        "receivedAt": "2026-10-29T04:01:13.965Z"
+      },
+      {
+        "latitude": 17.42115,
+        "longitude": 78.347674,
+        "accuracy": 92,
+        "capturedAt": "2026-10-29T04:01:20.651Z",
+        "receivedAt": "2026-10-29T04:01:21.680Z"
+      },
+      {
+        "latitude": 17.42115,
+        "longitude": 78.347674,
+        "accuracy": 92,
+        "capturedAt": "2026-10-29T04:01:20.651Z",
+        "receivedAt": "2026-10-29T04:01:21.759Z"
+      },
+      {
+        "latitude": 17.421076,
+        "longitude": 78.347672,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:01:31.092Z",
+        "receivedAt": "2026-10-29T04:01:32.227Z"
+      },
+      {
+        "latitude": 17.421069,
+        "longitude": 78.347742,
+        "accuracy": 107,
+        "capturedAt": "2026-10-29T04:01:43.089Z",
+        "receivedAt": "2026-10-29T04:01:43.939Z"
+      },
+      {
+        "latitude": 17.421078,
+        "longitude": 78.347713,
+        "accuracy": 98,
+        "capturedAt": "2026-10-29T04:01:54.339Z",
+        "receivedAt": "2026-10-29T04:01:56.512Z"
+      },
+      {
+        "latitude": 17.421078,
+        "longitude": 78.347713,
+        "accuracy": 98,
+        "capturedAt": "2026-10-29T04:01:54.339Z",
+        "receivedAt": "2026-10-29T04:01:56.515Z"
+      },
+      {
+        "latitude": 17.421045,
+        "longitude": 78.347749,
+        "accuracy": 111,
+        "capturedAt": "2026-10-29T04:02:05.673Z",
+        "receivedAt": "2026-10-29T04:02:10.278Z"
+      },
+      {
+        "latitude": 17.421045,
+        "longitude": 78.347749,
+        "accuracy": 111,
+        "capturedAt": "2026-10-29T04:02:05.673Z",
+        "receivedAt": "2026-10-29T04:02:10.287Z"
+      },
+      {
+        "latitude": 17.421044,
+        "longitude": 78.347688,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:02:16.260Z",
+        "receivedAt": "2026-10-29T04:02:16.849Z"
+      },
+      {
+        "latitude": 17.421044,
+        "longitude": 78.347688,
+        "accuracy": 85,
+        "capturedAt": "2026-10-29T04:02:16.260Z",
+        "receivedAt": "2026-10-29T04:02:16.934Z"
+      },
+      {
+        "latitude": 17.421171,
+        "longitude": 78.34768,
+        "accuracy": 102,
+        "capturedAt": "2026-10-29T04:02:28.073Z",
+        "receivedAt": "2026-10-29T04:02:28.855Z"
+      },
+      {
+        "latitude": 17.421143,
+        "longitude": 78.347676,
+        "accuracy": 93,
+        "capturedAt": "2026-10-29T04:02:39.413Z",
+        "receivedAt": "2026-10-29T04:02:40.194Z"
+      }
+    ],
+    "createdAt": "2026-10-29T03:58:58.882Z",
+    "updatedAt": "2026-10-29T06:26:19.825Z",
+    "__v": 32
+  }
+]

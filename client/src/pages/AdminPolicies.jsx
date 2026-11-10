@@ -258,6 +258,21 @@ export default function AdminPolicies() {
     officeLatitude: "",
     officeLongitude: "",
     officeAddress: "",
+    officeName: "Head Office",
+    outOfRadiusPolicy: "BLOCK",
+    maxAccuracyMeters: 100,
+    accuracyFailurePolicy: "WARN",
+    gpsFailurePolicy: "BLOCK",
+  });
+
+  const [workArrangementRules, setWorkArrangementRules] = useState({
+    wfhLocationMode: "WFH_UNRESTRICTED",
+    wfhRequireHomeApproval: false,
+    wfhRadiusMeters: 200,
+    wfhMaxAccuracyMeters: 150,
+    hybridRemoteApprovalRequired: true,
+    monitoringEnabled: true,
+    monitoringMinIntervalSeconds: 60,
   });
 
   // Section 8: General Payroll & Pay Cycle
@@ -541,6 +556,21 @@ export default function AdminPolicies() {
       officeLatitude: policy.locationRules?.officeLatitude ?? "",
       officeLongitude: policy.locationRules?.officeLongitude ?? "",
       officeAddress: policy.locationRules?.officeAddress || "",
+      officeName: policy.locationRules?.officeName || "Head Office",
+      outOfRadiusPolicy: policy.locationRules?.outOfRadiusPolicy || "BLOCK",
+      maxAccuracyMeters: policy.locationRules?.maxAccuracyMeters ?? 100,
+      accuracyFailurePolicy: policy.locationRules?.accuracyFailurePolicy || "WARN",
+      gpsFailurePolicy: policy.locationRules?.gpsFailurePolicy || "BLOCK",
+    });
+
+    setWorkArrangementRules({
+      wfhLocationMode: policy.workArrangementRules?.wfhLocationMode || "WFH_UNRESTRICTED",
+      wfhRequireHomeApproval: Boolean(policy.workArrangementRules?.wfhRequireHomeApproval),
+      wfhRadiusMeters: policy.workArrangementRules?.wfhRadiusMeters ?? 200,
+      wfhMaxAccuracyMeters: policy.workArrangementRules?.wfhMaxAccuracyMeters ?? 150,
+      hybridRemoteApprovalRequired: policy.workArrangementRules?.hybridRemoteApprovalRequired !== false,
+      monitoringEnabled: policy.workArrangementRules?.monitoringEnabled !== false,
+      monitoringMinIntervalSeconds: policy.workArrangementRules?.monitoringMinIntervalSeconds ?? 60,
     });
 
     // Payroll
@@ -713,6 +743,7 @@ export default function AdminPolicies() {
         officeLatitude: locationRules.officeLatitude !== "" ? Number(locationRules.officeLatitude) : null,
         officeLongitude: locationRules.officeLongitude !== "" ? Number(locationRules.officeLongitude) : null,
       },
+      workArrangementRules,
       payrollRules,
       salaryComponentRules,
       taxStatutoryRules,
@@ -2595,17 +2626,210 @@ export default function AdminPolicies() {
                 )}
               </div>
 
-              <div className="policies-field-group" style={{ marginTop: 14 }}>
-                <label className="policies-field-label">Office Base Address</label>
-                <input
-                  type="text"
-                  className="policies-input-control"
-                  placeholder="e.g. Corporate Headquarters, Tech Park, Hyderabad"
-                  value={locationRules.officeAddress}
-                  onChange={(e) =>
-                    setLocationRules({ ...locationRules, officeAddress: e.target.value })
-                  }
-                />
+              <div className="policies-form-grid-3" style={{ marginTop: 14 }}>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">Office Name</label>
+                  <input
+                    type="text"
+                    className="policies-input-control"
+                    value={locationRules.officeName}
+                    onChange={(e) =>
+                      setLocationRules({ ...locationRules, officeName: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">Out-of-radius policy</label>
+                  <select
+                    className="policies-input-control"
+                    value={locationRules.outOfRadiusPolicy}
+                    onChange={(e) =>
+                      setLocationRules({ ...locationRules, outOfRadiusPolicy: e.target.value })
+                    }
+                  >
+                    <option value="BLOCK">Block punch</option>
+                    <option value="WARN">Allow + create HR exception</option>
+                    <option value="OFF">Do not enforce</option>
+                  </select>
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">Max GPS accuracy (m)</label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    className="policies-input-control"
+                    value={locationRules.maxAccuracyMeters}
+                    onChange={(e) =>
+                      setLocationRules({
+                        ...locationRules,
+                        maxAccuracyMeters: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="policies-form-grid-3" style={{ marginTop: 12 }}>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">Accuracy failure policy</label>
+                  <select
+                    className="policies-input-control"
+                    value={locationRules.accuracyFailurePolicy}
+                    onChange={(e) =>
+                      setLocationRules({ ...locationRules, accuracyFailurePolicy: e.target.value })
+                    }
+                  >
+                    <option value="WARN">Warn / exception</option>
+                    <option value="BLOCK">Block punch</option>
+                    <option value="OFF">Ignore</option>
+                  </select>
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">GPS failure policy</label>
+                  <select
+                    className="policies-input-control"
+                    value={locationRules.gpsFailurePolicy}
+                    onChange={(e) =>
+                      setLocationRules({ ...locationRules, gpsFailurePolicy: e.target.value })
+                    }
+                  >
+                    <option value="BLOCK">Block punch when GPS missing</option>
+                    <option value="WARN">Allow without GPS only if geofence is off</option>
+                    <option value="OFF">Allow without GPS only if geofence is off</option>
+                  </select>
+                  <span className="policies-field-hint">
+                    Office/remote geofence always requires coordinates. WARN/OFF never bypass an enforced geofence.
+                  </span>
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">Office Base Address</label>
+                  <input
+                    type="text"
+                    className="policies-input-control"
+                    placeholder="e.g. Corporate Headquarters, Tech Park, Hyderabad"
+                    value={locationRules.officeAddress}
+                    onChange={(e) =>
+                      setLocationRules({ ...locationRules, officeAddress: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="policies-card-header" style={{ marginTop: 28 }}>
+                <div className="policies-card-title-group">
+                  <div>
+                    <h3 className="policies-card-title">WFH &amp; Hybrid work arrangements</h3>
+                    <p className="policies-field-hint" style={{ marginTop: 4 }}>
+                      Independent of office geofence. Hybrid remote sessions still require HR approval when enabled below.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="policies-form-grid-3" style={{ marginTop: 12 }}>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">WFH location mode</label>
+                  <select
+                    className="policies-input-control"
+                    value={workArrangementRules.wfhLocationMode}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        wfhLocationMode: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="WFH_UNRESTRICTED">Location not restricted</option>
+                    <option value="WFH_APPROVED_LOCATION">Approved home location required</option>
+                  </select>
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">WFH radius (m)</label>
+                  <input
+                    type="number"
+                    min="25"
+                    max="5000"
+                    className="policies-input-control"
+                    value={workArrangementRules.wfhRadiusMeters}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        wfhRadiusMeters: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="policies-field-group">
+                  <label className="policies-field-label">WFH max accuracy (m)</label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    className="policies-input-control"
+                    value={workArrangementRules.wfhMaxAccuracyMeters}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        wfhMaxAccuracyMeters: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+                <label className="policies-checkbox-card">
+                  <input
+                    type="checkbox"
+                    className="policies-checkbox-input"
+                    checked={workArrangementRules.wfhRequireHomeApproval}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        wfhRequireHomeApproval: e.target.checked,
+                      })
+                    }
+                  />
+                  <div className="policies-checkbox-text">
+                    <span className="policies-checkbox-title">Require HR approval of registered home location</span>
+                  </div>
+                </label>
+                <label className="policies-checkbox-card">
+                  <input
+                    type="checkbox"
+                    className="policies-checkbox-input"
+                    checked={workArrangementRules.hybridRemoteApprovalRequired}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        hybridRemoteApprovalRequired: e.target.checked,
+                      })
+                    }
+                  />
+                  <div className="policies-checkbox-text">
+                    <span className="policies-checkbox-title">Hybrid employees need HR remote-work approval per day</span>
+                  </div>
+                </label>
+                <label className="policies-checkbox-card">
+                  <input
+                    type="checkbox"
+                    className="policies-checkbox-input"
+                    checked={workArrangementRules.monitoringEnabled}
+                    onChange={(e) =>
+                      setWorkArrangementRules({
+                        ...workArrangementRules,
+                        monitoringEnabled: e.target.checked,
+                      })
+                    }
+                  />
+                  <div className="policies-checkbox-text">
+                    <span className="policies-checkbox-title">Monitor location during active geofenced sessions</span>
+                    <span className="policies-checkbox-desc">
+                      Out-of-radius creates a reviewable exception; sessions are not auto-terminated.
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className="policies-save-bar">

@@ -1,0 +1,267 @@
+[
+  {
+    "_id": "6aeb4b597b2e1a5ca9ddc9b7",
+    "name": "HRMS Default Offer Letter",
+    "type": "DEFAULT_BUILDER",
+    "source": "HRMS_MASTER",
+    "masterCode": "HRMS_DEFAULT_V1",
+    "masterVersion": 1,
+    "status": "ACTIVE",
+    "isDefault": true,
+    "isSystemDefault": true,
+    "version": 1,
+    "versions": [
+      {
+        "version": 1,
+        "snapshot": {
+          "sectionConfig": {
+            "cover": {
+              "id": "cover_letter",
+              "kind": "cover",
+              "title": "OFFER LETTER",
+              "salutation": "Dear {{candidate_name}},",
+              "paragraphs": [
+                "We are pleased to offer you employment with **{{company_name}}** (the \"Company\") in the position of **{{designation}}** on a **{{employment_type}}** basis. Your proposed date of joining is **{{joining_date}}**, and you will be based at **{{work_location}}**.",
+                "Your gross monthly compensation will be **{{monthly_salary}}** (annualised compensation of **{{annual_salary}}**), subject to statutory deductions and the terms set out in the pages that follow.",
+                "This offer is made on the terms and conditions in the enclosed Terms of Employment, which form an integral part of this letter. Please confirm your acceptance by signing below within **{{acceptance_days}} days** of the date of this letter. We look forward to welcoming you to the team."
+              ],
+              "closing": "Yours sincerely,"
+            },
+            "execution": {
+              "id": "execution",
+              "kind": "execution",
+              "title": "EXECUTION",
+              "statement": "By signing below, the parties confirm that they have read, understood, and agreed to the terms of this Offer Letter and the Terms of Employment set out above."
+            },
+            "defaults": {
+              "probationMonths": 3,
+              "probationNoticeDays": 30,
+              "noticeDays": 60,
+              "officeHours": "09:30 AM to 06:30 PM",
+              "workingDays": "Monday to Friday",
+              "acceptanceDays": 5
+            }
+          },
+          "legalSections": [
+            {
+              "id": "employment_terms",
+              "order": 1,
+              "title": "1. Employment Terms",
+              "isRequired": true,
+              "terms": [
+                {
+                  "id": "position_duties",
+                  "lead": "Position and Duties.",
+                  "text": "You will be employed as {{designation}} in the {{department}} function and will report to {{reporting_manager}} or such other person as the Company may designate. You agree to perform the duties assigned to you diligently, in good faith, and in the best interests of the Company."
+                },
+                {
+                  "id": "commencement",
+                  "lead": "Commencement.",
+                  "text": "Your employment will commence on {{joining_date}}. This offer is conditional on your reporting on that date and on satisfactory completion of the pre-employment formalities described in this letter."
+                },
+                {
+                  "id": "place_of_work",
+                  "lead": "Place of Work.",
+                  "text": "Your primary place of work will be {{work_location}}. The Company may, based on business needs, require you to work from or travel to other locations, including on a remote or hybrid basis."
+                },
+                {
+                  "id": "probation",
+                  "lead": "Probation.",
+                  "text": "You will be on probation for {{probation_months}} months from your date of joining. The Company may extend the probation period if performance expectations are not met. Confirmation of employment will be communicated in writing."
+                },
+                {
+                  "id": "working_hours",
+                  "lead": "Working Days and Hours.",
+                  "text": "Your standard working days are {{working_days}}, with working hours of {{office_hours}}. You may occasionally be required to work additional hours or on other days as business needs require."
+                }
+              ]
+            },
+            {
+              "id": "compensation_benefits_leave",
+              "order": 2,
+              "title": "2. Compensation, Benefits and Leave",
+              "isRequired": true,
+              "terms": [
+                {
+                  "id": "compensation",
+                  "lead": "Compensation.",
+                  "text": "Your gross monthly compensation is {{monthly_salary}} ({{annual_salary}} per annum). Salary is paid on or before the last working day of each month by direct bank transfer."
+                },
+                {
+                  "id": "statutory_deductions",
+                  "lead": "Statutory Deductions.",
+                  "text": "All payments are subject to deductions required by applicable law, including income tax at source, provident fund, employee state insurance, and professional tax, as applicable."
+                },
+                {
+                  "id": "benefits",
+                  "lead": "Benefits.",
+                  "text": "You will be eligible for benefits made available to employees of your grade under Company policy from time to time. The Company may amend, withdraw, or replace any benefit scheme at its discretion."
+                },
+                {
+                  "id": "leave",
+                  "lead": "Leave.",
+                  "text": "You will be entitled to leave in accordance with the Company leave policy, which accrues on a pro-rata basis from your date of joining. Leave must be applied for and approved in advance through the HRMS portal."
+                },
+                {
+                  "id": "holidays",
+                  "lead": "Holidays.",
+                  "text": "You will be entitled to the public and company holidays published by the Company each year."
+                },
+                {
+                  "id": "expenses",
+                  "lead": "Business Expenses.",
+                  "text": "Reasonable, pre-approved business expenses incurred in the course of your duties will be reimbursed against valid supporting documents in accordance with Company policy."
+                }
+              ]
+            },
+            {
+              "id": "policies_conduct",
+              "order": 3,
+              "title": "3. Policies and Code of Conduct",
+              "isRequired": false,
+              "terms": [
+                {
+                  "id": "company_policies",
+                  "lead": "Company Policies.",
+                  "text": "You agree to comply with all Company policies, procedures, and rules as in force from time to time, including those on information security, data protection, anti-harassment (including the Prevention of Sexual Harassment policy), and acceptable use of Company systems."
+                },
+                {
+                  "id": "code_of_conduct",
+                  "lead": "Code of Conduct.",
+                  "text": "You are expected to maintain the highest standards of integrity, professionalism, and ethical conduct, and to avoid any conflict of interest between your personal interests and those of the Company."
+                },
+                {
+                  "id": "background_verification",
+                  "lead": "Background Verification.",
+                  "text": "This offer is contingent on satisfactory verification of your identity, qualifications, prior employment, and references. Any false, misleading, or suppressed information may result in withdrawal of this offer or termination of employment without notice."
+                },
+                {
+                  "id": "outside_employment",
+                  "lead": "Outside Activities.",
+                  "text": "During your employment you will not, without prior written consent of the Company, engage in any other employment, consultancy, or business activity that may conflict with your duties or the interests of the Company."
+                }
+              ]
+            },
+            {
+              "id": "confidentiality",
+              "order": 4,
+              "title": "4. Confidentiality",
+              "isRequired": false,
+              "terms": [
+                {
+                  "id": "confidential_information",
+                  "lead": "Confidential Information.",
+                  "text": "You will have access to confidential and proprietary information of {{company_name}}, its clients, and its partners, including business plans, financial data, client details, source code, and trade secrets. You agree to keep all such information strictly confidential during and after your employment."
+                },
+                {
+                  "id": "permitted_use",
+                  "lead": "Permitted Use.",
+                  "text": "You will use confidential information solely for the performance of your duties and will not copy, disclose, or retain it except as authorised in writing by the Company or as required by law."
+                },
+                {
+                  "id": "return_of_materials",
+                  "lead": "Return of Materials.",
+                  "text": "On request, and in any event on cessation of employment, you will promptly return all documents, data, and materials containing confidential information in any form."
+                }
+              ]
+            },
+            {
+              "id": "intellectual_property",
+              "order": 5,
+              "title": "5. Intellectual Property",
+              "isRequired": false,
+              "terms": [
+                {
+                  "id": "work_product",
+                  "lead": "Ownership of Work Product.",
+                  "text": "All inventions, software, designs, documentation, and other work product created by you in the course of your employment, or using Company resources, will be the sole and exclusive property of {{company_name}} from creation."
+                },
+                {
+                  "id": "assignment",
+                  "lead": "Assignment and Assistance.",
+                  "text": "You assign to the Company all rights in such work product and agree to sign any document and take any action reasonably required to perfect the Company's rights, during and after your employment."
+                }
+              ]
+            },
+            {
+              "id": "resignation_termination",
+              "order": 6,
+              "title": "6. Resignation and Termination",
+              "isRequired": true,
+              "terms": [
+                {
+                  "id": "notice_probation",
+                  "lead": "Notice During Probation.",
+                  "text": "During probation, either party may end the employment by giving {{probation_notice_days}} days' written notice or salary in lieu of notice."
+                },
+                {
+                  "id": "notice_confirmed",
+                  "lead": "Notice After Confirmation.",
+                  "text": "After confirmation, either party may end the employment by giving {{notice_period_days}} days' written notice or salary in lieu of the unserved period. The Company may require you to serve the full notice period to ensure an orderly handover."
+                },
+                {
+                  "id": "termination_for_cause",
+                  "lead": "Termination for Cause.",
+                  "text": "The Company may terminate your employment without notice or compensation in lieu for serious misconduct, breach of confidentiality, fraud or dishonesty, wilful neglect of duty, or material breach of this letter or Company policy."
+                },
+                {
+                  "id": "return_of_property",
+                  "lead": "Return of Company Property.",
+                  "text": "On cessation of employment, you will return all Company property, including equipment, access cards, documents, and accounts, before your final settlement and relieving documents are released."
+                },
+                {
+                  "id": "final_settlement",
+                  "lead": "Full and Final Settlement.",
+                  "text": "Dues payable to you on separation will be settled in accordance with Company policy and applicable law, after adjustment of any amounts owed to the Company."
+                }
+              ]
+            },
+            {
+              "id": "general",
+              "order": 7,
+              "title": "7. General",
+              "isRequired": false,
+              "terms": [
+                {
+                  "id": "entire_agreement",
+                  "lead": "Entire Agreement.",
+                  "text": "This letter, together with the Company policies referred to in it, constitutes the entire understanding between you and the Company and supersedes all prior discussions and representations."
+                },
+                {
+                  "id": "amendments",
+                  "lead": "Amendments.",
+                  "text": "The terms of this letter may be amended only in writing signed by an authorised representative of the Company, except where changes to policies are communicated generally to employees."
+                },
+                {
+                  "id": "severability",
+                  "lead": "Severability.",
+                  "text": "If any provision of this letter is held to be invalid or unenforceable, the remaining provisions will continue in full force and effect."
+                },
+                {
+                  "id": "governing_law",
+                  "lead": "Governing Law.",
+                  "text": "This letter is governed by the laws of India, and the courts at the Company's registered location will have exclusive jurisdiction over any dispute arising out of it."
+                },
+                {
+                  "id": "offer_validity",
+                  "lead": "Validity of Offer.",
+                  "text": "This offer will lapse if a signed copy is not received within {{acceptance_days}} days of the date of this letter, unless extended in writing by the Company."
+                }
+              ]
+            }
+          ],
+          "masterCode": "HRMS_DEFAULT_V1",
+          "masterVersion": 1
+        },
+        "placeholderMappings": [],
+        "createdAt": "2026-11-04T15:12:25.160Z"
+      }
+    ],
+    "placeholders": [],
+    "createdBy": null,
+    "placeholderMappings": [],
+    "updatedAt": "2026-11-04T15:12:25.162Z",
+    "createdAt": "2026-11-04T15:12:25.162Z",
+    "__v": 0
+  }
+]

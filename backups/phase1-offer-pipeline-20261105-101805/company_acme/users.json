@@ -1,0 +1,767 @@
+[
+  {
+    "_id": "6ad0ac8cafd4b3a691da3f7f",
+    "email": "hr@acme.test",
+    "__v": 1,
+    "createdAt": "2026-10-15T10:35:55.635Z",
+    "isActive": true,
+    "lastLoginAt": "2026-11-04T17:21:19.113Z",
+    "passwordHash": "$2b$12$mBphkoEo3S1cmljxFjMZIeav0URSxIIv075794WQIPHndO7pozvB.",
+    "role": "HR_ADMIN",
+    "schemaVersion": 1,
+    "updatedAt": "2026-11-04T17:21:19.122Z",
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false,
+      "readNotificationIds": []
+    }
+  },
+  {
+    "_id": "6ad0c7b6cb659753a419679b",
+    "email": "mayadevi@gmail.com",
+    "passwordHash": "$2b$12$u5o.3KuQQ5TAIaQBvwtYbOCbBDy3f6AyqmILRtoNXALk1QHbYOAPq",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T12:31:50.467Z",
+    "updatedAt": "2026-10-15T12:31:50.467Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0daedd3ae32a099f0d0bd",
+    "email": "kavya@acme.test",
+    "passwordHash": "$2b$12$5sEKjyuAVBejFiFa./CVfO0FzwZ3Y2MuF/S3FVMdbMFkcBo6loyTS",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T13:53:49.202Z",
+    "updatedAt": "2026-10-15T13:53:49.202Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0dc14d3ae32a099f0d0c4",
+    "email": "test.employee@acme.test",
+    "passwordHash": "$2b$12$GNop09rgMrnixeBAtIrpQeGlism5rFdXzX/T0T0x/3kQZ7GCfQ4By",
+    "role": "EMPLOYEE",
+    "isActive": false,
+    "lastLoginAt": "2026-10-15T13:58:54.974Z",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T13:58:44.741Z",
+    "updatedAt": "2026-10-17T05:45:01.054Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad0e1bb0e6bab06da978e16",
+    "email": "inactive@acme.test",
+    "passwordHash": "$2b$12$ku.EBB7UNa19vYsBjCH/R.24r0ahesZq7iY9/YCCxX6ECWSvypiJm",
+    "role": "EMPLOYEE",
+    "isActive": false,
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-15T14:22:51.324Z",
+    "updatedAt": "2026-10-15T14:22:51.324Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad302edafd4b3a691dad7dd",
+    "email": "employee@acme.test",
+    "__v": 0,
+    "createdAt": "2026-10-17T05:09:00.741Z",
+    "isActive": true,
+    "lastLoginAt": "2026-11-02T13:06:58.100Z",
+    "passwordHash": "$2b$12$c3vKnmTae2lKvPIFF9A1i.Kom7Cy/MFCLpnOdTT/7nBxXqbajm.Xe",
+    "role": "EMPLOYEE",
+    "schemaVersion": 1,
+    "updatedAt": "2026-11-02T13:06:58.114Z",
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false
+    }
+  },
+  {
+    "_id": "6ad607eaf9f3b90078eac885",
+    "email": "harshapolina1@gmail.com",
+    "passwordHash": "$2b$12$bojkGuDLQDsfdN4MfljQ5eJWWqRoPU6XaUquhfJMc5BWVKxRJZELO",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-19T12:07:06.871Z",
+    "updatedAt": "2026-10-19T12:07:06.871Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8a9f93c2a695eca484749",
+    "email": "sravanikasi14@gmail.com",
+    "role": "CANDIDATE",
+    "isActive": false,
+    "employeeId": null,
+    "onboarding": {
+      "candidate": {
+        "fullName": "Sravani Kasi",
+        "email": "sravanikasi14@gmail.com",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "Sravani Kasi",
+        "preferredName": "",
+        "email": "sravanikasi14@gmail.com",
+        "phoneNumber": "758638541",
+        "personalPhone": "",
+        "dateOfBirth": "2026-10-21T00:00:00.000Z",
+        "gender": "Female",
+        "city": "Hyderabad"
+      },
+      "residentialAddress": {
+        "street": "asdfghjkl;'",
+        "city": "dfghjkl;",
+        "state": "sdfghjkl",
+        "postalCode": "zxcvbnm,.",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "scvbnm,.",
+        "relationship": "ihjbn",
+        "phone": "zxcvb/"
+      },
+      "bankDetails": {
+        "accountHolderName": "Sravani Kasi",
+        "bankName": "zxcvbnm,",
+        "accountNumber": "bnm,./",
+        "ifscCode": "SZXDCFGVBHNJMK,L",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "ZXCFGVBHNJMK",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "offerLetterId": "6ad8a9da3c2a695eca484742",
+      "status": "SUBMITTED",
+      "onboardingTokenHash": "72e5956543c37eabe7c58c3efba7a9ccb0a1b4739d1f3f3b9f76253b374309b6",
+      "tokenExpiresAt": "2026-11-04T12:03:06.031Z",
+      "correctionReason": "",
+      "rejectionReason": "",
+      "reviewNotes": "",
+      "submittedAt": "2026-10-21T12:04:25.375Z",
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": null,
+      "approvedBy": null,
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "employeeId": null,
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-10-21T12:03:05.929Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate Sravani Kasi"
+        },
+        {
+          "action": "SUBMITTED",
+          "timestamp": "2026-10-21T12:04:25.375Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Initial submission"
+        }
+      ],
+      "documents": [
+        {
+          "documentType": "ID_PROOF",
+          "title": "Probability And Statistics.pdf",
+          "fileName": "Probability_And_Statistics.pdf",
+          "fileSize": 553521,
+          "mimeType": "application/pdf",
+          "storageKey": "1792584263268_540acad3c2f8_Probability_And_Statistics.pdf",
+          "uploadedAt": "2026-10-21T12:04:23.274Z"
+        }
+      ]
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T12:03:05.940Z",
+    "updatedAt": "2026-10-21T12:29:23.660Z",
+    "__v": 1
+  },
+  {
+    "_id": "6ad8b0760bea4f30cebaa59f",
+    "email": "sravani.140907@gmail.com",
+    "role": "CANDIDATE",
+    "isActive": false,
+    "employeeId": null,
+    "onboarding": {
+      "candidate": {
+        "fullName": "Sravani",
+        "email": "sravani.140907@gmail.com",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "Sravani",
+        "preferredName": "",
+        "email": "sravani.140907@gmail.com",
+        "phoneNumber": "\\475962/1'",
+        "personalPhone": "",
+        "dateOfBirth": "2026-10-21T00:00:00.000Z",
+        "gender": "Female",
+        "city": "Hyderabad"
+      },
+      "residentialAddress": {
+        "street": "asxdcnjmk",
+        "city": "dxfghj",
+        "state": "xcfvgbhnjkm,l",
+        "postalCode": "xdcfvgbhnjk",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "sxdcfvgbhnjm",
+        "relationship": "",
+        "phone": "sxdcfvgbhnjm"
+      },
+      "bankDetails": {
+        "accountHolderName": "Sravani",
+        "bankName": "xdcgvbhnjmk",
+        "accountNumber": "vbhnjm,.jhgfxa",
+        "ifscCode": "7563H",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "DCFGVBHNJK",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "offerLetterId": "6ad8b0480bea4f30cebaa598",
+      "status": "REJECTED",
+      "onboardingTokenHash": null,
+      "tokenExpiresAt": null,
+      "correctionReason": "",
+      "rejectionReason": "i will create you again",
+      "reviewNotes": "",
+      "submittedAt": "2026-10-21T12:32:05.380Z",
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": null,
+      "approvedBy": null,
+      "rejectedAt": "2026-11-04T15:58:40.367Z",
+      "rejectedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "employeeId": null,
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-10-21T12:30:46.815Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate Sravani"
+        },
+        {
+          "action": "SUBMITTED",
+          "timestamp": "2026-10-21T12:32:05.380Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Initial submission"
+        },
+        {
+          "action": "REJECTED",
+          "timestamp": "2026-11-04T15:58:40.369Z",
+          "actorRole": "HR_ADMIN",
+          "notes": "i will create you again"
+        }
+      ],
+      "documents": [
+        {
+          "_id": "6ad8b0c30bea4f30cebaa5a1",
+          "documentType": "ID_PROOF",
+          "title": "Probability And Statistics.pdf",
+          "fileName": "Probability_And_Statistics.pdf",
+          "fileSize": 553521,
+          "mimeType": "application/pdf",
+          "storageKey": "1792585923537_d90148eace66_Probability_And_Statistics.pdf",
+          "uploadedAt": "2026-10-21T12:32:03.542Z"
+        }
+      ]
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T12:30:46.820Z",
+    "updatedAt": "2026-11-04T15:58:40.387Z",
+    "__v": 2,
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "compactView": false,
+      "emailNotifications": true,
+      "readNotificationIds": [],
+      "weeklyDigest": true
+    }
+  },
+  {
+    "_id": "6ad8b2400bea4f30cebaa5b2",
+    "email": "clippyclueai@gmail.com",
+    "role": "CANDIDATE",
+    "isActive": false,
+    "employeeId": null,
+    "onboarding": {
+      "offerLetterId": "6ad8b2130bea4f30cebaa5ab",
+      "status": "DRAFT",
+      "onboardingTokenHash": "93381b6e0fdbf699fed063c9f07f836b85aa18e8600bce2723f56116ebc73587",
+      "tokenExpiresAt": "2026-11-04T12:38:24.176Z",
+      "candidate": {
+        "fullName": "sreedhar",
+        "email": "clippyclueai@gmail.com",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "sreedhar",
+        "email": "clippyclueai@gmail.com",
+        "preferredName": "",
+        "phoneNumber": "",
+        "personalPhone": "",
+        "dateOfBirth": null,
+        "gender": "",
+        "city": ""
+      },
+      "residentialAddress": {
+        "street": "",
+        "city": "",
+        "state": "",
+        "postalCode": "",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "",
+        "relationship": "",
+        "phone": ""
+      },
+      "bankDetails": {
+        "accountHolderName": "",
+        "bankName": "",
+        "accountNumber": "",
+        "ifscCode": "",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "correctionReason": "",
+      "rejectionReason": "",
+      "reviewNotes": "",
+      "submittedAt": null,
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": null,
+      "approvedBy": null,
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "employeeId": null,
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-10-21T12:38:24.069Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate sreedhar"
+        }
+      ],
+      "documents": []
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T12:38:24.073Z",
+    "updatedAt": "2026-10-21T12:38:24.177Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ad8b3e40bea4f30cebaa5c0",
+    "email": "2025eb01909@online.bits-pilani.ac.in",
+    "role": "EMPLOYEE",
+    "isActive": false,
+    "employeeId": "6ad8b42c0bea4f30cebaa5c5",
+    "onboarding": {
+      "candidate": {
+        "fullName": "sirisha",
+        "email": "2025eb01909@online.bits-pilani.ac.in",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "sirisha",
+        "preferredName": "",
+        "email": "2025eb01909@online.bits-pilani.ac.in",
+        "phoneNumber": "drftgjukilo;",
+        "personalPhone": "",
+        "dateOfBirth": "2026-10-21T00:00:00.000Z",
+        "gender": "Female",
+        "city": ""
+      },
+      "residentialAddress": {
+        "street": "azsxdnjmk,",
+        "city": "bnm,l",
+        "state": "dfghj",
+        "postalCode": "dfghj",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "dfghjk",
+        "relationship": "",
+        "phone": "xcvbnm"
+      },
+      "bankDetails": {
+        "accountHolderName": "sirisha",
+        "bankName": "784512",
+        "accountNumber": "741",
+        "ifscCode": "820",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "\\741",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "offerLetterId": "6ad8b37b0bea4f30cebaa5b9",
+      "status": "APPROVED",
+      "onboardingTokenHash": null,
+      "tokenExpiresAt": null,
+      "correctionReason": "",
+      "rejectionReason": "",
+      "reviewNotes": "",
+      "submittedAt": "2026-10-21T12:46:20.417Z",
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": "2026-10-21T12:46:36.189Z",
+      "approvedBy": "6ad0ac8cafd4b3a691da3f7f",
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "employeeId": "6ad8b42c0bea4f30cebaa5c5",
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-10-21T12:45:24.929Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate sirisha"
+        },
+        {
+          "action": "SUBMITTED",
+          "timestamp": "2026-10-21T12:46:20.417Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Initial submission"
+        },
+        {
+          "action": "APPROVED",
+          "timestamp": "2026-10-21T12:46:36.189Z",
+          "actorRole": "HR_ADMIN",
+          "notes": "Approved by HR. Employee profile created with code ACM-009."
+        }
+      ],
+      "documents": [
+        {
+          "_id": "6ad8b4170bea4f30cebaa5c2",
+          "documentType": "ID_PROOF",
+          "title": "Probability And Statistics.pdf",
+          "fileName": "Probability_And_Statistics.pdf",
+          "fileSize": 553521,
+          "mimeType": "application/pdf",
+          "storageKey": "1792586775486_949dc7fa7ff3_Probability_And_Statistics.pdf",
+          "uploadedAt": "2026-10-21T12:46:15.490Z"
+        }
+      ]
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-21T12:45:24.935Z",
+    "updatedAt": "2026-10-21T12:46:36.191Z",
+    "__v": 2
+  },
+  {
+    "_id": "6ada0679ab37882693d8c860",
+    "email": "harshapolinax@gmail.com",
+    "passwordHash": "$2b$12$2Jl6te0Dp0h2FIwAarE.t.uo0gCo/W4MkDQRFoCP80..wngb68c1G",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "employeeId": null,
+    "onboarding": null,
+    "lastLoginAt": "2026-10-22T12:50:39.152Z",
+    "schemaVersion": 1,
+    "createdAt": "2026-10-22T12:50:01.352Z",
+    "updatedAt": "2026-10-22T12:50:39.152Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae09702486f01cc6aa27bf8",
+    "email": "yashika@email.com",
+    "passwordHash": "$2b$12$qCFa8JXtt5agEGc1Iug8EeYLCugdMR1Psgeyk1z7pYG2OT7L/BA8y",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "employeeId": null,
+    "onboarding": null,
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-27T12:20:18.233Z",
+    "updatedAt": "2026-10-27T12:20:18.233Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae41d5cc5a6418c517f8af1",
+    "email": "supriyadevi@gmail.com",
+    "passwordHash": "$2b$12$8V14xh5ogqJh1VFijHm4Hulr7NkabmOchod1QjkxB8X8x8zTg43Hm",
+    "role": "EMPLOYEE",
+    "isActive": false,
+    "employeeId": "6ae41d5cc5a6418c517f8af2",
+    "onboarding": null,
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-10-30T04:30:20.892Z",
+    "updatedAt": "2026-11-02T04:52:45.927Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae81766b428cb622d8403d1",
+    "email": "employee2@acme.test",
+    "passwordHash": "$2b$12$15a65RQXlsDOEId3rD4A8OPYxUUmK01SBTO7wtjSPy5o5d4vz78BG",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "employeeId": "6ae81766b428cb622d8403d2",
+    "onboarding": null,
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false
+    },
+    "lastLoginAt": "2026-11-02T10:47:05.089Z",
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T04:53:58.644Z",
+    "updatedAt": "2026-11-02T10:47:05.101Z",
+    "__v": 0
+  },
+  {
+    "_id": "6ae8183fb428cb622d8403db",
+    "email": "employee3@acme.test",
+    "passwordHash": "$2b$12$xgqp.HYklrH2WMiXZ80E2O5x5EOxnGuxkhVtyqVEbi12.v4uTQHsO",
+    "role": "EMPLOYEE",
+    "isActive": true,
+    "employeeId": "6ae8183fb428cb622d8403dc",
+    "onboarding": null,
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false
+    },
+    "lastLoginAt": "2026-11-02T11:01:42.181Z",
+    "schemaVersion": 1,
+    "createdAt": "2026-11-02T04:57:35.182Z",
+    "updatedAt": "2026-11-02T11:19:05.790Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb109667dd45be4ee58657",
+    "email": "nishithasri851@gmail.com",
+    "role": "CANDIDATE",
+    "isActive": false,
+    "employeeId": null,
+    "onboarding": {
+      "offerLetterId": "6aeb0f4828c0a8f62342187a",
+      "status": "DRAFT",
+      "onboardingTokenHash": "844619f3a0968cf1edbc967a06003cf8c9b325bbfeed43e664ea6aa6e6bebc31",
+      "tokenExpiresAt": "2026-11-18T11:01:42.973Z",
+      "candidate": {
+        "fullName": "NishithaSri",
+        "email": "nishithasri851@gmail.com",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "NishithaSri",
+        "email": "nishithasri851@gmail.com",
+        "preferredName": "",
+        "phoneNumber": "",
+        "personalPhone": "",
+        "dateOfBirth": null,
+        "gender": "",
+        "city": ""
+      },
+      "residentialAddress": {
+        "street": "",
+        "city": "",
+        "state": "",
+        "postalCode": "",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "",
+        "relationship": "",
+        "phone": ""
+      },
+      "bankDetails": {
+        "accountHolderName": "",
+        "bankName": "",
+        "accountNumber": "",
+        "ifscCode": "",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "correctionReason": "",
+      "rejectionReason": "",
+      "reviewNotes": "",
+      "submittedAt": null,
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": null,
+      "approvedBy": null,
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "employeeId": null,
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-11-04T11:01:42.791Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate NishithaSri"
+        }
+      ],
+      "documents": []
+    },
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false,
+      "readNotificationIds": [],
+      "readAllNotificationsAt": null
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-11-04T11:01:42.818Z",
+    "updatedAt": "2026-11-04T11:01:42.974Z",
+    "__v": 0
+  },
+  {
+    "_id": "6aeb60a4421d7bac0cccdcbd",
+    "email": "dugguvaibhavi26@gmail.com",
+    "role": "CANDIDATE",
+    "isActive": false,
+    "employeeId": null,
+    "onboarding": {
+      "offerLetterId": "6aeb6012421d7bac0cccdcb1",
+      "status": "DRAFT",
+      "onboardingTokenHash": "46abd90918eb149788c360eb07137c8024a808f9793e223d12a8327ec70474b5",
+      "tokenExpiresAt": "2026-11-18T16:43:16.388Z",
+      "candidate": {
+        "fullName": "Vaibhavi",
+        "email": "dugguvaibhavi26@gmail.com",
+        "phoneNumber": ""
+      },
+      "personalDetails": {
+        "fullName": "Vaibhavi",
+        "email": "dugguvaibhavi26@gmail.com",
+        "preferredName": "",
+        "phoneNumber": "",
+        "personalPhone": "",
+        "dateOfBirth": null,
+        "gender": "",
+        "city": ""
+      },
+      "residentialAddress": {
+        "street": "",
+        "city": "",
+        "state": "",
+        "postalCode": "",
+        "country": "India"
+      },
+      "emergencyContact": {
+        "name": "",
+        "relationship": "",
+        "phone": ""
+      },
+      "bankDetails": {
+        "accountHolderName": "",
+        "bankName": "",
+        "accountNumber": "",
+        "ifscCode": "",
+        "accountType": "Salary Account"
+      },
+      "taxDetails": {
+        "panNumber": "",
+        "taxRegime": "New Tax Regime (Sec 115BAC)"
+      },
+      "identityDetails": {
+        "idType": "PAN / Aadhaar",
+        "idNumber": ""
+      },
+      "correctionReason": "",
+      "rejectionReason": "",
+      "reviewNotes": "",
+      "submittedAt": null,
+      "reviewedAt": null,
+      "reviewedBy": null,
+      "approvedAt": null,
+      "approvedBy": null,
+      "rejectedAt": null,
+      "rejectedBy": null,
+      "employeeId": null,
+      "history": [
+        {
+          "action": "OFFER_SIGNED",
+          "timestamp": "2026-11-04T16:43:16.170Z",
+          "actorRole": "CANDIDATE",
+          "notes": "Signed by candidate Vaibhavi"
+        }
+      ],
+      "documents": []
+    },
+    "fullName": "",
+    "phoneNumber": "",
+    "preferences": {
+      "emailNotifications": true,
+      "weeklyDigest": true,
+      "compactView": false,
+      "readNotificationIds": [],
+      "readAllNotificationsAt": null
+    },
+    "lastLoginAt": null,
+    "schemaVersion": 1,
+    "createdAt": "2026-11-04T16:43:16.175Z",
+    "updatedAt": "2026-11-04T16:43:16.389Z",
+    "__v": 0
+  }
+]

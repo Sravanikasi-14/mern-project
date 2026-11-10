@@ -24,6 +24,8 @@ import EmployeeSettingsPage from "../pages/employee/SettingsPage";
 import EmployeeMorePage from "../pages/employee/MorePage";
 import EmployeeOrganizationPage from "../pages/employee/OrganizationPage";
 import EmployeePoliciesPage from "../pages/employee/PoliciesPage";
+import MessagesListPage from "../pages/messages/MessagesListPage";
+import ConversationPage from "../pages/messages/ConversationPage";
 import HrHomePage from "../pages/hr/HomePage";
 import HrPeoplePage from "../pages/hr/PeoplePage";
 import HrPersonPage from "../pages/hr/PersonPage";
@@ -46,6 +48,7 @@ import HrReportsPage from "../pages/hr/ReportsPage";
 import HrImpactPage from "../pages/hr/ImpactPage";
 import HrMorePage from "../pages/hr/MorePage";
 import CompanyAdminHomePage from "../pages/company/HomePage";
+import CompanyHrAdminsPage from "../pages/company/HrAdminsPage";
 import { homeForRole } from "../utils/navigation";
 
 function IndexRedirect() {
@@ -119,14 +122,19 @@ export default function App() {
             <Route path="/activate" element={<ActivatePage />} />
             <Route path="/offers/review/:token" element={<OfferReviewPage />} />
             <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
-            <Route
-              path="/company"
-              element={
-                <CompanyAdmin>
-                  <CompanyAdminHomePage />
-                </CompanyAdmin>
-              }
-            />
+            <Route element={<CompanyAdmin><AppShell /></CompanyAdmin>}>
+              <Route path="/company" element={<CompanyAdminHomePage />} />
+              <Route
+                path="/company/organization"
+                element={<HrOrganizationPage backFallback="/company" title="Organisation" />}
+              />
+              <Route path="/company/hr-admins" element={<CompanyHrAdminsPage />} />
+              <Route path="/company/messages" element={<MessagesListPage basePath="/company/messages" />} />
+              <Route
+                path="/company/messages/:conversationId"
+                element={<ConversationPage basePath="/company/messages" />}
+              />
+            </Route>
             <Route element={<Employee><AppShell /></Employee>}>
               <Route path="/app" element={<EmployeeHomePage />} />
               <Route path="/app/dashboard" element={<EmployeeHomePage />} />
@@ -143,6 +151,8 @@ export default function App() {
               <Route path="/app/policies" element={<EmployeePoliciesPage />} />
               <Route path="/app/policies/:section" element={<HrPolicyDetailPage readOnly />} />
               <Route path="/app/organization" element={<EmployeeOrganizationPage />} />
+              <Route path="/app/messages" element={<MessagesListPage basePath="/app/messages" />} />
+              <Route path="/app/messages/:conversationId" element={<ConversationPage basePath="/app/messages" />} />
               <Route path="/app/more" element={<EmployeeMorePage />} />
             </Route>
             <Route element={<Hr><AppShell /></Hr>}>
@@ -163,6 +173,8 @@ export default function App() {
               <Route path="/admin/payroll/payslips/:payslipId" element={<HrPayslipDetailPage />} />
               <Route path="/admin/hiring" element={<HrHiringPage />} />
               <Route path="/admin/organization" element={<HrOrganizationPage />} />
+              <Route path="/admin/messages" element={<MessagesListPage basePath="/admin/messages" />} />
+              <Route path="/admin/messages/:conversationId" element={<ConversationPage basePath="/admin/messages" />} />
               {/* Offer draft editor (create / edit DRAFT offers); the pipeline itself lives only at /admin/hiring. */}
               <Route path="/admin/hiring/offer-editor" element={<HrOffersPage />} />
               <Route path="/admin/offers" element={<HiringRedirect context="offers" />} />

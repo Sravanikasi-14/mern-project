@@ -1,0 +1,366 @@
+{
+  "createdAt": "2026-11-05T04:48:32.506Z",
+  "databases": {
+    "platform": {
+      "collections": {
+        "companies": {
+          "count": 3,
+          "bytes": 936019,
+          "file": "platform/companies.json"
+        },
+        "offer_template_masters": {
+          "count": 1,
+          "bytes": 13954,
+          "file": "platform/offer_template_masters.json"
+        }
+      }
+    },
+    "company_acme": {
+      "collections": {
+        "attendances": {
+          "count": 9,
+          "bytes": 5922,
+          "file": "company_acme/attendances.json"
+        },
+        "audit_logs": {
+          "count": 193,
+          "bytes": 125957,
+          "file": "company_acme/audit_logs.json"
+        },
+        "authSessions": {
+          "count": 252,
+          "bytes": 189813,
+          "file": "company_acme/authSessions.json"
+        },
+        "authTokens": {
+          "count": 11,
+          "bytes": 7687,
+          "file": "company_acme/authTokens.json"
+        },
+        "company_assets": {
+          "count": 1,
+          "bytes": 1319,
+          "file": "company_acme/company_assets.json"
+        },
+        "company_hr_policies": {
+          "count": 1,
+          "bytes": 9001,
+          "file": "company_acme/company_hr_policies.json"
+        },
+        "employee_compensation": {
+          "count": 14,
+          "bytes": 16656,
+          "file": "company_acme/employee_compensation.json"
+        },
+        "employees": {
+          "count": 14,
+          "bytes": 34064,
+          "file": "company_acme/employees.json"
+        },
+        "impact_point_transactions": {
+          "count": 18,
+          "bytes": 17355,
+          "file": "company_acme/impact_point_transactions.json"
+        },
+        "leave_backup_proposals": {
+          "count": 1,
+          "bytes": 986,
+          "file": "company_acme/leave_backup_proposals.json"
+        },
+        "leave_handovers": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_acme/leave_handovers.json"
+        },
+        "leave_requests": {
+          "count": 7,
+          "bytes": 7099,
+          "file": "company_acme/leave_requests.json"
+        },
+        "live_tracking_sessions": {
+          "count": 4,
+          "bytes": 10134,
+          "file": "company_acme/live_tracking_sessions.json"
+        },
+        "notifications": {
+          "count": 4,
+          "bytes": 2190,
+          "file": "company_acme/notifications.json"
+        },
+        "offer_docs.chunks": {
+          "count": 22,
+          "bytes": 5718208,
+          "file": "company_acme/offer_docs.chunks.json"
+        },
+        "offer_docs.files": {
+          "count": 7,
+          "bytes": 3121,
+          "file": "company_acme/offer_docs.files.json"
+        },
+        "offer_letters": {
+          "count": 9,
+          "bytes": 4944900,
+          "file": "company_acme/offer_letters.json"
+        },
+        "offer_templates": {
+          "count": 1,
+          "bytes": 14673,
+          "file": "company_acme/offer_templates.json"
+        },
+        "payroll_cycles": {
+          "count": 1,
+          "bytes": 1456,
+          "file": "company_acme/payroll_cycles.json"
+        },
+        "payroll_payslips": {
+          "count": 7,
+          "bytes": 17663,
+          "file": "company_acme/payroll_payslips.json"
+        },
+        "settlements": {
+          "count": 1,
+          "bytes": 3009,
+          "file": "company_acme/settlements.json"
+        },
+        "task_delegations": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_acme/task_delegations.json"
+        },
+        "tasks": {
+          "count": 12,
+          "bytes": 17682,
+          "file": "company_acme/tasks.json"
+        },
+        "users": {
+          "count": 18,
+          "bytes": 22052,
+          "file": "company_acme/users.json"
+        }
+      }
+    },
+    "company_globex": {
+      "collections": {
+        "attendances": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/attendances.json"
+        },
+        "audit_logs": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/audit_logs.json"
+        },
+        "authSessions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/authSessions.json"
+        },
+        "authTokens": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/authTokens.json"
+        },
+        "company_assets": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/company_assets.json"
+        },
+        "company_hr_policies": {
+          "count": 1,
+          "bytes": 2860,
+          "file": "company_globex/company_hr_policies.json"
+        },
+        "employee_compensation": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/employee_compensation.json"
+        },
+        "employees": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/employees.json"
+        },
+        "impact_point_transactions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/impact_point_transactions.json"
+        },
+        "leave_backup_proposals": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/leave_backup_proposals.json"
+        },
+        "leave_handovers": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/leave_handovers.json"
+        },
+        "leave_requests": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/leave_requests.json"
+        },
+        "live_tracking_sessions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/live_tracking_sessions.json"
+        },
+        "notifications": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/notifications.json"
+        },
+        "offer_letters": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/offer_letters.json"
+        },
+        "offer_templates": {
+          "count": 1,
+          "bytes": 14673,
+          "file": "company_globex/offer_templates.json"
+        },
+        "payroll_cycles": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/payroll_cycles.json"
+        },
+        "payroll_payslips": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/payroll_payslips.json"
+        },
+        "settlements": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/settlements.json"
+        },
+        "task_delegations": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/task_delegations.json"
+        },
+        "tasks": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_globex/tasks.json"
+        },
+        "users": {
+          "count": 1,
+          "bytes": 385,
+          "file": "company_globex/users.json"
+        }
+      }
+    },
+    "company_suspended_test": {
+      "collections": {
+        "attendances": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/attendances.json"
+        },
+        "audit_logs": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/audit_logs.json"
+        },
+        "authSessions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/authSessions.json"
+        },
+        "authTokens": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/authTokens.json"
+        },
+        "company_assets": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/company_assets.json"
+        },
+        "company_hr_policies": {
+          "count": 1,
+          "bytes": 2860,
+          "file": "company_suspended_test/company_hr_policies.json"
+        },
+        "employee_compensation": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/employee_compensation.json"
+        },
+        "employees": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/employees.json"
+        },
+        "impact_point_transactions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/impact_point_transactions.json"
+        },
+        "leave_backup_proposals": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/leave_backup_proposals.json"
+        },
+        "leave_handovers": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/leave_handovers.json"
+        },
+        "leave_requests": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/leave_requests.json"
+        },
+        "live_tracking_sessions": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/live_tracking_sessions.json"
+        },
+        "offer_letters": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/offer_letters.json"
+        },
+        "offer_templates": {
+          "count": 1,
+          "bytes": 14673,
+          "file": "company_suspended_test/offer_templates.json"
+        },
+        "payroll_cycles": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/payroll_cycles.json"
+        },
+        "payroll_payslips": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/payroll_payslips.json"
+        },
+        "settlements": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/settlements.json"
+        },
+        "task_delegations": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/task_delegations.json"
+        },
+        "tasks": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/tasks.json"
+        },
+        "users": {
+          "count": 0,
+          "bytes": 2,
+          "file": "company_suspended_test/users.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "_id": "6adb2b6fdc7772c85ce4d95b",
+    "assetTag": "AST-001",
+    "name": "MacBOOK-000",
+    "category": "LAPTOP",
+    "manufacturer": "Apple",
+    "modelNumber": "A3771",
+    "serialNumber": "4756395",
+    "purchaseDate": "2026-10-15T00:00:00.000Z",
+    "purchaseCost": 100000,
+    "warrantyExpiry": "2027-10-15T00:00:00.000Z",
+    "condition": "GOOD",
+    "status": "AVAILABLE",
+    "location": "",
+    "department": "",
+    "notes": "",
+    "currentAssignment": null,
+    "createdBy": "6ad0ac8cafd4b3a691da3f7f",
+    "updatedBy": "6ad0ac8cafd4b3a691da3f7f",
+    "schemaVersion": 1,
+    "assignmentHistory": [
+      {
+        "employeeId": "6ae41d5cc5a6418c517f8af2",
+        "employeeCode": "EMP-015",
+        "employeeName": "Supriya",
+        "assignedDate": "2026-10-30T05:43:30.271Z",
+        "conditionAtAssignment": "GOOD",
+        "returnDate": "2026-10-30T05:43:40.345Z",
+        "conditionAtReturn": "GOOD",
+        "returnNotes": "",
+        "acknowledgementStatus": "PENDING",
+        "acknowledgedAt": null,
+        "assignedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "returnedBy": "6ad0ac8cafd4b3a691da3f7f",
+        "notes": "",
+        "_id": "6ae42e8cc5a6418c517f8b02"
+      }
+    ],
+    "createdAt": "2026-10-23T09:39:59.428Z",
+    "updatedAt": "2026-10-30T05:43:40.422Z",
+    "__v": 1
+  }
+]
