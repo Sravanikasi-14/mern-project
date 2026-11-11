@@ -11,15 +11,33 @@ import { useAuth } from "../context/AuthContext";
 import { useChatMessagesQuery, useConversationsQuery, useGroupMembersQuery } from "../hooks/useChatQueries";
 import { qk } from "../lib/queryKeys";
 import api from "../services/api";
+import AuthedAvatar from "../components/AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./Messages.css";
 
 function initials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+  return initialsFromName(name, "?");
+}
+
+function PersonAvatar({ person, name }) {
+  const label = name || person?.displayName || "Colleague";
+  return (
+    <AuthedAvatar
+      className="msg-avatar"
+      employee={
+        person
+          ? {
+              _id: person.employeeId || person._id,
+              avatar: person.avatar,
+            }
+          : undefined
+      }
+      avatar={person?.avatar}
+      name={label}
+      initials={initials(label)}
+      alt={label}
+    />
+  );
 }
 
 function formatTime(value) {
@@ -979,7 +997,7 @@ function DirectoryDialog({ open, query, onQuery, onClose, onSelect, busy, selfId
           {people.map((person) => (
             <li key={person.userId}>
               <button type="button" className="msg-person" onClick={() => onSelect(person)} disabled={busy}>
-                <span className="msg-avatar" aria-hidden="true">{initials(person.displayName)}</span>
+                <PersonAvatar person={person} />
                 <span className="msg-person-body">
                   <strong>{person.displayName}</strong>
                   <span className="msg-preview">
@@ -1159,7 +1177,7 @@ function GroupCreateDialog({ open, selfId, onClose, onCreated }) {
           {people.map((person) => (
             <li key={person.userId}>
               <button type="button" className="msg-person" onClick={() => toggle(person)}>
-                <span className="msg-avatar" aria-hidden="true">{initials(person.displayName)}</span>
+                <PersonAvatar person={person} />
                 <span className="msg-person-body">
                   <strong>{person.displayName}</strong>
                   <span className="msg-preview">{personMeta(person)}</span>
@@ -1292,7 +1310,7 @@ function GroupDetailsDialog({ open, conversation, selfId, onClose, onChanged, on
       <ul className="msg-directory">
         {members.map((member) => (
           <li key={member.userId} className="msg-member">
-            <span className="msg-avatar" aria-hidden="true">{initials(member.displayName)}</span>
+            <PersonAvatar person={member} />
             <span className="msg-person-body">
               <strong>
                 {member.displayName}
@@ -1349,7 +1367,7 @@ function GroupDetailsDialog({ open, conversation, selfId, onClose, onChanged, on
                   setQuery("");
                   await onChanged(res.data?.conversation);
                 }, "This person could not be added.")}>
-                  <span className="msg-avatar" aria-hidden="true">{initials(person.displayName)}</span>
+                  <PersonAvatar person={person} />
                   <span className="msg-person-body">
                     <strong>{person.displayName}</strong>
                     <span className="msg-preview">{personMeta(person)}</span>

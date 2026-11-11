@@ -26,6 +26,7 @@ import MobileFilterBar from "../components/mobile/MobileFilterBar";
 import ModuleToolbar from "../components/ModuleToolbar";
 import ReportingManagerSelect from "../components/ReportingManagerSelect";
 import DateRangePicker from "../components/DateRangePicker";
+import AuthedAvatar from "../components/AuthedAvatar";
 
 const PAGE_SIZE_OPTIONS = [8, 12, 24, 48, 100];
 
@@ -702,9 +703,10 @@ export default function AdminHome() {
       } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
         const XLSX = await import("xlsx");
         const buf = await file.arrayBuffer();
-        const workbook = XLSX.read(buf, { type: "array" });
+        const workbook = XLSX.read(buf, { type: "array", cellDates: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        // raw:false keeps dates/numbers as display strings so header mapping stays stable
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
       } else {
         setImportError("Please upload a .csv or .xlsx file.");
         return;
@@ -1039,9 +1041,13 @@ export default function AdminHome() {
                         title={`View profile of ${lead.fullName}`}
                       >
                         <div className="pm-lead-left">
-                          <div className="pm-lead-avatar">
-                            {getInitials(lead.fullName)}
-                          </div>
+                          <AuthedAvatar
+                            className="pm-lead-avatar"
+                            employee={lead}
+                            name={lead.fullName}
+                            initials={getInitials(lead.fullName)}
+                            alt={lead.fullName}
+                          />
                           <div className="pm-lead-text">
                             <span className="pm-lead-name">{lead.fullName}</span>
                             <span className="pm-lead-role">
@@ -1782,9 +1788,13 @@ export default function AdminHome() {
 
                         {/* Avatar & Identity Row */}
                         <div className="pm-emp-avatar-row">
-                          <div className="pm-emp-avatar">
-                            {getInitials(emp.fullName)}
-                          </div>
+                          <AuthedAvatar
+                            className="pm-emp-avatar"
+                            employee={emp}
+                            name={emp.fullName}
+                            initials={getInitials(emp.fullName)}
+                            alt={emp.fullName}
+                          />
                           <div className="pm-emp-identity">
                             <span
                               className="pm-emp-name"
@@ -1928,9 +1938,14 @@ export default function AdminHome() {
                       {visibleColumns.fullName && (
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span className="pm-emp-avatar" style={{ width: 32, height: 32, fontSize: 11 }}>
-                              {getInitials(emp.fullName)}
-                            </span>
+                            <AuthedAvatar
+                              className="pm-emp-avatar"
+                              style={{ width: 32, height: 32, fontSize: 11 }}
+                              employee={emp}
+                              name={emp.fullName}
+                              initials={getInitials(emp.fullName)}
+                              alt={emp.fullName}
+                            />
                             <button
                               type="button"
                               className="btn-secondary"
@@ -2364,7 +2379,10 @@ export default function AdminHome() {
             {!importResult && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)" }}>
-                  Upload a CSV or Excel file. Preview validates every row before import. Activation links are shown only after a successful create — copy them securely.
+                  Upload a CSV or Excel file. Prefer the HRMS template headers, or common aliases such as
+                  employee_id→code, name, title, hire_date, salary, location, manager_id. Email is required
+                  for account provisioning — rows without email are shown in preview with field errors and
+                  are not imported. Activation links appear only after a successful create.
                 </p>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <a
@@ -2386,7 +2404,7 @@ export default function AdminHome() {
                     }}
                     style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", height: 34, padding: "0 12px" }}
                   >
-                    Download template
+                    Download HRMS template
                   </a>
                   <label className="btn-primary" style={{ cursor: "pointer", height: 34, padding: "0 12px", display: "inline-flex", alignItems: "center" }}>
                     {importBusy ? "Working..." : "Choose file"}
@@ -2405,7 +2423,26 @@ export default function AdminHome() {
                     <div style={{ fontSize: 13, color: "var(--ink)" }}>
                       Total {importPreview.summary?.totalRows ?? 0} · Valid {importPreview.summary?.validRows ?? 0} · Invalid {importPreview.summary?.invalidRows ?? 0}
                     </div>
-                    <div style={{ maxHeight: 280, overflow: "auto", border: "1px solid var(--hair)", borderRadius: 8 }}>
+                    {(importPreview.unrecognizedColumns || importPreview.summary?.unrecognizedColumns || []).length >
+                    0 ? (
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          color: "#92400e",
+                          background: "#fffbeb",
+                          border: "1px solid #fde68a",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                        }}
+                      >
+                        Unsupported columns were kept in the file but are not imported:{" "}
+                        {(importPreview.unrecognizedColumns || importPreview.summary?.unrecognizedColumns || []).join(
+                          ", "
+                        )}
+                        . Use the HRMS template headers or documented aliases.
+                      </div>
+                    ) : null}
+                    <div style={{ maxHeight: 320, overflow: "auto", border: "1px solid var(--hair)", borderRadius: 8 }}>
                       <table className="data-table" style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
                         <thead>
                           <tr style={{ background: "#f8faf8", textAlign: "left" }}>
@@ -2413,18 +2450,32 @@ export default function AdminHome() {
                             <th style={{ padding: "8px 10px" }}>Name</th>
                             <th style={{ padding: "8px 10px" }}>Email</th>
                             <th style={{ padding: "8px 10px" }}>Code</th>
+                            <th style={{ padding: "8px 10px" }}>Department</th>
+                            <th style={{ padding: "8px 10px" }}>Title</th>
                             <th style={{ padding: "8px 10px" }}>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(importPreview.rows || []).map((r) => (
-                            <tr key={r.rowIndex} style={{ borderTop: "1px solid var(--hair)" }}>
+                            <tr
+                              key={r.rowIndex}
+                              style={{
+                                borderTop: "1px solid var(--hair)",
+                                background: r.valid ? "transparent" : "rgba(185, 28, 28, 0.04)",
+                              }}
+                            >
                               <td style={{ padding: "8px 10px" }}>{r.rowIndex + 1}</td>
                               <td style={{ padding: "8px 10px" }}>{r.data?.fullName || "—"}</td>
                               <td style={{ padding: "8px 10px" }}>{r.data?.email || "—"}</td>
                               <td style={{ padding: "8px 10px" }}>{r.data?.employeeCode || "—"}</td>
+                              <td style={{ padding: "8px 10px" }}>{r.data?.department || "—"}</td>
+                              <td style={{ padding: "8px 10px" }}>{r.data?.jobTitle || "—"}</td>
                               <td style={{ padding: "8px 10px", color: r.valid ? "var(--g-800)" : "#b91c1c" }}>
-                                {r.valid ? "Valid" : Object.values(r.errors || {}).join("; ")}
+                                {r.valid
+                                  ? "Valid"
+                                  : Object.entries(r.errors || {})
+                                      .map(([field, msg]) => `${field}: ${msg}`)
+                                      .join("; ")}
                               </td>
                             </tr>
                           ))}

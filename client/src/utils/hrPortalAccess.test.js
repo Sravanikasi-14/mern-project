@@ -29,7 +29,7 @@ test("company admin sees every module with HR Management second", () => {
     "Assets",
     "Organization",
     "Policies & Settings",
-    "Reports",
+    "AI Reports",
     "Impact Points",
     "Work",
   ]);

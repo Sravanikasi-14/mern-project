@@ -43,7 +43,7 @@ export const HR_PORTAL_MODULES = Object.freeze([
     path: "/admin/policies",
     permissions: ["policies.view", "settings.view"],
   },
-  { id: "reports", label: "Reports", path: "/admin/reports", permission: "reports.view" },
+  { id: "reports", label: "AI Reports", path: "/admin/reports", permission: "reports.view" },
   { id: "impact-points", label: "Impact Points", path: "/admin/impact-points", permission: "impact.view" },
   { id: "work", label: "Work", path: "/admin/work-management", permission: "people.view" },
 ]);

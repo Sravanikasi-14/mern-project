@@ -154,7 +154,7 @@ export async function getLeaveRequests(req, res, next) {
     const listQueries = [
       LeaveRequest.countDocuments(scopedQuery),
       LeaveRequest.find(scopedQuery)
-        .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status")
+        .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status avatar")
         .populate("decision.decidedBy", "email role")
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
@@ -191,6 +191,19 @@ export async function getLeaveRequests(req, res, next) {
       employeeName: req.employeeId?.fullName || "Employee",
       employeeCode: req.employeeId?.employeeCode || "N/A",
       employeeEmail: req.employeeId?.email || "",
+      avatar: req.employeeId?.avatar || "",
+      employee: req.employeeId
+        ? {
+            _id: req.employeeId._id,
+            fullName: req.employeeId.fullName || "Employee",
+            employeeCode: req.employeeId.employeeCode || "N/A",
+            email: req.employeeId.email || "",
+            avatar: req.employeeId.avatar || "",
+            jobTitle: req.employeeId.job?.jobTitle || "Specialist",
+            department: req.employeeId.job?.department || "General",
+            job: req.employeeId.job || undefined,
+          }
+        : null,
       department: req.employeeId?.job?.department || "General",
       jobTitle: req.employeeId?.job?.jobTitle || "Specialist",
       leaveTypeCode: req.leaveTypeCode,
@@ -240,7 +253,14 @@ export async function getLeaveRequestById(req, res, next) {
     const { id } = req.params;
 
     const leaveRequest = await LeaveRequest.findById(id)
-      .populate("employeeId", "fullName employeeCode email phoneNumber job dateOfBirth")
+      .populate({
+        path: "employeeId",
+        select: "fullName employeeCode email phoneNumber job dateOfBirth avatar status",
+        populate: {
+          path: "job.reportingManagerId",
+          select: "fullName employeeCode avatar job.jobTitle",
+        },
+      })
       .populate("decision.decidedBy", "email role")
       .lean();
 
@@ -268,6 +288,18 @@ export async function getLeaveRequestById(req, res, next) {
         yearlyDays: t.yearlyDays,
       }));
 
+    const manager = leaveRequest.employeeId?.job?.reportingManagerId;
+    const managerRef =
+      manager && typeof manager === "object" && manager._id
+        ? {
+            _id: manager._id,
+            fullName: manager.fullName || null,
+            employeeCode: manager.employeeCode || null,
+            avatar: manager.avatar || "",
+            jobTitle: manager.job?.jobTitle || null,
+          }
+        : null;
+
     res.json({
       success: true,
       leaveRequest: {
@@ -278,8 +310,11 @@ export async function getLeaveRequestById(req, res, next) {
               fullName: leaveRequest.employeeId.fullName,
               employeeCode: leaveRequest.employeeId.employeeCode,
               email: leaveRequest.employeeId.email,
+              avatar: leaveRequest.employeeId.avatar || "",
+              status: leaveRequest.employeeId.status || null,
               department: leaveRequest.employeeId.job?.department || "General",
               jobTitle: leaveRequest.employeeId.job?.jobTitle || "Specialist",
+              reportingManager: managerRef,
             }
           : null,
         leaveTypeCode: leaveRequest.leaveTypeCode,
@@ -291,6 +326,7 @@ export async function getLeaveRequestById(req, res, next) {
         decision: leaveRequest.decision
           ? {
               decidedBy: leaveRequest.decision.decidedBy?.email || null,
+              decidedByRole: leaveRequest.decision.decidedBy?.role || null,
               decidedAt: leaveRequest.decision.decidedAt || null,
               remarks: leaveRequest.decision.remarks || "",
             }

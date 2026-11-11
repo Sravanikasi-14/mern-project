@@ -9,7 +9,10 @@ import { HttpError } from "../utils/httpError.js";
 import { hashPassword } from "../utils/password.js";
 import { signEmployeeActivationToken } from "../utils/onboardingToken.js";
 import { hashAuthToken } from "../utils/authTokenHash.js";
-import { resolveDepartmentAssignment } from "./departmentLinkService.js";
+import {
+  resolveDepartmentAssignment,
+  selectDepartmentMatch,
+} from "./departmentLinkService.js";
 import {
   assertValidReportingManagerAssignment,
   isStrictObjectId,
@@ -712,35 +715,159 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
 }
 
 /**
+ * When the tenant has an active department catalog, import department names
+ * must resolve to an active catalog entry (no silent free-text inventing).
+ * Empty catalogs keep legacy free-text behaviour.
+ */
+async function resolveImportDepartment(models, departmentName) {
+  const name = trimStr(departmentName);
+  if (!name) return { department: "", departmentId: null, error: null };
+  if (!models.Department) {
+    return { department: name, departmentId: null, error: null };
+  }
+  const departments = await models.Department.find({})
+    .select("name normalizedName isActive")
+    .lean();
+  const activeCount = departments.filter((d) => d.isActive !== false).length;
+  if (activeCount === 0) {
+    return { department: name, departmentId: null, error: null };
+  }
+  const match = selectDepartmentMatch(departments, name);
+  if (match.status === "active") {
+    return {
+      department: match.department.name,
+      departmentId: match.department._id,
+      error: null,
+    };
+  }
+  if (match.status === "inactive") {
+    return {
+      department: name,
+      departmentId: null,
+      error: "That department is inactive and cannot be assigned.",
+    };
+  }
+  if (match.status === "ambiguous") {
+    return {
+      department: name,
+      departmentId: null,
+      error: "More than one active department matches this name.",
+    };
+  }
+  return {
+    department: name,
+    departmentId: null,
+    error: "Department was not found in the organization catalog.",
+  };
+}
+
+/**
+ * When active designations exist, job titles must match a catalog title.
+ */
+async function resolveImportDesignation(models, jobTitle) {
+  const title = trimStr(jobTitle);
+  if (!title) return { jobTitle: "", error: null };
+  if (!models.Designation) {
+    return { jobTitle: title, error: null };
+  }
+  const designations = await models.Designation.find({ isActive: true })
+    .select("title normalizedTitle isActive")
+    .lean();
+  if (!designations.length) {
+    return { jobTitle: title, error: null };
+  }
+  const key = title.toLowerCase();
+  const match = designations.find(
+    (d) => String(d.normalizedTitle || d.title || "").trim().toLowerCase() === key
+  );
+  if (!match) {
+    return {
+      jobTitle: title,
+      error: "Designation / title was not found in the organization catalog.",
+    };
+  }
+  return { jobTitle: match.title, error: null };
+}
+
+/**
  * Validate a bulk-import row against tenant data without creating records.
  */
 export async function validateImportRow(models, row, { seenEmails, seenCodes }) {
+  const { mapImportRowDetailed } = await import("../utils/employeeImportMapping.js");
+  const { mapped: canonicalRow, unrecognizedHeaders } = mapImportRowDetailed(row || {});
   const errors = {};
-  let normalized;
+  let normalized = null;
+
+  // employee_id / employeeCode: required when the source supplied a code column value.
+  // If the column is absent entirely, commit may auto-generate a code.
+  // Mapping employee_id → employeeCode is intentional (tenant employee code), not a user id.
+  const suppliedCode = trimStr(canonicalRow.employeeCode);
+  const codeColumnPresent = Object.prototype.hasOwnProperty.call(canonicalRow, "employeeCode");
+
   try {
-    normalized = validateEmployeeProvisionData(row, { requireEmployeeCode: true });
+    normalized = validateEmployeeProvisionData(canonicalRow, {
+      requireEmployeeCode: Boolean(suppliedCode) || codeColumnPresent,
+    });
   } catch (err) {
     if (err instanceof HttpError && err.errors) {
-      return { valid: false, errors: err.errors, normalized: null };
+      Object.assign(errors, err.errors);
+    } else {
+      errors._row = err.message || "Invalid row";
     }
-    return { valid: false, errors: { _row: err.message || "Invalid row" }, normalized: null };
   }
 
-  const emailKey = normalized.email;
-  const codeKey = normalized.employeeCode.toLowerCase();
+  // Keep mapped values visible in preview even when validation fails,
+  // and continue org/manager checks so row errors are complete (not only the first failure).
+  if (!normalized) {
+    normalized = {
+      fullName: trimStr(canonicalRow.fullName),
+      email: normalizeEmail(trimStr(canonicalRow.email)) || trimStr(canonicalRow.email),
+      employeeCode: suppliedCode,
+      jobTitle: trimStr(canonicalRow.jobTitle),
+      department: trimStr(canonicalRow.department),
+      departmentId: null,
+      employmentType: trimStr(canonicalRow.employmentType) || "Full-time",
+      joiningDate: canonicalRow.joiningDate || "",
+      monthlySalary: canonicalRow.monthlySalary,
+      projectName: trimStr(canonicalRow.projectName),
+      workLocation: trimStr(canonicalRow.workLocation),
+      phoneNumber: trimStr(canonicalRow.phoneNumber),
+      reportingManagerId: null,
+      reportingManagerCode: trimStr(canonicalRow.reportingManagerCode),
+      _generateCodeOnCommit: !suppliedCode && !codeColumnPresent,
+      _unrecognizedHeaders: unrecognizedHeaders,
+    };
+  }
 
-  if (seenEmails.has(emailKey)) {
+  normalized.reportingManagerCode = trimStr(
+    canonicalRow.reportingManagerCode || normalized.reportingManagerCode || row?.reportingManagerCode || ""
+  );
+  normalized._generateCodeOnCommit = !trimStr(normalized.employeeCode);
+  normalized._unrecognizedHeaders = unrecognizedHeaders;
+
+  const emailKey =
+    normalized.email && isValidEmail(normalized.email) ? normalizeEmail(normalized.email) : "";
+  const codeKey = trimStr(normalized.employeeCode).toLowerCase();
+
+  if (emailKey && seenEmails.has(emailKey)) {
     errors.email = "Duplicate email within the import file.";
   }
-  if (seenCodes.has(codeKey)) {
+  if (codeKey && seenCodes.has(codeKey)) {
     errors.employeeCode = "Duplicate employee code within the import file.";
   }
 
-  const [existingEmail, existingCode, existingUser] = await Promise.all([
-    models.Employee.findOne({ email: emailKey }).select("_id").lean(),
-    models.Employee.findOne({ employeeCode: normalized.employeeCode }).select("_id").lean(),
-    models.User.findOne({ email: emailKey }).select("_id role employeeId onboarding").lean(),
-  ]);
+  const lookups = [
+    emailKey
+      ? models.Employee.findOne({ email: emailKey }).select("_id").lean()
+      : Promise.resolve(null),
+    codeKey
+      ? models.Employee.findOne({ employeeCode: normalized.employeeCode }).select("_id").lean()
+      : Promise.resolve(null),
+    emailKey
+      ? models.User.findOne({ email: emailKey }).select("_id role employeeId onboarding").lean()
+      : Promise.resolve(null),
+  ];
+  const [existingEmail, existingCode, existingUser] = await Promise.all(lookups);
 
   if (existingEmail) errors.email = "An employee with this email already exists.";
   if (existingCode) errors.employeeCode = "An employee with this employee code already exists.";
@@ -755,13 +882,18 @@ export async function validateImportRow(models, row, { seenEmails, seenCodes }) 
     }
   }
 
-  // Optional: resolve reporting manager by employee code if provided as reportingManagerCode
-  if (row.reportingManagerCode && !normalized.reportingManagerId) {
-    const mgr = await models.Employee.findOne({
-      employeeCode: trimStr(row.reportingManagerCode),
-    })
-      .select("_id")
-      .lean();
+  const deptResolved = await resolveImportDepartment(models, normalized.department);
+  normalized.department = deptResolved.department;
+  normalized.departmentId = deptResolved.departmentId;
+  if (deptResolved.error) errors.department = deptResolved.error;
+
+  const titleResolved = await resolveImportDesignation(models, normalized.jobTitle);
+  normalized.jobTitle = titleResolved.jobTitle;
+  if (titleResolved.error) errors.jobTitle = titleResolved.error;
+
+  const managerCode = trimStr(normalized.reportingManagerCode);
+  if (managerCode && !normalized.reportingManagerId) {
+    const mgr = await models.Employee.findOne({ employeeCode: managerCode }).select("_id").lean();
     if (!mgr) {
       errors.reportingManagerCode = "Reporting manager employee code not found.";
     } else {
@@ -788,9 +920,9 @@ export async function validateImportRow(models, row, { seenEmails, seenCodes }) 
 
   const valid = Object.keys(errors).length === 0;
   if (valid) {
-    seenEmails.add(emailKey);
-    seenCodes.add(codeKey);
+    if (emailKey) seenEmails.add(emailKey);
+    if (codeKey) seenCodes.add(codeKey);
   }
 
-  return { valid, errors, normalized };
+  return { valid, errors, normalized, unrecognizedHeaders };
 }

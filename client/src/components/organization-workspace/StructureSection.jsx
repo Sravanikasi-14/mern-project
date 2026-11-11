@@ -37,10 +37,12 @@ function matches(query, values) {
   return values.some((value) => String(value || "").toLowerCase().includes(needle));
 }
 
-export default function StructureSection({ embedded = false }) {
+export default function StructureSection({ embedded = false, mode = "both" }) {
   const { user, company } = useAuth();
   const canManage = hrPortalAllows(user, company, "organization.manage");
-  const [pane, setPane] = useState("departments");
+  const lockedPane = mode === "departments" || mode === "teams" ? mode : null;
+  const [pane, setPane] = useState(lockedPane || "departments");
+  const activePane = lockedPane || pane;
   const [departments, setDepartments] = useState([]);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -207,17 +209,26 @@ export default function StructureSection({ embedded = false }) {
   };
 
   return (
-    <section className={embedded ? "ow-embedded" : "ow-panel"} aria-label="Departments and teams">
+    <section
+      className={embedded ? "ow-embedded" : "ow-panel"}
+      aria-label={lockedPane === "teams" ? "Teams" : lockedPane === "departments" ? "Departments" : "Departments and teams"}
+    >
       <div className="ow-section-head">
         {!embedded ? (
           <div>
-            <h2>Departments and teams</h2>
-            <p>Organize people into departments and teams.</p>
+            <h2>{lockedPane === "teams" ? "Teams" : lockedPane === "departments" ? "Departments" : "Departments and teams"}</h2>
+            <p>
+              {lockedPane === "teams"
+                ? "Create teams, assign members, and link them to departments."
+                : lockedPane === "departments"
+                  ? "Organize people into departments."
+                  : "Organize people into departments and teams."}
+            </p>
           </div>
         ) : null}
         <div className="ow-inline-actions">
           <button type="button" className="btn-secondary" onClick={load} disabled={loading}>Refresh</button>
-          {canManage && pane === "departments" ? (
+          {canManage && activePane === "departments" ? (
             <button
               type="button"
               className="btn-primary"
@@ -229,7 +240,7 @@ export default function StructureSection({ embedded = false }) {
               New department
             </button>
           ) : null}
-          {canManage && pane === "teams" && !teamsDisabled ? (
+          {canManage && activePane === "teams" && !teamsDisabled ? (
             <button
               type="button"
               className="btn-primary"
@@ -246,27 +257,33 @@ export default function StructureSection({ embedded = false }) {
       </div>
 
       <div className="org-stats" aria-label="Structure summary">
-        <span>Active departments: <strong>{loading ? "…" : activeDepartments}</strong></span>
-        <span>Active teams: <strong>{loading ? "…" : activeTeams}</strong></span>
+        {(lockedPane === "departments" || !lockedPane) ? (
+          <span>Active departments: <strong>{loading ? "…" : activeDepartments}</strong></span>
+        ) : null}
+        {(lockedPane === "teams" || !lockedPane) ? (
+          <span>Active teams: <strong>{loading ? "…" : activeTeams}</strong></span>
+        ) : null}
       </div>
 
-      <div className="ow-segment" role="tablist" aria-label="Departments or teams">
-        <button type="button" role="tab" aria-selected={pane === "departments"} className={pane === "departments" ? "is-active" : ""} onClick={() => setPane("departments")}>
-          Departments
-        </button>
-        <button type="button" role="tab" aria-selected={pane === "teams"} className={pane === "teams" ? "is-active" : ""} onClick={() => setPane("teams")}>
-          Teams
-        </button>
-      </div>
+      {!lockedPane ? (
+        <div className="ow-segment" role="tablist" aria-label="Departments or teams">
+          <button type="button" role="tab" aria-selected={pane === "departments"} className={pane === "departments" ? "is-active" : ""} onClick={() => setPane("departments")}>
+            Departments
+          </button>
+          <button type="button" role="tab" aria-selected={pane === "teams"} className={pane === "teams" ? "is-active" : ""} onClick={() => setPane("teams")}>
+            Teams
+          </button>
+        </div>
+      ) : null}
 
       <ModuleToolbar
         className="ow-module-toolbar"
         searchValue={query}
         onSearchChange={(event) => setQuery(event.target.value)}
-        searchPlaceholder={pane === "departments" ? "Search departments" : "Search teams"}
-        searchAriaLabel={pane === "departments" ? "Search departments" : "Search teams"}
+        searchPlaceholder={activePane === "departments" ? "Search departments" : "Search teams"}
+        searchAriaLabel={activePane === "departments" ? "Search departments" : "Search teams"}
         actions={
-          canManage && pane === "departments" ? (
+          canManage && activePane === "departments" ? (
             <button
               type="button"
               className="btn-secondary"
@@ -304,7 +321,7 @@ export default function StructureSection({ embedded = false }) {
         <p className="ow-muted">You can view departments and teams. Editing needs organization management access.</p>
       ) : null}
 
-      {pane === "departments" ? (
+      {activePane === "departments" ? (
         loading ? <p className="ow-muted">Loading departments…</p> : visibleDepartments.length === 0 ? (
           <div className="ow-empty"><p>{departments.length === 0 ? "No departments yet." : "No departments match this search."}</p></div>
         ) : (

@@ -29,6 +29,8 @@ import {
   resolveCompanyTimezone,
   toDateOnlyString,
 } from "../utils/dateUtils";
+import AuthedAvatar from "../components/AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./WorkManagement.css";
 
 const TASK_TABS = {
@@ -452,7 +454,8 @@ export default function AdminWorkManagement() {
     }));
   }, [tasks, timeZone]);
 
-  // Kanban Columns (UNASSIGNED = Workforce Scheduler queue; does not alter lifecycle columns)
+  // Primary workflow columns stay on one horizontal board.
+  // Completed today is rendered as a full-width section below (not a 5th grid column).
   const kanbanColumns = [
     {
       id: "UNASSIGNED",
@@ -478,13 +481,14 @@ export default function AdminWorkManagement() {
       dotClass: "col-submitted",
       tasks: displayedTasks.filter((t) => t.status === "SUBMITTED" || t.status === "CHANGES_REQUESTED"),
     },
-    {
-      id: "APPROVED",
-      title: "Completed today",
-      dotClass: "col-approved",
-      tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
-    },
   ];
+
+  const completedTodayColumn = {
+    id: "APPROVED",
+    title: "Completed today",
+    dotClass: "col-approved",
+    tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
+  };
 
   // Helper for deadline urgency
   const getDeadlineInfo = (deadlineDate, status) => {
@@ -578,6 +582,38 @@ export default function AdminWorkManagement() {
           )}
         </div>
       )}
+
+      {/* Work impact signals from live task scope (not decorative placeholders) */}
+      <div className="wm-kpi-grid" aria-label="Work impact summary">
+        <div className="wm-kpi-card accent-slate">
+          <div className="wm-kpi-header">
+            <span className="wm-kpi-label">Active work</span>
+          </div>
+          <div className="wm-kpi-value">{metrics.activeTasks}</div>
+          <div className="wm-kpi-subtext">Assigned / in progress / in review</div>
+        </div>
+        <div className="wm-kpi-card accent-amber">
+          <div className="wm-kpi-header">
+            <span className="wm-kpi-label" style={{ color: "#d97706" }}>Overdue</span>
+          </div>
+          <div className="wm-kpi-value" style={{ color: "#d97706" }}>{metrics.overdueTasks}</div>
+          <div className="wm-kpi-subtext">Past deadline, still open</div>
+        </div>
+        <div className="wm-kpi-card accent-blue">
+          <div className="wm-kpi-header">
+            <span className="wm-kpi-label" style={{ color: "#2563eb" }}>Review queue</span>
+          </div>
+          <div className="wm-kpi-value" style={{ color: "#2563eb" }}>{metrics.reviewQueueCount}</div>
+          <div className="wm-kpi-subtext">Awaiting verification</div>
+        </div>
+        <div className="wm-kpi-card accent-emerald">
+          <div className="wm-kpi-header">
+            <span className="wm-kpi-label" style={{ color: "#059669" }}>Completed today</span>
+          </div>
+          <div className="wm-kpi-value" style={{ color: "#059669" }}>{metrics.completedTasks}</div>
+          <div className="wm-kpi-subtext">Approved in company timezone today</div>
+        </div>
+      </div>
 
       {/* Unified 2-Region Grid Layout */}
       <div className="wm-unified-grid">
@@ -754,7 +790,8 @@ export default function AdminWorkManagement() {
 
           {/* Kanban Board Mode */}
           {viewMode === VIEW_MODES.KANBAN ? (
-            <div className="wm-kanban-board">
+            <div className="wm-kanban-layout">
+            <div className="wm-kanban-board" aria-label="Workflow board">
               {kanbanColumns.map((col) => {
                 const isOver = dragOverCol === col.id;
                 return (
@@ -839,9 +876,14 @@ export default function AdminWorkManagement() {
 
                               <div className="wm-task-card-footer">
                                 <div className="wm-task-assignee">
-                                  <div className="wm-task-avatar">
-                                    {(task.assigneeSnapshot?.fullName || "U")[0].toUpperCase()}
-                                  </div>
+                                  <AuthedAvatar
+                                    className="wm-task-avatar"
+                                    employee={task.assigneeSnapshot}
+                                    avatar={task.assigneeSnapshot?.avatar}
+                                    name={task.assigneeSnapshot?.fullName}
+                                    initials={initialsFromName(task.assigneeSnapshot?.fullName, "U")}
+                                    alt={task.assigneeSnapshot?.fullName || "Unassigned"}
+                                  />
                                   <span className="wm-task-assignee-name">
                                     {task.assigneeSnapshot?.fullName?.split(" ")[0] || "Unassigned"}
                                   </span>
@@ -890,6 +932,79 @@ export default function AdminWorkManagement() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Completed today — full-width section below the workflow columns */}
+            {(() => {
+              const col = completedTodayColumn;
+              const isOver = dragOverCol === col.id;
+              return (
+                <div
+                  className={`wm-kanban-completed ${isOver ? "is-drop-target" : ""}`}
+                  onDragOver={(e) => handleDragOver(e, col.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, col.id)}
+                  aria-label="Completed today"
+                >
+                  <div className="wm-kanban-col-header">
+                    <div className="wm-kanban-col-title">
+                      <span className={`wm-kanban-col-dot ${col.dotClass}`} />
+                      <span>{col.title}</span>
+                    </div>
+                    <span className="wm-kanban-count-pill">{col.tasks.length}</span>
+                  </div>
+                  <div className="wm-kanban-completed-cards">
+                    {loading ? (
+                      <div style={{ padding: 14, textAlign: "center", color: "#94a3b8", fontSize: 11.5 }}>
+                        Loading...
+                      </div>
+                    ) : col.tasks.length === 0 ? (
+                      <div className="wm-kanban-completed-empty">None today</div>
+                    ) : (
+                      col.tasks.map((task) => {
+                        const isDragging = draggedTaskId === task._id;
+                        const deadlineInfo = getDeadlineInfo(task.deadline, task.status);
+                        return (
+                          <div
+                            key={task._id}
+                            className={`wm-task-card wm-task-card--completed ${isDragging ? "is-dragging" : ""}`}
+                            draggable={true}
+                            onDragStart={(e) => handleDragStart(e, task)}
+                            onDragEnd={handleDragEnd}
+                            onClick={() => selectTaskDetails(task)}
+                            title={`${task.title} (${task.assigneeSnapshot?.fullName || "Unassigned"})`}
+                          >
+                            <h5 className="wm-task-card-title">{task.title}</h5>
+                            <div className="wm-task-card-footer">
+                              <div className="wm-task-assignee">
+                                <AuthedAvatar
+                                  className="wm-task-avatar"
+                                  employee={task.assigneeSnapshot}
+                                  avatar={task.assigneeSnapshot?.avatar}
+                                  name={task.assigneeSnapshot?.fullName}
+                                  initials={initialsFromName(task.assigneeSnapshot?.fullName, "U")}
+                                  alt={task.assigneeSnapshot?.fullName || "Unassigned"}
+                                />
+                                <span className="wm-task-assignee-name">
+                                  {task.assigneeSnapshot?.fullName?.split(" ")[0] || "Unassigned"}
+                                </span>
+                              </div>
+                              <div
+                                className={`wm-task-due ${
+                                  deadlineInfo.isOverdue ? "overdue" : deadlineInfo.isSoon ? "soon" : ""
+                                }`}
+                              >
+                                {deadlineInfo.text}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             </div>
           ) : (
             /* Table View Mode */

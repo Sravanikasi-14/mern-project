@@ -14,7 +14,9 @@ export default function AttendanceCapsuleChart({
   const [activeIdx, setActiveIdx] = useState(-1);
 
   const bars = useMemo(() => {
-    const source = Array.isArray(days) ? days.slice(-7) : [];
+    // Parent should pass the rolling week series. Cap at 7 only for longer series
+    // (e.g. accidental 30D input) — do not reinterpret month calendars here.
+    const source = Array.isArray(days) ? (days.length > 7 ? days.slice(-7) : days) : [];
     const maxVal = Math.max(1, Number(activeEmployees) || 0);
 
     if (source.length === 0) {

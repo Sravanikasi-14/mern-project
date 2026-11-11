@@ -38,9 +38,11 @@ export function publicCard(user, employee) {
     userId: String(user._id),
     displayName: displayName(user, employee),
     role: user.role,
+    employeeId: employee?._id ? String(employee._id) : user.employeeId ? String(user.employeeId) : "",
     employeeCode: employee?.employeeCode || "",
     jobTitle: employee?.job?.jobTitle || "",
     department: employee?.job?.department || "",
+    avatar: employee?.avatar || "",
   };
 }
 
@@ -48,7 +50,7 @@ export async function employeesByUser(Employee, users) {
   const ids = users.map((user) => user.employeeId).filter(Boolean);
   if (!Employee || ids.length === 0) return new Map();
   const rows = await Employee.find({ _id: { $in: ids } })
-    .select("fullName preferredName employeeCode status job.jobTitle job.department userId")
+    .select("fullName preferredName employeeCode status job.jobTitle job.department userId avatar")
     .lean();
   const byUser = new Map();
   for (const row of rows) {

@@ -507,7 +507,7 @@ export async function applyGeofenceDecision({
         message: `${employee.fullName || "Employee"} ${
           phase === "PUNCH_OUT" ? "punched out" : "punched in"
         } ${evaluation.distanceMeters}m from ${zone.label} (allowed ${zone.radiusMeters}m).`,
-        link: "/admin/attendance?tab=exceptions",
+        link: "/admin/attendance?workspace=exceptions",
         metadata: {
           sessionId: sessionId ? String(sessionId) : null,
           type: outsideType,
@@ -655,7 +655,7 @@ export async function evaluateActiveSessionLocation({
         employee,
         title: "Outside permitted work area",
         message: `${employee.fullName || "Employee"} moved outside the permitted radius during an active session.`,
-        link: "/admin/attendance?tab=exceptions",
+        link: "/admin/attendance?workspace=exceptions",
         metadata: { sessionId: String(session._id), type: "OUTSIDE_GEOFENCE" },
       });
     }
@@ -712,11 +712,388 @@ export async function evaluateActiveSessionLocation({
       employee,
       title: "Returned to permitted work area",
       message: `${employee.fullName || "Employee"} returned inside the permitted radius.`,
-      link: "/admin/attendance?tab=exceptions",
+      link: "/admin/attendance?workspace=exceptions",
       metadata: { sessionId: String(session._id), type: "RETURNED_INSIDE" },
     });
     return { changed: true, event: "RETURNED" };
   }
 
   return { changed: false };
+}
+
+/** HR-facing punch eligibility codes — mirrors resolvePunchZone / period gates. */
+export const PUNCH_ELIGIBILITY_CODES = Object.freeze({
+  REMOTE_PUNCH_ALLOWED: "REMOTE_PUNCH_ALLOWED",
+  OFFICE_LOCATION_REQUIRED: "OFFICE_LOCATION_REQUIRED",
+  APPROVAL_PENDING: "APPROVAL_PENDING",
+  EXCEPTION_PENDING_REVIEW: "EXCEPTION_PENDING_REVIEW",
+  REMOTE_NOT_AUTHORIZED: "REMOTE_NOT_AUTHORIZED",
+});
+
+function eligibilityResult({
+  code,
+  label,
+  detail,
+  tone,
+  remotePunchAllowed,
+  officePunchAllowed,
+  workMode,
+  extras = {},
+}) {
+  return {
+    code,
+    label,
+    detail,
+    tone,
+    remotePunchAllowed: Boolean(remotePunchAllowed),
+    officePunchAllowed: Boolean(officePunchAllowed),
+    workMode,
+    exceptionGrantsRemote: false,
+    ...extras,
+  };
+}
+
+/**
+ * Evaluate approved session period without throwing (for HR eligibility display).
+ */
+export function evaluateApprovedSessionPeriod({
+  sessionPeriod,
+  workDate,
+  companyTimezone = "Asia/Kolkata",
+  now = new Date(),
+}) {
+  try {
+    const result = assertWithinApprovedSessionPeriod({
+      sessionPeriod,
+      workDate,
+      companyTimezone,
+      now,
+    });
+    return { ok: true, reason: result.reason };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "OUTSIDE_PERIOD",
+      message: error?.message || "Outside the approved remote session window.",
+    };
+  }
+}
+
+/**
+ * Derive punch eligibility for a remote-work request from the same rules as resolvePunchZone.
+ * Does not mutate state and never treats a location exception as authorization.
+ */
+export function describeRemoteRequestPunchEligibility({
+  request,
+  employee,
+  policy = null,
+  companyTimezone = "Asia/Kolkata",
+  now = new Date(),
+}) {
+  const mode = getEmployeeWorkMode(employee);
+  const workRules = policy?.workArrangementRules || {};
+  const requireApproval = workRules.hybridRemoteApprovalRequired !== false;
+  const status = String(request?.status || "").toUpperCase();
+  const today = getCompanyBusinessDate(now, companyTimezone);
+  const workDate = request?.workDate || null;
+  const periodLabel = (() => {
+    const start = request?.sessionPeriod?.startTime || "";
+    const end = request?.sessionPeriod?.endTime || "";
+    if (!start && !end) return "all day";
+    if (start && end) return `${start}–${end}`;
+    return "incomplete period";
+  })();
+
+  if (mode === "OFFICE") {
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.OFFICE_LOCATION_REQUIRED,
+      label: "Office location required",
+      detail: "Work mode is Office. Remote punch-in/out is not authorized for this employee.",
+      tone: "blocked",
+      remotePunchAllowed: false,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: { requestStatus: status, workDate, companyDate: today },
+    });
+  }
+
+  if (mode === "WFH") {
+    const homeOk =
+      workRules.wfhLocationMode !== "WFH_APPROVED_LOCATION" ||
+      Boolean(employee?.job?.workArrangement?.homeLocation?.approved) ||
+      workRules.wfhRequireHomeApproval !== true;
+    if (!homeOk) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+        label: "Remote attendance not authorized",
+        detail: "WFH home location must be approved by HR before remote punch-in.",
+        tone: "blocked",
+        remotePunchAllowed: false,
+        officePunchAllowed: false,
+        workMode: mode,
+        extras: { requestStatus: status, workDate, companyDate: today },
+      });
+    }
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.REMOTE_PUNCH_ALLOWED,
+      label: "Remote punch-in/out allowed",
+      detail:
+        status === "APPROVED"
+          ? `WFH work mode permits remote attendance. Request for ${workDate || "the work date"} is approved (${periodLabel}).`
+          : "WFH work mode permits remote attendance under company WFH rules. This request does not change that.",
+      tone: "ok",
+      remotePunchAllowed: true,
+      officePunchAllowed: false,
+      workMode: mode,
+      extras: { requestStatus: status, workDate, companyDate: today },
+    });
+  }
+
+  // HYBRID
+  if (status === "PENDING") {
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.APPROVAL_PENDING,
+      label: "Approval pending",
+      detail: requireApproval
+        ? `Hybrid remote punch-in requires HR approval for ${workDate || "the requested date"} (${periodLabel}).`
+        : "Hybrid remote approval is optional under current policy; remote punch may follow WFH-like rules without this request.",
+      tone: "pending",
+      remotePunchAllowed: !requireApproval,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: { requestStatus: status, workDate, companyDate: today, hybridRemoteApprovalRequired: requireApproval },
+    });
+  }
+
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+      label: "Remote attendance not authorized",
+      detail:
+        status === "REJECTED"
+          ? "This remote-work request was rejected and cannot authorize remote punch-in/out."
+          : "This remote-work request was cancelled and cannot authorize remote punch-in/out.",
+      tone: "blocked",
+      remotePunchAllowed: false,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: { requestStatus: status, workDate, companyDate: today },
+    });
+  }
+
+  if (status === "APPROVED") {
+    if (request?.consumedAt) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+        label: "Remote attendance not authorized",
+        detail: "This approval already authorized one remote session and cannot be reused.",
+        tone: "warn",
+        remotePunchAllowed: false,
+        officePunchAllowed: true,
+        workMode: mode,
+        extras: {
+          requestStatus: status,
+          workDate,
+          companyDate: today,
+          consumedAt: request.consumedAt,
+          consumedBySessionId: request.consumedBySessionId
+            ? String(request.consumedBySessionId)
+            : null,
+        },
+      });
+    }
+
+    if (!requireApproval) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_PUNCH_ALLOWED,
+        label: "Remote punch-in/out allowed",
+        detail: "Hybrid remote approval is not required by policy. Remote punch follows WFH-like location rules.",
+        tone: "ok",
+        remotePunchAllowed: true,
+        officePunchAllowed: true,
+        workMode: mode,
+        extras: { requestStatus: status, workDate, companyDate: today, hybridRemoteApprovalRequired: false },
+      });
+    }
+
+    if (workDate && workDate !== today) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+        label: "Remote attendance not authorized",
+        detail:
+          workDate > today
+            ? `Approved for ${workDate}; company date is ${today}. Remote punch is only allowed on the approved date.`
+            : `Approval was for ${workDate} (past). It no longer authorizes remote punch.`,
+        tone: "warn",
+        remotePunchAllowed: false,
+        officePunchAllowed: true,
+        workMode: mode,
+        extras: { requestStatus: status, workDate, companyDate: today },
+      });
+    }
+
+    const period = evaluateApprovedSessionPeriod({
+      sessionPeriod: request?.sessionPeriod,
+      workDate,
+      companyTimezone,
+      now,
+    });
+    if (!period.ok) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+        label: "Remote attendance not authorized",
+        detail: period.message || `Outside the approved window (${periodLabel}) for ${workDate}.`,
+        tone: "warn",
+        remotePunchAllowed: false,
+        officePunchAllowed: true,
+        workMode: mode,
+        extras: { requestStatus: status, workDate, companyDate: today },
+      });
+    }
+
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.REMOTE_PUNCH_ALLOWED,
+      label: "Remote punch-in/out allowed",
+      detail: `Approved unused request for ${workDate} (${periodLabel}). Employee must punch REMOTE with this request and stay inside the approved location radius.`,
+      tone: "ok",
+      remotePunchAllowed: true,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: { requestStatus: status, workDate, companyDate: today, hybridRemoteApprovalRequired: true },
+    });
+  }
+
+  return eligibilityResult({
+    code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+    label: "Remote attendance not authorized",
+    detail: "No usable remote-work authorization applies.",
+    tone: "blocked",
+    remotePunchAllowed: false,
+    officePunchAllowed: mode !== "WFH",
+    workMode: mode,
+    extras: { requestStatus: status, workDate, companyDate: today },
+  });
+}
+
+/**
+ * Location exceptions never grant remote rights. Punch eligibility reflects work mode
+ * and any separate approved remote-work request — not the exception review status.
+ */
+export function describeLocationExceptionPunchEligibility({
+  exception,
+  employee,
+  policy = null,
+  activeRemoteApproval = null,
+  companyTimezone = "Asia/Kolkata",
+  now = new Date(),
+}) {
+  const mode = getEmployeeWorkMode(employee);
+  const exceptionStatus = String(exception?.status || "").toUpperCase();
+  const type = String(exception?.type || "");
+  const openNote =
+    exceptionStatus === "OPEN"
+      ? " Exception is pending HR review."
+      : "";
+
+  if (mode === "OFFICE") {
+    return eligibilityResult({
+      code:
+        exceptionStatus === "OPEN"
+          ? PUNCH_ELIGIBILITY_CODES.EXCEPTION_PENDING_REVIEW
+          : PUNCH_ELIGIBILITY_CODES.OFFICE_LOCATION_REQUIRED,
+      label:
+        exceptionStatus === "OPEN"
+          ? "Exception pending review"
+          : "Office location required",
+      detail: `Work mode is Office — punch must follow office geofence rules. Location exceptions never authorize remote attendance.${openNote}`,
+      tone: exceptionStatus === "OPEN" ? "pending" : "blocked",
+      remotePunchAllowed: false,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: {
+        exceptionStatus,
+        exceptionType: type,
+        sessionType: exception?.sessionType || null,
+      },
+    });
+  }
+
+  if (mode === "WFH") {
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.REMOTE_PUNCH_ALLOWED,
+      label: "Remote punch-in/out allowed",
+      detail: `Allowed under WFH work mode. This ${type || "location"} exception does not change remote authorization.${openNote}`,
+      tone: exceptionStatus === "OPEN" ? "pending" : "ok",
+      remotePunchAllowed: true,
+      officePunchAllowed: false,
+      workMode: mode,
+      extras: {
+        exceptionStatus,
+        exceptionType: type,
+        sessionType: exception?.sessionType || null,
+      },
+    });
+  }
+
+  // HYBRID — remote only if a separate approved request currently authorizes it
+  if (activeRemoteApproval) {
+    const fromRequest = describeRemoteRequestPunchEligibility({
+      request: activeRemoteApproval,
+      employee,
+      policy,
+      companyTimezone,
+      now,
+    });
+    if (fromRequest.remotePunchAllowed) {
+      return eligibilityResult({
+        code: PUNCH_ELIGIBILITY_CODES.REMOTE_PUNCH_ALLOWED,
+        label: "Remote punch-in/out allowed",
+        detail: `Authorized by approved remote-work request for ${activeRemoteApproval.workDate} — not by this location exception.${openNote}`,
+        tone: exceptionStatus === "OPEN" ? "pending" : "ok",
+        remotePunchAllowed: true,
+        officePunchAllowed: true,
+        workMode: mode,
+        extras: {
+          exceptionStatus,
+          exceptionType: type,
+          sessionType: exception?.sessionType || null,
+          authorizingRequestId: String(activeRemoteApproval._id || activeRemoteApproval.id || ""),
+        },
+      });
+    }
+  }
+
+  if (exceptionStatus === "OPEN") {
+    return eligibilityResult({
+      code: PUNCH_ELIGIBILITY_CODES.EXCEPTION_PENDING_REVIEW,
+      label: "Exception pending review",
+      detail:
+        "Open geofence/accuracy exception under review. It does not authorize remote punch-in/out. Hybrid remote punch still needs an approved remote-work request.",
+      tone: "pending",
+      remotePunchAllowed: false,
+      officePunchAllowed: true,
+      workMode: mode,
+      extras: {
+        exceptionStatus,
+        exceptionType: type,
+        sessionType: exception?.sessionType || null,
+      },
+    });
+  }
+
+  return eligibilityResult({
+    code: PUNCH_ELIGIBILITY_CODES.REMOTE_NOT_AUTHORIZED,
+    label: "Remote attendance not authorized",
+    detail:
+      "No usable approved remote-work request authorizes remote punch today. Reviewing or regularizing a location exception never grants remote attendance.",
+    tone: "blocked",
+    remotePunchAllowed: false,
+    officePunchAllowed: true,
+    workMode: mode,
+    extras: {
+      exceptionStatus,
+      exceptionType: type,
+      sessionType: exception?.sessionType || null,
+    },
+  });
 }

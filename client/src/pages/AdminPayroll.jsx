@@ -704,7 +704,7 @@ export default function AdminPayroll() {
   return (
     <main className="container-wide admin-payroll-container">
       <AppHeader
-        title="Payroll"
+        title={activeTab === "ff_settlements" ? "Final Settlements" : "Payroll"}
         actions={
           selectedSettlementId ? (
             <button
@@ -780,19 +780,11 @@ export default function AdminPayroll() {
               )}
 
               {/* Settlement Overview Header Card */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                  padding: 24,
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                }}
-              >
+              <div className="ap-ff-card" style={{ padding: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#09090b" }}>
+                      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--ink, #131a15)" }}>
                         {activeSettlement.employeeId?.fullName}
                       </h2>
                       <StatusBadge status={activeSettlement.status} />
@@ -802,7 +794,7 @@ export default function AdminPayroll() {
                         </span>
                       )}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: "#71717a" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: "var(--muted, #646d67)" }}>
                       <span><strong>Code:</strong> {activeSettlement.employeeId?.employeeCode || "—"}</span>
                       <span>•</span>
                       <span><strong>Job Title:</strong> {activeSettlement.employeeId?.job?.jobTitle || "—"}</span>
@@ -835,9 +827,9 @@ export default function AdminPayroll() {
                     gap: 12,
                     marginTop: 24,
                     padding: "14px 18px",
-                    background: "#f9fafb",
+                    background: "var(--panel, #f5f6f5)",
                     borderRadius: 10,
-                    border: "1px solid #f3f4f6",
+                    border: "1px solid var(--hair, #e6ede8)",
                     overflowX: "auto",
                   }}
                 >
@@ -861,7 +853,7 @@ export default function AdminPayroll() {
                             borderRadius: 20,
                             fontSize: 12,
                             fontWeight: 600,
-                            background: isCurrent ? "#18181b" : isDone ? "#dcfce7" : "#e4e4e7",
+                            background: isCurrent ? "var(--g-950, #0d3a23)" : isDone ? "var(--g-100, #e3f2e9)" : "var(--hair, #e6ede8)",
                             color: isCurrent ? "#ffffff" : isDone ? "#15803d" : "#71717a",
                           }}
                         >
@@ -900,34 +892,25 @@ export default function AdminPayroll() {
                 )}
 
               {/* Calculation Baseline Snapshot Box */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                  padding: "18px 22px",
-                }}
-              >
-                <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#09090b" }}>
-                  Calculation Summary
-                </h4>
+              <div className="ap-ff-card">
+                <h4 className="ap-ff-section-title">Calculation Summary</h4>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, fontSize: 13 }}>
                   <div>
-                    <span style={{ color: "#71717a", fontSize: 12 }}>Monthly Salary</span>
+                    <span style={{ color: "var(--muted, #646d67)", fontSize: 12 }}>Monthly Salary</span>
                     <div style={{ fontWeight: 600, marginTop: 2 }}>{formatCurrency(activeSettlement.calculationInputs?.monthlyCtc)}</div>
                   </div>
                   <div>
-                    <span style={{ color: "#71717a", fontSize: 12 }}>Basic Salary</span>
+                    <span style={{ color: "var(--muted, #646d67)", fontSize: 12 }}>Basic Salary</span>
                     <div style={{ fontWeight: 600, marginTop: 2 }}>{formatCurrency(activeSettlement.calculationInputs?.basicSalary)}</div>
                   </div>
                   <div>
-                    <span style={{ color: "#71717a", fontSize: 12 }}>Days Worked</span>
+                    <span style={{ color: "var(--muted, #646d67)", fontSize: 12 }}>Days Worked</span>
                     <div style={{ fontWeight: 600, marginTop: 2 }}>
                       {activeSettlement.calculationInputs?.workedDaysInExitMonth} / {activeSettlement.calculationInputs?.workingDaysInExitMonth} Days
                     </div>
                   </div>
                   <div>
-                    <span style={{ color: "#71717a", fontSize: 12 }}>Leave Balance</span>
+                    <span style={{ color: "var(--muted, #646d67)", fontSize: 12 }}>Leave Balance</span>
                     <div style={{ fontWeight: 600, marginTop: 2 }}>
                       {activeSettlement.calculationInputs?.earnedLeaveBalance || 0} Days
                     </div>
@@ -938,16 +921,9 @@ export default function AdminPayroll() {
               {/* Itemized Financial Breakdown Grid */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 {/* 1. EARNINGS COLUMN */}
-                <div
-                  style={{
-                    background: "#ffffff",
-                    borderRadius: 12,
-                    border: "1px solid #e4e4e7",
-                    padding: 20,
-                  }}
-                >
+                <div className="ap-ff-card">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#166534" }}>
+                    <h3 className="ap-ff-section-title ap-ff-earnings-total" style={{ margin: 0, fontSize: 16 }}>
                       Earnings
                     </h3>
                     {isEditable && (
@@ -1084,23 +1060,16 @@ export default function AdminPayroll() {
                     </div>
                   )}
 
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e4e4e7", display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14 }}>
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--hair, #e6ede8)", display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14 }}>
                     <span>Total Earnings</span>
-                    <span style={{ color: "#166534" }}>{formatCurrency(previewTotals.totalEarnings)}</span>
+                    <span className="ap-ff-earnings-total">{formatCurrency(previewTotals.totalEarnings)}</span>
                   </div>
                 </div>
 
                 {/* 2. DEDUCTIONS COLUMN */}
-                <div
-                  style={{
-                    background: "#ffffff",
-                    borderRadius: 12,
-                    border: "1px solid #e4e4e7",
-                    padding: 20,
-                  }}
-                >
+                <div className="ap-ff-card">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#b91c1c" }}>
+                    <h3 className="ap-ff-section-title ap-ff-deductions-total" style={{ margin: 0, fontSize: 16 }}>
                       Deductions
                     </h3>
                     {isEditable && (
@@ -1240,40 +1209,25 @@ export default function AdminPayroll() {
 
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e4e4e7", display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14 }}>
                     <span>Total Deductions</span>
-                    <span style={{ color: "#b91c1c" }}>{formatCurrency(previewTotals.totalDeductions)}</span>
+                    <span className="ap-ff-deductions-total">{formatCurrency(previewTotals.totalDeductions)}</span>
                   </div>
                 </div>
               </div>
 
               {/* NET SETTLEMENT SUMMARY BOX */}
-              <div
-                style={{
-                  background: "#18181b",
-                  borderRadius: 12,
-                  padding: "20px 24px",
-                  color: "#ffffff",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 16,
-                }}
-              >
+              <div className="ap-ff-net-hero" aria-label="Net settlement payable">
                 <div>
-                  <div style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.5px", color: "#a1a1aa" }}>
-                    Net Settlement
-                  </div>
-                  <div style={{ fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                  <div className="ap-ff-net-hero__label">Net Settlement Payable</div>
+                  <div className="ap-ff-net-hero__amount">
                     {formatCurrency(previewTotals.net)}
                   </div>
-                  <div style={{ fontSize: 12, color: "#a1a1aa", marginTop: 2 }}>
+                  <div className="ap-ff-net-hero__meta">
                     Earnings ({formatCurrency(previewTotals.totalEarnings)}) − Deductions ({formatCurrency(previewTotals.totalDeductions)})
                   </div>
                 </div>
 
-                {/* Payment Details badge if Paid/Completed */}
                 {activeSettlement.paymentDetails?.paymentDate && (
-                  <div style={{ textAlign: "right", fontSize: 12.5, color: "#e4e4e7" }}>
+                  <div className="ap-ff-net-hero__payment">
                     <div><strong>Paid on:</strong> {formatDate(activeSettlement.paymentDetails.paymentDate)}</div>
                     <div><strong>Method:</strong> {activeSettlement.paymentDetails.paymentMethod?.replace("_", " ")}</div>
                     {activeSettlement.paymentDetails.referenceNumber && (
@@ -1285,8 +1239,8 @@ export default function AdminPayroll() {
 
               {/* Remarks and Adjustments Section (Editable in DRAFT/ON_HOLD) */}
               {isEditable && (
-                <div style={{ background: "#ffffff", borderRadius: 12, border: "1px solid #e4e4e7", padding: 20 }}>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#09090b", marginBottom: 6 }}>
+                <div className="ap-ff-card">
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--ink, #131a15)", marginBottom: 6 }}>
                     HR Offboarding Remarks
                   </label>
                   <textarea
@@ -1312,21 +1266,21 @@ export default function AdminPayroll() {
 
               {/* ACTION BAR BASED ON SETTLEMENT STATUS */}
               <div
+                className="ap-ff-card"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  padding: "16px 20px",
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
                   flexWrap: "wrap",
                   gap: 12,
                 }}
               >
                 <div>
-                  <span style={{ fontSize: 13, color: "#71717a" }}>
+                  <span style={{ fontSize: 13, color: "var(--muted, #646d67)" }}>
                     Current Status: <strong>{activeSettlement.status?.replace("_", " ")}</strong>
+                    {previewTotals.net != null && (
+                      <> · Outstanding: <strong className="ap-ff-earnings-total">{formatCurrency(previewTotals.net)}</strong></>
+                    )}
                   </span>
                 </div>
 
@@ -1487,20 +1441,15 @@ export default function AdminPayroll() {
 
               {/* Settlements Table */}
               <div
-                className="table-wrapper-relative"
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                  overflow: "hidden",
-                }}
+                className="table-wrapper-relative ap-ff-card"
+                style={{ padding: 0, overflow: "hidden" }}
               >
                 {loadingList && <div className="table-progress-bar" />}
                 {loadingList && settlements.length === 0 ? (
                   <div style={{ overflowX: "auto" }}>
-                    <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                    <table className="data-table ap-ff-list-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                       <thead>
-                        <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                        <tr>
                           <th style={{ padding: "12px 16px" }}>Employee</th>
                           <th style={{ padding: "12px 16px" }}>Last Day</th>
                           <th style={{ padding: "12px 16px" }}>Reason</th>
@@ -1516,20 +1465,16 @@ export default function AdminPayroll() {
                     </table>
                   </div>
                 ) : settlements.length === 0 ? (
-                  <div style={{ padding: 48, textAlign: "center" }}>
-                    <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "#09090b" }}>
-                      No settlements found
-                    </h3>
-                    <p style={{ color: "#71717a", fontSize: 13.5, maxWidth: 420, margin: "0 auto" }}>
-                      Settlements are created from the Employees page when an employee departs.
-                    </p>
+                  <div className="ap-ff-empty">
+                    <strong>No settlements found</strong>
+                    Settlements are created from the Employees page when an employee departs.
                   </div>
                 ) : (
                   <>
                     <div style={{ overflowX: "auto" }}>
-                      <table className="data-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                      <table className="data-table ap-ff-list-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                         <thead>
-                          <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e4e4e7", textAlign: "left", color: "#71717a" }}>
+                          <tr>
                             <th style={{ padding: "12px 16px" }}>Employee</th>
                             <th style={{ padding: "12px 16px" }}>Last Day</th>
                             <th style={{ padding: "12px 16px" }}>Reason</th>
@@ -2631,24 +2576,15 @@ export default function AdminPayroll() {
               </div>
 
               {/* Net Settlement Banner */}
-              <div
-                style={{
-                  padding: "14px 18px",
-                  background: "#18181b",
-                  color: "#ffffff",
-                  borderRadius: 8,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 20,
-                }}
-              >
+              <div className="ap-ff-net-hero" style={{ marginBottom: 20, padding: "14px 18px" }}>
                 <div>
-                  <div style={{ fontSize: 12, textTransform: "uppercase", color: "#a1a1aa" }}>Net Settlement Payable (A − B)</div>
-                  <div style={{ fontSize: 20, fontWeight: 800 }}>{formatCurrency(activeSettlement.financialBreakdown?.netSettlementAmount)}</div>
+                  <div className="ap-ff-net-hero__label">Net Settlement Payable (A − B)</div>
+                  <div className="ap-ff-net-hero__amount" style={{ fontSize: 20 }}>
+                    {formatCurrency(activeSettlement.financialBreakdown?.netSettlementAmount)}
+                  </div>
                 </div>
                 {activeSettlement.paymentDetails?.paymentDate && (
-                  <div style={{ textAlign: "right", fontSize: 12, color: "#e4e4e7" }}>
+                  <div className="ap-ff-net-hero__payment">
                     <div>Paid via {activeSettlement.paymentDetails.paymentMethod?.replace("_", " ")}</div>
                     <div>Ref: {activeSettlement.paymentDetails.referenceNumber || "Confirmed"}</div>
                   </div>

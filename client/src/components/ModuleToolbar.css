@@ -205,20 +205,38 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 80;
   width: min(360px, calc(100vw - 32px));
+  max-height: min(70vh, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   background: var(--card, #ffffff);
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: var(--mt-radius);
   box-shadow: 0 12px 32px rgba(19, 26, 21, 0.14);
   padding: 12px;
   box-sizing: border-box;
+  /* Contain to max-height so the footer cannot leave the viewport */
+  overflow: hidden;
+}
+
+.module-toolbar-filters-panel.is-viewport-fixed {
+  /* Inline style supplies top/left/width/maxHeight; keep flex containment */
+  margin: 0;
 }
 
 .module-toolbar-filters-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .module-toolbar-filters-body > label,
@@ -250,9 +268,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 14px;
+  flex: 0 0 auto;
+  margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--hair, #e3e7e4);
+  background: var(--card, #ffffff);
+  /* Footer is a flex sibling of the scroll body — always reachable */
+  position: relative;
+  z-index: 2;
 }
 
 .module-toolbar-filters-footer .btn-primary,
@@ -307,7 +330,7 @@
     max-width: none;
   }
 
-  .module-toolbar-filters-panel {
+  .module-toolbar-filters-panel:not(.is-viewport-fixed) {
     left: 0;
     right: 0;
     width: auto;

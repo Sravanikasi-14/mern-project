@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import api from "../services/api";
 import EmployeePicker from "./EmployeePicker";
 import { employeeRecordFromApi } from "./employeePickerState";
@@ -86,12 +87,62 @@ function ReportingManagerFilter({
   const [fetchError, setFetchError] = useState("");
   const [selectedCache, setSelectedCache] = useState(() => toOption(initialSelected));
   const rootRef = useRef(null);
+  const triggerRef = useRef(null);
   const seqRef = useRef(0);
+  const [menuStyle, setMenuStyle] = useState(null);
+  const [useViewportMenu, setUseViewportMenu] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 250);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Inside the scrollable filter panel, absolute menus are clipped — portal + pin to viewport.
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      setUseViewportMenu(false);
+      return undefined;
+    }
+    const inFilterPanel = Boolean(rootRef.current?.closest("[data-filter-panel]"));
+    setUseViewportMenu(inFilterPanel);
+    if (!inFilterPanel) {
+      setMenuStyle(null);
+      return undefined;
+    }
+
+    const place = () => {
+      const trigger = triggerRef.current || rootRef.current?.querySelector(".rm-select-trigger");
+      if (!trigger) return;
+      const r = trigger.getBoundingClientRect();
+      const margin = 8;
+      const width = Math.max(r.width, 240);
+      const maxHeight = Math.min(280, window.innerHeight - margin * 2);
+      let top = r.bottom + 4;
+      if (top + Math.min(180, maxHeight) > window.innerHeight - margin) {
+        top = Math.max(margin, r.top - 4 - maxHeight);
+      }
+      let left = r.left;
+      left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+      setMenuStyle({
+        position: "fixed",
+        top: `${Math.round(top)}px`,
+        left: `${Math.round(left)}px`,
+        width: `${Math.round(width)}px`,
+        maxHeight: `${Math.round(maxHeight)}px`,
+        right: "auto",
+        zIndex: 1300,
+      });
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     const next = toOption(initialSelected);
@@ -143,7 +194,10 @@ function ReportingManagerFilter({
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+      const t = e.target;
+      if (rootRef.current?.contains(t)) return;
+      if (typeof t?.closest === "function" && t.closest("[data-filter-submenu='true']")) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -214,6 +268,7 @@ function ReportingManagerFilter({
       <button
         type="button"
         id={inputId}
+        ref={triggerRef}
         className="rm-select-trigger"
         disabled={disabled}
         aria-haspopup="listbox"
@@ -226,66 +281,78 @@ function ReportingManagerFilter({
         </span>
       </button>
 
-      {open && (
-        <div className="rm-select-panel" role="listbox">
-          <input
-            type="search"
-            className="rm-select-search"
-            placeholder="Search by name or code…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoFocus
-            aria-label="Search managers"
-          />
-          {filterMode ? (
-            <button
-              type="button"
-              className={`rm-select-option${isAll ? " is-active" : ""}`}
-              role="option"
-              aria-selected={isAll}
-              onClick={() => pick(ALL)}
-            >
-              <strong>All employees</strong>
-              <span className="rm-select-meta">Clear manager filter</span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={`rm-select-option${isUnassigned ? " is-active" : ""}`}
-            role="option"
-            aria-selected={isUnassigned}
-            onClick={() => pick(NONE)}
-          >
-            <strong>No manager</strong>
-            <span className="rm-select-meta">
-              {filterMode ? "Only people with no manager" : "Remove the current manager"}
-            </span>
-          </button>
-          {loading ? (
-            <div className="rm-select-status">Loading…</div>
-          ) : fetchError ? (
-            <div className="rm-select-status is-error">{fetchError}</div>
-          ) : options.length === 0 ? (
-            <div className="rm-select-status">No active employees match.</div>
-          ) : (
-            options.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={`rm-select-option${managerId === opt.id ? " is-active" : ""}`}
-                role="option"
-                aria-selected={managerId === opt.id}
-                onClick={() => pick(opt)}
+      {open
+        ? (() => {
+            const menu = (
+              <div
+                className={`rm-select-panel${useViewportMenu ? " is-viewport-fixed" : ""}`}
+                role="listbox"
+                data-filter-submenu={useViewportMenu ? "true" : undefined}
+                style={menuStyle || undefined}
               >
-                <strong>{opt.fullName}</strong>
-                <span className="rm-select-meta">
-                  {[opt.jobTitle, opt.employeeCode].filter(Boolean).join(" · ") || "Team member"}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+                <input
+                  type="search"
+                  className="rm-select-search"
+                  placeholder="Search by name or code…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  autoFocus
+                  aria-label="Search managers"
+                />
+                {filterMode ? (
+                  <button
+                    type="button"
+                    className={`rm-select-option${isAll ? " is-active" : ""}`}
+                    role="option"
+                    aria-selected={isAll}
+                    onClick={() => pick(ALL)}
+                  >
+                    <strong>All employees</strong>
+                    <span className="rm-select-meta">Clear manager filter</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={`rm-select-option${isUnassigned ? " is-active" : ""}`}
+                  role="option"
+                  aria-selected={isUnassigned}
+                  onClick={() => pick(NONE)}
+                >
+                  <strong>No manager</strong>
+                  <span className="rm-select-meta">
+                    {filterMode ? "Only people with no manager" : "Remove the current manager"}
+                  </span>
+                </button>
+                {loading ? (
+                  <div className="rm-select-status">Loading…</div>
+                ) : fetchError ? (
+                  <div className="rm-select-status is-error">{fetchError}</div>
+                ) : options.length === 0 ? (
+                  <div className="rm-select-status">No active employees match.</div>
+                ) : (
+                  options.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`rm-select-option${managerId === opt.id ? " is-active" : ""}`}
+                      role="option"
+                      aria-selected={managerId === opt.id}
+                      onClick={() => pick(opt)}
+                    >
+                      <strong>{opt.fullName}</strong>
+                      <span className="rm-select-meta">
+                        {[opt.jobTitle, opt.employeeCode].filter(Boolean).join(" · ") || "Team member"}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            );
+            return useViewportMenu && typeof document !== "undefined"
+              ? createPortal(menu, document.body)
+              : menu;
+          })()
+        : null}
 
       {error ? <span className="field-error">{error}</span> : null}
       {!error && !compact && selected ? (

@@ -577,6 +577,22 @@ div.stat .stat__arrow {
   align-items: end;
 }
 
+.capsule-bars-container--month {
+  grid-template-columns: repeat(30, minmax(10px, 1fr));
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.capsule-bars-container--month .bar-day-label {
+  font-size: 10px;
+}
+
+.capsule-bars-container--today {
+  grid-template-columns: minmax(48px, 96px);
+  justify-content: start;
+}
+
 .capsule-bar-item {
   display: grid;
   grid-template-rows: 1fr auto;

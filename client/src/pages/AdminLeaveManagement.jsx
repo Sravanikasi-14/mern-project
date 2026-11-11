@@ -33,6 +33,7 @@ import "./LeaveManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
 import ModuleToolbar from "../components/ModuleToolbar";
 import AppModal from "../components/AppModal";
+import AuthedAvatar from "../components/AuthedAvatar";
 import LeaveReviewPanel from "../components/LeaveReviewPanel";
 
 const LEAVE_TABLE_COLUMNS = [
@@ -252,7 +253,19 @@ export default function AdminLeaveManagement() {
       ]);
 
       if (detailRes.status === "fulfilled" && detailRes.value.data?.success) {
-        setSelectedRequest(detailRes.value.data.leaveRequest);
+        const detail = detailRes.value.data.leaveRequest;
+        const listAvatar =
+          reqItem.avatar || reqItem.employee?.avatar || reqItem.employeeId?.avatar || "";
+        setSelectedRequest({
+          ...detail,
+          avatar: detail?.employee?.avatar || listAvatar || "",
+          employee: detail?.employee
+            ? {
+                ...detail.employee,
+                avatar: detail.employee.avatar || listAvatar || "",
+              }
+            : detail?.employee,
+        });
         setEmployeeBalance(detailRes.value.data.leaveBalance);
         if (Array.isArray(detailRes.value.data.availableLeaveTypes)) {
           setAvailableLeaveTypes(detailRes.value.data.availableLeaveTypes);
@@ -598,7 +611,7 @@ export default function AdminLeaveManagement() {
       )}
 
       {leaveSection === "overview" && (
-      <section className="lm-calendar-section" aria-label="Monthly Leave Schedule">
+      <section className="lm-calendar-section lm-calendar-with-side" aria-label="Monthly Leave Schedule">
         <MonthCalendar
           year={calMonth.year}
           month={calMonth.month}
@@ -628,9 +641,15 @@ export default function AdminLeaveManagement() {
                 return (
                   <div key={r._id} className="lm-team-leave-row">
                     <div className="lm-team-leave-left">
-                      <div className="lm-req-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>
-                        {getInitials(name)}
-                      </div>
+                      <AuthedAvatar
+                        className="lm-req-avatar"
+                        style={{ width: 32, height: 32, fontSize: 12 }}
+                        employee={r.employee || r.employeeId}
+                        avatar={r.avatar || r.employee?.avatar}
+                        name={name}
+                        initials={getInitials(name)}
+                        alt={name}
+                      />
                       <div>
                         <div className="lm-team-leave-name" title={name}>{name}</div>
                         <div className="lm-team-leave-dates">
@@ -842,9 +861,22 @@ export default function AdminLeaveManagement() {
                 <tr key={req._id}>
                   {leaveCols.isVisible("employee") && (
                     <td>
-                      <strong>{req.employeeId?.fullName || "—"}</strong>
-                      <div style={{ fontSize: "11.5px", color: "var(--muted)" }}>
-                        {req.employeeId?.job?.jobTitle || "—"}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <AuthedAvatar
+                          className="lm-req-avatar"
+                          style={{ width: 32, height: 32, fontSize: 12 }}
+                          employee={req.employee || req.employeeId}
+                          avatar={req.avatar || req.employee?.avatar}
+                          name={req.employeeName || req.employee?.fullName || req.employeeId?.fullName}
+                          initials={getInitials(req.employeeName || req.employee?.fullName || "E")}
+                          alt={req.employeeName || "Employee"}
+                        />
+                        <div>
+                          <strong>{req.employeeName || req.employee?.fullName || req.employeeId?.fullName || "—"}</strong>
+                          <div style={{ fontSize: "11.5px", color: "var(--muted)" }}>
+                            {req.jobTitle || req.employee?.jobTitle || req.employeeId?.job?.jobTitle || "—"}
+                          </div>
+                        </div>
                       </div>
                     </td>
                   )}
@@ -856,10 +888,13 @@ export default function AdminLeaveManagement() {
                     </td>
                   )}
                   {leaveCols.isVisible("dates") && (
-                    <td>{formatDate(req.startDate)} to {formatDate(req.endDate)}</td>
+                    <td>
+                      {formatDate(req.fromDate || req.startDate)} to{" "}
+                      {formatDate(req.toDate || req.endDate)}
+                    </td>
                   )}
                   {leaveCols.isVisible("days") && (
-                    <td>{req.calculatedDays || req.durationDays || 1}</td>
+                    <td>{req.daysCount ?? req.calculatedDays ?? req.durationDays ?? "—"}</td>
                   )}
                   {leaveCols.isVisible("status") && (
                     <td><StatusBadge status={req.status} /></td>
@@ -970,6 +1005,7 @@ export default function AdminLeaveManagement() {
             <LeaveReviewPanel
               selectedRequest={selectedRequest}
               employeeBalance={employeeBalance}
+              availableLeaveTypes={availableLeaveTypes}
               leaveImpact={leaveImpact}
               leaveImpactLoading={leaveImpactLoading}
               leaveImpactError={leaveImpactError}
@@ -1018,7 +1054,7 @@ export default function AdminLeaveManagement() {
           size="lg"
           className="lm-details-modal"
           title="Leave Request Details"
-          subtitle="Review eligibility, work impact, and optional backup coordination. Leave approval is independent of handover."
+          subtitle="Employee identity, leave balance, approval status, and optional work-continuity planning."
           onClose={() => {
             setSelectedRequest(null);
             resetReviewContext();
@@ -1083,6 +1119,7 @@ export default function AdminLeaveManagement() {
           <LeaveReviewPanel
             selectedRequest={selectedRequest}
             employeeBalance={employeeBalance}
+            availableLeaveTypes={availableLeaveTypes}
             leaveImpact={leaveImpact}
             leaveImpactLoading={leaveImpactLoading}
             leaveImpactError={leaveImpactError}

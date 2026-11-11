@@ -489,6 +489,48 @@ describe("Complete Attendance, Geolocation, Permissions & Live Tracking Suite", 
     assert.match(updateAfterStop.body.message, /No active tracking session found/);
   });
 
+  it("10g. Live Tracking lists punched-in employees before location sharing starts", async () => {
+    const modelsA = await getCompanyModels(companyA);
+    await modelsA.Attendance.deleteMany({ employeeId: employeeRecordA2._id });
+    await modelsA.LiveTrackingSession.deleteMany({ employeeId: employeeRecordA2._id });
+
+    const punchInA2 = await request(app)
+      .post("/api/employees/me/attendance/punch-in")
+      .set("Cookie", employeeCookieA2)
+      .send({ location: validLocationA });
+    assert.equal(punchInA2.status, 200, JSON.stringify(punchInA2.body));
+
+    const liveRes = await request(app)
+      .get("/api/admin/attendance/tracking-sessions")
+      .set("Cookie", hrCookieA);
+    assert.equal(liveRes.status, 200, JSON.stringify(liveRes.body));
+    const row = (liveRes.body.live || []).find(
+      (entry) => String(entry.employeeId) === String(employeeRecordA2._id)
+    );
+    assert.ok(row, "punched-in employee must appear on Live Tracking without starting sharing");
+    assert.equal(row.isTrackingActive, false);
+    assert.equal(row.locationState, "PUNCH_ONLY");
+    assert.ok(row.lastLocation);
+    assert.equal(row.lastLocation.latitude, validLocationA.latitude);
+    assert.ok(row.punchInAt || row.checkInTime);
+
+    const startRes = await request(app)
+      .post("/api/employees/me/tracking/start")
+      .set("Cookie", employeeCookieA2)
+      .send({ durationMinutes: 30 });
+    assert.equal(startRes.status, 200);
+
+    const afterStart = await request(app)
+      .get("/api/admin/attendance/tracking-sessions")
+      .set("Cookie", hrCookieA);
+    const sharing = (afterStart.body.live || []).find(
+      (entry) => String(entry.employeeId) === String(employeeRecordA2._id)
+    );
+    assert.ok(sharing);
+    assert.equal(sharing.isTrackingActive, true);
+    assert.ok(["TRACKING_NO_LOCATION", "LIVE", "STALE", "PUNCH_ONLY"].includes(sharing.locationState));
+  });
+
   it("11. HR Admin Overview: fetches authorized company attendance map data", async () => {
     const todayStr = new Date().toISOString().split("T")[0];
 

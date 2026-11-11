@@ -9,7 +9,7 @@ import {
 } from "./employeeVisibilityService.js";
 
 const DIRECTORY_SELECT =
-  "_id fullName preferredName employeeCode email phoneNumber job.jobTitle job.department job.workLocation job.employmentType job.joiningDate job.reportingManagerId";
+  "_id fullName preferredName employeeCode email phoneNumber avatar job.jobTitle job.department job.workLocation job.employmentType job.joiningDate job.reportingManagerId";
 
 const DIRECTORY_ALLOWED_LIMITS = new Set([10, 20, 50]);
 const DIRECTORY_DEFAULT_LIMIT = 20;

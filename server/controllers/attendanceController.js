@@ -478,11 +478,13 @@ export async function cancelMyRemoteWorkRequest(req, res, next) {
 
 export async function getAdminRemoteWorkRequestsHandler(req, res, next) {
   try {
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
     const requests = await listAdminRemoteWorkRequests({
       models: req.auth.models,
       status: req.query.status || "PENDING",
+      companyTimezone,
     });
-    res.json({ success: true, requests });
+    res.json({ success: true, requests, companyTimezone });
   } catch (error) {
     next(error);
   }
@@ -505,11 +507,13 @@ export async function decideRemoteWorkRequestHandler(req, res, next) {
 
 export async function getLocationExceptionsHandler(req, res, next) {
   try {
+    const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
     const exceptions = await listLocationExceptions({
       models: req.auth.models,
       status: req.query.status || "OPEN",
+      companyTimezone,
     });
-    res.json({ success: true, exceptions });
+    res.json({ success: true, exceptions, companyTimezone });
   } catch (error) {
     next(error);
   }

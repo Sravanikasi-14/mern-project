@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import AppModal from "../AppModal";
+import AuthedAvatar from "../AuthedAvatar";
 import SoftRefresh from "../SoftRefresh";
 import { IconMail, IconRefresh } from "../EmployeeIcon";
 import {
@@ -25,6 +26,20 @@ function initials(name = "") {
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function OrgAvatar({ emp, className = "org-chart-avatar" }) {
+  if (!emp) return null;
+  return (
+    <AuthedAvatar
+      className={className}
+      employee={emp}
+      avatar={emp.avatar}
+      name={emp.fullName}
+      initials={initials(emp.fullName)}
+      alt={emp.fullName || "Employee"}
+    />
+  );
 }
 
 function departmentAccent(dept = "") {
@@ -119,9 +134,7 @@ function OrgChartCard({
         }
       }}
     >
-      <span className="org-chart-avatar" aria-hidden="true">
-        {initials(emp.fullName)}
-      </span>
+      <OrgAvatar emp={emp} />
       <div className="org-chart-card-body">
         <strong>{emp.fullName}</strong>
         <span className="org-chart-title">{emp.jobTitle || "Team member"}</span>
@@ -408,6 +421,20 @@ export default function EmployeeReportingView() {
   const unassignedIds = data?.unassignedIds || [];
   const totalPeople = data?.meta?.total ?? data?.employees?.length ?? 0;
 
+  /** Always show a chart when the viewer's reporting chain exists, even if server roots are empty. */
+  const chartRootIds = useMemo(() => {
+    if (hierarchyRootIds.length > 0) return hierarchyRootIds;
+    const viewerId = data?.meta?.viewerEmployeeId ? String(data.meta.viewerEmployeeId) : null;
+    if (!viewerId || !byId.has(viewerId)) return [];
+    let cur = viewerId;
+    let guard = 0;
+    while (byId.get(cur)?.treeManagerId && guard < 64) {
+      cur = String(byId.get(cur).treeManagerId);
+      guard += 1;
+    }
+    return cur ? [cur] : [];
+  }, [hierarchyRootIds, data?.meta?.viewerEmployeeId, byId]);
+
   return (
     <div className="oe-reporting-panel org-page pd-org-page">
       <div className="org-header pd-org-header">
@@ -478,9 +505,7 @@ export default function EmployeeReportingView() {
                         role="option"
                         onClick={() => openEmployee(emp.id, { fromSearch: true })}
                       >
-                        <span className="org-chart-avatar" aria-hidden="true">
-                          {initials(emp.fullName)}
-                        </span>
+                        <OrgAvatar emp={emp} />
                         <span className="org-search-item-body">
                           <strong>{emp.fullName}</strong>
                           <span>
@@ -551,13 +576,14 @@ export default function EmployeeReportingView() {
                 ref={canvasRef}
                 style={{ transform: `scale(${zoom})` }}
               >
-                {hierarchyRootIds.length === 0 ? (
+                {chartRootIds.length === 0 ? (
                   <div className="org-chart-empty">
-                    No multi-level reporting trees yet. People without managers appear below.
+                    Your reporting hierarchy is not available yet. People without a manager appear
+                    below. Click a person to open only the profile fields you are permitted to see.
                   </div>
                 ) : (
                   <div className="org-chart-forest" role="tree" aria-label="Reporting structure">
-                    {hierarchyRootIds.map((id) => (
+                    {chartRootIds.map((id) => (
                       <ul key={id} className="org-chart-tree">
                         <OrgChartBranch
                           id={id}
@@ -601,9 +627,7 @@ export default function EmployeeReportingView() {
                       style={{ "--dept-accent": departmentAccent(emp.department) }}
                       onClick={() => openEmployee(id)}
                     >
-                      <span className="org-chart-avatar" aria-hidden="true">
-                        {initials(emp.fullName)}
-                      </span>
+                      <OrgAvatar emp={emp} />
                       <span className="org-unassigned-body">
                         <strong>{emp.fullName}</strong>
                         <span>{emp.jobTitle || "Team member"}</span>
@@ -659,9 +683,7 @@ export default function EmployeeReportingView() {
         {!profileError && profileEmployee ? (
           <div className="pd-profile">
             <div className="pd-profile-hero">
-              <div className="pd-avatar pd-avatar-lg" aria-hidden="true">
-                {initials(profileEmployee.fullName)}
-              </div>
+              <OrgAvatar emp={profileEmployee} className="pd-avatar pd-avatar-lg" />
               <div className="pd-profile-hero-text">
                 <h3>{profileEmployee.fullName || "—"}</h3>
                 <p>{profileEmployee.employeeCode || "—"}</p>

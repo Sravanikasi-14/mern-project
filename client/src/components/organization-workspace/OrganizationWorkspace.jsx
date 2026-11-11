@@ -1,10 +1,7 @@
 import { useState } from "react";
-import { useAuth } from "../../context/AuthContext";
-import { useCompanyHrAdminsQuery } from "../../hooks/useCompanyAdminQueries";
 import HrReportingView from "../organization-explorer/HrReportingView";
 import DesignationsSection from "./DesignationsSection";
 import StructureSection from "./StructureSection";
-import { RolesSection } from "./PeopleAccessSections";
 
 const PAGES = [
   { id: "reporting", label: "Who reports to whom" },
@@ -12,20 +9,14 @@ const PAGES = [
 ];
 
 const COMPANY_PARTS = [
-  { id: "departments", label: "Departments and teams", hint: "Group people into departments and teams." },
+  { id: "departments", label: "Departments", hint: "Group people into departments." },
+  { id: "teams", label: "Teams", hint: "Create teams, assign members, and link them to departments." },
   { id: "titles", label: "Job titles", hint: "Keep the titles and levels people can choose from." },
-  { id: "roles", label: "User roles", hint: "Review the four fixed roles and HR Admin access." },
 ];
 
 export default function OrganizationWorkspace() {
-  const { user } = useAuth();
-  const isCompanyAdmin = user?.role === "COMPANY_ADMIN";
   const [page, setPage] = useState("reporting");
   const [part, setPart] = useState("departments");
-  const hrQuery = useCompanyHrAdminsQuery(
-    { page: 1, limit: 50, status: "ALL" },
-    { enabled: isCompanyAdmin && page === "company" && part === "roles" }
-  );
 
   return (
     <div className="ow-workspace">
@@ -65,9 +56,9 @@ export default function OrganizationWorkspace() {
             ))}
           </div>
           <p className="ow-hint">{COMPANY_PARTS.find((item) => item.id === part)?.hint}</p>
-          {part === "departments" ? <StructureSection embedded /> : null}
+          {part === "departments" ? <StructureSection embedded mode="departments" /> : null}
+          {part === "teams" ? <StructureSection embedded mode="teams" /> : null}
           {part === "titles" ? <DesignationsSection embedded /> : null}
-          {part === "roles" ? <RolesSection hrQuery={hrQuery} embedded /> : null}
         </section>
       )}
     </div>

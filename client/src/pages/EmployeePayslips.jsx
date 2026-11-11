@@ -36,7 +36,7 @@ export default function EmployeePayslips() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSettlementModal, setShowSettlementModal] = useState(false);
 
-  const handleDownloadPayslip = async (payslipId) => {
+  const handleDownloadPayslip = async (payslipId, meta = null) => {
     try {
       setDownloadingId(payslipId);
       setActionError("");
@@ -48,7 +48,9 @@ export default function EmployeePayslips() {
           params: { format: "pdf" },
           responseType: "blob",
         });
-      } catch {
+      } catch (primaryErr) {
+        const status = primaryErr?.response?.status;
+        if (status === 401 || status === 403) throw primaryErr;
         response = await api.get(`/employees/me/payslips/${payslipId}/download`, {
           params: { format: "pdf" },
           responseType: "blob",
@@ -56,20 +58,37 @@ export default function EmployeePayslips() {
       }
 
       const contentType = response.headers["content-type"] || "application/pdf";
+      if (contentType.includes("application/json")) {
+        const text = await response.data.text();
+        let message = "Unable to download payslip.";
+        try {
+          message = JSON.parse(text)?.message || message;
+        } catch {
+          /* keep default */
+        }
+        throw new Error(message);
+      }
+
       const isPdf = contentType.includes("application/pdf") || response.data?.type?.includes("pdf");
       const ext = isPdf ? "pdf" : "txt";
+      const periodLabel = meta
+        ? `${meta.month || ""}_${meta.year || ""}`.replace(/^_|_$/g, "")
+        : String(payslipId);
       const blob = new Blob([response.data], { type: contentType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `Payslip_${payslipId}.${ext}`);
+      link.setAttribute("download", `Payslip_${periodLabel || payslipId}.${ext}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      setActionSuccess("Payslip downloaded successfully.");
+      setActionSuccess("Payslip PDF downloaded successfully.");
     } catch (err) {
-      const msg = err.response?.data?.message || "Unable to download payslip. Please try again later.";
+      const msg =
+        err.message ||
+        err.response?.data?.message ||
+        "Unable to download payslip. Please try again later.";
       setActionError(msg);
     } finally {
       setDownloadingId(null);
@@ -318,7 +337,7 @@ export default function EmployeePayslips() {
                                 <button
                                   type="button"
                                   className="btn-sm btn-primary"
-                                  onClick={() => handleDownloadPayslip(ps.id)}
+                                  onClick={() => handleDownloadPayslip(ps.id, ps)}
                                   disabled={downloadingId === ps.id}
                                 >
                                   <IconDownload size={13} />
@@ -376,12 +395,12 @@ export default function EmployeePayslips() {
                 Close
               </button>
               <button type="button" className="btn-secondary" onClick={handlePrintPayslip}>
-                Print
+                Print preview
               </button>
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => handleDownloadPayslip(selectedPayslip.id)}
+                onClick={() => handleDownloadPayslip(selectedPayslip.id, selectedPayslip)}
                 disabled={downloadingId === selectedPayslip.id}
               >
                 <IconDownload size={14} />

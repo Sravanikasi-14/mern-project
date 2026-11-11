@@ -258,6 +258,88 @@ export async function calculateDeterministicFindings({ models, company, hrAccess
           linkText: "Review Leaves",
         });
       }
+
+      // Work impact & team availability: people on approved leave today + their open/overdue work
+      const todayStart = new Date(`${todayStr}T00:00:00.000Z`);
+      const todayEnd = new Date(`${todayStr}T23:59:59.999Z`);
+      const onLeaveToday = await LeaveRequest.find(
+        mergeEmployeeIdScopeFilter(hrAccess, {
+          status: "APPROVED",
+          fromDate: { $lte: todayEnd },
+          toDate: { $gte: todayStart },
+        })
+      )
+        .select("employeeId")
+        .lean();
+
+      const onLeaveIdSet = new Set();
+      const onLeaveObjectIds = [];
+      for (const row of onLeaveToday) {
+        if (!row.employeeId) continue;
+        const key = String(row.employeeId);
+        if (onLeaveIdSet.has(key)) continue;
+        onLeaveIdSet.add(key);
+        onLeaveObjectIds.push(row.employeeId);
+      }
+      const onLeaveEmployeeIds = onLeaveObjectIds;
+
+      if (onLeaveEmployeeIds.length > 0) {
+        let overdueWhileAway = 0;
+        let openWhileAway = 0;
+        if (Task) {
+          const taskFilter = mergeEmployeeIdScopeFilter(
+            hrAccess,
+            {
+              assigneeId: { $in: onLeaveObjectIds },
+              status: { $in: ["ASSIGNED", "IN_PROGRESS", "CHANGES_REQUESTED", "SUBMITTED"] },
+            },
+            "assigneeId"
+          );
+          const awayTasks = await Task.find(taskFilter).select("deadline status").lean();
+          openWhileAway = awayTasks.length;
+          overdueWhileAway = awayTasks.filter(
+            (t) => t.deadline && new Date(t.deadline) < now && t.status !== "SUBMITTED"
+          ).length;
+        }
+
+        const deptPeers = Employee
+          ? await Employee.find(
+              mergeEmployeeScopeFilter(hrAccess, {
+                _id: { $in: onLeaveObjectIds },
+                status: "ACTIVE",
+              })
+            )
+              .select("job.department")
+              .lean()
+          : [];
+        const departmentsAffected = new Set(
+          deptPeers.map((e) => e.job?.department).filter(Boolean)
+        ).size;
+
+        const severity = overdueWhileAway > 0 ? "HIGH" : onLeaveEmployeeIds.length >= 3 ? "MEDIUM" : "LOW";
+        const parts = [
+          `${onLeaveEmployeeIds.length} employee(s) on approved leave today`,
+        ];
+        if (departmentsAffected > 0) parts.push(`${departmentsAffected} department(s) affected`);
+        if (openWhileAway > 0) parts.push(`${openWhileAway} open task(s) still assigned to them`);
+        if (overdueWhileAway > 0) parts.push(`${overdueWhileAway} overdue`);
+
+        findings.push({
+          id: "insight-work-impact-availability",
+          category: "WORK_IMPACT",
+          title: "Work Impact & Team Availability",
+          severity,
+          count: onLeaveEmployeeIds.length + openWhileAway,
+          summary: parts.join("; "),
+          explanation: `${parts.join(". ")}. Reduced team availability can delay reviews and delivery when open work remains with people who are away.`,
+          action:
+            overdueWhileAway > 0 || openWhileAway > 0
+              ? "Open Leave Management to review work-impact context, then reassign or cover open Work Management tasks for people who are away."
+              : "Confirm coverage in Leave Management for teams with reduced availability today.",
+          link: "/admin/leave",
+          linkText: "Review Leave Impact",
+        });
+      }
     } catch {
       // Non-blocking
     }

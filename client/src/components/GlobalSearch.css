@@ -69,9 +69,9 @@
 
 .global-search-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 8px;
   border: 0;
@@ -86,6 +86,29 @@
 .global-search-item:focus-visible {
   background: var(--g-50, #f3faf6);
   outline: none;
+}
+
+.global-search-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1d7347, #0d3a23);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.global-search-item-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .global-search-item-title {

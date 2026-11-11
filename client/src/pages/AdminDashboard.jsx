@@ -13,6 +13,8 @@ import {
   useAdminDashboardQuery,
   buildAdminDashboardFallback,
 } from "../hooks/useAdminQueries";
+import AuthedAvatar from "../components/AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./AdminDashboard.css";
 import "../pages/PeopleManagement.css";
 
@@ -108,6 +110,7 @@ export default function AdminDashboard() {
     month: selectedMonth,
     year: selectedYear,
     department: selectedDept,
+    company,
   });
 
   useEffect(() => {
@@ -194,46 +197,98 @@ export default function AdminDashboard() {
     payrollCycle.status !== "CANCELLED";
   const totalPendingActions = pendingLeaves.length + pendingOffersCount + (hasPayrollAction ? 1 : 0);
 
-  // 7-day capsule bar data for Weekly Attendance Chart
+  // Attendance trend bars from real overview series (not month-tail slice / dummy data).
   const weeklyBars = useMemo(() => {
-    const calendarDays = data?.attendanceCalendar?.days || [];
     const daysOfWeekLetters = ["S", "M", "T", "W", "T", "F", "S"];
+    const overview = data?.attendanceOverview || {};
+    const calendarDays = data?.attendanceCalendar?.days || [];
+    const activeHeadcount = Math.max(
+      1,
+      overview.activeEmployees || totalEmployees || 1
+    );
 
-    if (calendarDays.length === 0) {
-      return daysOfWeekLetters.map((letter, idx) => ({
-        dayLetter: letter,
-        pct: 0,
-        heightVal: 0.15,
-        present: 0,
-        isWeekend: idx === 0 || idx === 6,
-        isToday: false,
-      }));
+    let sourceDays = [];
+    if (attendanceRange === "TODAY") {
+      const today =
+        (overview.week || overview.days || []).find((d) => d.isToday) ||
+        calendarDays.find((d) => d.isToday) ||
+        null;
+      sourceDays = today ? [today] : [];
+    } else if (attendanceRange === "30D") {
+      sourceDays = overview.thirtyDays || [];
+      if (!sourceDays.length && calendarDays.length) {
+        let end = calendarDays.findIndex((d) => d.isToday);
+        if (end < 0) {
+          end = calendarDays.length - 1;
+          for (let i = calendarDays.length - 1; i >= 0; i -= 1) {
+            if (!calendarDays[i].isFuture) {
+              end = i;
+              break;
+            }
+          }
+        }
+        const start = Math.max(0, end - 29);
+        sourceDays = calendarDays.slice(start, end + 1);
+      }
+    } else {
+      // 7D — prefer backend rolling week ending at selected/today date
+      sourceDays = overview.week || overview.days || [];
+      if (!sourceDays.length && calendarDays.length) {
+        let end = calendarDays.findIndex((d) => d.isToday);
+        if (end < 0) {
+          end = calendarDays.length - 1;
+          for (let i = calendarDays.length - 1; i >= 0; i -= 1) {
+            if (!calendarDays[i].isFuture) {
+              end = i;
+              break;
+            }
+          }
+        }
+        const start = Math.max(0, end - 6);
+        sourceDays = calendarDays.slice(start, end + 1);
+      }
     }
 
-    // Take the last 7 days from calendarData
-    const sliceDays = calendarDays.slice(-7);
-    const maxVal = Math.max(1, totalEmployees);
+    if (!sourceDays.length) return [];
 
-    return sliceDays.map((d) => {
+    return sourceDays.map((d) => {
+      const present = d.presentCount ?? d.present ?? 0;
       const parts = parseCivilDate(d.date);
-      const dayIdx = d.dayOfWeek != null ? d.dayOfWeek : (parts ? weekdaySunday0(parts.year, parts.month, parts.day) : 0);
-      const pct = maxVal > 0 ? Math.min(100, Math.round(((d.presentCount || 0) / maxVal) * 100)) : 0;
-      const heightVal = Math.max(0.18, pct / 100);
+      const dayIdx =
+        d.dayOfWeek != null
+          ? d.dayOfWeek
+          : parts
+            ? weekdaySunday0(parts.year, parts.month, parts.day)
+            : 0;
+      const pct = Math.min(100, Math.round((present / activeHeadcount) * 100));
+      const heightVal = present > 0 ? Math.max(0.18, pct / 100) : 0.08;
 
       return {
         date: d.date,
         dayLetter: daysOfWeekLetters[dayIdx] || "•",
         pct,
         heightVal,
-        present: d.presentCount || 0,
-        absent: d.absentCount || 0,
-        late: d.lateCount || 0,
-        onLeave: d.leaveCount || 0,
+        present,
+        absent: d.absentCount ?? d.absent ?? 0,
+        late: d.lateCount ?? d.late ?? 0,
+        onLeave: d.leaveCount ?? d.onLeave ?? 0,
         isWeekend: Boolean(d.isWeekend),
         isToday: Boolean(d.isToday),
+        isHoliday: Boolean(d.isHoliday),
+        isFuture: Boolean(d.isFuture),
       };
     });
-  }, [data?.attendanceCalendar?.days, totalEmployees]);
+  }, [
+    data?.attendanceOverview,
+    data?.attendanceCalendar?.days,
+    totalEmployees,
+    attendanceRange,
+  ]);
+
+  // Empty when no punch/leave activity — computed absents alone must not fake a flat chart.
+  const hasAttendanceTrendData = weeklyBars.some(
+    (b) => (b.present || 0) + (b.late || 0) + (b.onLeave || 0) > 0
+  );
 
   const payrollHistoryBars = useMemo(
     () => salaryExpenses.filter((s) => Number(s.amount || 0) > 0 && s.hasCycle !== false),
@@ -468,7 +523,7 @@ export default function AdminDashboard() {
               </Link>
               ) : null}
               {canAttendance ? (
-              <Link to="/admin/attendance?tab=records" className="card-shortcut-link" title="Open Attendance">
+              <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance">
                 <span>Attendance Hub</span>
                 <span aria-hidden="true">→</span>
               </Link>
@@ -476,42 +531,60 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Fernly Signature Capsule Bar Chart */}
-          <div className="capsule-bars-container" role="img" aria-label="Weekly attendance capsule bars">
+          {/* Capsule bar chart — real attendance counts for the selected range */}
+          <div
+            className={`capsule-bars-container ${
+              attendanceRange === "30D"
+                ? "capsule-bars-container--month"
+                : attendanceRange === "TODAY"
+                  ? "capsule-bars-container--today"
+                  : ""
+            }`}
+            role="img"
+            aria-label="Attendance trend capsule bars"
+          >
             {attendanceRestricted ? (
               <p className="activity-empty">Attendance counts are unavailable for this access level.</p>
-            ) : weeklyBars.map((bar, idx) => {
-              const isPeak = bar.pct >= 90 && !bar.isWeekend;
-              const isLight = bar.pct < 70 && !bar.isWeekend;
-              const barClass = bar.isWeekend
-                ? "bar--weekend"
-                : isPeak
-                ? "bar--peak"
-                : isLight
-                ? "bar--light"
-                : "bar--mid";
+            ) : weeklyBars.length === 0 || !hasAttendanceTrendData ? (
+              <p className="activity-empty">
+                No attendance records for this range yet. Punch-ins will appear here once employees check in.
+              </p>
+            ) : (
+              weeklyBars.map((bar, idx) => {
+                const isPeak = bar.pct >= 90 && !bar.isWeekend && !bar.isHoliday;
+                const isLight = bar.pct < 70 && !bar.isWeekend && !bar.isHoliday;
+                const barClass = bar.isWeekend || bar.isHoliday
+                  ? "bar--weekend"
+                  : isPeak
+                    ? "bar--peak"
+                    : isLight
+                      ? "bar--light"
+                      : "bar--mid";
 
-              return (
-                <div
-                  key={`${bar.dayLetter}-${idx}`}
-                  className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
-                  onMouseEnter={() => setHoveredDay(bar)}
-                  onMouseLeave={() => setHoveredDay(null)}
-                >
-                  <div className="capsule-bar-track">
-                    <button
-                      type="button"
-                      className={`capsule-bar ${barClass}`}
-                      style={{ "--h": bar.heightVal }}
-                      aria-label={`${bar.date || "Day"}: ${bar.present} present (${bar.pct}%)`}
-                    >
-                      <span className="bar-fill" />
-                    </button>
+                return (
+                  <div
+                    key={`${bar.date || bar.dayLetter}-${idx}`}
+                    className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
+                    onMouseEnter={() => setHoveredDay(bar)}
+                    onMouseLeave={() => setHoveredDay(null)}
+                  >
+                    <div className="capsule-bar-track">
+                      <button
+                        type="button"
+                        className={`capsule-bar ${barClass}`}
+                        style={{ "--h": bar.heightVal }}
+                        aria-label={`${bar.date || "Day"}: ${bar.present} present, ${bar.absent} absent, ${bar.late} late (${bar.pct}%)`}
+                      >
+                        <span className="bar-fill" />
+                      </button>
+                    </div>
+                    <span className="bar-day-label">
+                      {attendanceRange === "30D" ? (bar.date || "").slice(8) : bar.dayLetter}
+                    </span>
                   </div>
-                  <span className="bar-day-label">{bar.dayLetter}</span>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
           {/* Breakdown Indicators and Shift Status */}
@@ -842,12 +915,8 @@ export default function AdminDashboard() {
             ) : (
               recentLeaves.slice(0, 4).map((l, idx) => {
                 const colorPair = PASTEL_AVATAR_COLORS[idx % PASTEL_AVATAR_COLORS.length];
-                const initials = (l.employeeName || "TM")
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase();
+                const name = l.employeeName || "TM";
+                const initials = initialsFromName(name, "TM");
 
                 const isDone = l.status === "APPROVED";
                 const isProg = l.status === "PENDING";
@@ -856,13 +925,15 @@ export default function AdminDashboard() {
 
                 return (
                   <div key={l.id || idx} className="activity-item">
-                    <span
+                    <AuthedAvatar
                       className="activity-avatar"
                       style={{ background: colorPair.bg, color: colorPair.text }}
-                      aria-hidden="true"
-                    >
-                      {initials}
-                    </span>
+                      avatar={l.avatar}
+                      employee={{ _id: l.employeeId, avatar: l.avatar }}
+                      name={name}
+                      initials={initials}
+                      alt={name}
+                    />
                     <div className="activity-body">
                       <span className="activity-name">{l.employeeName}</span>
                       <span className="activity-task">

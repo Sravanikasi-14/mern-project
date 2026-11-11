@@ -1522,6 +1522,7 @@ export async function getAdminAttendanceOverview({
       employeeCode: emp.employeeCode,
       fullName: emp.fullName,
       email: emp.email,
+      avatar: emp.avatar || "",
       department: emp.job?.department || "General",
       jobTitle: emp.job?.jobTitle || "Team Member",
       attendanceStatus: status,
@@ -1583,9 +1584,83 @@ export async function getAdminAttendanceOverview({
   };
 }
 
+/** Location older than this while sharing is treated as stale for HR Live Tracking. */
+const LIVE_LOCATION_STALE_MS = 5 * 60 * 1000;
+
+function hasNumericCoords(loc) {
+  return Boolean(loc) && typeof loc.latitude === "number" && typeof loc.longitude === "number";
+}
+
+/** Open punch for a day record — multi-session or legacy single pair. Never invents coords. */
+function resolveOpenPunch(attendance) {
+  if (!attendance) return null;
+  const sessions = attendanceSessionsView(attendance);
+  const open =
+    sessions.find(
+      (s) =>
+        s.status === ATTENDANCE_SESSION_STATUSES.ACTIVE || (s.checkIn && !s.checkOut)
+    ) || null;
+  if (open?.checkIn) {
+    return {
+      punchInAt: open.checkIn,
+      checkInLocation: open.checkInLocation || null,
+      attendanceId: attendance._id,
+      openSessionId: open._id || attendance.openSessionId || null,
+    };
+  }
+  if (attendance.checkIn && !attendance.checkOut) {
+    return {
+      punchInAt: attendance.checkIn,
+      checkInLocation: attendance.checkInLocation || null,
+      attendanceId: attendance._id,
+      openSessionId: attendance.openSessionId || null,
+    };
+  }
+  return null;
+}
+
+function classifyLiveLocation({ tracking, punchLocation, now = new Date() }) {
+  if (tracking) {
+    const loc = tracking.lastLocation || null;
+    if (hasNumericCoords(loc)) {
+      const stamp = new Date(loc.receivedAt || loc.capturedAt || 0).getTime();
+      const stale =
+        Number.isFinite(stamp) && stamp > 0 && now.getTime() - stamp > LIVE_LOCATION_STALE_MS;
+      return {
+        locationState: stale ? "STALE" : "LIVE",
+        locationLabel: stale ? "Stale location" : "Live sharing",
+        lastLocation: loc,
+        isTrackingActive: true,
+      };
+    }
+    return {
+      locationState: "TRACKING_NO_LOCATION",
+      locationLabel: "Sharing — location unavailable",
+      lastLocation: null,
+      isTrackingActive: true,
+    };
+  }
+  if (hasNumericCoords(punchLocation)) {
+    return {
+      locationState: "PUNCH_ONLY",
+      locationLabel: "Last known from punch-in",
+      lastLocation: punchLocation,
+      isTrackingActive: false,
+    };
+  }
+  return {
+    locationState: "UNAVAILABLE",
+    locationLabel: "Location unavailable",
+    lastLocation: null,
+    isTrackingActive: false,
+  };
+}
+
 /**
- * Live ACTIVE sessions for the map, plus optional historical sessions whose
- * startedAt falls in [startDate, endDate]. Does not invent locations.
+ * Live Tracking workspace payload:
+ * - `live`: employees with an open punch today (active attendance), enriched with optional
+ *   LiveTrackingSession sharing state. Punch-in alone does not invent coordinates.
+ * - `history`: LiveTrackingSession rows started in the selected date range.
  */
 export async function getAdminTrackingSessions({
   models,
@@ -1596,17 +1671,7 @@ export async function getAdminTrackingSessions({
   status = "ALL",
   hrAccess = null,
 }) {
-  const { Employee, LiveTrackingSession } = models;
-  if (!LiveTrackingSession) {
-    return {
-      live: [],
-      history: [],
-      summary: { liveCount: 0, historyCount: 0, withLocationCount: 0 },
-      startDate: civilDateKey(startDate) || "",
-      endDate: civilDateKey(endDate) || "",
-      supportsHistory: false,
-    };
-  }
+  const { Employee, LiveTrackingSession, Attendance } = models;
 
   let employeeFilter = { status: { $ne: "TERMINATED" } };
   if (department && department !== "ALL") {
@@ -1618,43 +1683,101 @@ export async function getAdminTrackingSessions({
   }
 
   const employees = await Employee.find(employeeFilter)
-    .select("_id employeeCode fullName email job status")
+    .select("_id employeeCode fullName email job status avatar")
     .lean();
   const employeeIds = employees.map((e) => e._id);
   const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
 
   const now = new Date();
-  const activeSessions = await LiveTrackingSession.find({
-    employeeId: { $in: employeeIds },
-    status: "ACTIVE",
-    expiresAt: { $gt: now },
-  }).lean();
+  const today = getCompanyBusinessDate(now, companyTimezone);
 
-  const live = activeSessions.map((session) => {
-    const emp = employeeById.get(String(session.employeeId));
-    return {
-      sessionId: session._id,
-      employeeId: session.employeeId,
-      employeeCode: emp?.employeeCode || "",
-      fullName: emp?.fullName || "",
-      email: emp?.email || "",
-      department: emp?.job?.department || "General",
-      jobTitle: emp?.job?.jobTitle || "Team Member",
-      status: session.status,
-      startedAt: session.startedAt,
-      expiresAt: session.expiresAt,
-      stoppedAt: session.stoppedAt,
-      lastLocation: session.lastLocation || null,
-      isTrackingActive: true,
-      breadcrumbCount: Array.isArray(session.breadcrumbs) ? session.breadcrumbs.length : 0,
-    };
-  });
+  const [attendanceRows, activeSessions] = await Promise.all([
+    Attendance
+      ? Attendance.find({ employeeId: { $in: employeeIds }, date: today }).lean()
+      : Promise.resolve([]),
+    LiveTrackingSession
+      ? LiveTrackingSession.find({
+          employeeId: { $in: employeeIds },
+          status: "ACTIVE",
+          expiresAt: { $gt: now },
+        }).lean()
+      : Promise.resolve([]),
+  ]);
+
+  const punchByEmployee = new Map();
+  for (const row of attendanceRows) {
+    const open = resolveOpenPunch(row);
+    if (open) punchByEmployee.set(String(row.employeeId), open);
+  }
+
+  const trackingByEmployee = new Map(
+    activeSessions.map((session) => [String(session.employeeId), session])
+  );
+
+  // Include every punched-in employee; attach live-sharing metadata when present.
+  const liveEmployeeIds = new Set([
+    ...punchByEmployee.keys(),
+    ...trackingByEmployee.keys(),
+  ]);
+
+  const live = [...liveEmployeeIds]
+    .map((empId) => {
+      const emp = employeeById.get(empId);
+      if (!emp) return null;
+      const punch = punchByEmployee.get(empId) || null;
+      const tracking = trackingByEmployee.get(empId) || null;
+      // Tracking without an open punch is rare (should stop on punch-out); still show if ACTIVE.
+      if (!punch && !tracking) return null;
+
+      const classified = classifyLiveLocation({
+        tracking,
+        punchLocation: punch?.checkInLocation || null,
+        now,
+      });
+
+      return {
+        id: tracking ? String(tracking._id) : `punch:${empId}`,
+        sessionId: tracking ? tracking._id : null,
+        employeeId: emp._id,
+        employeeCode: emp.employeeCode || "",
+        fullName: emp.fullName || "",
+        email: emp.email || "",
+        avatar: emp.avatar || "",
+        department: emp.job?.department || "General",
+        jobTitle: emp.job?.jobTitle || "Team Member",
+        presence: tracking ? "LIVE_SHARING" : "PUNCHED_IN",
+        attendanceStatus: punch ? "CHECKED_IN" : "TRACKING_ONLY",
+        punchInAt: punch?.punchInAt || null,
+        checkInTime: punch?.punchInAt ? new Date(punch.punchInAt).toISOString() : null,
+        checkInLocation: hasNumericCoords(punch?.checkInLocation) ? punch.checkInLocation : null,
+        status: tracking ? "ACTIVE" : "PUNCHED_IN",
+        startedAt: tracking?.startedAt || punch?.punchInAt || null,
+        expiresAt: tracking?.expiresAt || null,
+        stoppedAt: tracking?.stoppedAt || null,
+        lastLocation: classified.lastLocation,
+        lastLocationAt:
+          classified.lastLocation?.receivedAt ||
+          classified.lastLocation?.capturedAt ||
+          null,
+        locationState: classified.locationState,
+        locationLabel: classified.locationLabel,
+        isTrackingActive: classified.isTrackingActive,
+        breadcrumbCount: Array.isArray(tracking?.breadcrumbs) ? tracking.breadcrumbs.length : 0,
+        source: "live",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      // Actively sharing first, then by punch-in time desc
+      if (a.isTrackingActive !== b.isTrackingActive) return a.isTrackingActive ? -1 : 1;
+      return new Date(b.punchInAt || 0) - new Date(a.punchInAt || 0);
+    });
 
   const rangeStart = civilDateKey(startDate);
   const rangeEnd = civilDateKey(endDate);
   let history = [];
 
-  if (rangeStart && rangeEnd) {
+  if (LiveTrackingSession && rangeStart && rangeEnd) {
     const startBound = new Date(`${rangeStart}T00:00:00.000Z`);
     const endBound = new Date(`${rangeEnd}T23:59:59.999Z`);
     const historyFilter = {
@@ -1676,11 +1799,13 @@ export async function getAdminTrackingSessions({
       const isLive =
         session.status === "ACTIVE" && session.expiresAt && new Date(session.expiresAt) > now;
       return {
+        id: String(session._id),
         sessionId: session._id,
         employeeId: session.employeeId,
         employeeCode: emp?.employeeCode || "",
         fullName: emp?.fullName || "",
         email: emp?.email || "",
+        avatar: emp?.avatar || "",
         department: emp?.job?.department || "General",
         jobTitle: emp?.job?.jobTitle || "Team Member",
         status: isLive ? "ACTIVE" : session.status,
@@ -1695,20 +1820,24 @@ export async function getAdminTrackingSessions({
     });
   }
 
-  const withLocationCount = live.filter((row) => row.lastLocation).length;
+  const withLocationCount = live.filter((row) => hasNumericCoords(row.lastLocation)).length;
+  const activelySharingCount = live.filter((row) => row.isTrackingActive).length;
 
   return {
     live,
     history,
     summary: {
       liveCount: live.length,
+      punchedInCount: live.filter((row) => Boolean(row.punchInAt)).length,
+      activelySharingCount,
       historyCount: history.length,
       withLocationCount,
     },
     startDate: rangeStart || "",
     endDate: rangeEnd || "",
-    supportsHistory: true,
+    supportsHistory: Boolean(LiveTrackingSession),
     companyTimezone,
+    businessDate: today,
   };
 }
 

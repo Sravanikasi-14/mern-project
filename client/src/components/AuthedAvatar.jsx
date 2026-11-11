@@ -1,30 +1,41 @@
 import useAuthedImage from "../hooks/useAuthedImage";
+import { initialsFromName, resolveEmployeeAvatarSrc } from "../utils/employeeAvatar";
 
 /**
  * Circular photo (loaded through the authenticated API client) with an initials fallback.
- * Renders the same markup/classes as before when there is no photo.
+ * Prefer `src` or an employee-shaped `employee` / `avatar` field from APIs.
  */
 export default function AuthedAvatar({
   src,
+  employee,
+  avatar,
+  name,
   initials,
   alt = "",
   className = "",
   style,
   imgClassName = "",
 }) {
-  const { url } = useAuthedImage(src);
+  const resolvedSrc =
+    src ||
+    resolveEmployeeAvatarSrc(avatar) ||
+    resolveEmployeeAvatarSrc(employee);
+  const { url, failed } = useAuthedImage(resolvedSrc);
+  const label =
+    initials ||
+    initialsFromName(name || employee?.fullName || employee?.name || alt || "", "?");
 
   return (
-    <span className={className} style={style}>
-      {url ? (
+    <span className={className} style={style} title={alt || name || undefined}>
+      {url && !failed ? (
         <img
           className={imgClassName}
           src={url}
-          alt={alt}
+          alt={alt || name || ""}
           style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", display: "block" }}
         />
       ) : (
-        <span aria-hidden="true">{initials}</span>
+        <span aria-hidden="true">{label}</span>
       )}
     </span>
   );

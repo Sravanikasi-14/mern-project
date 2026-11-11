@@ -211,12 +211,14 @@ export async function createTaskService({ models, user, data }) {
           employeeCode: targetEmployee.employeeCode,
           email: targetEmployee.email,
           department: targetEmployee.job?.department || department || "",
+          avatar: targetEmployee.avatar || "",
         }
       : {
           fullName: "",
           employeeCode: "",
           email: "",
           department: department || "",
+          avatar: "",
         },
     assignedByUserId: user._id,
     assignedByEmployeeId: actorEmployee?._id || null,
@@ -342,6 +344,7 @@ export async function assignUnassignedTaskService({
     employeeCode: targetEmployee.employeeCode,
     email: targetEmployee.email,
     department: targetEmployee.job?.department || "",
+    avatar: targetEmployee.avatar || "",
   };
 
   const setFields = {

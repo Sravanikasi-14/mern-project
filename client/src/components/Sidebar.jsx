@@ -162,7 +162,7 @@ const HR_NAV_ITEMS = [
   },
   {
     id: "reports",
-    label: "Reports",
+    label: "AI Reports",
     path: "/admin/reports",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,3 +1,4 @@
+import AuthedAvatar from "../AuthedAvatar";
 import { departmentAccent, initials } from "./explorerDisplayUtils";
 
 /** Compact employee card for department / project / team member lists. */
@@ -11,9 +12,14 @@ export default function ExplorerEmployeeCard({ employee, selected = false, onSel
       style={{ "--dept-accent": accent }}
       onClick={() => onSelect?.(employee.id)}
     >
-      <span className="org-chart-avatar" aria-hidden="true">
-        {initials(employee.fullName)}
-      </span>
+      <AuthedAvatar
+        className="org-chart-avatar"
+        employee={employee}
+        avatar={employee.avatar}
+        name={employee.fullName}
+        initials={initials(employee.fullName)}
+        alt={employee.fullName || "Employee"}
+      />
       <span className="oe-person-body">
         <strong>{employee.fullName || "—"}</strong>
         <span>{employee.jobTitle || "Team member"}</span>

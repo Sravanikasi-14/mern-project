@@ -1,7 +1,7 @@
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 
 const ORG_SELECT =
-  "_id fullName preferredName employeeCode status job.jobTitle job.department job.employmentType job.workLocation job.reportingManagerId";
+  "_id fullName preferredName employeeCode status avatar job.jobTitle job.department job.employmentType job.workLocation job.reportingManagerId";
 
 /**
  * Build a company-scoped org chart payload from Employee.job.reportingManagerId.
@@ -93,6 +93,7 @@ export async function buildOrganizationHierarchy(Employee, options = {}) {
       preferredName: doc.preferredName || "",
       employeeCode: doc.employeeCode || "",
       status: doc.status || EMPLOYEE_STATUSES.ACTIVE,
+      avatar: doc.avatar || "",
       jobTitle: doc.job?.jobTitle || "",
       department: doc.job?.department || "",
       employmentType: doc.job?.employmentType || "",

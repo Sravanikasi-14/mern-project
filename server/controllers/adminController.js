@@ -45,6 +45,95 @@ function toDateString(date) {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Resolve the dashboard focus date used by summary cards and attendance trends.
+ * Explicit ?date= wins. Otherwise clamp to the selected month/year so browsing a
+ * past month ends the 7D/30D series on that month's last day (not wall-clock today).
+ */
+function resolveDashboardTargetDate(query, todayStr) {
+  if (query?.date && /^\d{4}-\d{2}-\d{2}$/.test(String(query.date))) {
+    return String(query.date);
+  }
+  const year = parseInt(query?.year, 10);
+  const month = parseInt(query?.month, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return todayStr;
+  }
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const monthStart = formatCivilDate(year, month, 1);
+  const monthEnd = formatCivilDate(year, month, daysInMonth);
+  if (todayStr < monthStart) return monthStart;
+  if (todayStr > monthEnd) return monthEnd;
+  return todayStr;
+}
+
+/**
+ * Aggregate one civil day's attendance counts from preloaded maps.
+ * Used for the month calendar and for rolling 7D/30D trend series that may
+ * cross month boundaries (the previous bug returned zeros for those days).
+ */
+function buildAttendanceDayStats({
+  dateStr,
+  todayStr,
+  targetDate,
+  activeCount,
+  weekendRules,
+  holidayDateMap,
+  attendanceByDateMap,
+  leaveCountByDate,
+  companyTimezone,
+  lateThresholdMinutes,
+}) {
+  const parts = parseCivilDate(dateStr);
+  const dayOfWeek = parts
+    ? weekdaySunday0(parts.year, parts.month, parts.day)
+    : new Date(`${dateStr}T00:00:00.000Z`).getUTCDay();
+  const isToday = dateStr === targetDate;
+  const isFuture = dateStr > todayStr;
+
+  let isWeekend = false;
+  if (dayOfWeek === 0 && weekendRules.sundayOff) isWeekend = true;
+  else if (dayOfWeek === 6 && weekendRules.saturdayOff) isWeekend = true;
+
+  const holidayName = holidayDateMap.get(dateStr) || null;
+  const isHoliday = Boolean(holidayName);
+
+  const dayRecords = attendanceByDateMap.get(dateStr) || [];
+  let dayPresent = 0;
+  let dayLate = 0;
+  for (const rec of dayRecords) {
+    if (rec.checkIn || rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {
+      dayPresent++;
+      if (rec.checkIn) {
+        const localCheckIn = getTimeInTimezone(rec.checkIn, companyTimezone);
+        const m = parseTimeToMinutes(localCheckIn);
+        if (m !== null && m > lateThresholdMinutes) dayLate++;
+      }
+    }
+  }
+
+  const dayLeaveCount = leaveCountByDate.get(dateStr)?.size || 0;
+  const dayAbsent =
+    !isFuture && !isWeekend && !isHoliday
+      ? Math.max(0, activeCount - dayPresent - dayLeaveCount)
+      : 0;
+
+  return {
+    day: parts?.day || Number(dateStr.slice(8, 10)),
+    date: dateStr,
+    dayOfWeek,
+    isToday,
+    isFuture,
+    isWeekend,
+    isHoliday,
+    holidayName,
+    presentCount: dayPresent,
+    absentCount: dayAbsent,
+    lateCount: dayLate,
+    leaveCount: dayLeaveCount,
+  };
+}
+
 export async function getAdminOverview(req, res, next) {
   try {
     const { User, Employee } = req.auth.models;
@@ -91,9 +180,7 @@ export async function getAdminDashboard(req, res, next) {
 
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
     const todayStr = getCompanyBusinessDate(new Date(), companyTimezone);
-    const targetDate = req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
-      ? req.query.date
-      : todayStr;
+    const targetDate = resolveDashboardTargetDate(req.query, todayStr);
 
     const [tYearStr, tMonthStr, tDayStr] = targetDate.split("-");
     const targetYear = parseInt(req.query.year || tYearStr, 10);
@@ -313,20 +400,35 @@ export async function getAdminDashboard(req, res, next) {
       };
     }
 
-    // 8. Attendance Calendar for targetYear & targetMonth
+    // 8. Attendance Calendar for targetYear & targetMonth (+ 30-day lookback for trends)
     const monthStr = String(targetMonth).padStart(2, "0");
     const daysInMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
     const firstDayWeekday = new Date(Date.UTC(targetYear, targetMonth - 1, 1)).getUTCDay(); // 0 = Sun
     const monthPrefix = `${targetYear}-${monthStr}`;
+    const monthStartStr = `${monthPrefix}-01`;
+    const monthEndStr = `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`;
+    const monthStart = new Date(`${monthStartStr}T00:00:00.000Z`);
+    const monthEnd = new Date(`${monthEndStr}T23:59:59.999Z`);
 
-    const monthStart = new Date(`${monthPrefix}-01T00:00:00.000Z`);
-    const monthEnd = new Date(`${monthPrefix}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
+    const targetCivilForRange = parseCivilDate(targetDate);
+    const lookbackCivil = addCivilDays(
+      targetCivilForRange.year,
+      targetCivilForRange.month,
+      targetCivilForRange.day,
+      -29
+    );
+    const lookbackStr = formatCivilDate(lookbackCivil.year, lookbackCivil.month, lookbackCivil.day);
+    const attendanceRangeStart = lookbackStr < monthStartStr ? lookbackStr : monthStartStr;
+    const attendanceRangeEnd = monthEndStr > targetDate ? monthEndStr : targetDate;
+
+    const rangeStartDate = new Date(`${attendanceRangeStart}T00:00:00.000Z`);
+    const rangeEndDate = new Date(`${attendanceRangeEnd}T23:59:59.999Z`);
 
     const [monthAttendanceRecords, monthLeaves] = await Promise.all([
       Attendance.find({
         date: {
-          $gte: `${monthPrefix}-01`,
-          $lte: `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`,
+          $gte: attendanceRangeStart,
+          $lte: attendanceRangeEnd,
         },
         employeeId: { $in: activeEmployeeIds },
       })
@@ -335,8 +437,8 @@ export async function getAdminDashboard(req, res, next) {
       LeaveRequest.find({
         employeeId: { $in: activeEmployeeIds },
         status: "APPROVED",
-        fromDate: { $lte: monthEnd },
-        toDate: { $gte: monthStart },
+        fromDate: { $lte: rangeEndDate },
+        toDate: { $gte: rangeStartDate },
       })
         .select("employeeId fromDate toDate")
         .lean(),
@@ -350,34 +452,48 @@ export async function getAdminDashboard(req, res, next) {
       attendanceByDateMap.get(record.date).push(record);
     }
 
-    // Precompute leave counts per day once (avoid O(days × leaves) filter loops)
+    // Precompute leave counts per day across the full queried range (may cross months)
     const leaveCountByDate = new Map();
     for (const leave of monthLeaves) {
       const fStr = toDateString(leave.fromDate);
       const tStr = toDateString(leave.toDate);
       if (!fStr || !tStr) continue;
-      const startDay = fStr < `${monthPrefix}-01` ? 1 : parseInt(fStr.slice(8, 10), 10);
-      const endDay = tStr > `${monthPrefix}-${String(daysInMonth).padStart(2, "0")}`
-        ? daysInMonth
-        : parseInt(tStr.slice(8, 10), 10);
-      if (!Number.isFinite(startDay) || !Number.isFinite(endDay)) continue;
-      for (let d = startDay; d <= endDay; d++) {
-        const dateStr = `${monthPrefix}-${String(d).padStart(2, "0")}`;
+      const start = fStr < attendanceRangeStart ? attendanceRangeStart : fStr;
+      const end = tStr > attendanceRangeEnd ? attendanceRangeEnd : tStr;
+      const startParts = parseCivilDate(start);
+      const endParts = parseCivilDate(end);
+      if (!startParts || !endParts) continue;
+      let cursor = { ...startParts };
+      while (formatCivilDate(cursor.year, cursor.month, cursor.day) <= end) {
+        const dateStr = formatCivilDate(cursor.year, cursor.month, cursor.day);
         if (!leaveCountByDate.has(dateStr)) leaveCountByDate.set(dateStr, new Set());
         leaveCountByDate.get(dateStr).add(String(leave.employeeId));
+        cursor = addCivilDays(cursor.year, cursor.month, cursor.day, 1);
       }
     }
 
-    // Holiday map
+    // Holiday map for the full queried range (not only selected month)
     const holidayDateMap = new Map();
     for (const h of policyHolidays) {
       if (h.date) {
         const dStr = toDateString(h.date);
-        if (dStr.startsWith(monthPrefix)) {
+        if (dStr >= attendanceRangeStart && dStr <= attendanceRangeEnd) {
           holidayDateMap.set(dStr, h.name || "Holiday");
         }
       }
     }
+
+    const dayStatsArgs = {
+      todayStr,
+      targetDate,
+      activeCount,
+      weekendRules,
+      holidayDateMap,
+      attendanceByDateMap,
+      leaveCountByDate,
+      companyTimezone,
+      lateThresholdMinutes,
+    };
 
     const calendarDays = [];
     let monthTotalPresentDays = 0;
@@ -387,63 +503,14 @@ export async function getAdminDashboard(req, res, next) {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${targetYear}-${monthStr}-${String(day).padStart(2, "0")}`;
-      const dayOfWeek = new Date(Date.UTC(targetYear, targetMonth - 1, day)).getUTCDay();
-      const isToday = dateStr === targetDate;
-      const isFuture = dateStr > todayStr;
-
-      let isWeekend = false;
-      if (dayOfWeek === 0 && weekendRules.sundayOff) {
-        isWeekend = true;
-      } else if (dayOfWeek === 6 && weekendRules.saturdayOff) {
-        isWeekend = true;
+      const stats = buildAttendanceDayStats({ ...dayStatsArgs, dateStr });
+      if (!stats.isFuture && !stats.isWeekend && !stats.isHoliday) {
+        monthTotalPresentDays += stats.presentCount;
+        monthTotalAbsentDays += stats.absentCount;
+        monthTotalLateDays += stats.lateCount;
+        monthTotalLeaveDays += stats.leaveCount;
       }
-
-      const holidayName = holidayDateMap.get(dateStr) || null;
-      const isHoliday = Boolean(holidayName);
-
-      const dayRecords = attendanceByDateMap.get(dateStr) || [];
-      let dayPresent = 0;
-      let dayLate = 0;
-
-      for (const rec of dayRecords) {
-        if (rec.checkIn || rec.status === "PRESENT" || rec.status === "CHECKED_IN" || rec.status === "CHECKED_OUT") {
-          dayPresent++;
-          if (rec.checkIn) {
-            const localCheckIn = getTimeInTimezone(rec.checkIn, companyTimezone);
-            const m = parseTimeToMinutes(localCheckIn);
-            if (m !== null && m > lateThresholdMinutes) {
-              dayLate++;
-            }
-          }
-        }
-      }
-
-      const dayLeaveCount = leaveCountByDate.get(dateStr)?.size || 0;
-      const dayAbsent = !isFuture && !isWeekend && !isHoliday
-        ? Math.max(0, activeCount - dayPresent - dayLeaveCount)
-        : 0;
-
-      if (!isFuture && !isWeekend && !isHoliday) {
-        monthTotalPresentDays += dayPresent;
-        monthTotalAbsentDays += dayAbsent;
-        monthTotalLateDays += dayLate;
-        monthTotalLeaveDays += dayLeaveCount;
-      }
-
-      calendarDays.push({
-        day,
-        date: dateStr,
-        dayOfWeek,
-        isToday,
-        isFuture,
-        isWeekend,
-        isHoliday,
-        holidayName,
-        presentCount: dayPresent,
-        absentCount: dayAbsent,
-        lateCount: dayLate,
-        leaveCount: dayLeaveCount,
-      });
+      calendarDays.push(stats);
     }
 
     // 9. Recent Leaves (latest 10)
@@ -457,6 +524,7 @@ export async function getAdminDashboard(req, res, next) {
       const emp = l.employeeId || {};
       return {
         id: l._id,
+        employeeId: emp._id || l.employeeId || null,
         employeeName: emp.fullName || "Team Member",
         employeeCode: emp.employeeCode || "",
         department: emp.job?.department || "",
@@ -534,35 +602,39 @@ export async function getAdminDashboard(req, res, next) {
       };
     });
 
-    // 12. Attendance Overview (Current Week Trend: 7 days ending at targetDate)
-    const weeklyOverview = [];
+    // 12. Attendance Overview trends ending at targetDate (cross-month safe)
     const targetCivil = parseCivilDate(targetDate);
     const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-    for (let i = 6; i >= 0; i--) {
-      const d = addCivilDays(targetCivil.year, targetCivil.month, targetCivil.day, -i);
-      const dateStr = formatCivilDate(d.year, d.month, d.day);
-      const dayLabel = `${weekdayNames[weekdaySunday0(d.year, d.month, d.day)]} ${d.day}`;
-
-      const dayCal = calendarDays.find((cd) => cd.date === dateStr);
-      if (dayCal) {
-        weeklyOverview.push({
+    function buildTrendSeries(dayCount) {
+      const series = [];
+      for (let i = dayCount - 1; i >= 0; i--) {
+        const d = addCivilDays(targetCivil.year, targetCivil.month, targetCivil.day, -i);
+        const dateStr = formatCivilDate(d.year, d.month, d.day);
+        const stats = buildAttendanceDayStats({ ...dayStatsArgs, dateStr });
+        series.push({
           date: dateStr,
-          label: dayLabel,
-          present: dayCal.presentCount,
-          absent: dayCal.absentCount,
-          late: dayCal.lateCount,
-        });
-      } else {
-        weeklyOverview.push({
-          date: dateStr,
-          label: dayLabel,
-          present: 0,
-          absent: 0,
-          late: 0,
+          label: `${weekdayNames[stats.dayOfWeek]} ${stats.day}`,
+          dayOfWeek: stats.dayOfWeek,
+          isToday: stats.isToday,
+          isWeekend: stats.isWeekend,
+          isHoliday: stats.isHoliday,
+          isFuture: stats.isFuture,
+          present: stats.presentCount,
+          presentCount: stats.presentCount,
+          absent: stats.absentCount,
+          absentCount: stats.absentCount,
+          late: stats.lateCount,
+          lateCount: stats.lateCount,
+          onLeave: stats.leaveCount,
+          leaveCount: stats.leaveCount,
         });
       }
+      return series;
     }
+
+    const weeklyOverview = buildTrendSeries(7);
+    const thirtyDayOverview = buildTrendSeries(30);
 
     // 13. Company Assets
     let employeesWithAssets = 0;
@@ -992,7 +1064,11 @@ export async function getAdminDashboard(req, res, next) {
       attendanceOverview: attendanceVisible
         ? {
             period: "This Week",
+            endDate: targetDate,
             days: weeklyOverview,
+            week: weeklyOverview,
+            thirtyDays: thirtyDayOverview,
+            activeEmployees: activeCount,
           }
         : { restricted: true },
       companyAssets,

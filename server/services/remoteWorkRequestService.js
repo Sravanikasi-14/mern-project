@@ -3,7 +3,13 @@ import { HttpError } from "../utils/httpError.js";
 import { getCompanyBusinessDate } from "../utils/companyTime.js";
 import { REMOTE_WORK_STATUSES } from "../models/RemoteWorkRequest.js";
 import { validateLocationCoordinates } from "./attendanceService.js";
-import { getEmployeeWorkMode, loadAttendancePolicy, notifyAttendanceStakeholders } from "./attendanceLocationService.js";
+import {
+  describeLocationExceptionPunchEligibility,
+  describeRemoteRequestPunchEligibility,
+  getEmployeeWorkMode,
+  loadAttendancePolicy,
+  notifyAttendanceStakeholders,
+} from "./attendanceLocationService.js";
 
 function publicRequest(doc) {
   if (!doc) return null;
@@ -21,6 +27,42 @@ function publicRequest(doc) {
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
+}
+
+async function userNameMap(models, userIds) {
+  const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+  if (!ids.length || !models?.User) return new Map();
+  const users = await models.User.find({ _id: { $in: ids } }).select("fullName email").lean();
+  return new Map(
+    users.map((user) => [
+      String(user._id),
+      (user.fullName && String(user.fullName).trim()) || user.email || "Colleague",
+    ])
+  );
+}
+
+function whyRemoteListed(row) {
+  const status = String(row.status || "").toUpperCase();
+  if (status === "PENDING") return "Hybrid/WFH employee requested remote punch authorization for a specific work date.";
+  if (status === "APPROVED") {
+    return row.consumedAt
+      ? "Approved remote-work request that already authorized one remote session."
+      : "Approved remote-work request that can authorize remote punch within its date and conditions.";
+  }
+  if (status === "REJECTED") return "Remote-work request that was rejected by HR.";
+  if (status === "CANCELLED") return "Remote-work request cancelled by the employee.";
+  return "Remote-work request in the attendance workspace.";
+}
+
+function whyExceptionListed(row) {
+  const type = String(row.type || "");
+  if (type === "OUTSIDE_GEOFENCE" || type === "PUNCH_OUTSIDE") {
+    return "Attendance location was outside the permitted geofence radius.";
+  }
+  if (type === "LOW_ACCURACY") return "GPS accuracy was below the configured threshold during attendance.";
+  if (type === "GPS_UNAVAILABLE") return "GPS was unavailable when attendance location was required.";
+  if (type === "RETURNED_INSIDE") return "Employee returned inside the permitted geofence after being outside.";
+  return "Location exception captured during punch or live monitoring.";
 }
 
 export async function submitRemoteWorkRequest({
@@ -107,7 +149,7 @@ export async function submitRemoteWorkRequest({
     employee,
     title: "Remote work request submitted",
     message: `${employee.fullName || "Employee"} requested remote work for ${workDate}.`,
-    link: "/admin/attendance?tab=remote",
+    link: "/admin/attendance?workspace=remote",
     metadata: { remoteWorkRequestId: String(created._id) },
   }).catch(() => {});
 
@@ -138,35 +180,65 @@ export async function cancelRemoteWorkRequest({ models, employee, requestId }) {
   return publicRequest(doc);
 }
 
-export async function listAdminRemoteWorkRequests({ models, status = "PENDING", employeeScopeFilter = null }) {
+export async function listAdminRemoteWorkRequests({
+  models,
+  status = "PENDING",
+  employeeScopeFilter = null,
+  companyTimezone = "Asia/Kolkata",
+  now = new Date(),
+}) {
   const filter = {};
   if (status && status !== "ALL") filter.status = String(status).toUpperCase();
   if (employeeScopeFilter?.employeeId) {
     Object.assign(filter, employeeScopeFilter);
   }
-  const rows = await models.RemoteWorkRequest.find(filter).sort({ createdAt: -1 }).limit(200).lean();
+  const [rows, policy] = await Promise.all([
+    models.RemoteWorkRequest.find(filter).sort({ createdAt: -1 }).limit(200).lean(),
+    loadAttendancePolicy(models),
+  ]);
   const employeeIds = [...new Set(rows.map((r) => String(r.employeeId)))];
   const employees = employeeIds.length
     ? await models.Employee.find({ _id: { $in: employeeIds } })
-        .select("fullName employeeCode email")
+        .select("fullName employeeCode email avatar job.workArrangement")
         .lean()
     : [];
   const byId = new Map(employees.map((e) => [String(e._id), e]));
+  const decidedByIds = rows.map((row) => row.decision?.decidedBy).filter(Boolean);
+  const names = await userNameMap(models, decidedByIds);
+
   return rows.map((row) => {
     const base = publicRequest(row);
     const emp = byId.get(String(row.employeeId));
+    const workMode = getEmployeeWorkMode(emp);
+    const punchEligibility = describeRemoteRequestPunchEligibility({
+      request: row,
+      employee: emp || {},
+      policy,
+      companyTimezone,
+      now,
+    });
+    const decidedById = row.decision?.decidedBy ? String(row.decision.decidedBy) : null;
     return {
       ...base,
       _id: base.id,
       employee: emp
         ? {
+            _id: emp._id,
             fullName: emp.fullName,
             employeeCode: emp.employeeCode,
             email: emp.email,
+            avatar: emp.avatar || "",
+            workMode,
           }
         : null,
+      workMode,
+      whyListed: whyRemoteListed(row),
+      punchEligibility,
       decisionRemarks: row.decision?.remarks || "",
       decidedAt: row.decision?.decidedAt || null,
+      decidedBy: decidedById,
+      decidedByName: decidedById ? names.get(decidedById) || "" : "",
+      companyDate: getCompanyBusinessDate(now, companyTimezone),
     };
   });
 }
@@ -220,45 +292,98 @@ export async function decideRemoteWorkRequest({
   return publicRequest(doc);
 }
 
-export async function listLocationExceptions({ models, status = "OPEN", employeeScopeFilter = null }) {
+export async function listLocationExceptions({
+  models,
+  status = "OPEN",
+  employeeScopeFilter = null,
+  companyTimezone = "Asia/Kolkata",
+  now = new Date(),
+}) {
   const filter = {};
   if (status && status !== "ALL") filter.status = String(status).toUpperCase();
   if (employeeScopeFilter?.employeeId) Object.assign(filter, employeeScopeFilter);
-  const rows = await models.LocationException.find(filter).sort({ occurredAt: -1 }).limit(200).lean();
+  const [rows, policy] = await Promise.all([
+    models.LocationException.find(filter).sort({ occurredAt: -1 }).limit(200).lean(),
+    loadAttendancePolicy(models),
+  ]);
   const employeeIds = [...new Set(rows.map((r) => String(r.employeeId)))];
   const employees = employeeIds.length
     ? await models.Employee.find({ _id: { $in: employeeIds } })
-        .select("fullName employeeCode email")
+        .select("fullName employeeCode email avatar job.workArrangement")
         .lean()
     : [];
   const byId = new Map(employees.map((e) => [String(e._id), e]));
-  return rows.map((row) => ({
-    id: String(row._id),
-    _id: String(row._id),
-    employeeId: String(row.employeeId),
-    employee: byId.has(String(row.employeeId))
-      ? {
-          fullName: byId.get(String(row.employeeId)).fullName,
-          employeeCode: byId.get(String(row.employeeId)).employeeCode,
-          email: byId.get(String(row.employeeId)).email,
-        }
-      : null,
-    attendanceId: row.attendanceId ? String(row.attendanceId) : null,
-    sessionId: row.sessionId ? String(row.sessionId) : null,
-    workDate: row.workDate,
-    sessionType: row.sessionType,
-    type: row.type,
-    status: row.status,
-    occurredAt: row.occurredAt,
-    returnedAt: row.returnedAt,
-    location: row.location,
-    permittedLocation: row.permittedLocation,
-    distanceMeters: row.distanceMeters,
-    message: row.message,
-    review: row.review || {},
-    reviewRemarks: row.review?.remarks || "",
-    reviewedAt: row.review?.reviewedAt || null,
-  }));
+  const today = getCompanyBusinessDate(now, companyTimezone);
+
+  const activeApprovals = employeeIds.length
+    ? await models.RemoteWorkRequest.find({
+        employeeId: { $in: employeeIds },
+        workDate: today,
+        status: REMOTE_WORK_STATUSES.APPROVED,
+        $or: [{ consumedAt: null }, { consumedAt: { $exists: false } }],
+      }).lean()
+    : [];
+  const approvalByEmployee = new Map(activeApprovals.map((row) => [String(row.employeeId), row]));
+
+  const reviewedByIds = rows.map((row) => row.review?.reviewedBy).filter(Boolean);
+  const names = await userNameMap(models, reviewedByIds);
+
+  return rows.map((row) => {
+    const emp = byId.get(String(row.employeeId));
+    const workMode = getEmployeeWorkMode(emp);
+    const punchEligibility = describeLocationExceptionPunchEligibility({
+      exception: row,
+      employee: emp || {},
+      policy,
+      activeRemoteApproval: approvalByEmployee.get(String(row.employeeId)) || null,
+      companyTimezone,
+      now,
+    });
+    const reviewedById = row.review?.reviewedBy ? String(row.review.reviewedBy) : null;
+    const distanceReliable =
+      row.distanceMeters != null &&
+      Number.isFinite(Number(row.distanceMeters)) &&
+      row.permittedLocation?.latitude != null &&
+      row.permittedLocation?.longitude != null;
+    return {
+      id: String(row._id),
+      _id: String(row._id),
+      employeeId: String(row.employeeId),
+      employee: emp
+        ? {
+            _id: emp._id,
+            fullName: emp.fullName,
+            employeeCode: emp.employeeCode,
+            email: emp.email,
+            avatar: emp.avatar || "",
+            workMode,
+          }
+        : null,
+      workMode,
+      attendanceId: row.attendanceId ? String(row.attendanceId) : null,
+      sessionId: row.sessionId ? String(row.sessionId) : null,
+      workDate: row.workDate,
+      sessionType: row.sessionType,
+      type: row.type,
+      status: row.status,
+      occurredAt: row.occurredAt,
+      returnedAt: row.returnedAt,
+      location: row.location,
+      permittedLocation: row.permittedLocation,
+      distanceMeters: row.distanceMeters,
+      distanceReliable,
+      message: row.message,
+      whyListed: whyExceptionListed(row),
+      punchEligibility,
+      review: row.review || {},
+      reviewRemarks: row.review?.remarks || "",
+      reviewedAt: row.review?.reviewedAt || null,
+      reviewedBy: reviewedById,
+      reviewedByName: reviewedById ? names.get(reviewedById) || "" : "",
+      companyDate: today,
+      exceptionGrantsRemote: false,
+    };
+  });
 }
 
 export async function reviewLocationException({ models, exceptionId, actorUser, status, remarks = "" }) {

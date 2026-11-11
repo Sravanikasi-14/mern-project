@@ -24,6 +24,7 @@ const SAFE_MANAGER_REF_FIELDS = Object.freeze([
   "employeeCode",
   "jobTitle",
   "department",
+  "avatar",
 ]);
 
 /** Viewing DIRECT_MANAGER / INDIRECT_MANAGER — no phone, joining date, or employment type. */
@@ -32,6 +33,7 @@ const UPWARD_MANAGER_VISIBLE_FIELDS = Object.freeze([
   "fullName",
   "employeeCode",
   "email",
+  "avatar",
   "job.jobTitle",
   "job.department",
   "job.workLocation",
@@ -48,6 +50,7 @@ const DOWNWARD_REPORT_VISIBLE_FIELDS = Object.freeze([
   "fullName",
   "employeeCode",
   "email",
+  "avatar",
   "job.jobTitle",
   "job.department",
   "job.workLocation",
@@ -62,6 +65,7 @@ const PEER_VISIBLE_FIELDS = Object.freeze([
   "fullName",
   "employeeCode",
   "email",
+  "avatar",
   "job.jobTitle",
   "job.department",
   "job.workLocation",
@@ -74,6 +78,7 @@ const OTHER_VISIBLE_FIELDS = Object.freeze([
   "fullName",
   "employeeCode",
   "email",
+  "avatar",
   "job.jobTitle",
   "job.department",
   "job.workLocation",
@@ -105,6 +110,7 @@ const SELF_VISIBLE_FIELDS = Object.freeze([
   "gender",
   "city",
   "status",
+  "avatar",
   "job",
   "residentialAddress",
   "emergencyContact",
@@ -185,6 +191,7 @@ export function serializeSafeManagerRef(managerValue) {
       employeeCode: managerValue.employeeCode || "",
       jobTitle: managerValue.job?.jobTitle || managerValue.jobTitle || "",
       department: managerValue.job?.department || managerValue.department || "",
+      avatar: managerValue.avatar || "",
     };
   }
 
@@ -246,6 +253,7 @@ export function serializeEmployeeByRelationship(employeeDoc, relationship, optio
       "gender",
       "city",
       "status",
+      "avatar",
       "residentialAddress",
       "emergencyContact",
       "bankDetails",
@@ -254,6 +262,7 @@ export function serializeEmployeeByRelationship(employeeDoc, relationship, optio
       "documents",
       "attendance",
     ]);
+    selfPayload.avatar = selfPayload.avatar || "";
     selfPayload.job = lean.job
       ? {
           jobTitle: lean.job.jobTitle || "",
@@ -304,6 +313,7 @@ export function serializeEmployeeByRelationship(employeeDoc, relationship, optio
         }
       : {}),
   };
+  out.avatar = out.avatar || "";
 
   return out;
 }
@@ -360,7 +370,7 @@ export async function buildVisibleEmployeeProfile({
   }
 
   const target = await Employee.findById(targetEmployeeId)
-    .populate("job.reportingManagerId", "fullName employeeCode job.jobTitle job.department")
+    .populate("job.reportingManagerId", "fullName employeeCode avatar job.jobTitle job.department")
     .lean();
 
   if (!target) {
@@ -383,6 +393,7 @@ export async function buildVisibleEmployeeProfile({
       gender: target.gender || "",
       city: target.city || "",
       status: target.status,
+      avatar: target.avatar || "",
       job: {
         ...(target.job || {}),
         reportingManagerId: serializeSafeManagerRef(target.job?.reportingManagerId),
@@ -514,6 +525,7 @@ export function serializeDirectoryCard(employeeDoc, relationship) {
     fullName: serialized.fullName || "",
     employeeCode: serialized.employeeCode || "",
     email: serialized.email || "",
+    avatar: serialized.avatar || "",
     jobTitle: serialized.job?.jobTitle || "",
     department: serialized.job?.department || "",
     workLocation: serialized.job?.workLocation || "",

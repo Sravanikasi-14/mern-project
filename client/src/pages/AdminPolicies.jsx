@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppHeader from "../components/AppHeader";
 import PoliciesSettingsNav from "../components/PoliciesSettingsNav";
 import {
@@ -15,6 +15,10 @@ import { useAuth } from "../context/AuthContext";
 import { hrPortalAllows } from "../utils/hrPortalAccess";
 import { AccessRestrictedInline } from "../components/AccessRestrictedNotice";
 import { ACCESS_RESTRICTED_MESSAGE, announceAccessRestricted } from "../utils/accessNotice";
+import {
+  getPolicySubsections,
+  POLICY_SUBNAV_STICKY_OFFSET_PX,
+} from "./policySubsections";
 import "./AdminPolicies.css";
 
 const MONTH_NAMES = [
@@ -185,6 +189,9 @@ export default function AdminPolicies() {
   const canEditPolicies = hrPortalAllows(user, company, "policies.edit");
   const canCreatePolicies = hrPortalAllows(user, company, "policies.create");
   const [activePolicyCard, setActivePolicyCard] = useState(null);
+  const [activePolicySection, setActivePolicySection] = useState("");
+  const policySubnavRef = useRef(null);
+  const scrollingFromSubnavClickRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [savingSection, setSavingSection] = useState(null); // category ID or "GLOBAL"
   const [error, setError] = useState("");
@@ -673,6 +680,119 @@ export default function AdminPolicies() {
   useEffect(() => {
     fetchPolicies();
   }, []);
+
+  const policySubsections = useMemo(
+    () => getPolicySubsections(activePolicyCard),
+    [activePolicyCard]
+  );
+
+  useEffect(() => {
+    if (!activePolicyCard) {
+      setActivePolicySection("");
+      return;
+    }
+    const first = getPolicySubsections(activePolicyCard)[0];
+    setActivePolicySection(first?.id || "");
+  }, [activePolicyCard]);
+
+  const getPolicyScrollParent = useCallback(() => {
+    const fromNav = policySubnavRef.current?.closest(".app-main-content");
+    if (fromNav) return fromNav;
+    return document.querySelector(".app-main-content") || document.documentElement;
+  }, []);
+
+  const getPolicySubnavClearance = useCallback(() => {
+    const h = policySubnavRef.current?.getBoundingClientRect?.().height;
+    if (Number.isFinite(h) && h > 0) return Math.ceil(h) + 8;
+    return POLICY_SUBNAV_STICKY_OFFSET_PX;
+  }, []);
+
+  const scrollToPolicySection = useCallback((sectionId) => {
+    if (!sectionId) return;
+    setActivePolicySection(sectionId);
+    scrollingFromSubnavClickRef.current = true;
+    const el = document.getElementById(sectionId);
+    const scroller = getPolicyScrollParent();
+    const stickyClearance = getPolicySubnavClearance();
+
+    if (el && scroller) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const nextTop =
+        scroller.scrollTop + (elRect.top - scrollerRect.top) - stickyClearance;
+      scroller.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    } else if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // Horizontal-only centering for the active chip (never vertical scrollIntoView on sticky nav).
+    const safeId = String(sectionId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const track = policySubnavRef.current?.querySelector(".policies-subnav-track");
+    const btn = policySubnavRef.current?.querySelector(
+      `[data-policy-section="${safeId}"]`
+    );
+    if (track && btn) {
+      const btnCenter = btn.offsetLeft + btn.offsetWidth / 2;
+      const nextLeft = Math.max(0, btnCenter - track.clientWidth / 2);
+      track.scrollTo({ left: nextLeft, behavior: "smooth" });
+    }
+
+    window.setTimeout(() => {
+      scrollingFromSubnavClickRef.current = false;
+    }, 900);
+  }, [getPolicyScrollParent, getPolicySubnavClearance]);
+
+  // Keep active subsection in sync when the user scrolls the real policy scroller.
+  useEffect(() => {
+    if (!activePolicyCard || policySubsections.length === 0) return undefined;
+
+    const scroller = getPolicyScrollParent();
+
+    const syncActiveFromScroll = () => {
+      if (scrollingFromSubnavClickRef.current) return;
+      const scrollerRect = scroller.getBoundingClientRect?.() || { top: 0 };
+      const marker = scrollerRect.top + getPolicySubnavClearance() + 2;
+      let current = policySubsections[0].id;
+      for (let i = 0; i < policySubsections.length; i += 1) {
+        const section = policySubsections[i];
+        const el = document.getElementById(section.id);
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top;
+        const next = policySubsections[i + 1]
+          ? document.getElementById(policySubsections[i + 1].id)
+          : null;
+        const bottom = next ? next.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+        if (top <= marker + 12 && bottom > marker) {
+          current = section.id;
+        }
+      }
+      setActivePolicySection((prev) => (prev === current ? prev : current));
+      const safeCurrent = String(current).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const activeBtn = policySubnavRef.current?.querySelector(
+        `[data-policy-section="${safeCurrent}"]`
+      );
+      const track = policySubnavRef.current?.querySelector(".policies-subnav-track");
+      if (activeBtn && track) {
+        const btnRect = activeBtn.getBoundingClientRect();
+        const trackRect = track.getBoundingClientRect();
+        if (btnRect.left < trackRect.left + 8 || btnRect.right > trackRect.right - 8) {
+          const btnCenter = activeBtn.offsetLeft + activeBtn.offsetWidth / 2;
+          track.scrollTo({
+            left: Math.max(0, btnCenter - track.clientWidth / 2),
+            behavior: "smooth",
+          });
+        }
+      }
+    };
+
+    syncActiveFromScroll();
+    scroller.addEventListener("scroll", syncActiveFromScroll, { passive: true });
+    window.addEventListener("resize", syncActiveFromScroll);
+    return () => {
+      scroller.removeEventListener("scroll", syncActiveFromScroll);
+      window.removeEventListener("resize", syncActiveFromScroll);
+    };
+  }, [activePolicyCard, policySubsections, getPolicyScrollParent, getPolicySubnavClearance]);
 
   // Determine revision timeline status
   const currentRevisionStatus = useMemo(() => {
@@ -1623,11 +1743,35 @@ export default function AdminPolicies() {
             </div>
           </div>
 
+          {policySubsections.length > 0 ? (
+            <nav
+              ref={policySubnavRef}
+              className="policies-subnav"
+              aria-label="Policy subsections"
+            >
+              <div className="policies-subnav-track" role="tablist" aria-orientation="horizontal">
+                {policySubsections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activePolicySection === section.id}
+                    data-policy-section={section.id}
+                    className={`policies-subnav-btn${activePolicySection === section.id ? " is-active" : ""}`}
+                    onClick={() => scrollToPolicySection(section.id)}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </div>
+            </nav>
+          ) : null}
+
           {/* ============================================================== */}
           {/* 1. ATTENDANCE                                                  */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-shift-timings" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -1796,7 +1940,7 @@ export default function AdminPolicies() {
           {/* 2. WORK HOURS & SHIFTS                                         */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-work-hours" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -1944,7 +2088,7 @@ export default function AdminPolicies() {
           {/* 3. LEAVE TYPES                                                 */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-leave-types" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -2079,7 +2223,7 @@ export default function AdminPolicies() {
           {/* 4. LEAVE RULES                                                 */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-leave-accrual" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -2234,7 +2378,7 @@ export default function AdminPolicies() {
           {/* 5. HOLIDAYS CALENDAR                                           */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-holidays" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -2367,7 +2511,7 @@ export default function AdminPolicies() {
           {/* 6. WEEKEND POLICY                                              */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-weekends" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -2472,7 +2616,7 @@ export default function AdminPolicies() {
           {/* 7. LOCATION & TRACKING                                         */}
           {/* ============================================================== */}
           {activePolicyCard === "attendance_leave" && (
-            <div className="policies-section-card">
+            <div id="pol-geofence" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -2716,8 +2860,29 @@ export default function AdminPolicies() {
                 </div>
               </div>
 
-              <div className="policies-card-header" style={{ marginTop: 28 }}>
+              <div className="policies-save-bar">
+                <button
+                  type="button"
+                  className="policies-section-save-btn"
+                  onClick={() => handleSaveSection("location_tracking")}
+                  disabled={Boolean(savingSection)}
+                >
+                  {savingSection === "location_tracking" ? "Saving..." : "Save Location Settings"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activePolicyCard === "attendance_leave" && (
+            <div id="pol-wfh-hybrid" className="policies-section-card">
+              <div className="policies-card-header">
                 <div className="policies-card-title-group">
+                  <div className="policies-card-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                  </div>
                   <div>
                     <h3 className="policies-card-title">WFH &amp; Hybrid work arrangements</h3>
                     <p className="policies-field-hint" style={{ marginTop: 4 }}>
@@ -2727,7 +2892,7 @@ export default function AdminPolicies() {
                 </div>
               </div>
 
-              <div className="policies-form-grid-3" style={{ marginTop: 12 }}>
+              <div className="policies-form-grid-3">
                 <div className="policies-field-group">
                   <label className="policies-field-label">WFH location mode</label>
                   <select
@@ -2849,7 +3014,7 @@ export default function AdminPolicies() {
           {/* 8. GENERAL PAYROLL & PAY CYCLE (Matches Screenshot)            */}
           {/* ============================================================== */}
           {activePolicyCard === "payroll_compensation" && (
-            <div className="policies-section-card">
+            <div id="pol-payroll-general" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3023,7 +3188,7 @@ export default function AdminPolicies() {
           {/* 9. SALARY COMPONENTS & DEDUCTIONS                              */}
           {/* ============================================================== */}
           {activePolicyCard === "payroll_compensation" && (
-            <div className="policies-section-card">
+            <div id="pol-salary-components" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3210,7 +3375,7 @@ export default function AdminPolicies() {
           {/* 10. TAX & STATUTORY RULES                                      */}
           {/* ============================================================== */}
           {activePolicyCard === "payroll_compensation" && (
-            <div className="policies-section-card">
+            <div id="pol-tax-statutory" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3302,7 +3467,7 @@ export default function AdminPolicies() {
           {/* 11. EMPLOYEE LIFECYCLE                                         */}
           {/* ============================================================== */}
           {activePolicyCard === "employment_recruitment" && (
-            <div className="policies-section-card">
+            <div id="pol-lifecycle" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3440,7 +3605,7 @@ export default function AdminPolicies() {
           {/* 12. RECRUITMENT & OFFERS                                       */}
           {/* ============================================================== */}
           {activePolicyCard === "employment_recruitment" && (
-            <div className="policies-section-card">
+            <div id="pol-recruitment" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3546,7 +3711,7 @@ export default function AdminPolicies() {
           {/* 13. DOCUMENTS & COMPLIANCE                                     */}
           {/* ============================================================== */}
           {activePolicyCard === "workplace_compliance" && (
-            <div className="policies-section-card">
+            <div id="pol-documents" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3739,7 +3904,7 @@ export default function AdminPolicies() {
           {/* 14. GENERAL COMPANY POLICIES                                   */}
           {/* ============================================================== */}
           {activePolicyCard === "company_conduct" && (
-            <div className="policies-section-card">
+            <div id="pol-company-ops" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -3853,7 +4018,7 @@ export default function AdminPolicies() {
           {/* 15. IMPACT POINTS RULES                                        */}
           {/* ============================================================== */}
           {activePolicyCard === "company_conduct" && (
-            <div className="policies-section-card">
+            <div id="pol-impact-points" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">
@@ -4033,7 +4198,7 @@ export default function AdminPolicies() {
           {/* 15. REVISION HISTORY                                           */}
           {/* ============================================================== */}
           {activePolicyCard === "revision_history" && (
-            <div className="policies-section-card">
+            <div id="pol-revisions" className="policies-section-card">
               <div className="policies-card-header">
                 <div className="policies-card-title-group">
                   <div className="policies-card-icon">

@@ -5,6 +5,7 @@ import {
 } from "../services/employeeProvisioningService.js";
 import { HttpError } from "../utils/httpError.js";
 import { isImportDepartmentInHrScope } from "../services/hrAccessEnforcementService.js";
+import { collectUnrecognizedImportHeaders } from "../utils/employeeImportMapping.js";
 
 export const EMPLOYEE_IMPORT_TEMPLATE_HEADERS = [
   "fullName",
@@ -69,13 +70,18 @@ export async function previewEmployeeImport(req, res, next) {
     const seenEmails = new Set();
     const seenCodes = new Set();
     const results = [];
+    const unrecognizedColumns = collectUnrecognizedImportHeaders(rows);
 
     for (let i = 0; i < rows.length; i += 1) {
       const row = rows[i] || {};
-      let { valid, errors, normalized } = await validateImportRow(req.auth.models, row, {
-        seenEmails,
-        seenCodes,
-      });
+      let { valid, errors, normalized, unrecognizedHeaders } = await validateImportRow(
+        req.auth.models,
+        row,
+        {
+          seenEmails,
+          seenCodes,
+        }
+      );
       if (valid && !(await isImportDepartmentInHrScope(req.hrAccess, req.auth.models, normalized?.department))) {
         valid = false;
         errors = {
@@ -83,26 +89,34 @@ export async function previewEmployeeImport(req, res, next) {
           department: "This department is outside your employee scope.",
         };
       }
+      const joining =
+        normalized?.joiningDate instanceof Date
+          ? Number.isNaN(normalized.joiningDate.getTime())
+            ? ""
+            : normalized.joiningDate.toISOString().slice(0, 10)
+          : normalized?.joiningDate
+            ? String(normalized.joiningDate).slice(0, 10)
+            : "";
       results.push({
         rowIndex: i,
         valid,
         errors,
-        data: normalized
-          ? {
-              fullName: normalized.fullName,
-              email: normalized.email,
-              employeeCode: normalized.employeeCode,
-              jobTitle: normalized.jobTitle,
-              department: normalized.department,
-              employmentType: normalized.employmentType,
-              joiningDate: normalized.joiningDate,
-              monthlySalary: normalized.monthlySalary,
-              projectName: normalized.projectName,
-              workLocation: normalized.workLocation,
-              phoneNumber: normalized.phoneNumber,
-              reportingManagerId: normalized.reportingManagerId,
-            }
-          : row,
+        unrecognizedHeaders: unrecognizedHeaders || [],
+        data: {
+          fullName: normalized?.fullName || "",
+          email: normalized?.email || "",
+          employeeCode: normalized?.employeeCode || "",
+          jobTitle: normalized?.jobTitle || "",
+          department: normalized?.department || "",
+          employmentType: normalized?.employmentType || "",
+          joiningDate: joining,
+          monthlySalary: normalized?.monthlySalary ?? "",
+          projectName: normalized?.projectName || "",
+          workLocation: normalized?.workLocation || "",
+          phoneNumber: normalized?.phoneNumber || "",
+          reportingManagerId: normalized?.reportingManagerId || null,
+          reportingManagerCode: normalized?.reportingManagerCode || "",
+        },
       });
     }
 
@@ -114,7 +128,9 @@ export async function previewEmployeeImport(req, res, next) {
         totalRows: results.length,
         validRows: validCount,
         invalidRows: invalidCount,
+        unrecognizedColumns,
       },
+      unrecognizedColumns,
       rows: results,
     });
   } catch (error) {
@@ -208,9 +224,9 @@ export async function commitEmployeeImport(req, res, next) {
           rowIndex: row.rowIndex,
           errors: row.errors,
           data: {
-            fullName: row.raw?.fullName,
-            email: row.raw?.email,
-            employeeCode: row.raw?.employeeCode,
+            fullName: row.normalized?.fullName || row.raw?.fullName || row.raw?.name,
+            email: row.normalized?.email || row.raw?.email,
+            employeeCode: row.normalized?.employeeCode || row.raw?.employeeCode || row.raw?.employee_id,
           },
           // intentionally omit activation tokens
         });
@@ -220,6 +236,7 @@ export async function commitEmployeeImport(req, res, next) {
       try {
         const result = await provisionEmployeeAccount(companyContext, row.normalized, {
           source: PROVISIONING_SOURCES.BULK_IMPORT,
+          generateCodeIfMissing: Boolean(row.normalized?._generateCodeOnCommit),
         });
         created.push({
           rowIndex: row.rowIndex,

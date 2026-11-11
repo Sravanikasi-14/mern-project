@@ -176,7 +176,7 @@ before(async () => {
     { $set: { "customFields.monthlySalary": 60000 } }
   );
 
-  // Seed Attendance for today: emp1 is Present and On-Time (09:20), emp2 is Late (10:05)
+  // Seed Attendance for focus day: emp1 Present On-Time (09:20), emp2 Late (10:05)
   const todayStr = "2026-10-23";
   await AttendanceA.create({
     employeeId: emp1._id,
@@ -190,6 +190,28 @@ before(async () => {
     date: todayStr,
     status: "PRESENT",
     checkIn: new Date("2026-10-23T04:35:00.000Z"), // 10:05 IST (04:35 UTC) -> Late (Threshold is 09:45 IST)
+  });
+
+  // Prior working day in the 7D window (Mon 2026-10-20) — only emp1 present
+  await AttendanceA.create({
+    employeeId: emp1._id,
+    date: "2026-10-20",
+    status: "PRESENT",
+    checkIn: new Date("2026-10-20T03:50:00.000Z"),
+  });
+
+  // Day in prior month for 30D / cross-month trend coverage
+  await AttendanceA.create({
+    employeeId: emp1._id,
+    date: "2026-09-28",
+    status: "PRESENT",
+    checkIn: new Date("2026-09-28T03:55:00.000Z"),
+  });
+  await AttendanceA.create({
+    employeeId: emp2._id,
+    date: "2026-09-28",
+    status: "PRESENT",
+    checkIn: new Date("2026-09-28T03:40:00.000Z"),
   });
 
   // emp3 is on APPROVED leave today
@@ -393,5 +415,88 @@ describe("HR Admin Dashboard API (/api/admin/dashboard)", () => {
     assert.equal(res.body.summary.todayPresent, 0);
     assert.equal(res.body.recruitmentFunnel.offersGenerated, 0);
     assert.equal(res.body.recentLeaves.length, 0);
+  });
+
+  it("6. Attendance overview week/30D series matches Mongo attendance + leave aggregation", async () => {
+    const res = await request(app)
+      .get("/api/admin/dashboard?date=2026-10-23&month=10&year=2026")
+      .set("Cookie", hrCookieA);
+
+    assert.equal(res.status, 200);
+    const overview = res.body.attendanceOverview;
+    assert.ok(overview);
+    assert.equal(overview.endDate, "2026-10-23");
+    assert.equal(overview.activeEmployees, 3);
+    assert.equal(overview.week.length, 7);
+    assert.equal(overview.thirtyDays.length, 30);
+
+    // Rolling week ending 2026-10-23: Oct 17..23
+    assert.equal(overview.week[0].date, "2026-10-17");
+    assert.equal(overview.week[6].date, "2026-10-23");
+    assert.equal(overview.week[6].presentCount, 2);
+    assert.equal(overview.week[6].lateCount, 1);
+    assert.equal(overview.week[6].leaveCount, 1);
+    assert.equal(overview.week[6].absentCount, 0);
+
+    const mon20 = overview.week.find((d) => d.date === "2026-10-20");
+    assert.ok(mon20);
+    assert.equal(mon20.presentCount, 1);
+    assert.equal(mon20.lateCount, 0);
+    // emp3 leave starts Oct 22 — Mon 20 has no leave; 2 remaining employees absent
+    assert.equal(mon20.leaveCount, 0);
+    assert.equal(mon20.absentCount, 2);
+
+    const thu22 = overview.week.find((d) => d.date === "2026-10-22");
+    assert.ok(thu22);
+    assert.equal(thu22.leaveCount, 1);
+    assert.equal(thu22.presentCount, 0);
+    assert.equal(thu22.absentCount, 2); // 3 - 0 present - 1 leave
+
+    // Weekend policy: Sat Oct 17 / Sun Oct 18 → no computed absents
+    const sat17 = overview.week.find((d) => d.date === "2026-10-17");
+    const sun18 = overview.week.find((d) => d.date === "2026-10-18");
+    assert.equal(sat17.isWeekend, true);
+    assert.equal(sat17.absentCount, 0);
+    assert.equal(sun18.isWeekend, true);
+    assert.equal(sun18.absentCount, 0);
+
+    // 30D includes prior-month punch (Sep 28) — proves cross-month lookback is not zeroed
+    const sep28 = overview.thirtyDays.find((d) => d.date === "2026-09-28");
+    assert.ok(sep28, "30D series must include prior-month days");
+    assert.equal(sep28.presentCount, 2);
+    assert.equal(sep28.lateCount, 0);
+
+    // Holiday in 30D window
+    const oct2 = overview.thirtyDays.find((d) => d.date === "2026-10-02");
+    assert.ok(oct2);
+    assert.equal(oct2.isHoliday, true);
+    assert.equal(oct2.absentCount, 0);
+
+    // Calendar focus day must agree with overview end day
+    const cal23 = res.body.attendanceCalendar.days.find((d) => d.date === "2026-10-23");
+    assert.equal(cal23.presentCount, overview.week[6].presentCount);
+    assert.equal(cal23.lateCount, overview.week[6].lateCount);
+    assert.equal(cal23.leaveCount, overview.week[6].leaveCount);
+  });
+
+  it("7. Month/year without date clamps trend endDate to selected month (not wall-clock today)", async () => {
+    const res = await request(app)
+      .get("/api/admin/dashboard?month=10&year=2026")
+      .set("Cookie", hrCookieA);
+
+    assert.equal(res.status, 200);
+    const overview = res.body.attendanceOverview;
+    assert.ok(overview);
+    // Wall-clock today is after Oct 2026 in this suite's runtime → clamp to Oct 31
+    assert.equal(overview.endDate, "2026-10-31");
+    assert.equal(overview.week.length, 7);
+    assert.equal(overview.week[6].date, "2026-10-31");
+    assert.equal(overview.thirtyDays[29].date, "2026-10-31");
+
+    // Oct 23 still appears inside the 30D window ending Oct 31
+    const oct23 = overview.thirtyDays.find((d) => d.date === "2026-10-23");
+    assert.ok(oct23);
+    assert.equal(oct23.presentCount, 2);
+    assert.equal(oct23.lateCount, 1);
   });
 });

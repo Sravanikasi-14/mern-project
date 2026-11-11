@@ -65,6 +65,12 @@ export default function EmployeeSettings() {
     }
   }, [user]);
 
+  useEffect(() => {
+    const density = tableDensity === "comfortable" ? "comfortable" : "compact";
+    document.documentElement.dataset.tableDensity = density;
+    localStorage.setItem("hrms_table_density", density);
+  }, [tableDensity]);
+
   // Handler: Change Password
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -300,7 +306,7 @@ export default function EmployeeSettings() {
               </div>
 
               {/* Password Change Form */}
-              <form onSubmit={handleChangePassword} className="settings-groups">
+              <form onSubmit={handleChangePassword} className="settings-form-stack">
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--ink)", marginBottom: "6px" }}>
                     Current Password
@@ -408,14 +414,11 @@ export default function EmployeeSettings() {
                   />
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn--primary-fern"
-                  style={{ minWidth: "160px" }}
-                >
-                  {saving ? "Updating Password..." : "Update Password"}
-                </button>
+                <div className="settings-actions">
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? "Updating…" : "Update Password"}
+                  </button>
+                </div>
               </form>
 
               {/* Session Overview Card */}
@@ -506,10 +509,11 @@ export default function EmployeeSettings() {
                     />
                     <div>
                       <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>
-                        Leave & Task Email Notifications
+                        Email notifications
                       </div>
                       <div style={{ fontSize: "12.5px", color: "var(--muted)", marginTop: "2px" }}>
-                        Receive email alerts when your leave requests are approved or when tasks and kudos are assigned.
+                        When enabled, HRMS may email you about announcements and other account alerts that
+                        support email delivery. Turn off to reduce inbox noise.
                       </div>
                     </div>
                   </label>
@@ -534,23 +538,21 @@ export default function EmployeeSettings() {
                     />
                     <div>
                       <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>
-                        Weekly Milestone Digest
+                        Weekly digest preference
                       </div>
                       <div style={{ fontSize: "12.5px", color: "var(--muted)", marginTop: "2px" }}>
-                        A concise Monday summary of scheduled team holidays, work deadlines, and milestones.
+                        Saves your preference for a weekly summary email. Delivery starts when the
+                        company digest mailer is enabled for your tenant.
                       </div>
                     </div>
                   </label>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn--primary-fern"
-                  style={{ minWidth: "180px" }}
-                >
-                  {saving ? "Saving Preferences..." : "Save Preferences"}
-                </button>
+                <div className="settings-actions">
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? "Saving…" : "Save notification preferences"}
+                  </button>
+                </div>
               </form>
             </div>
           )}
@@ -561,12 +563,20 @@ export default function EmployeeSettings() {
               <div className="settings-panel-head">
                 <h2 className="settings-panel-title">Preferences</h2>
               </div>
+              <p className="settings-panel-lede">
+                These options change how lists and tables look for you in the Employee Portal. They are
+                saved to your account and applied immediately.
+              </p>
 
-              <form onSubmit={handleSavePreferences} className="settings-groups">
+              <form onSubmit={handleSavePreferences} className="settings-form-stack">
                 <div style={{ marginBottom: "24px" }}>
                   <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--ink)", marginBottom: "8px" }}>
-                    Table & List Density
+                    Table &amp; list density
                   </label>
+                  <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: "var(--muted)", lineHeight: 1.45 }}>
+                    Controls row spacing on tables and dense lists (leave, tasks, payslips, and similar).
+                    Compact shows more rows; Comfortable adds breathing room.
+                  </p>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                     <label
                       style={{
@@ -589,9 +599,9 @@ export default function EmployeeSettings() {
                         style={{ marginTop: "2px", accentColor: "var(--g-700, #155a37)" }}
                       />
                       <div>
-                        <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>Compact View</div>
+                        <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>Compact</div>
                         <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
-                          Higher information density for attendance logs and task lists.
+                          Tighter row padding so more records fit on screen.
                         </div>
                       </div>
                     </label>
@@ -617,23 +627,20 @@ export default function EmployeeSettings() {
                         style={{ marginTop: "2px", accentColor: "var(--g-700, #155a37)" }}
                       />
                       <div>
-                        <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>Comfortable View</div>
+                        <div style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--ink)" }}>Comfortable</div>
                         <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
-                          Spacious rows with relaxed margins and breathing room.
+                          Larger row padding for easier scanning on smaller screens.
                         </div>
                       </div>
                     </label>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn--primary-fern"
-                  style={{ minWidth: "180px" }}
-                >
-                  {saving ? "Saving Preferences..." : "Save Preferences"}
-                </button>
+                <div className="settings-actions">
+                  <button type="submit" disabled={saving} className="btn-primary">
+                    {saving ? "Saving…" : "Save display preferences"}
+                  </button>
+                </div>
               </form>
             </div>
           )}

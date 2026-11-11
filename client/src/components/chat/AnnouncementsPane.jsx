@@ -5,20 +5,18 @@ import { ArrowLeft, Megaphone } from "lucide-react";
 import AppModal from "../AppModal";
 import { qk } from "../../lib/queryKeys";
 import api from "../../services/api";
+import {
+  PRIORITY_LABEL,
+  STATUS_LABEL,
+  announcementTiming,
+  audienceLabelFor,
+  formatAnnouncementDate,
+  timingPrefix,
+} from "./announcementDisplay";
 
 function apiMessage(error, fallback) {
   return error?.response?.data?.message || fallback;
 }
-
-function formatWhen(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-const PRIORITY_LABEL = { NORMAL: "Normal", IMPORTANT: "Important", URGENT: "Urgent" };
-const STATUS_LABEL = { DRAFT: "Draft", SCHEDULED: "Scheduled", PUBLISHED: "Published", WITHDRAWN: "Withdrawn" };
 
 function emptyForm() {
   return {
@@ -67,6 +65,8 @@ export default function AnnouncementsPane({ narrow }) {
     },
   });
   const detail = detailQuery.data || selectedSummary;
+  const detailTiming = announcementTiming(detail);
+  const audienceLabel = audienceLabelFor(detail);
 
   const readsQuery = useQuery({
     queryKey: qk.announcementReads(selectedId, readSearch.trim()),
@@ -200,9 +200,6 @@ export default function AnnouncementsPane({ narrow }) {
 
   const showList = !narrow || !selectedId;
   const showDetail = !narrow || Boolean(selectedId);
-  const audienceLabel = detail?.audience === "DEPARTMENTS"
-    ? (detail.departmentNames || []).join(", ") || "Selected departments"
-    : "Entire company";
 
   return (
     <div className={`msg-announce${showList && showDetail ? "" : showList ? " is-list" : " is-thread"}`}>
@@ -217,7 +214,7 @@ export default function AnnouncementsPane({ narrow }) {
                   <option value="PUBLISHED">Published</option>
                   <option value="SCHEDULED">Scheduled</option>
                   <option value="DRAFT">Drafts</option>
-                  <option value="WITHDRAWN">Withdrawn</option>
+                  <option value="WITHDRAWN">Archived</option>
                 </select>
               </label>
             ) : null}
@@ -228,48 +225,80 @@ export default function AnnouncementsPane({ narrow }) {
               </button>
             ) : null}
           </div>
-          {listQuery.isLoading ? <p className="msg-muted">Loading announcements…</p> : null}
-          {listQuery.isError ? <p className="msg-banner" role="alert">{apiMessage(listQuery.error, "Announcements could not be loaded.")}</p> : null}
-          {!listQuery.isLoading && announcements.length === 0 ? (
-            <div className="msg-empty"><p>{access.canPublish ? "No announcements yet." : "No announcements for you yet."}</p></div>
-          ) : (
-            <ul className="msg-people">
-              {announcements.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className={`msg-person${item.id === selectedId ? " is-active" : ""}`}
-                    onClick={() => selectAnnouncement(item.id)}
-                  >
-                    <span className="msg-person-body">
-                      <span className="msg-person-top">
-                        <strong>{item.title}</strong>
-                        <time dateTime={item.publishedAt || item.scheduledAt || item.createdAt}>
-                          {formatWhen(item.publishedAt || item.scheduledAt || item.createdAt)}
-                        </time>
+          {listQuery.isLoading ? <p className="msg-muted msg-announce-state">Loading announcements…</p> : null}
+          {listQuery.isError ? (
+            <p className="msg-banner" role="alert">{apiMessage(listQuery.error, "Announcements could not be loaded.")}</p>
+          ) : null}
+          {!listQuery.isLoading && !listQuery.isError && announcements.length === 0 ? (
+            <div className="msg-empty msg-announce-empty">
+              <p>{access.canPublish ? "No announcements yet." : "No announcements for you yet."}</p>
+              {access.canPublish ? (
+                <p className="msg-muted">Create one to share updates with the company or selected departments.</p>
+              ) : null}
+            </div>
+          ) : null}
+          {!listQuery.isLoading && announcements.length > 0 ? (
+            <ul className="msg-people msg-announce-list">
+              {announcements.map((item) => {
+                const timing = announcementTiming(item);
+                const selected = item.id === selectedId;
+                const author = item.publishedByName || "";
+                const preview = item.preview || "";
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={`msg-announce-item${selected ? " is-active" : ""}${item.isRead === false ? " is-unread" : ""}`}
+                      onClick={() => selectAnnouncement(item.id)}
+                      aria-current={selected ? "true" : undefined}
+                    >
+                      <span className="msg-announce-item-main">
+                        <span className="msg-announce-item-top">
+                          <strong className="msg-announce-item-title">{item.title}</strong>
+                          {timing.iso ? (
+                            <time dateTime={timing.iso} className="msg-announce-item-when">
+                              {timing.label}
+                            </time>
+                          ) : null}
+                        </span>
+                        <span className="msg-announce-meta">
+                          <span className={`msg-priority is-${String(item.priority || "normal").toLowerCase()}`}>
+                            {PRIORITY_LABEL[item.priority] || item.priority || "Normal"}
+                          </span>
+                          {access.canPublish && item.status ? (
+                            <span className={`msg-status is-${String(item.status).toLowerCase()}`}>
+                              {STATUS_LABEL[item.status] || item.status}
+                            </span>
+                          ) : null}
+                          <span className="msg-announce-audience">{audienceLabelFor(item)}</span>
+                        </span>
+                        {author ? <span className="msg-announce-author">By {author}</span> : null}
+                        {preview ? <span className="msg-announce-preview">{preview}</span> : null}
                       </span>
-                      <span className="msg-preview">
-                        <span className={`msg-priority is-${item.priority.toLowerCase()}`}>{PRIORITY_LABEL[item.priority] || item.priority}</span>
-                        {access.canPublish ? ` · ${STATUS_LABEL[item.status] || item.status}` : ""}
-                        {item.preview ? ` · ${item.preview}` : ""}
-                      </span>
-                    </span>
-                    {item.status === "PUBLISHED" && item.isRead === false ? <span className="msg-unread">New</span> : null}
-                  </button>
-                </li>
-              ))}
+                      {item.status === "PUBLISHED" && item.isRead === false ? (
+                        <span className="msg-unread" aria-label="Unread">New</span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
-          )}
+          ) : null}
         </aside>
       ) : null}
 
       {showDetail ? (
-        <section className="msg-thread" aria-label={detail?.title || "Announcement"}>
+        <section
+          className={`msg-thread msg-announce-thread${selectedId ? " has-selection" : ""}`}
+          aria-label={detail?.title || "Announcement"}
+        >
           {!selectedId ? (
-            <div className="msg-empty msg-thread-empty"><p>Select an announcement to read it.</p></div>
+            <div className="msg-empty msg-thread-empty msg-announce-empty">
+              <p>Select an announcement to read it.</p>
+            </div>
           ) : (
             <>
-              <header className="msg-thread-head">
+              <header className="msg-thread-head msg-announce-head">
                 {narrow ? (
                   <button type="button" className="msg-back" onClick={() => selectAnnouncement("")} aria-label="Back to announcements">
                     <ArrowLeft size={18} />
@@ -277,18 +306,40 @@ export default function AnnouncementsPane({ narrow }) {
                 ) : null}
                 <div className="msg-head-text">
                   <h2>{detail?.title || "Announcement"}</h2>
-                  <p>
-                    <span className={`msg-priority is-${(detail?.priority || "normal").toLowerCase()}`}>{PRIORITY_LABEL[detail?.priority] || "Normal"}</span>
-                    {" · "}
-                    {audienceLabel}
-                    {detail?.publishedAt ? ` · ${formatWhen(detail.publishedAt)}` : detail?.status === "SCHEDULED" ? ` · Scheduled ${formatWhen(detail.scheduledAt)}` : ""}
-                  </p>
+                  <div className="msg-announce-meta msg-announce-meta-detail">
+                    <span className={`msg-priority is-${String(detail?.priority || "normal").toLowerCase()}`}>
+                      {PRIORITY_LABEL[detail?.priority] || "Normal"}
+                    </span>
+                    {access.canPublish && detail?.status ? (
+                      <span className={`msg-status is-${String(detail.status).toLowerCase()}`}>
+                        {STATUS_LABEL[detail.status] || detail.status}
+                      </span>
+                    ) : null}
+                    <span className="msg-announce-audience">{audienceLabel}</span>
+                    {detailTiming.label ? (
+                      <span>
+                        {timingPrefix(detailTiming.kind)} {detailTiming.label}
+                      </span>
+                    ) : null}
+                    {detail?.publishedByName ? <span className="msg-announce-author">By {detail.publishedByName}</span> : null}
+                  </div>
                 </div>
               </header>
-              <div className="msg-history">
-                {detailQuery.isLoading ? <p className="msg-muted">Loading announcement…</p> : null}
-                {detailQuery.isError ? <p className="msg-banner" role="alert">{apiMessage(detailQuery.error, "This announcement could not be opened.")}</p> : null}
-                {detail?.body ? <article className="msg-announcement-body"><p>{detail.body}</p></article> : null}
+              <div className="msg-history msg-announce-history">
+                {detailQuery.isLoading && !detail?.body ? (
+                  <p className="msg-muted msg-announce-state">Loading announcement…</p>
+                ) : null}
+                {detailQuery.isError ? (
+                  <p className="msg-banner" role="alert">{apiMessage(detailQuery.error, "This announcement could not be opened.")}</p>
+                ) : null}
+                {detail?.body ? (
+                  <article className="msg-announcement-body">
+                    <div className="msg-announcement-text">{detail.body}</div>
+                  </article>
+                ) : null}
+                {!detailQuery.isLoading && !detailQuery.isError && selectedId && !detail?.body ? (
+                  <p className="msg-muted">This announcement has no body text.</p>
+                ) : null}
                 {error ? <p className="msg-banner" role="alert">{error}</p> : null}
                 {access.canPublish && detail ? (
                   <div className="msg-dialog-actions">
@@ -333,7 +384,7 @@ export default function AnnouncementsPane({ narrow }) {
                             <span className="msg-preview">
                               {[person.department, person.employeeCode].filter(Boolean).join(" · ") || "Colleague"}
                               {" · "}
-                              {person.readAt ? `Read ${formatWhen(person.readAt)}` : "Not read"}
+                              {person.readAt ? `Read ${formatAnnouncementDate(person.readAt)}` : "Not read"}
                             </span>
                           </span>
                         </li>
@@ -356,7 +407,7 @@ export default function AnnouncementsPane({ narrow }) {
           </label>
           <label className="msg-field">
             Announcement
-            <textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} maxLength={8000} rows={5} required />
+            <textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} maxLength={8000} rows={8} required />
           </label>
           <label className="msg-field">
             Priority
@@ -366,7 +417,7 @@ export default function AnnouncementsPane({ narrow }) {
               <option value="URGENT">Urgent</option>
             </select>
           </label>
-          {detail?.status !== "PUBLISHED" ? (
+          {!editingId || detail?.status !== "PUBLISHED" ? (
             <>
               <fieldset className="msg-field">
                 <legend>Audience</legend>

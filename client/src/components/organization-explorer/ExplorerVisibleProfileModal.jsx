@@ -1,4 +1,5 @@
 import AppModal from "../AppModal";
+import AuthedAvatar from "../AuthedAvatar";
 import { IconMail, IconRefresh } from "../EmployeeIcon";
 import { useVisibleEmployeeProfileQuery } from "../../hooks/useEmployeeQueries";
 import { initials } from "./explorerDisplayUtils";
@@ -91,9 +92,14 @@ export default function ExplorerVisibleProfileModal({ employeeId, open, onClose 
       {!profileError && profileEmployee ? (
         <div className="pd-profile">
           <div className="pd-profile-hero">
-            <div className="pd-avatar pd-avatar-lg" aria-hidden="true">
-              {initials(profileEmployee.fullName)}
-            </div>
+            <AuthedAvatar
+              className="pd-avatar pd-avatar-lg"
+              employee={profileEmployee}
+              avatar={profileEmployee.avatar}
+              name={profileEmployee.fullName}
+              initials={initials(profileEmployee.fullName)}
+              alt={profileEmployee.fullName || "Employee"}
+            />
             <div className="pd-profile-hero-text">
               <h3>{profileEmployee.fullName || "—"}</h3>
               <p>{profileEmployee.employeeCode || "—"}</p>

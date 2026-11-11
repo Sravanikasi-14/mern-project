@@ -3,8 +3,39 @@
    Shared across:
      - HR Admin: /admin/employees/:id (EmployeeProfile.jsx)
      - Employee Self-Service: /app/profile (EmployeeHome.jsx)
+     - Edit employee form cards (.profile-card)
    Palette: Forest-Green & Off-White Approved Design System
+   Typography: Plus Jakarta Sans (inherits --font)
    ========================================================================== */
+
+/*
+ * Shared profile-card tokens.
+ * All section cards (epd-card, profile-card, epv-*-card, stats, toolbars)
+ * resolve chrome from these so tabs stay visually consistent.
+ */
+.epv-container,
+.epd-page {
+  --profile-card-radius: 14px;
+  --profile-card-pad-y: 16px;
+  --profile-card-pad-x: 18px;
+  --profile-card-padding: var(--profile-card-pad-y) var(--profile-card-pad-x);
+  --profile-card-gap: 14px;
+  --profile-stack-gap: 14px;
+  --profile-grid-gap: 14px;
+  --profile-card-border: 1px solid var(--hair, #e6ede8);
+  --profile-card-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
+  --profile-card-bg: var(--card, #ffffff);
+  --profile-head-gap: 12px;
+  --profile-title-size: 14.5px;
+  --profile-title-weight: 700;
+  --profile-sub-size: 12px;
+  --profile-icon-box: 34px;
+  --profile-icon-svg: 18px;
+  --profile-empty-pad: 16px 18px;
+  --epd-radius: var(--profile-card-radius);
+  --epd-soft: #f4f8f5;
+  font-family: "Plus Jakarta Sans", var(--font, system-ui, sans-serif);
+}
 
 .epv-container {
   max-width: none;
@@ -87,8 +118,8 @@
 .epv-top-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--profile-stack-gap, 14px);
+  margin-bottom: var(--profile-stack-gap, 14px);
 }
 
 @container epv (max-width: 640px) {
@@ -116,16 +147,18 @@
 }
 
 .epv-kpi-card {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  padding: 14px 16px;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   gap: 6px;
   min-height: 0;
+  height: fit-content;
+  align-self: stretch;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -266,12 +299,12 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  padding: 16px 18px;
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
   margin-bottom: 12px;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04)));
 }
 
 .epv-identity-main {
@@ -333,11 +366,12 @@
 }
 
 .epv-work-summary {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  padding: 12px 16px;
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
   margin-bottom: 14px;
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04)));
 }
 
 .epv-work-summary-head {
@@ -404,29 +438,31 @@
 }
 
 .epv-records-panel {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
+  overflow: hidden;
 }
 
 .epv-left-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--profile-stack-gap, 14px);
 }
 
 /* Person Profile Card */
 .epv-person-card {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  padding: 18px 20px;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  height: fit-content;
 }
 
 .epv-avatar-wrapper {
@@ -574,21 +610,23 @@
 
 /* Working Format & Time Card (Reference 3) */
 .epv-format-card {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  padding: 22px 24px;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
+  height: fit-content;
 }
 
 .epv-format-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--profile-title-size, 14.5px);
+  font-weight: var(--profile-title-weight, 700);
   color: var(--ink, #131a15);
-  margin: 0 0 14px;
+  margin: 0 0 var(--profile-card-gap, 14px);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  letter-spacing: -0.01em;
 }
 
 .epv-donut-ring-wrap {
@@ -665,10 +703,10 @@
    Right Information Area (Reference 3 Structured Tabs & Sections)
    -------------------------------------------------------------------------- */
 .epv-right-panel {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 14px);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04)));
 }
 
 /* Tabs Navigation Strip — Clean Text Links (Requirement 4) */
@@ -729,11 +767,11 @@
 
 /* Tab Content Workspace */
 .epv-tab-body {
-  padding: 16px 18px;
+  padding: var(--profile-card-padding, 16px 18px);
 }
 
 .epv-section-block {
-  margin-bottom: 16px;
+  margin-bottom: var(--profile-stack-gap, 14px);
 }
 
 .epv-section-block:last-child {
@@ -744,37 +782,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: var(--profile-head-gap, 12px);
+  margin-bottom: var(--profile-card-gap, 14px);
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--hair, #e3e7e4);
+  border-bottom: 1px solid var(--hair, #e6ede8);
 }
 
 .epv-section-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--profile-title-size, 14.5px);
+  font-weight: var(--profile-title-weight, 700);
   color: var(--ink, #131a15);
   margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+  letter-spacing: -0.01em;
 }
 
 .epv-section-sub {
-  font-size: 12.5px;
+  font-size: var(--profile-sub-size, 12px);
   color: var(--muted, #646d67);
 }
 
 /* Field Grid (Reference 3 Clean Two/Three Column Layout) */
 .epv-field-grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px 22px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--profile-grid-gap, 14px) 16px;
 }
 
 .epv-field-grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18px 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--profile-grid-gap, 14px) 16px;
 }
 
 @media (max-width: 800px) {
@@ -816,12 +856,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid var(--hair, #e3e7e4);
+  border: 1px solid var(--hair, #e6ede8);
   background: var(--panel, #f5f6f5);
   margin-bottom: 8px;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  min-width: 0;
+}
+.epv-doc-row:last-child {
+  margin-bottom: 0;
 }
 
 .epv-doc-row:hover {
@@ -836,8 +881,8 @@
 }
 
 .epv-doc-icon {
-  width: 34px;
-  height: 34px;
+  width: var(--profile-icon-box, 34px);
+  height: var(--profile-icon-box, 34px);
   border-radius: 8px;
   background: var(--g-100, #e3f2e9);
   color: var(--g-800, #155a37);
@@ -1075,33 +1120,58 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.profile-card-stack {
+  --profile-card-radius: 14px;
+  --profile-card-pad-y: 16px;
+  --profile-card-pad-x: 18px;
+  --profile-card-padding: var(--profile-card-pad-y) var(--profile-card-pad-x);
+  --profile-card-gap: 14px;
+  --profile-stack-gap: 14px;
+  --profile-grid-gap: 14px;
+  --profile-card-border: 1px solid var(--hair, #e6ede8);
+  --profile-card-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
+  --profile-card-bg: var(--card, #ffffff);
+  --profile-head-gap: 12px;
+  --profile-title-size: 14.5px;
+  --profile-title-weight: 700;
+  --profile-sub-size: 12px;
+  --profile-icon-box: 34px;
+  --profile-icon-svg: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--profile-stack-gap, 14px);
+}
+
 .profile-card {
-  background: var(--card, #fdfdfc);
-  border: 1px solid var(--hair, #e3e7e4);
-  border-radius: var(--r-md, 12px);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, 14px);
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   overflow: hidden;
+  height: fit-content;
 }
 
 .profile-card-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--hair, #e3e7e4);
+  gap: var(--profile-head-gap, 12px);
+  padding: var(--profile-card-padding, 16px 18px);
+  border-bottom: 1px solid var(--hair, #e6ede8);
   background: var(--panel, #f5f6f5);
 }
 
 .profile-card-header h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--profile-title-size, 14.5px);
+  font-weight: var(--profile-title-weight, 700);
+  letter-spacing: -0.01em;
   color: var(--ink, #131a15);
 }
 
-.card-header-icon {
-  width: 34px;
-  height: 34px;
+.card-header-icon,
+.epd-card-icon {
+  width: var(--profile-icon-box, 34px);
+  height: var(--profile-icon-box, 34px);
   border-radius: 8px;
   background: var(--g-100, #e3f2e9);
   color: var(--g-800, #155a37);
@@ -1111,13 +1181,14 @@
   flex-shrink: 0;
 }
 
-.card-header-icon svg {
-  width: 18px;
-  height: 18px;
+.card-header-icon svg,
+.epd-card-icon svg {
+  width: var(--profile-icon-svg, 18px);
+  height: var(--profile-icon-svg, 18px);
 }
 
 .profile-card-body {
-  padding: 18px;
+  padding: var(--profile-card-padding, 16px 18px);
 }
 
 .edit-form-grid {
@@ -1199,16 +1270,13 @@
 
 /* ==========================================================================
    Employee Detail page (HR) — header card, pill tabs, tab cards
-   Classes prefixed `epd-` are used by EmployeeProfile.jsx only; the `epv-*`
-   rules above stay untouched for EmployeeHome / EditEmployee.
+   Classes prefixed `epd-` are used by EmployeeProfile.jsx; shared card tokens
+   are defined on `.epv-container, .epd-page` above.
    ========================================================================== */
 .epd-page {
-  --epd-radius: 14px;
-  --epd-soft: #f4f8f5;
   --epd-amber: #b7791f;
   --epd-red: #c0392b;
   --epd-violet: #7a5aa6;
-  font-family: "Plus Jakarta Sans", var(--font-sans, system-ui, sans-serif);
 }
 
 .epd-back {
@@ -1231,12 +1299,12 @@
 
 /* ---- Profile header card ---- */
 .epd-header {
-  background: var(--card, #fff);
-  border: 1px solid var(--hair, #e6ede8);
-  border-radius: var(--epd-radius);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, var(--epd-radius, 14px));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   overflow: hidden;
-  margin-bottom: 14px;
+  margin-bottom: var(--profile-stack-gap, 14px);
 }
 
 .epd-banner {
@@ -1387,18 +1455,19 @@
 .epd-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px 20px 18px;
+  gap: var(--profile-stack-gap, 14px);
+  padding: var(--profile-card-padding, 16px 18px);
 }
 .epd-tile {
-  border: 1px solid var(--hair, #e6ede8);
-  border-radius: 12px;
-  background: var(--epd-soft);
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: 10px;
+  background: var(--epd-soft, #f4f8f5);
   padding: 10px 14px;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
+  height: fit-content;
 }
 .epd-tile-lbl {
   font-size: 11px;
@@ -1503,49 +1572,256 @@
 .epd-panel {
   min-width: 0;
 }
+
+/*
+ * Overview: two independently flowing flex columns (NOT a shared-row card grid).
+ * Each column stacks its own cards by natural content height + gap only.
+ * Card placement: left = Snapshot + Performance; right = Projects + Attendance
+ * (see EmployeeProfile.jsx) so column totals stay close and blank bands disappear.
+ */
+.epd-page .epd-overview-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--profile-stack-gap, 14px);
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.epd-page .epd-overview-full {
+  width: 100%;
+  height: auto;
+}
+
+.epd-page .epd-overview-cols {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--profile-stack-gap, 14px);
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.epd-page .epd-overview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--profile-stack-gap, 14px);
+  min-width: 0;
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.epd-page .epd-overview-col:first-child {
+  flex: 1.35 1 0;
+}
+
+.epd-page .epd-overview-col > .epd-card {
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.epd-page .epd-overview-col > .epd-card .epd-empty.is-compact {
+  padding: 8px 10px;
+}
+
+/* Keep overview attendance rows compact so the right column does not dominate */
+.epd-page .epd-overview-col .epd-summary-list {
+  gap: 6px;
+}
+
+.epd-page .epd-overview-col .epd-summary-list li {
+  padding: 8px 12px;
+}
+
+@media (max-width: 900px) {
+  .epd-page .epd-overview-cols {
+    flex-direction: column;
+  }
+
+  .epd-page .epd-overview-col,
+  .epd-page .epd-overview-col:first-child {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
+/* Legacy span helpers (unused by Overview; kept for any residual markup) */
+.epd-span-12,
+.epd-span-8,
+.epd-span-7,
+.epd-span-6,
+.epd-span-5,
+.epd-span-4 {
+  min-width: 0;
+}
+
+.epv-header-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
 .epd-grid-2 {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--profile-stack-gap, 14px);
   align-items: start;
 }
+
+/*
+ * Shared section columns (Personal / Work / Attendance / Performance / Payroll / Documents).
+ * Independently flowing flex columns — cards fill column width, heights follow content.
+ * Do not reuse for Overview (uses .epd-overview-cols).
+ */
+.epd-page .epd-section-cols {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--profile-stack-gap, 14px);
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.epd-page .epd-section-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--profile-stack-gap, 14px);
+  min-width: 0;
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.epd-page .epd-section-col--narrow {
+  flex: 0.85 1 0;
+}
+
+.epd-page .epd-section-cols--3 > .epd-section-col {
+  flex: 1 1 0;
+}
+
+.epd-page .epd-section-cols--single > .epd-section-col {
+  flex: 1 1 auto;
+  max-width: 560px;
+}
+
+.epd-page .epd-section-col > .epd-card {
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+/* Forms inside half-width columns: prefer 2 cols, not 3 */
+.epd-page .epd-section-col .epd-form-grid:not(.epd-form-grid-1) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.epd-page .epd-section-col .epd-stat-row:not(.epd-stat-row-2):not(.epd-stat-row-3) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.epd-page .epd-section-cols--3 .epd-bars {
+  height: 100px;
+}
+
+.epd-page .epd-plain-value {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .epd-page .epd-section-cols--3 {
+    flex-wrap: wrap;
+  }
+
+  .epd-page .epd-section-cols--3 > .epd-section-col {
+    flex: 1 1 calc(50% - 7px);
+  }
+}
+
+@media (max-width: 900px) {
+  .epd-page .epd-section-cols {
+    flex-direction: column;
+  }
+
+  .epd-page .epd-section-col,
+  .epd-page .epd-section-col--narrow {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .epd-page .epd-section-cols--3 > .epd-section-col {
+    flex: 1 1 auto;
+  }
+}
+
 .epd-col,
 .epd-stack {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--profile-stack-gap, 14px);
   min-width: 0;
   align-items: stretch;
+  width: 100%;
 }
 
+
 .epd-card {
-  background: var(--card, #fff);
-  border: 1px solid var(--hair, #e6ede8);
-  border-radius: var(--epd-radius);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
-  padding: 14px 16px;
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, var(--epd-radius, 14px));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
+  padding: var(--profile-card-padding, 16px 18px);
   min-width: 0;
-  height: fit-content;
-  align-self: start;
+  width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 0;
+  /* stretch width in column flex; height stays content-sized via height:auto */
+  align-self: stretch;
+  overflow: hidden;
 }
 .epd-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: var(--profile-head-gap, 12px);
+  margin-bottom: var(--profile-card-gap, 14px);
+}
+.epd-card-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--profile-head-gap, 12px);
+  min-width: 0;
 }
 .epd-card-title {
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 800;
+  font-size: var(--profile-title-size, 14.5px);
+  font-weight: var(--profile-title-weight, 700);
   letter-spacing: -0.01em;
   color: var(--ink, #131a15);
 }
 .epd-card-sub {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--profile-sub-size, 12px);
   color: var(--muted, #646d67);
+  line-height: 1.45;
 }
 .epd-muted {
   margin: 0;
@@ -1602,6 +1878,22 @@
   border-bottom: 1px solid var(--hair, #e6ede8);
   min-width: 0;
 }
+
+/* Denser info cells in profile sections (not forms) */
+.epd-page .epd-info {
+  padding: 7px 10px 7px 0;
+}
+
+.epd-page .epd-overview-col .epd-info,
+.epd-page .epd-stack > .epd-card .epd-info,
+.epd-page .epd-section-col .epd-info {
+  padding: 7px 10px 7px 0;
+}
+
+.epd-page .epd-stack > .epd-card > .epd-card-head,
+.epd-page .epd-section-col > .epd-card > .epd-card-head {
+  margin-bottom: 10px;
+}
 .epd-info-lbl {
   font-size: 11.5px;
   font-weight: 600;
@@ -1632,7 +1924,10 @@
 .epd-form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px 16px;
+  gap: var(--profile-grid-gap, 14px) 16px;
+}
+.epd-form-grid-1 {
+  grid-template-columns: minmax(0, 1fr);
 }
 .epd-span-all {
   grid-column: 1 / -1;
@@ -1661,11 +1956,14 @@
 .epd-stat-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--profile-stack-gap, 14px);
   align-items: start;
 }
 .epd-stat-row-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.epd-stat-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .epd-stat {
   position: relative;
@@ -1674,12 +1972,14 @@
   align-items: center;
   column-gap: 8px;
   row-gap: 2px;
-  padding: 10px 12px;
-  background: var(--card, #fff);
-  border: 1px solid var(--hair, #e6ede8);
-  border-radius: 12px;
+  padding: var(--profile-card-padding, 16px 18px);
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, var(--epd-radius, 14px));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   min-width: 0;
   height: fit-content;
+  align-self: stretch;
 }
 .epd-stat-lbl {
   font-size: 12px;
@@ -1729,10 +2029,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--hair, #e6ede8);
-  border-radius: 10px;
-  background: var(--epd-soft);
+  padding: 12px 14px;
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, var(--epd-radius, 14px));
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
   font-size: 13px;
   font-weight: 600;
   color: var(--ink, #131a15);
@@ -1796,17 +2097,29 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: var(--profile-empty-pad, 16px 18px);
   border: 1px dashed var(--hair, #d5e0d9);
-  border-radius: 10px;
-  background: var(--epd-soft);
+  border-radius: var(--profile-card-radius, 14px);
+  background: var(--epd-soft, #f4f8f5);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 0;
 }
 .epd-empty.is-compact {
-  padding: 6px 8px;
+  padding: 8px 10px;
+  gap: 4px;
+}
+
+.epd-page .epd-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .epd-empty strong {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--ink, #131a15);
 }
@@ -1815,10 +2128,22 @@
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--muted, #646d67);
+  max-width: 52ch;
 }
 .epd-empty-icon {
+  width: var(--profile-icon-box, 34px);
+  height: var(--profile-icon-box, 34px);
+  border-radius: 8px;
+  background: var(--g-100, #e3f2e9);
   color: var(--g-700, #1d7347);
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.epd-empty-icon svg {
+  width: var(--profile-icon-svg, 18px);
+  height: var(--profile-icon-svg, 18px);
 }
 
 /* ---- Attendance ---- */
@@ -1826,8 +2151,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--profile-head-gap, 12px);
   flex-wrap: wrap;
+  padding: var(--profile-card-padding, 16px 18px);
+  background: var(--profile-card-bg, var(--card, #ffffff));
+  border: var(--profile-card-border, 1px solid var(--hair, #e6ede8));
+  border-radius: var(--profile-card-radius, var(--epd-radius, 14px));
+  box-shadow: var(--profile-card-shadow, var(--shadow-sm));
+  height: fit-content;
 }
 .epd-rate {
   display: flex;
@@ -2109,6 +2440,14 @@
 .epd-timeline li:last-child {
   padding-bottom: 0;
 }
+.epd-timeline--compact {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.epd-timeline--compact li {
+  padding: 0 0 12px;
+}
 .epd-timeline-dot {
   width: 12px;
   height: 12px;
@@ -2189,8 +2528,17 @@
   .epd-designation {
     grid-template-columns: 1fr;
   }
-  .epd-card {
-    padding: 14px;
+  .epd-card,
+  .epd-stat,
+  .epd-toolbar,
+  .epv-kpi-card,
+  .epv-person-card,
+  .epv-format-card,
+  .profile-card-header,
+  .profile-card-body,
+  .epv-tab-body {
+    --profile-card-pad-y: 14px;
+    --profile-card-pad-x: 14px;
   }
   .epd-tab {
     flex: 0 0 auto;

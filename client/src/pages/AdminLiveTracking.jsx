@@ -12,6 +12,8 @@ import { IconMapPin, IconClipboardList } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { useTrackingSessionsQuery } from "../hooks/useAdminQueries";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
+import AuthedAvatar from "../components/AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./Attendance.css";
 
 const POLL_MS = 60_000;
@@ -63,21 +65,48 @@ function matchesSearch(row, q) {
   );
 }
 
-/** Shape a live session like an attendance-overview employee so AttendanceMap can reuse it. */
-function toMapEmployee(session) {
-  const lastLocation = hasCoords(session.lastLocation) ? session.lastLocation : null;
+const LOCATION_TONE = {
+  LIVE: { color: "#15803d", bg: "#dcfce7", label: "Live sharing" },
+  STALE: { color: "#9a3412", bg: "#ffedd5", label: "Stale location" },
+  TRACKING_NO_LOCATION: { color: "#92400e", bg: "#fff7ed", label: "Sharing — location unavailable" },
+  PUNCH_ONLY: { color: "#0369a1", bg: "#e0f2fe", label: "Last known from punch-in" },
+  UNAVAILABLE: { color: "#52525b", bg: "#f4f4f5", label: "Location unavailable" },
+};
+
+function locationTone(row) {
+  const state = row.locationState || (row.isTrackingActive
+    ? hasCoords(row.lastLocation) ? "LIVE" : "TRACKING_NO_LOCATION"
+    : hasCoords(row.lastLocation) || hasCoords(row.checkInLocation) ? "PUNCH_ONLY" : "UNAVAILABLE");
+  return LOCATION_TONE[state] || LOCATION_TONE.UNAVAILABLE;
+}
+
+/** Shape a live row for AttendanceMap (live coords preferred; punch coords as fallback). */
+function toMapEmployee(row) {
+  const liveLoc = row.isTrackingActive && hasCoords(row.lastLocation) ? row.lastLocation : null;
+  const punchLoc = hasCoords(row.checkInLocation)
+    ? row.checkInLocation
+    : hasCoords(row.lastLocation) && !row.isTrackingActive
+      ? row.lastLocation
+      : null;
   return {
-    employeeId: session.employeeId,
-    employeeCode: session.employeeCode,
-    fullName: session.fullName,
-    department: session.department,
-    jobTitle: session.jobTitle,
-    isTrackingActive: Boolean(session.isTrackingActive),
-    liveTracking: {
-      sessionId: session.sessionId,
-      expiresAt: session.expiresAt,
-      lastLocation,
-    },
+    employeeId: row.employeeId,
+    employeeCode: row.employeeCode,
+    fullName: row.fullName,
+    department: row.department,
+    jobTitle: row.jobTitle,
+    attendanceStatus: row.attendanceStatus || (row.punchInAt ? "CHECKED_IN" : ""),
+    checkInTime: row.checkInTime || row.punchInAt || null,
+    checkInLocation: punchLoc,
+    isTrackingActive: Boolean(row.isTrackingActive && liveLoc),
+    liveTracking: liveLoc
+      ? {
+          sessionId: row.sessionId,
+          expiresAt: row.expiresAt,
+          lastLocation: liveLoc,
+        }
+      : null,
+    locationState: row.locationState,
+    locationLabel: row.locationLabel,
   };
 }
 
@@ -126,7 +155,7 @@ export default function AdminLiveTracking() {
 
   const [drawer, setDrawer] = useState({ employeeId: null, index: -1, source: "live" });
 
-  // Live map: ACTIVE sessions only; no date range so the server returns just `live`.
+  // Live map: punched-in employees (+ optional live sharing); no date range → `live` only.
   const liveQuery = useTrackingSessionsQuery(
     { department },
     { refetchInterval: POLL_MS, refetchIntervalInBackground: false }
@@ -174,7 +203,14 @@ export default function AdminLiveTracking() {
 
   const mapEmployees = useMemo(() => filteredLive.map(toMapEmployee), [filteredLive]);
   const locatedLiveCount = useMemo(
-    () => filteredLive.filter((r) => hasCoords(r.lastLocation)).length,
+    () =>
+      filteredLive.filter(
+        (r) => hasCoords(r.lastLocation) || hasCoords(r.checkInLocation)
+      ).length,
+    [filteredLive]
+  );
+  const sharingCount = useMemo(
+    () => filteredLive.filter((r) => r.isTrackingActive).length,
     [filteredLive]
   );
 
@@ -309,7 +345,7 @@ export default function AdminLiveTracking() {
         </div>
       )}
 
-      {/* Section 1: Live now */}
+      {/* Section 1: On duty / live tracking */}
       <section style={CARD_STYLE} aria-labelledby="live-now-heading">
         <div style={SECTION_HEAD_STYLE}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -318,14 +354,15 @@ export default function AdminLiveTracking() {
               style={{ width: 8, height: 8, borderRadius: "50%", background: "#16a34a", display: "inline-block" }}
             />
             <h3 id="live-now-heading" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-              Live now
+              On duty now
             </h3>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              Active sharing sessions · auto-refreshes every 60s
+              Punched-in employees · live sharing when started · refreshes every 60s
             </span>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={PILL_STYLE}>{filteredLive.length} Live</span>
+            <span style={PILL_STYLE}>{filteredLive.length} On duty</span>
+            <span style={PILL_STYLE}>{sharingCount} Sharing</span>
             <span style={PILL_STYLE}>{locatedLiveCount} Located</span>
           </div>
         </div>
@@ -348,50 +385,115 @@ export default function AdminLiveTracking() {
               <IconMapPin size={22} />
             </div>
             <p style={{ margin: 0, fontWeight: 700, color: "var(--ink)", fontSize: 14.5 }}>
-              No employees are sharing live location right now
+              No employees are punched in right now
             </p>
             <p style={{ margin: "4px 0 0" }}>
               {liveRows.length > 0
-                ? "No live sessions match your search."
-                : "Sessions appear here when a punched-in employee starts location sharing."}
+                ? "No on-duty employees match your search."
+                : "Employees appear here after punch-in. Map pins show when coordinates are available from punch-in or live sharing."}
             </p>
           </div>
         ) : (
           <>
             <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid var(--hair)" }}>
-              <AttendanceMap employees={mapEmployees} filterLabel="Live now" height={440} />
+              <AttendanceMap employees={mapEmployees} filterLabel="On duty now" height={440} />
             </div>
             {filteredLive.length > locatedLiveCount && (
               <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--muted)" }}>
-                {filteredLive.length - locatedLiveCount} live session
-                {filteredLive.length - locatedLiveCount === 1 ? "" : "s"} have not reported a location yet and are not
-                shown on the map.
+                {filteredLive.length - locatedLiveCount} employee
+                {filteredLive.length - locatedLiveCount === 1 ? "" : "s"} have no usable coordinates and are not
+                shown on the map (permission denied, GPS unavailable, or punch without location).
               </p>
             )}
             {filteredLive.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                {filteredLive.map((row) => (
-                  <button
-                    key={String(row.sessionId)}
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => openDrawer(row, "live")}
-                    title={hasCoords(row.lastLocation) ? "Inspect attendance" : "No location reported yet"}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: hasCoords(row.lastLocation) ? "#16a34a" : "#a1a1aa",
-                      }}
-                    />
-                    {row.fullName || row.employeeCode || "Employee"}
-                  </button>
-                ))}
-              </div>
+              <ul className="lt-on-duty-list" style={{ listStyle: "none", margin: "14px 0 0", padding: 0, display: "grid", gap: 8 }}>
+                {filteredLive.map((row) => {
+                  const tone = locationTone(row);
+                  const loc = hasCoords(row.lastLocation)
+                    ? row.lastLocation
+                    : hasCoords(row.checkInLocation)
+                      ? row.checkInLocation
+                      : null;
+                  return (
+                    <li key={String(row.id || row.sessionId || row.employeeId)}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => openDrawer(row, "live")}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr) auto",
+                          gap: 12,
+                          alignItems: "center",
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <span style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                          <AuthedAvatar
+                            className="lt-emp-avatar"
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              background: "linear-gradient(135deg, #1d7347, #0d3a23)",
+                              color: "#fff",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                              overflow: "hidden",
+                            }}
+                            employee={{ _id: row.employeeId, avatar: row.avatar }}
+                            avatar={row.avatar}
+                            name={row.fullName}
+                            initials={initialsFromName(row.fullName, "E")}
+                            alt={row.fullName || "Employee"}
+                          />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontWeight: 700, color: "var(--ink)" }}>
+                              {row.fullName || "Employee"}
+                            </span>
+                            <span style={{ display: "block", fontSize: 12, color: "var(--muted)" }}>
+                              {[row.employeeCode, row.department, row.jobTitle].filter(Boolean).join(" · ")}
+                            </span>
+                          </span>
+                        </span>
+                        <span style={{ minWidth: 0, fontSize: 12.5, color: "var(--muted)" }}>
+                          <span style={{ display: "block" }}>
+                            Punch-in {fmtTime(row.punchInAt || row.checkInTime || row.startedAt)}
+                          </span>
+                          <span style={{ display: "block" }}>
+                            {loc
+                              ? `${Number(loc.latitude).toFixed(4)}, ${Number(loc.longitude).toFixed(4)}`
+                              : "No coordinates"}
+                            {row.lastLocationAt || loc?.capturedAt
+                              ? ` · Updated ${fmtTime(row.lastLocationAt || loc.capturedAt)}`
+                              : ""}
+                          </span>
+                        </span>
+                        <span
+                          style={{
+                            justifySelf: "end",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            color: tone.color,
+                            background: tone.bg,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {row.locationLabel || tone.label}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </>
         )}
@@ -481,9 +583,35 @@ export default function AdminLiveTracking() {
                         onClick={() => openDrawer(row, "history")}
                       >
                         <td style={{ padding: "12px 14px" }}>
-                          <div style={{ fontWeight: 600, color: "var(--ink)" }}>{row.fullName || "—"}</div>
-                          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                            {row.employeeCode} · {row.department}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <AuthedAvatar
+                              className="lt-emp-avatar"
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 10,
+                                background: "linear-gradient(135deg, #1d7347, #0d3a23)",
+                                color: "#fff",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                flexShrink: 0,
+                                overflow: "hidden",
+                              }}
+                              employee={{ _id: row.employeeId, avatar: row.avatar }}
+                              avatar={row.avatar}
+                              name={row.fullName}
+                              initials={initialsFromName(row.fullName, "E")}
+                              alt={row.fullName || "Employee"}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600, color: "var(--ink)" }}>{row.fullName || "—"}</div>
+                              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
+                                {row.employeeCode} · {row.department}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td style={{ padding: "12px 14px" }}>

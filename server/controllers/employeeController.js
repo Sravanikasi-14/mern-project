@@ -291,7 +291,7 @@ export async function getEmployees(req, res, next) {
       Employee.countDocuments(scopedQuery),
       Employee.find(scopedQuery)
         .select(
-          "_id employeeCode fullName preferredName email phoneNumber job status invitation.status invitation.sentAt invitation.acceptedAt createdAt updatedAt userId city"
+          "_id employeeCode fullName preferredName email phoneNumber job status invitation.status invitation.sentAt invitation.acceptedAt createdAt updatedAt userId city avatar"
         )
         .populate("job.reportingManagerId", "fullName employeeCode job.jobTitle")
         .sort({ [sortField]: sortDirection })

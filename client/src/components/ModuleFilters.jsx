@@ -1,8 +1,13 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { computeFilterPanelPlacement } from "./moduleFilterPanelPlacement";
 
 /**
  * Shared filter trigger + popover used by ModuleToolbar.
  * Page-specific filter fields are passed as children.
+ *
+ * Panel is portaled + position:fixed so page scroll / table overflow cannot
+ * push Clear/Done off-screen. Body scrolls independently; footer stays pinned.
  */
 export default function ModuleFilters({
   children,
@@ -14,14 +19,61 @@ export default function ModuleFilters({
   className = "",
 }) {
   const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState(null);
   const rootRef = useRef(null);
+  const panelRef = useRef(null);
   const panelId = useId();
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelStyle(null);
+      return undefined;
+    }
+
+    const place = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      const triggerEl =
+        root.querySelector(".module-toolbar-filters-btn") || root;
+      const trigger = triggerEl.getBoundingClientRect();
+      const placed = computeFilterPanelPlacement(trigger, window);
+      setPanelStyle({
+        position: "fixed",
+        top: `${placed.top}px`,
+        left: `${placed.left}px`,
+        width: `${placed.width}px`,
+        maxHeight: `${placed.maxHeight}px`,
+        right: "auto",
+        zIndex: 1200,
+      });
+    };
+
+    place();
+    const panel = panelRef.current;
+    const ro =
+      typeof ResizeObserver !== "undefined" && panel
+        ? new ResizeObserver(() => place())
+        : null;
+    if (ro && panel) ro.observe(panel);
+
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
 
     const onPointer = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
+      const t = event.target;
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      // Nested menus (manager / date range) portal to document.body while open
+      if (typeof t?.closest === "function" && t.closest("[data-filter-submenu='true']")) return;
+      setOpen(false);
     };
     const onKey = (event) => {
       if (event.key === "Escape") setOpen(false);
@@ -36,6 +88,37 @@ export default function ModuleFilters({
   }, [open]);
 
   if (!children) return null;
+
+  const panel = open ? (
+    <div
+      id={panelId}
+      ref={panelRef}
+      className="module-toolbar-filters-panel is-viewport-fixed"
+      role="dialog"
+      aria-label={label}
+      style={panelStyle || undefined}
+      data-filter-panel="true"
+    >
+      <div className="module-toolbar-filters-body">{children}</div>
+      <div className="module-toolbar-filters-footer">
+        {onClear ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => onClear()}
+            disabled={filterCount === 0}
+          >
+            {clearLabel}
+          </button>
+        ) : (
+          <span />
+        )}
+        <button type="button" className="btn-primary" onClick={() => setOpen(false)}>
+          {applyLabel}
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className={`module-toolbar-filters ${className}`.trim()} ref={rootRef}>
@@ -61,28 +144,9 @@ export default function ModuleFilters({
         )}
       </button>
 
-      {open ? (
-        <div id={panelId} className="module-toolbar-filters-panel" role="dialog" aria-label={label}>
-          <div className="module-toolbar-filters-body">{children}</div>
-          <div className="module-toolbar-filters-footer">
-            {onClear ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => onClear()}
-                disabled={filterCount === 0}
-              >
-                {clearLabel}
-              </button>
-            ) : (
-              <span />
-            )}
-            <button type="button" className="btn-primary" onClick={() => setOpen(false)}>
-              {applyLabel}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(panel, document.body)
+        : null}
     </div>
   );
 }

@@ -405,9 +405,9 @@ export default function EditEmployee() {
       {successMsg && <div className="success-alert">{successMsg}</div>}
       {error && <div className="error">{error}</div>}
 
-      <form onSubmit={handleSubmit} noValidate>
+      <form onSubmit={handleSubmit} noValidate className="profile-card-stack">
         {/* Card 1: Personal & Contact Information */}
-        <section className="profile-card" style={{ marginBottom: "20px" }}>
+        <section className="profile-card">
           <div className="profile-card-header">
             <div className="card-header-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -529,7 +529,7 @@ export default function EditEmployee() {
         </section>
 
         {/* Card 2: Employment & Job Details */}
-        <section className="profile-card" style={{ marginBottom: "20px" }}>
+        <section className="profile-card">
           <div className="profile-card-header">
             <div className="card-header-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -662,7 +662,7 @@ export default function EditEmployee() {
         </section>
 
         {/* Card 3: Compensation & Banking Details */}
-        <section className="profile-card" style={{ marginBottom: "24px" }}>
+        <section className="profile-card">
           <div className="profile-card-header">
             <div className="card-header-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -748,7 +748,7 @@ export default function EditEmployee() {
         </section>
 
         {/* Card 4: Employee Documents Management */}
-        <section className="profile-card" style={{ marginBottom: "24px" }}>
+        <section className="profile-card">
           <div className="profile-card-header">
             <div className="card-header-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

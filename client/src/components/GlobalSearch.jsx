@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
+import AuthedAvatar from "./AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./GlobalSearch.css";
 
 const DEBOUNCE_MS = 280;
@@ -175,10 +177,22 @@ export default function GlobalSearch({ className = "" }) {
                           role="option"
                           onClick={() => handleSelect(item)}
                         >
-                          <span className="global-search-item-title">{item.title}</span>
-                          {item.subtitle ? (
-                            <span className="global-search-item-sub">{item.subtitle}</span>
+                          {item.avatar !== undefined || item.employee ? (
+                            <AuthedAvatar
+                              className="global-search-avatar"
+                              employee={item.employee}
+                              avatar={item.avatar}
+                              name={item.title}
+                              initials={initialsFromName(item.title, "?")}
+                              alt={item.title}
+                            />
                           ) : null}
+                          <span className="global-search-item-text">
+                            <span className="global-search-item-title">{item.title}</span>
+                            {item.subtitle ? (
+                              <span className="global-search-item-sub">{item.subtitle}</span>
+                            ) : null}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -234,6 +248,8 @@ async function runRoleSearch(role, q) {
           subtitle: [row.jobTitle || row.job?.jobTitle, row.department || row.job?.department]
             .filter(Boolean)
             .join(" · "),
+          avatar: row.avatar || "",
+          employee: row,
           to: "/app/directory",
         })),
       },
@@ -257,6 +273,8 @@ async function runRoleSearch(role, q) {
           subtitle: [row.employeeCode, row.job?.department, row.job?.jobTitle]
             .filter(Boolean)
             .join(" · "),
+          avatar: row.avatar || "",
+          employee: row,
           to: `/admin/employees/${row._id}`,
         }))
       : [];
@@ -267,6 +285,8 @@ async function runRoleSearch(role, q) {
           id: `leave-${row._id}`,
           title: `${row.employeeName || "Employee"} · ${row.leaveTypeCode || "Leave"}`,
           subtitle: [row.status, row.fromDate || ""].filter(Boolean).join(" · "),
+          avatar: row.avatar || row.employee?.avatar || "",
+          employee: row.employee || { _id: row.employeeId, avatar: row.avatar },
           to: "/admin/leave",
         }))
       : [];

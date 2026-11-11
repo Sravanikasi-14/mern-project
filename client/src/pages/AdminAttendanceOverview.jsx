@@ -13,6 +13,8 @@ import { IconClipboardList } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { useAttendanceOverviewQuery } from "../hooks/useAdminQueries";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
+import AuthedAvatar from "../components/AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 import "./Attendance.css";
 
 const WORKSPACES = [
@@ -47,18 +49,33 @@ export default function AdminAttendanceOverview() {
   const [activeFilter, setActiveFilter] = useState(initialFilter);
 
   // Live Tracking moved to its own page. Old ?tab=tracking links redirect there.
+  // Legacy ?tab=remote|exceptions (notification deep links) map to ?workspace=.
   const requestedTab = (searchParams.get("tab") || "").toLowerCase();
   const redirectToTracking = requestedTab === "tracking";
-  const workspaceParam = (searchParams.get("workspace") || "roster").toLowerCase();
+  const legacyWorkspaceTab =
+    requestedTab === "remote" || requestedTab === "exceptions" ? requestedTab : "";
+  const workspaceParam = (
+    searchParams.get("workspace") ||
+    legacyWorkspaceTab ||
+    "roster"
+  ).toLowerCase();
   const workspace = WORKSPACES.some((w) => w.key === workspaceParam) ? workspaceParam : "roster";
 
-  // Legacy ?tab=overview / ?tab=records bookmarks: drop the obsolete param.
+  // Normalize legacy tab bookmarks onto workspace (or drop obsolete tabs).
   useEffect(() => {
-    if (requestedTab === "overview" || requestedTab === "records") {
+    if (
+      requestedTab === "overview" ||
+      requestedTab === "records" ||
+      requestedTab === "remote" ||
+      requestedTab === "exceptions"
+    ) {
       setSearchParams(
         (prev) => {
           const nextParams = new URLSearchParams(prev);
           nextParams.delete("tab");
+          if (requestedTab === "remote" || requestedTab === "exceptions") {
+            nextParams.set("workspace", requestedTab);
+          }
           return nextParams;
         },
         { replace: true }
@@ -593,7 +610,8 @@ export default function AdminAttendanceOverview() {
                   className="att-mobile-row"
                   onClick={() => handleOpenDrawer(emp, absoluteIdx)}
                 >
-                  <div
+                  <AuthedAvatar
+                    className="att-roster-avatar"
                     style={{
                       width: 36,
                       height: 36,
@@ -606,10 +624,14 @@ export default function AdminAttendanceOverview() {
                       fontSize: 13,
                       fontWeight: 700,
                       flexShrink: 0,
+                      overflow: "hidden",
                     }}
-                  >
-                    {(emp.fullName || "E")[0].toUpperCase()}
-                  </div>
+                    employee={{ _id: emp.employeeId, avatar: emp.avatar }}
+                    avatar={emp.avatar}
+                    name={emp.fullName}
+                    initials={initialsFromName(emp.fullName, "E")}
+                    alt={emp.fullName || "Employee"}
+                  />
                   <div className="att-mobile-row-body">
                     <div className="att-mobile-row-name">{emp.fullName}</div>
                     <div className="att-mobile-row-meta">
@@ -639,7 +661,7 @@ export default function AdminAttendanceOverview() {
                 {paginatedEmployees.map((emp, idx) => {
                   const hasLocation = Boolean(emp.checkInLocation || emp.checkOutLocation);
                   const loc = emp.checkInLocation || emp.checkOutLocation;
-                  const empInitial = (emp.fullName || "E")[0].toUpperCase();
+                  const empInitial = initialsFromName(emp.fullName, "E");
                   const absoluteIdx = (attendancePage - 1) * attendancePageSize + idx;
 
                   return (
@@ -656,7 +678,8 @@ export default function AdminAttendanceOverview() {
                     >
                       <td style={{ padding: "12px 14px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div
+                          <AuthedAvatar
+                            className="att-roster-avatar"
                             style={{
                               width: 34,
                               height: 34,
@@ -669,10 +692,14 @@ export default function AdminAttendanceOverview() {
                               fontSize: 13,
                               fontWeight: 700,
                               flexShrink: 0,
+                              overflow: "hidden",
                             }}
-                          >
-                            {empInitial}
-                          </div>
+                            employee={{ _id: emp.employeeId, avatar: emp.avatar }}
+                            avatar={emp.avatar}
+                            name={emp.fullName}
+                            initials={empInitial}
+                            alt={emp.fullName || "Employee"}
+                          />
                           <div>
                             <div style={{ fontWeight: 600, color: "var(--ink)" }}>{emp.fullName}</div>
                             <div style={{ fontSize: 11.5, color: "var(--muted)" }}>

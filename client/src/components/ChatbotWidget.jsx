@@ -452,16 +452,18 @@ export default function ChatbotWidget() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
-          aria-label="Open HR Assistant. Drag to reposition."
-          title="HR Assistant — click to open, drag to move"
+          aria-label="Open AI Assistant. Drag to reposition."
+          title="AI Assistant — click to open, drag to move"
           style={{ touchAction: "none" }}
         >
-          <div className="hrms-chatbot-launcher-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              <path d="M8 9h.01M12 9h.01M16 9h.01" />
+          <span className="hrms-chatbot-launcher-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l1.8 4.8L19 9.6l-4.2 1.8L12 16l-1.8-4.6L6 9.6l5.2-1.8L12 3z" />
+              <path d="M19 14l.9 2.4L22 17.2l-2.1.9L19 20.5l-.9-2.4L16 17.2l2.1-.9L19 14z" />
+              <path d="M5 15l.7 1.8L7.5 17.5 5.7 18.2 5 20l-.7-1.8L2.5 17.5l1.8-.7L5 15z" />
             </svg>
-          </div>
+          </span>
+          <span className="hrms-chatbot-launcher-label">AI Assistant</span>
         </button>
       )}
 
@@ -480,10 +482,10 @@ export default function ChatbotWidget() {
                 </svg>
               </div>
               <div>
-                <div className="hrms-chatbot-title">HRMS Assistant</div>
+                <div className="hrms-chatbot-title">AI Assistant</div>
                 <div className="hrms-chatbot-subtitle">
                   <span className="hrms-chatbot-badge-active" />
-                  Gemini AI Helper
+                  Gemini-powered helper
                 </div>
               </div>
             </div>

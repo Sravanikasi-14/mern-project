@@ -13,6 +13,8 @@ import {
   resolveCompanyTimezone,
   weekdaySunday0,
 } from "../utils/dateUtils";
+import AuthedAvatar from "./AuthedAvatar";
+import { initialsFromName } from "../utils/employeeAvatar";
 
 function parseTimeToMinutes(value) {
   if (!value) return null;
@@ -402,6 +404,35 @@ export default function EmployeeAttendanceDrawer({
         </button>
       }
     >
+      {displayEmployee ? (
+        <div className="att-drawer-emp-avatar" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <AuthedAvatar
+            className="att-drawer-emp-avatar"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #1d7347, #0d3a23)",
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: 700,
+              overflow: "hidden",
+            }}
+            employee={{ _id: employeeId || displayEmployee._id || displayEmployee.employeeId, avatar: displayEmployee.avatar }}
+            avatar={displayEmployee.avatar}
+            name={displayEmployee.fullName}
+            initials={initialsFromName(displayEmployee.fullName, "E")}
+            alt={displayEmployee.fullName || "Employee"}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700 }}>{displayEmployee.fullName}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>{subtitle}</div>
+          </div>
+        </div>
+      ) : null}
       {/* Stable shell: same structure for loading, error, and loaded states */}
       <div className="att-drawer-layout" aria-busy={loading}>
         <div className="att-drawer-calendar-wrap">

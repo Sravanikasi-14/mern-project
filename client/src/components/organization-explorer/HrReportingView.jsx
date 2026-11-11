@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import AppModal from "../AppModal";
+import AuthedAvatar from "../AuthedAvatar";
 import ReportingManagerSelect from "../ReportingManagerSelect";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
@@ -36,6 +37,20 @@ function initials(name = "") {
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function OrgAvatar({ emp, className = "org-chart-avatar" }) {
+  if (!emp) return null;
+  return (
+    <AuthedAvatar
+      className={className}
+      employee={emp}
+      avatar={emp.avatar}
+      name={emp.fullName}
+      initials={initials(emp.fullName)}
+      alt={emp.fullName || "Employee"}
+    />
+  );
 }
 
 function departmentAccent(dept = "") {
@@ -164,9 +179,7 @@ function OrgChartCard({
         }
       }}
     >
-      <span className="org-chart-avatar" aria-hidden="true">
-        {initials(emp.fullName)}
-      </span>
+      <OrgAvatar emp={emp} />
       <div className="org-chart-card-body">
         <strong>{emp.fullName}</strong>
         <span className="org-chart-title">{emp.jobTitle || "Team member"}</span>
@@ -700,9 +713,7 @@ export default function HrReportingView() {
                           role="option"
                           onClick={() => openEmployee(emp.id, { fromSearch: true })}
                         >
-                          <span className="org-chart-avatar" aria-hidden="true">
-                            {initials(emp.fullName)}
-                          </span>
+                          <OrgAvatar emp={emp} />
                           <span className="org-search-item-body">
                             <strong>{emp.fullName}</strong>
                             <span>
@@ -1035,9 +1046,7 @@ export default function HrReportingView() {
                       style={{ "--dept-accent": departmentAccent(emp.department) }}
                       onClick={() => openEmployee(id)}
                     >
-                      <span className="org-chart-avatar" aria-hidden="true">
-                        {initials(emp.fullName)}
-                      </span>
+                      <OrgAvatar emp={emp} />
                       <span className="org-unassigned-body">
                         <strong>{emp.fullName}</strong>
                         <span>{emp.jobTitle || "Team member"}</span>
@@ -1092,9 +1101,7 @@ export default function HrReportingView() {
         {selected ? (
           <div className="org-detail">
             <div className="org-detail-hero">
-              <span className="org-chart-avatar org-chart-avatar-lg" aria-hidden="true">
-                {initials(selected.fullName)}
-              </span>
+              <OrgAvatar emp={selected} className="org-chart-avatar org-chart-avatar-lg" />
               <div className="org-detail-meta">
                 <div className="org-detail-row">
                   <span>Status</span>

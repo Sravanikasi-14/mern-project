@@ -7,7 +7,7 @@ export default function OrganizationPage() {
     <main className="container-wide org-page">
       <AppHeader
         title="Organization"
-        subtitle="See who reports to whom, and manage departments, teams, job titles, and access."
+        subtitle="See who reports to whom, and manage departments, teams, and job titles."
       />
       <OrganizationWorkspace />
     </main>

@@ -62,13 +62,23 @@ export function getStatusCategory(statusRaw) {
     s === "UNPAID" ||
     s === "PARTIAL" ||
     s === "EXPIRED" ||
-    s === "CHANGES_REQUESTED"
+    s === "CHANGES_REQUESTED" ||
+    s === "ON_HOLD"
   ) {
     return "warning";
   }
 
   // Info
-  if (s === "SENT" || s === "ISSUED" || s === "PROCESSING" || s === "ASSIGNED" || s === "IN_PROGRESS" || s === "FINALIZED" || s === "SUBMITTED") {
+  if (
+    s === "SENT" ||
+    s === "ISSUED" ||
+    s === "PROCESSING" ||
+    s === "ASSIGNED" ||
+    s === "IN_PROGRESS" ||
+    s === "FINALIZED" ||
+    s === "SUBMITTED" ||
+    s === "UNDER_REVIEW"
+  ) {
     return "info";
   }
 
@@ -119,6 +129,8 @@ export function formatStatusLabel(statusRaw, customLabel) {
     WITHDRAWN: "Withdrawn",
     EXPIRED: "Expired",
     REVOKED: "Revoked",
+    UNDER_REVIEW: "Under Review",
+    ON_HOLD: "On Hold",
 
     CHANGES_REQUESTED: "Updates Requested",
     SUBMITTED: "Under Review",

@@ -1,14 +1,29 @@
 import { useState } from "react";
 import StatusBadge from "./StatusBadge";
 import HandoverWorkspace from "./HandoverWorkspace";
+import AuthedAvatar from "./AuthedAvatar";
+
+function formatDays(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function formatDayLabel(value) {
+  const n = formatDays(value);
+  if (n == null) return "—";
+  return `${n} day${n === 1 ? "" : "s"}`;
+}
 
 /**
- * HR leave review: three clear sections.
- * Leave decision stays independent of backup / handover coordination.
+ * HR leave review panel — identity, leave facts, balance, decision history,
+ * then optional work-impact / backup coordination.
  */
 export default function LeaveReviewPanel({
   selectedRequest,
   employeeBalance,
+  availableLeaveTypes = [],
   leaveImpact,
   leaveImpactLoading,
   leaveImpactError,
@@ -40,9 +55,24 @@ export default function LeaveReviewPanel({
   const empTitle = emp.jobTitle || emp.job?.jobTitle || "Team Member";
   const empDept = emp.department || emp.job?.department || "General";
   const empCode = emp.employeeCode || "";
+  const empEmail = emp.email || selectedRequest.employeeEmail || "";
+  const empStatus = emp.status || null;
+  const manager =
+    emp.reportingManager ||
+    (emp.job?.reportingManagerId && typeof emp.job.reportingManagerId === "object"
+      ? emp.job.reportingManagerId
+      : null);
   const from = selectedRequest.fromDate || selectedRequest.startDate;
   const to = selectedRequest.toDate || selectedRequest.endDate;
-  const days = selectedRequest.daysCount || selectedRequest.calculatedDays || 1;
+  const days = formatDays(selectedRequest.daysCount ?? selectedRequest.calculatedDays) ?? 1;
+  const leaveTypeMeta = (availableLeaveTypes || []).find(
+    (t) => t.code === selectedRequest.leaveTypeCode
+  );
+  const leaveTypeLabel = leaveTypeMeta?.name
+    ? `${leaveTypeMeta.name}`
+    : selectedRequest.leaveTypeCode || "—";
+  const decision = selectedRequest.decision || null;
+  const statusKey = String(selectedRequest.status || "").toUpperCase();
   const balanceForType = (employeeBalance?.detailed || []).find(
     (b) => b.code === selectedRequest.leaveTypeCode
   );
@@ -65,89 +95,274 @@ export default function LeaveReviewPanel({
   const upcomingCount =
     leaveImpact?.responsibilities?.counts?.upcomingDependencies ?? upcoming.length;
 
+  const availableRaw = balanceForType ? formatDays(balanceForType.available) : null;
+  const yearlyRaw = balanceForType ? formatDays(balanceForType.yearlyDays) : null;
+  const usedRaw = balanceForType ? formatDays(balanceForType.used) : null;
+  const pendingRaw = balanceForType ? formatDays(balanceForType.pending) : null;
+
+  /** Balance before this request’s decision effect, when calculable. */
+  let balanceBefore = null;
+  let projectedAfter = null;
+  if (availableRaw != null) {
+    if (statusKey === "APPROVED") {
+      balanceBefore = availableRaw + days;
+      projectedAfter = availableRaw;
+    } else if (statusKey === "PENDING") {
+      balanceBefore = availableRaw;
+      projectedAfter = availableRaw - days;
+    } else {
+      balanceBefore = availableRaw;
+      projectedAfter = null;
+    }
+  }
+
   const eligibilityLabel =
-    balanceForType?.available != null && Number(balanceForType.available) >= Number(days)
-      ? "Within available balance"
-      : balanceForType
-        ? "Review balance vs request"
-        : "Balance unavailable";
+    availableRaw == null
+      ? "Balance unavailable"
+      : availableRaw >= days
+        ? "Within available balance"
+        : "Exceeds available balance";
+
+  const sameDay = from && to && String(from).slice(0, 10) === String(to).slice(0, 10);
+  const dateRangeLabel = sameDay
+    ? formatDate(from)
+    : `${formatDate(from)} – ${formatDate(to)}`;
+
+  const approverLabel = decision?.decidedBy
+    ? [decision.decidedBy, decision.decidedByRole].filter(Boolean).join(" · ")
+    : null;
 
   return (
-    <div className="lm-review">
-      {/* ── Section 1: Leave Request ─────────────────────────────────────── */}
-      <section className="lm-review-block" aria-labelledby="lm-sec-leave">
-        <h3 id="lm-sec-leave" className="lm-review-block-title">
-          Leave request
-        </h3>
-        <div className="lm-decision-emp">
-          <div className="lm-req-avatar" style={{ width: 44, height: 44, fontSize: 16 }}>
-            {getInitials(empName)}
-          </div>
-          <div>
-            <h4 className="lm-decision-emp-name">{empName}</h4>
-            <div className="lm-decision-emp-meta">
-              {empTitle} · {empDept}
-              {empCode ? ` · ${empCode}` : ""}
+    <div className={`lm-review lm-review--${statusKey.toLowerCase() || "unknown"}`}>
+      {/* ── Identity + leave summary (primary) ─────────────────────────── */}
+      <section className="lm-detail-hero" aria-labelledby="lm-detail-employee">
+        <div className="lm-detail-hero-top">
+          <div className="lm-detail-identity">
+            <AuthedAvatar
+              className="lm-detail-avatar"
+              style={{ width: 52, height: 52, fontSize: 18 }}
+              employee={emp}
+              avatar={emp.avatar || selectedRequest.avatar}
+              name={empName}
+              initials={getInitials(empName)}
+              alt={empName}
+            />
+            <div className="lm-detail-identity-copy">
+              <div className="lm-detail-identity-head">
+                <h3 id="lm-detail-employee" className="lm-detail-name">
+                  {empName}
+                </h3>
+                <span className={`lm-status-chip is-${statusKey.toLowerCase() || "unknown"}`}>
+                  <StatusBadge status={selectedRequest.status} />
+                </span>
+              </div>
+              <p className="lm-detail-meta">
+                {[empCode && `#${empCode}`, empTitle, empDept].filter(Boolean).join(" · ")}
+              </p>
+              <p className="lm-detail-meta-secondary">
+                {[
+                  empEmail || null,
+                  empStatus ? `Status: ${empStatus}` : null,
+                  manager?.fullName
+                    ? `Manager: ${manager.fullName}${
+                        manager.employeeCode ? ` (#${manager.employeeCode})` : ""
+                      }`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
           </div>
         </div>
-        <div className="lm-decision-grid">
-          <div>
-            <span>Leave type</span>
-            <strong>{selectedRequest.leaveTypeCode}</strong>
-          </div>
-          <div>
-            <span>Status</span>
-            <strong>
-              <StatusBadge status={selectedRequest.status} />
-            </strong>
-          </div>
-          <div>
-            <span>Working days</span>
-            <strong>{days}</strong>
-          </div>
-          <div>
-            <span>Dates</span>
-            <strong>
-              {formatDate(from)} – {formatDate(to)}
-            </strong>
-          </div>
-        </div>
-        {selectedRequest.reason ? (
-          <p className="lm-decision-reason">“{selectedRequest.reason}”</p>
-        ) : (
-          <p className="lm-impact-muted">No leave reason provided.</p>
-        )}
 
-        <div className="lm-elig-grid" style={{ marginTop: 10 }}>
-          {requestDetailsLoading && !employeeBalance ? (
-            <p className="lm-impact-muted">Loading balances…</p>
-          ) : employeeBalance ? (
-            <>
-              <div>
-                <span>Available balance</span>
-                <strong>{balanceForType?.available ?? "—"} days</strong>
-              </div>
-              <div>
-                <span>Requested</span>
-                <strong>{days} days</strong>
-              </div>
-              <div>
-                <span>Eligibility</span>
-                <strong>{eligibilityLabel}</strong>
-              </div>
-              <div>
-                <span>Policy type</span>
-                <strong>{selectedRequest.leaveTypeCode}</strong>
-              </div>
-            </>
-          ) : (
-            <p className="lm-info-chip">Balance details unavailable for this view.</p>
-          )}
+        <div className="lm-detail-summary" aria-label="Leave request summary">
+          <div className="lm-detail-fact">
+            <span className="lm-detail-fact-label">Leave type</span>
+            <strong className="lm-detail-fact-value">
+              {leaveTypeLabel}
+              {selectedRequest.leaveTypeCode ? (
+                <span className="lm-detail-type-code">{selectedRequest.leaveTypeCode}</span>
+              ) : null}
+            </strong>
+          </div>
+          <div className="lm-detail-fact">
+            <span className="lm-detail-fact-label">Duration</span>
+            <strong className="lm-detail-fact-value">{formatDayLabel(days)}</strong>
+          </div>
+          <div className="lm-detail-fact lm-detail-fact--wide">
+            <span className="lm-detail-fact-label">{sameDay ? "Leave date" : "Start – end"}</span>
+            <strong className="lm-detail-fact-value">{dateRangeLabel}</strong>
+          </div>
+          <div className="lm-detail-fact">
+            <span className="lm-detail-fact-label">Submitted</span>
+            <strong className="lm-detail-fact-value">
+              {selectedRequest.createdAt ? formatDate(selectedRequest.createdAt) : "—"}
+            </strong>
+          </div>
+          <div className="lm-detail-fact lm-detail-fact--full">
+            <span className="lm-detail-fact-label">Reason for leave</span>
+            <p className="lm-detail-reason">
+              {selectedRequest.reason?.trim()
+                ? selectedRequest.reason.trim()
+                : "No leave reason provided."}
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* ── Section 2: Work Impact & Team Availability ───────────────────── */}
+      {/* ── Balance ────────────────────────────────────────────────────── */}
+      <section className="lm-detail-section" aria-labelledby="lm-sec-balance">
+        <div className="lm-detail-section-head">
+          <h4 id="lm-sec-balance" className="lm-detail-section-title">
+            Leave balance
+          </h4>
+          {!requestDetailsLoading && employeeBalance && balanceForType ? (
+            <span
+              className={`lm-elig-pill${
+                availableRaw == null
+                  ? ""
+                  : availableRaw >= days
+                    ? " is-ok"
+                    : " is-warn"
+              }`}
+            >
+              {eligibilityLabel}
+            </span>
+          ) : null}
+        </div>
+
+        {requestDetailsLoading && !employeeBalance ? (
+          <p className="lm-impact-muted">Loading balances…</p>
+        ) : !employeeBalance ? (
+          <p className="lm-detail-empty">
+            Balance details are unavailable for this employee. Missing balance is not shown as zero.
+          </p>
+        ) : !balanceForType ? (
+          <p className="lm-detail-empty">
+            No balance record for leave type{" "}
+            <strong>{selectedRequest.leaveTypeCode || "—"}</strong>. This is not treated as a zero
+            balance.
+          </p>
+        ) : (
+          <div className="lm-balance-grid">
+            <div className="lm-balance-cell">
+              <span>Entitlement</span>
+              <strong>{yearlyRaw == null ? "Unavailable" : formatDayLabel(yearlyRaw)}</strong>
+            </div>
+            <div className="lm-balance-cell">
+              <span>Used (approved)</span>
+              <strong>{usedRaw == null ? "Unavailable" : formatDayLabel(usedRaw)}</strong>
+            </div>
+            <div className="lm-balance-cell">
+              <span>Pending requests</span>
+              <strong>{pendingRaw == null ? "Unavailable" : formatDayLabel(pendingRaw)}</strong>
+            </div>
+            <div className="lm-balance-cell">
+              <span>Available before this request</span>
+              <strong>
+                {balanceBefore == null ? "Unavailable" : formatDayLabel(balanceBefore)}
+              </strong>
+            </div>
+            <div className="lm-balance-cell">
+              <span>Requested</span>
+              <strong>{formatDayLabel(days)}</strong>
+            </div>
+            <div className="lm-balance-cell">
+              <span>
+                {statusKey === "APPROVED"
+                  ? "Balance after approval"
+                  : statusKey === "PENDING"
+                    ? "Projected after approval"
+                    : "Projected after approval"}
+              </span>
+              <strong>
+                {projectedAfter == null
+                  ? statusKey === "PENDING" || statusKey === "APPROVED"
+                    ? "Unavailable"
+                    : "Not applicable"
+                  : formatDayLabel(projectedAfter)}
+              </strong>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Approval workflow (single-stage, honest) ───────────────────── */}
+      <section className="lm-detail-section" aria-labelledby="lm-sec-approval">
+        <h4 id="lm-sec-approval" className="lm-detail-section-title">
+          Approval workflow
+        </h4>
+        <ol className="lm-timeline">
+          <li className="lm-timeline-item is-done">
+            <span className="lm-timeline-dot" aria-hidden="true" />
+            <div className="lm-timeline-body">
+              <div className="lm-timeline-row">
+                <strong>Submitted</strong>
+                <span className="lm-timeline-time">
+                  {selectedRequest.createdAt ? formatDate(selectedRequest.createdAt) : "—"}
+                </span>
+              </div>
+              <p className="lm-timeline-copy">Leave request recorded for HR review.</p>
+            </div>
+          </li>
+          <li
+            className={`lm-timeline-item${
+              statusKey === "PENDING" ? " is-current" : statusKey ? " is-done" : ""
+            }${statusKey === "REJECTED" ? " is-rejected" : ""}${
+              statusKey === "APPROVED" ? " is-approved" : ""
+            }`}
+          >
+            <span className="lm-timeline-dot" aria-hidden="true" />
+            <div className="lm-timeline-body">
+              <div className="lm-timeline-row">
+                <strong>
+                  {statusKey === "PENDING"
+                    ? "Awaiting decision"
+                    : statusKey === "APPROVED"
+                      ? "Approved"
+                      : statusKey === "REJECTED"
+                        ? "Rejected"
+                        : "Decision"}
+                </strong>
+                <span className="lm-timeline-time">
+                  {decision?.decidedAt ? formatDate(decision.decidedAt) : statusKey === "PENDING" ? "Pending" : "—"}
+                </span>
+              </div>
+              {approverLabel ? (
+                <p className="lm-timeline-copy">Decided by {approverLabel}</p>
+              ) : statusKey === "PENDING" ? (
+                <p className="lm-timeline-copy">No approver has recorded a decision yet.</p>
+              ) : null}
+              {decision?.remarks?.trim() ? (
+                <p className="lm-timeline-remarks">
+                  <span>{statusKey === "REJECTED" ? "Rejection reason" : "Comments"}</span>
+                  {decision.remarks.trim()}
+                </p>
+              ) : statusKey !== "PENDING" ? (
+                <p className="lm-timeline-copy">No comments recorded.</p>
+              ) : null}
+            </div>
+          </li>
+        </ol>
+        <p className="lm-detail-footnote">
+          This workspace uses a single HR decision stage. Multi-stage approval history is not stored
+          on leave requests.
+        </p>
+      </section>
+
+      {/* ── Attachments (honest empty — no leave-file API) ─────────────── */}
+      <section className="lm-detail-section lm-detail-section--compact" aria-labelledby="lm-sec-docs">
+        <h4 id="lm-sec-docs" className="lm-detail-section-title">
+          Supporting documents
+        </h4>
+        <p className="lm-detail-empty">
+          Leave requests do not store attachments. Handover item files appear under Backup &amp;
+          handover when used.
+        </p>
+      </section>
+
+      {/* ── Work Impact & Team Availability ────────────────────────────── */}
       <section className="lm-review-block" aria-labelledby="lm-sec-impact">
         <h3 id="lm-sec-impact" className="lm-review-block-title">
           Work impact &amp; team availability
@@ -261,7 +476,7 @@ export default function LeaveReviewPanel({
         )}
       </section>
 
-      {/* ── Section 3: Backup & Handover Coordination ────────────────────── */}
+      {/* ── Backup & Handover Coordination ─────────────────────────────── */}
       <section className="lm-review-block lm-review-block--last" aria-labelledby="lm-sec-coord">
         <h3 id="lm-sec-coord" className="lm-review-block-title">
           Backup &amp; handover coordination
@@ -272,10 +487,6 @@ export default function LeaveReviewPanel({
         </p>
 
         <h4 className="lm-review-subhead">Backup recommendations</h4>
-        <p className="lm-impact-muted">
-          System suggestions only. Propose selects a candidate for planning — it does not assign the
-          task or start acknowledgement.
-        </p>
         <BackupRecommendationsBlock
           loading={backupRecsLoading}
           error={backupRecsError}
@@ -399,7 +610,6 @@ function BackupRecommendationsBlock({
   }
 
   if (arrangements.length === 0 && coverageCount > 0) {
-    // Impact says coverage needed but API returned no arrangements — treat as limited/incomplete
     const incomplete =
       summary?.incompleteEmployeeInfo ||
       (missing || []).some((m) =>

@@ -220,6 +220,16 @@ describe("hybrid remote approval workflow", () => {
     assert.equal(reqRes.status, 201, JSON.stringify(reqRes.body));
     const requestId = reqRes.body.request.id;
 
+    const pendingList = await request(app)
+      .get("/api/admin/attendance/remote-requests?status=PENDING")
+      .set("Cookie", cookies.hr);
+    assert.equal(pendingList.status, 200, JSON.stringify(pendingList.body));
+    const pendingRow = (pendingList.body.requests || []).find((row) => String(row.id) === String(requestId));
+    assert.ok(pendingRow, "pending remote request should appear for HR");
+    assert.equal(pendingRow.punchEligibility?.code, "APPROVAL_PENDING");
+    assert.equal(pendingRow.punchEligibility?.remotePunchAllowed, false);
+    assert.match(pendingRow.whyListed || "", /request/i);
+
     const pendingPunch = await request(app)
       .post("/api/employees/me/attendance/punch-in")
       .set("Cookie", cookies.emp)
@@ -235,6 +245,16 @@ describe("hybrid remote approval workflow", () => {
       .set("Cookie", cookies.hr)
       .send({ decision: "APPROVED", remarks: "Approved for afternoon" });
     assert.equal(decide.status, 200, JSON.stringify(decide.body));
+
+    const approvedList = await request(app)
+      .get("/api/admin/attendance/remote-requests?status=APPROVED")
+      .set("Cookie", cookies.hr);
+    assert.equal(approvedList.status, 200);
+    const approvedRow = (approvedList.body.requests || []).find((row) => String(row.id) === String(requestId));
+    assert.ok(approvedRow);
+    assert.equal(approvedRow.punchEligibility?.remotePunchAllowed, true);
+    assert.equal(approvedRow.punchEligibility?.code, "REMOTE_PUNCH_ALLOWED");
+    assert.ok(approvedRow.decidedByName);
 
     const remoteIn = await request(app)
       .post("/api/employees/me/attendance/punch-in")
@@ -344,6 +364,11 @@ describe("geofence monitoring during active session", () => {
     assert.equal(exceptions.status, 200);
     const openOutside = (exceptions.body.exceptions || []).filter((e) => e.type === "OUTSIDE_GEOFENCE");
     assert.ok(openOutside.length >= 1);
+    assert.equal(openOutside[0].exceptionGrantsRemote, false);
+    assert.equal(openOutside[0].punchEligibility?.exceptionGrantsRemote, false);
+    assert.equal(openOutside[0].punchEligibility?.remotePunchAllowed, false);
+    assert.ok(openOutside[0].punchEligibility?.label);
+    assert.match(openOutside[0].whyListed || "", /geofence|outside/i);
 
     const back = await request(app)
       .post("/api/employees/me/tracking/update")

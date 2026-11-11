@@ -18,10 +18,11 @@ export const TEAM_EMPLOYEE_ALLOWED_KEYS = Object.freeze([
   "jobTitle",
   "department",
   "reportingManagerId",
+  "avatar",
 ]);
 
 const TEAM_EMPLOYEE_SELECT =
-  "_id fullName employeeCode status job.jobTitle job.department job.reportingManagerId";
+  "_id fullName employeeCode status job.jobTitle job.department job.reportingManagerId avatar";
 
 const MAX_TEAM_NAME_LENGTH = 200;
 
@@ -230,6 +231,7 @@ function projectTeamEmployee(doc) {
     reportingManagerId: doc.job?.reportingManagerId
       ? String(doc.job.reportingManagerId)
       : null,
+    avatar: doc.avatar || "",
   };
   for (const key of Object.keys(projected)) {
     if (!TEAM_EMPLOYEE_ALLOWED_KEYS.includes(key)) delete projected[key];

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import ModuleToolbar from "../components/ModuleToolbar";
+import MobileExpandable from "../components/mobile/MobileExpandable";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
   IconCheck,

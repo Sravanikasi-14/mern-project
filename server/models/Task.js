@@ -49,6 +49,7 @@ export function createTaskSchema() {
         employeeCode: { type: String, default: "" },
         email: { type: String, default: "" },
         department: { type: String, default: "" },
+        avatar: { type: String, default: "" },
       },
       assignedByUserId: {
         type: mongoose.Schema.Types.ObjectId,

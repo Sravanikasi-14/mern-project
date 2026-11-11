@@ -2,6 +2,8 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppHeader from "../components/AppHeader";
 import StatusBadge from "../components/StatusBadge";
+import SoftRefresh from "../components/SoftRefresh";
+import ProfilePhotoField from "../components/ProfilePhotoField";
 import DepartmentSelect from "../components/DepartmentSelect";
 import DateRangePicker from "../components/DateRangePicker";
 import { departmentPayload } from "../components/departmentAssignment";
@@ -33,6 +35,8 @@ import {
   ATTENDANCE_STATUS_LABELS,
 } from "../utils/employeeAttendanceInsights";
 import { useSmartBack } from "../hooks/useSmartBack";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateProfile } from "../lib/queryKeys";
 import api from "../services/api";
 import useAuthedImage from "../hooks/useAuthedImage";
 import "./EmployeeProfileView.css";
@@ -174,14 +178,17 @@ function IconBuilding({ size = 16 }) {
 /* ------------------------------------------------------------------------
    Presentational building blocks (module-level so inputs never remount)
    ------------------------------------------------------------------------ */
-function Card({ title, subtitle, action, children, className = "" }) {
+function Card({ title, subtitle, action, icon = null, children, className = "" }) {
   return (
     <section className={`epd-card ${className}`.trim()}>
-      {(title || action) && (
+      {(title || action || icon) && (
         <header className="epd-card-head">
-          <div>
-            {title ? <h3 className="epd-card-title">{title}</h3> : null}
-            {subtitle ? <p className="epd-card-sub">{subtitle}</p> : null}
+          <div className="epd-card-head-main">
+            {icon ? <span className="epd-card-icon">{icon}</span> : null}
+            <div>
+              {title ? <h3 className="epd-card-title">{title}</h3> : null}
+              {subtitle ? <p className="epd-card-sub">{subtitle}</p> : null}
+            </div>
           </div>
           {action}
         </header>
@@ -191,12 +198,21 @@ function Card({ title, subtitle, action, children, className = "" }) {
   );
 }
 
-function Info({ label, children, mono = false, highlight = false }) {
+function Info({ label, children, mono = false, highlight = false, hideIfEmpty = false }) {
+  const raw = typeof children === "string" ? children.trim() : children;
+  const empty =
+    raw === undefined ||
+    raw === null ||
+    raw === "" ||
+    raw === "—" ||
+    raw === "Not recorded" ||
+    raw === "Not specified";
+  if (hideIfEmpty && empty) return null;
   return (
     <div className="epd-info">
       <span className="epd-info-lbl">{label}</span>
       <span className={`epd-info-val${mono ? " is-mono" : ""}${highlight ? " is-highlight" : ""}`}>
-        {children === undefined || children === null || children === "" ? "—" : children}
+        {empty ? "—" : children}
       </span>
     </div>
   );
@@ -230,9 +246,9 @@ function TextField({ label, value, onChange, type = "text", placeholder, tag, di
   );
 }
 
-function EmptyState({ title, children, icon = null }) {
+function EmptyState({ title, children, icon = null, compact = true }) {
   return (
-    <div className="epd-empty">
+    <div className={`epd-empty${compact ? " is-compact" : ""}`}>
       {icon ? <span className="epd-empty-icon">{icon}</span> : null}
       <strong>{title}</strong>
       {children ? <p>{children}</p> : null}
@@ -252,29 +268,46 @@ function StatCard({ tone, label, value, sub }) {
 }
 
 /* ========================================================================
-   Page
+   Page — shared by HR (`mode="hr"`) and Employee self-service (`mode="self"`)
    ======================================================================== */
-export default function EmployeeProfile() {
-  const { id } = useParams();
+export default function EmployeeProfile({ mode = "hr", defaultTab = "overview" }) {
+  const isSelf = mode === "self";
+  const { id: routeId } = useParams();
   const navigate = useNavigate();
   const goBack = useSmartBack();
+  const queryClient = useQueryClient();
   const { user, company } = useAuth();
   const timeZone = resolveCompanyTimezone(company);
   const todayStr = useMemo(() => getCompanyBusinessDate(new Date(), timeZone), [timeZone]);
 
-  const canEdit = hrPortalAllows(user, company, "people.edit");
-  const canViewPayroll = hrPortalAllows(user, company, "payroll.view");
-  const canViewAttendance = hrPortalAllows(user, company, "attendance.view");
-  const canViewLeave = hrPortalAllows(user, company, "leave.view");
-  const canViewImpact = hrPortalAllows(user, company, "impact.view");
-  const canInitiateFnF = hrPortalAllows(user, company, "settlements.create");
-  const canViewFnF = hrPortalAllows(user, company, "settlements.view");
+  // HR capabilities (always false for employees)
+  const hrCanEdit = !isSelf && hrPortalAllows(user, company, "people.edit");
+  const hrCanViewPayroll = !isSelf && hrPortalAllows(user, company, "payroll.view");
+  const hrCanViewAttendance = !isSelf && hrPortalAllows(user, company, "attendance.view");
+  const hrCanViewLeave = !isSelf && hrPortalAllows(user, company, "leave.view");
+  const hrCanViewImpact = !isSelf && hrPortalAllows(user, company, "impact.view");
+  const canInitiateFnF = !isSelf && hrPortalAllows(user, company, "settlements.create");
+  const canViewFnF = !isSelf && hrPortalAllows(user, company, "settlements.view");
+
+  // Shared capability flags — same UI shell; data/actions stay permission-scoped
+  const canEdit = isSelf || hrCanEdit;
+  const canEditWork = hrCanEdit;
+  const canViewPayroll = hrCanViewPayroll; // compensation / salary (HR only)
+  const canEditBankTax = isSelf || hrCanViewPayroll; // self may update own bank/PAN
+  const canViewAttendance = isSelf || hrCanViewAttendance;
+  const canViewLeave = isSelf || hrCanViewLeave;
+  const canViewImpact = isSelf || hrCanViewImpact;
+  const canUploadDocuments = isSelf;
 
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(defaultTab || "overview");
   const { url: avatarUrl } = useAuthedImage(employee?.avatar);
+
+  useEffect(() => {
+    if (defaultTab) setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   // Integrated editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -375,6 +408,7 @@ export default function EmployeeProfile() {
     setEditError("");
     setEditSuccess("");
     setIsEditing(true);
+    if (isSelf) setActiveTab("personal");
   };
 
   const handleCancelEdit = () => {
@@ -394,7 +428,7 @@ export default function EmployeeProfile() {
     setEditError("");
     setEditSuccess("");
 
-    if (!editFormData.fullName?.trim()) {
+    if (!isSelf && !editFormData.fullName?.trim()) {
       setEditError("Full name is required.");
       return;
     }
@@ -409,50 +443,31 @@ export default function EmployeeProfile() {
 
     setSavingEdit(true);
     try {
-      const payload = {
-        fullName: editFormData.fullName.trim(),
-        preferredName: editFormData.preferredName?.trim() || undefined,
-        personalEmail: editFormData.personalEmail?.trim() || undefined,
-        personalPhone: editFormData.personalPhone?.trim() || undefined,
-        phoneNumber: editFormData.phoneNumber?.trim() || undefined,
-        city: editFormData.city?.trim() || undefined,
-        dateOfBirth: editFormData.dateOfBirth || undefined,
-        gender: editFormData.gender || undefined,
-        jobTitle: editFormData.jobTitle?.trim() || undefined,
-        ...departmentPayload({
-          clearDepartment: editFormData.departmentTouched && editFormData.clearDepartment,
-          departmentId:
-            editFormData.departmentTouched && !editFormData.clearDepartment
-              ? editFormData.departmentId
-              : "",
-        }),
-        jobGrade: editFormData.jobGrade?.trim() || undefined,
-        employmentType: editFormData.employmentType || undefined,
-        workLocation: editFormData.workLocation?.trim() || undefined,
-        status: editFormData.status || "ACTIVE",
-        projectName: editFormData.projectName?.trim() || undefined,
-        projectType: editFormData.projectType || "MANDATE",
-        reportingManagerId:
-          editFormData.reportingManagerId === undefined
-            ? undefined
-            : editFormData.reportingManagerId || null,
-        emergencyContact: {
-          name: editFormData.emergencyName?.trim() || undefined,
-          relationship: editFormData.emergencyRel?.trim() || undefined,
-          phone: editFormData.emergencyPhone?.trim() || undefined,
-        },
-        residentialAddress: {
-          street: editFormData.residentialStreet?.trim() || undefined,
-          city: editFormData.residentialCity?.trim() || undefined,
-          state: editFormData.residentialState?.trim() || undefined,
-          postalCode: editFormData.residentialPostalCode?.trim() || undefined,
-          country: "India",
-        },
-      };
+      let payload;
 
-      // Payroll-sensitive fields are only sent by users who can view payroll,
-      // and bank / tax only when they were actually changed.
-      if (canViewPayroll) {
+      if (isSelf) {
+        // Self-service: only fields permitted by updateMyProfile
+        payload = {
+          preferredName: editFormData.preferredName?.trim() || undefined,
+          personalEmail: editFormData.personalEmail?.trim() || undefined,
+          personalPhone: editFormData.personalPhone?.trim() || undefined,
+          phoneNumber: editFormData.phoneNumber?.trim() || undefined,
+          city: editFormData.city?.trim() || undefined,
+          dateOfBirth: editFormData.dateOfBirth || undefined,
+          gender: editFormData.gender || undefined,
+          emergencyContact: {
+            name: editFormData.emergencyName?.trim() || undefined,
+            relationship: editFormData.emergencyRel?.trim() || undefined,
+            phone: editFormData.emergencyPhone?.trim() || undefined,
+          },
+          residentialAddress: {
+            street: editFormData.residentialStreet?.trim() || undefined,
+            city: editFormData.residentialCity?.trim() || undefined,
+            state: editFormData.residentialState?.trim() || undefined,
+            postalCode: editFormData.residentialPostalCode?.trim() || undefined,
+            country: "India",
+          },
+        };
         const base = editBaselineRef.current || {};
         const bankChanged =
           editFormData.bankName !== base.bankName ||
@@ -460,7 +475,7 @@ export default function EmployeeProfile() {
           editFormData.ifscCode !== base.ifscCode;
         if (bankChanged) {
           payload.bankDetails = {
-            accountHolderName: editFormData.fullName?.trim(),
+            accountHolderName: employee.fullName,
             bankName: editFormData.bankName?.trim() || undefined,
             accountNumber: editFormData.accountNumber?.trim() || undefined,
             ifscCode: editFormData.ifscCode?.trim() || undefined,
@@ -470,17 +485,82 @@ export default function EmployeeProfile() {
         if (editFormData.panNumber !== base.panNumber) {
           payload.taxDetails = { panNumber: editFormData.panNumber?.trim() || undefined };
         }
-        if (editFormData.monthlySalary !== "" && editFormData.monthlySalary != null) {
-          payload.monthlySalary = parseFloat(editFormData.monthlySalary);
+        await api.patch("/employees/me", payload);
+        const refreshed = await api.get("/employees/me");
+        if (refreshed.data?.employee) setEmployee(refreshed.data.employee);
+        invalidateProfile(queryClient);
+        setEditSuccess("Your profile was updated successfully.");
+      } else {
+        payload = {
+          fullName: editFormData.fullName.trim(),
+          preferredName: editFormData.preferredName?.trim() || undefined,
+          personalEmail: editFormData.personalEmail?.trim() || undefined,
+          personalPhone: editFormData.personalPhone?.trim() || undefined,
+          phoneNumber: editFormData.phoneNumber?.trim() || undefined,
+          city: editFormData.city?.trim() || undefined,
+          dateOfBirth: editFormData.dateOfBirth || undefined,
+          gender: editFormData.gender || undefined,
+          jobTitle: editFormData.jobTitle?.trim() || undefined,
+          ...departmentPayload({
+            clearDepartment: editFormData.departmentTouched && editFormData.clearDepartment,
+            departmentId:
+              editFormData.departmentTouched && !editFormData.clearDepartment
+                ? editFormData.departmentId
+                : "",
+          }),
+          jobGrade: editFormData.jobGrade?.trim() || undefined,
+          employmentType: editFormData.employmentType || undefined,
+          workLocation: editFormData.workLocation?.trim() || undefined,
+          status: editFormData.status || "ACTIVE",
+          projectName: editFormData.projectName?.trim() || undefined,
+          projectType: editFormData.projectType || "MANDATE",
+          reportingManagerId:
+            editFormData.reportingManagerId === undefined
+              ? undefined
+              : editFormData.reportingManagerId || null,
+          emergencyContact: {
+            name: editFormData.emergencyName?.trim() || undefined,
+            relationship: editFormData.emergencyRel?.trim() || undefined,
+            phone: editFormData.emergencyPhone?.trim() || undefined,
+          },
+          residentialAddress: {
+            street: editFormData.residentialStreet?.trim() || undefined,
+            city: editFormData.residentialCity?.trim() || undefined,
+            state: editFormData.residentialState?.trim() || undefined,
+            postalCode: editFormData.residentialPostalCode?.trim() || undefined,
+            country: "India",
+          },
+        };
+
+        if (canViewPayroll) {
+          const base = editBaselineRef.current || {};
+          const bankChanged =
+            editFormData.bankName !== base.bankName ||
+            editFormData.accountNumber !== base.accountNumber ||
+            editFormData.ifscCode !== base.ifscCode;
+          if (bankChanged) {
+            payload.bankDetails = {
+              accountHolderName: editFormData.fullName?.trim(),
+              bankName: editFormData.bankName?.trim() || undefined,
+              accountNumber: editFormData.accountNumber?.trim() || undefined,
+              ifscCode: editFormData.ifscCode?.trim() || undefined,
+              accountType: "SAVINGS",
+            };
+          }
+          if (editFormData.panNumber !== base.panNumber) {
+            payload.taxDetails = { panNumber: editFormData.panNumber?.trim() || undefined };
+          }
+          if (editFormData.monthlySalary !== "" && editFormData.monthlySalary != null) {
+            payload.monthlySalary = parseFloat(editFormData.monthlySalary);
+          }
         }
+
+        await api.patch(`/employees/${routeId}`, payload);
+        const refreshed = await api.get(`/employees/${routeId}`);
+        if (refreshed.data) setEmployee(refreshed.data);
+        setEditSuccess("Employee profile updated successfully.");
       }
 
-      await api.patch(`/employees/${id}`, payload);
-      // Refetch so reporting manager stays populated for display/navigation.
-      const refreshed = await api.get(`/employees/${id}`);
-      if (refreshed.data) setEmployee(refreshed.data);
-
-      setEditSuccess("Employee profile updated successfully.");
       setIsEditing(false);
       setTimeout(() => setEditSuccess(""), 4000);
     } catch (err) {
@@ -553,9 +633,10 @@ export default function EmployeeProfile() {
   const handleDownloadDocument = async (docId, fileName) => {
     setDownloadingDocId(docId);
     try {
-      const response = await api.get(`/employees/${id}/documents/${docId}/download`, {
-        responseType: "blob",
-      });
+      const path = isSelf
+        ? `/employees/me/documents/${docId}/download`
+        : `/employees/${routeId}/documents/${docId}/download`;
+      const response = await api.get(path, { responseType: "blob" });
       const blob = new Blob([response.data], {
         type: response.headers["content-type"] || "application/octet-stream",
       });
@@ -574,6 +655,44 @@ export default function EmployeeProfile() {
     }
   };
 
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("ID_PROOF");
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [docMsg, setDocMsg] = useState({ error: "", success: "" });
+
+  const handleUploadDocument = async (e) => {
+    e.preventDefault();
+    if (!canUploadDocuments || !selectedFile) return;
+    setDocMsg({ error: "", success: "" });
+    setUploadingDoc(true);
+    try {
+      const reader = new FileReader();
+      const fileData = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
+      await api.post("/employees/me/documents", {
+        documentType: uploadCategory,
+        title: uploadTitle.trim() || selectedFile.name,
+        fileData,
+        fileName: selectedFile.name,
+        mimeType: selectedFile.type || "application/octet-stream",
+      });
+      const refreshed = await api.get("/employees/me");
+      if (refreshed.data?.employee) setEmployee(refreshed.data.employee);
+      setUploadTitle("");
+      setSelectedFile(null);
+      setDocMsg({ error: "", success: "Document uploaded successfully." });
+      setTimeout(() => setDocMsg({ error: "", success: "" }), 4000);
+    } catch (err) {
+      setDocMsg({ error: err.response?.data?.message || "Upload failed.", success: "" });
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   /* ------------------------------- data loads ------------------------------ */
   useEffect(() => {
     let cancelled = false;
@@ -582,10 +701,24 @@ export default function EmployeeProfile() {
       setLoading(true);
       setError("");
       try {
-        const res = await api.get(`/employees/${id}`);
-        if (!cancelled) {
-          setEmployee(res.data);
-          populateEditForm(res.data);
+        if (isSelf) {
+          const res = await api.get("/employees/me");
+          const emp = res.data?.employee || null;
+          if (!cancelled) {
+            if (!emp) {
+              setError("No employee record is linked to your account.");
+              setEmployee(null);
+            } else {
+              setEmployee(emp);
+              populateEditForm(emp);
+            }
+          }
+        } else {
+          const res = await api.get(`/employees/${routeId}`);
+          if (!cancelled) {
+            setEmployee(res.data);
+            populateEditForm(res.data);
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -605,11 +738,11 @@ export default function EmployeeProfile() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [isSelf, routeId]);
 
-  // Active attendance policy (weekends, holidays, office start / grace).
+  // Active attendance policy (HR only — employees use defaults + dashboard holidays).
   useEffect(() => {
-    if (!canViewAttendance) return undefined;
+    if (!canViewAttendance || isSelf) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -622,23 +755,29 @@ export default function EmployeeProfile() {
     return () => {
       cancelled = true;
     };
-  }, [canViewAttendance]);
+  }, [canViewAttendance, isSelf]);
 
-  // Real attendance history for the selected range.
+  // Attendance history — admin API for HR, self history for employees.
   useEffect(() => {
-    if (!canViewAttendance || !id || !range.startDate || !range.endDate) return undefined;
+    if (!canViewAttendance || !range.startDate || !range.endDate) return undefined;
+    if (!isSelf && !routeId) return undefined;
     let cancelled = false;
     setAttendance((prev) => ({ ...prev, state: "loading", error: "" }));
     (async () => {
       try {
-        const res = await api.get(`/admin/attendance/employee/${id}`, {
-          params: { startDate: range.startDate, endDate: range.endDate, limit: 100 },
-        });
+        const res = isSelf
+          ? await api.get("/employees/me/attendance/history", {
+              params: { startDate: range.startDate, endDate: range.endDate, limit: 100 },
+            })
+          : await api.get(`/admin/attendance/employee/${routeId}`, {
+              params: { startDate: range.startDate, endDate: range.endDate, limit: 100 },
+            });
         if (cancelled) return;
+        const records = res.data?.records || res.data?.history || [];
         setAttendance({
           state: "ready",
-          records: res.data?.records || [],
-          total: res.data?.pagination?.total ?? (res.data?.records || []).length,
+          records,
+          total: res.data?.pagination?.total ?? records.length,
           error: "",
         });
       } catch (err) {
@@ -654,23 +793,31 @@ export default function EmployeeProfile() {
     return () => {
       cancelled = true;
     };
-  }, [id, canViewAttendance, range.startDate, range.endDate]);
+  }, [isSelf, routeId, canViewAttendance, range.startDate, range.endDate]);
 
-  // Leave requests (existing HR list API, filtered to this employee).
+  // Leave history — HR list API vs employee dashboard recent requests.
   useEffect(() => {
-    if (!canViewLeave || !employee?.employeeCode) return undefined;
+    if (!canViewLeave) return undefined;
+    if (!isSelf && !employee?.employeeCode) return undefined;
     let cancelled = false;
     setLeaves((prev) => ({ ...prev, state: "loading", error: "" }));
     (async () => {
       try {
-        const res = await api.get("/leave-requests", {
-          params: { search: employee.employeeCode, limit: 100, includeSummary: "false" },
-        });
-        if (cancelled) return;
-        const items = (res.data?.leaveRequests || []).filter(
-          (l) => String(l.employeeId) === String(id)
-        );
-        setLeaves({ state: "ready", items, error: "" });
+        if (isSelf) {
+          const res = await api.get("/employees/me/dashboard");
+          if (cancelled) return;
+          const items = res.data?.leave?.recentRequests || res.data?.leave?.requests || [];
+          setLeaves({ state: "ready", items, error: "" });
+        } else {
+          const res = await api.get("/leave-requests", {
+            params: { search: employee.employeeCode, limit: 100, includeSummary: "false" },
+          });
+          if (cancelled) return;
+          const items = (res.data?.leaveRequests || []).filter(
+            (l) => String(l.employeeId) === String(routeId)
+          );
+          setLeaves({ state: "ready", items, error: "" });
+        }
       } catch (err) {
         if (cancelled) return;
         setLeaves({
@@ -683,18 +830,33 @@ export default function EmployeeProfile() {
     return () => {
       cancelled = true;
     };
-  }, [id, canViewLeave, employee?.employeeCode]);
+  }, [isSelf, routeId, canViewLeave, employee?.employeeCode]);
 
-  // Impact points summary (existing admin employee API).
+  // Impact points — HR employee API vs /impact-points/me.
   useEffect(() => {
-    if (!canViewImpact || !id) return undefined;
+    if (!canViewImpact) return undefined;
+    if (!isSelf && !routeId) return undefined;
     let cancelled = false;
     setImpact((prev) => ({ ...prev, state: "loading", error: "" }));
     (async () => {
       try {
-        const res = await api.get(`/impact-points/employee/${id}`);
+        const res = isSelf
+          ? await api.get("/impact-points/me")
+          : await api.get(`/impact-points/employee/${routeId}`);
         if (cancelled) return;
-        setImpact({ state: "ready", data: res.data?.summary || res.data?.data || null, error: "" });
+        const raw = res.data?.summary || res.data?.data || res.data || null;
+        const data = raw
+          ? {
+              balance: raw.balance ?? raw.totalPoints ?? 0,
+              pointsThisMonth: raw.pointsThisMonth ?? raw.thisMonth ?? 0,
+              rankInCompany: raw.rankInCompany ?? raw.companyRank ?? "—",
+              rankInDepartment: raw.rankInDepartment ?? raw.departmentRank ?? "—",
+              totalEarned: raw.totalEarned ?? raw.pointsEarned ?? 0,
+              totalDeducted: raw.totalDeducted ?? raw.pointsDeducted ?? 0,
+              recentTransactions: raw.recentTransactions || raw.transactions || [],
+            }
+          : null;
+        setImpact({ state: "ready", data, error: "" });
       } catch (err) {
         if (cancelled) return;
         setImpact({
@@ -707,7 +869,7 @@ export default function EmployeeProfile() {
     return () => {
       cancelled = true;
     };
-  }, [id, canViewImpact]);
+  }, [isSelf, routeId, canViewImpact]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -888,172 +1050,223 @@ export default function EmployeeProfile() {
   };
 
   const renderOverview = () => (
-    <div className="epd-grid-2">
-      <div className="epd-col">
-        {aboutText ? (
-          <Card title="About Employee">
-            <p className="epd-about">{aboutText}</p>
+    <div className="epd-overview-layout">
+      {aboutText ? (
+        <Card title="About Employee" className="epd-overview-full">
+          <p className="epd-about">{aboutText}</p>
+        </Card>
+      ) : null}
+
+      {/*
+        Independently flowing columns (not a shared-row card grid).
+        Left packs Snapshot + Performance; right packs Projects + Attendance
+        so short cards do not leave a tall blank band beside a taller neighbour.
+      */}
+      <div className="epd-overview-cols">
+        <div className="epd-overview-col">
+          <Card title="Employee Information Snapshot">
+            <div className="epd-info-grid epd-info-grid-3">
+              <Info label="Employee ID" mono>{employee.employeeCode ? `#${employee.employeeCode}` : ""}</Info>
+              <Info label="Email"><span title={employee.email}>{employee.email}</span></Info>
+              <Info label="Phone">{phone}</Info>
+              <Info label="Join Date">{formatDate(job.joiningDate)}</Info>
+              <Info label="Reporting To">
+                {manager ? (
+                  isSelf ? (
+                    manager.fullName
+                  ) : (
+                    <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+                  )
+                ) : (
+                  ""
+                )}
+              </Info>
+              <Info label="Work Type">{job.employmentType}</Info>
+              <Info label="Office Location">{job.workLocation || employee.city}</Info>
+              <Info label="Department">{job.department}</Info>
+              <Info label="Designation">{job.jobTitle}</Info>
+            </div>
           </Card>
-        ) : null}
 
-        <Card title="Employee Information Snapshot">
-          <div className="epd-info-grid">
-            <Info label="Employee ID" mono>{employee.employeeCode ? `#${employee.employeeCode}` : ""}</Info>
-            <Info label="Email"><span title={employee.email}>{employee.email}</span></Info>
-            <Info label="Phone">{phone}</Info>
-            <Info label="Join Date">{formatDate(job.joiningDate)}</Info>
-            <Info label="Reporting To">
-              {manager ? (
-                <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+          <Card title="Performance Snapshot" subtitle="From impact points and skill tags on file">
+            {impact.state === "ready" && impact.data ? (
+              <div className="epd-info-grid">
+                <Info label="Impact Balance" highlight>{impact.data.balance}</Info>
+                <Info label="This Month">{impact.data.pointsThisMonth}</Info>
+                <Info label="Company Rank">{impact.data.rankInCompany}</Info>
+                <Info label="Department Rank">{impact.data.rankInDepartment}</Info>
+              </div>
+            ) : null}
+            {skills.length > 0 ? (
+              <div className="epd-chips" style={{ marginTop: impact.data ? 14 : 0 }}>
+                {skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}
+              </div>
+            ) : null}
+            {!(impact.state === "ready" && impact.data) && skills.length === 0 ? (
+              <div className="epd-empty is-compact">
+                <strong>No performance data yet</strong>
+                <p>
+                  {!canViewImpact
+                    ? "You don't have permission to view impact points."
+                    : "Impact points and skill tags will appear here once recorded."}
+                </p>
+              </div>
+            ) : null}
+          </Card>
+        </div>
+
+        <div className="epd-overview-col">
+          <Card title="Current Projects">
+            {project ? (
+              <ul className="epd-project-list">
+                <li>
+                  <span className="epd-project-bar" aria-hidden="true" />
+                  <div>
+                    <strong>{project.projectName}</strong>
+                    <span>{project.projectType ? `${project.projectType} project` : "Assigned project"}</span>
+                  </div>
+                </li>
+              </ul>
+            ) : (
+              <div className="epd-empty is-compact">
+                <strong>No project assigned</strong>
+                <p>
+                  {isSelf ? "No project is currently assigned to you." : "Assign a project from the Work Info tab."}
+                </p>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Attendance Summary"
+            action={
+              <button type="button" className="epd-text-btn" onClick={() => setActiveTab("attendance")}>
+                View details
+              </button>
+            }
+          >
+            {renderAttendanceSummary()}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderPersonal = () => {
+    const addressLine = [
+      employee.residentialAddress?.street,
+      employee.residentialAddress?.city || employee.city,
+      employee.residentialAddress?.state,
+      employee.residentialAddress?.postalCode,
+    ].filter(Boolean).join(", ");
+    const emergencyLine = employee.emergencyContact?.name
+      ? `${employee.emergencyContact.name}${employee.emergencyContact.relationship ? ` (${employee.emergencyContact.relationship})` : ""}${employee.emergencyContact.phone ? ` — ${employee.emergencyContact.phone}` : ""}`
+      : "";
+
+    if (isEditing) {
+      return (
+        <div className="epd-stack">
+          <Card title="Demographic & Contact Details" subtitle="Edit personal information">
+            <div className="epd-form-grid">
+              {isSelf ? (
+                <TextField label="Full Legal Name" tag="Read-only" value={employee.fullName} disabled />
               ) : (
-                ""
+                <TextField label="Full Legal Name *" value={editFormData.fullName} onChange={(v) => handleEditChange("fullName", v)} placeholder="Legal Name" required />
               )}
-            </Info>
-            <Info label="Work Type">{job.employmentType}</Info>
-            <Info label="Office Location">{job.workLocation || employee.city}</Info>
-          </div>
-        </Card>
-
-        <Card title="Performance Snapshot" subtitle="From impact points and skill tags on file">
-          {impact.state === "ready" && impact.data ? (
-            <div className="epd-info-grid">
-              <Info label="Impact Balance" highlight>{impact.data.balance}</Info>
-              <Info label="This Month">{impact.data.pointsThisMonth}</Info>
-              <Info label="Company Rank">{impact.data.rankInCompany}</Info>
-              <Info label="Department Rank">{impact.data.rankInDepartment}</Info>
+              <TextField label="Preferred Name" value={editFormData.preferredName} onChange={(v) => handleEditChange("preferredName", v)} placeholder="Preferred Name" />
+              <TextField label="Work Email" tag="Read-only" value={employee.email} disabled />
+              <TextField label="Personal Email" type="email" value={editFormData.personalEmail} onChange={(v) => handleEditChange("personalEmail", v)} placeholder="personal@email.com" />
+              <TextField label="Work Phone" value={editFormData.phoneNumber} onChange={(v) => handleEditChange("phoneNumber", v)} placeholder="Work Phone" />
+              <TextField label="Personal Phone" value={editFormData.personalPhone} onChange={(v) => handleEditChange("personalPhone", v)} placeholder="Personal Phone" />
+              <TextField label="Date of Birth" type="date" value={editFormData.dateOfBirth} onChange={(v) => handleEditChange("dateOfBirth", v)} />
+              <Field label="Gender">
+                <select className="epv-edit-input" value={editFormData.gender || ""} onChange={(e) => handleEditChange("gender", e.target.value)}>
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </Field>
+              <TextField label="City" value={editFormData.city} onChange={(v) => handleEditChange("city", v)} placeholder="City" />
             </div>
-          ) : null}
-          {skills.length > 0 ? (
-            <div className="epd-chips" style={{ marginTop: impact.data ? 14 : 0 }}>
-              {skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}
+          </Card>
+          <Card title="Address & Emergency Contact">
+            <div className="epd-form-grid">
+              <TextField label="Street Address" value={editFormData.residentialStreet} onChange={(v) => handleEditChange("residentialStreet", v)} placeholder="Street Address" />
+              <TextField label="State" value={editFormData.residentialState} onChange={(v) => handleEditChange("residentialState", v)} placeholder="State" />
+              <TextField label="Postal Code" value={editFormData.residentialPostalCode} onChange={(v) => handleEditChange("residentialPostalCode", v)} placeholder="Postal Code" />
+              <TextField label="Emergency Contact Name" value={editFormData.emergencyName} onChange={(v) => handleEditChange("emergencyName", v)} placeholder="Emergency Contact Name" />
+              <TextField label="Emergency Relationship" value={editFormData.emergencyRel} onChange={(v) => handleEditChange("emergencyRel", v)} placeholder="e.g. Spouse, Parent, Sibling" />
+              <TextField label="Emergency Contact Phone" value={editFormData.emergencyPhone} onChange={(v) => handleEditChange("emergencyPhone", v)} placeholder="Phone Number" />
             </div>
-          ) : null}
-          {!(impact.state === "ready" && impact.data) && skills.length === 0 ? (
-            <EmptyState title="No performance data yet">
-              {!canViewImpact
-                ? "You don't have permission to view impact points."
-                : "Impact points and skill tags will appear here once recorded."}
-            </EmptyState>
-          ) : null}
-        </Card>
-      </div>
+          </Card>
+        </div>
+      );
+    }
 
-      <div className="epd-col">
-        <Card title="Current Projects">
-          {project ? (
-            <ul className="epd-project-list">
-              <li>
-                <span className="epd-project-bar" aria-hidden="true" />
-                <div>
-                  <strong>{project.projectName}</strong>
-                  <span>{project.projectType ? `${project.projectType} project` : "Assigned project"}</span>
-                </div>
-              </li>
-            </ul>
-          ) : (
-            <EmptyState title="No project assigned">Assign a project from the Work Info tab.</EmptyState>
-          )}
-        </Card>
-
-        <Card
-          title="Attendance Summary"
-          action={
-            <button type="button" className="epd-text-btn" onClick={() => setActiveTab("attendance")}>
-              View details
-            </button>
-          }
-        >
-          {renderAttendanceSummary()}
-        </Card>
-      </div>
-    </div>
-  );
-
-  const renderPersonal = () => (
-    <div className="epd-stack">
-      <Card
-        title="Demographic & Contact Details"
-        subtitle={isEditing ? "Edit personal information" : "Official identity and contact information"}
-      >
-        {isEditing ? (
-          <div className="epd-form-grid">
-            <TextField label="Full Legal Name *" value={editFormData.fullName} onChange={(v) => handleEditChange("fullName", v)} placeholder="Legal Name" required />
-            <TextField label="Preferred Name" value={editFormData.preferredName} onChange={(v) => handleEditChange("preferredName", v)} placeholder="Preferred Name" />
-            <TextField label="Work Email" tag="Read-only" value={employee.email} disabled />
-            <TextField label="Personal Email" type="email" value={editFormData.personalEmail} onChange={(v) => handleEditChange("personalEmail", v)} placeholder="personal@email.com" />
-            <TextField label="Work Phone" value={editFormData.phoneNumber} onChange={(v) => handleEditChange("phoneNumber", v)} placeholder="Work Phone" />
-            <TextField label="Personal Phone" value={editFormData.personalPhone} onChange={(v) => handleEditChange("personalPhone", v)} placeholder="Personal Phone" />
-            <TextField label="Date of Birth" type="date" value={editFormData.dateOfBirth} onChange={(v) => handleEditChange("dateOfBirth", v)} />
-            <Field label="Gender">
-              <select className="epv-edit-input" value={editFormData.gender || ""} onChange={(e) => handleEditChange("gender", e.target.value)}>
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Non-binary">Non-binary</option>
-                <option value="Prefer not to say">Prefer not to say</option>
-              </select>
-            </Field>
-            <TextField label="City" value={editFormData.city} onChange={(v) => handleEditChange("city", v)} placeholder="City" />
-          </div>
-        ) : (
+    return (
+      <div className="epd-stack">
+        <Card title="Demographic & Contact Details" subtitle="Official identity and contact information">
           <div className="epd-info-grid epd-info-grid-3">
-            <Info label="Full Legal Name">{employee.fullName}</Info>
-            <Info label="Preferred Name">{employee.preferredName}</Info>
-            <Info label="Work Email">{employee.email}</Info>
-            <Info label="Personal Email">{employee.personalEmail}</Info>
-            <Info label="Work Phone">{employee.phoneNumber}</Info>
-            <Info label="Personal Phone">{employee.personalPhone}</Info>
-            <Info label="Date of Birth">{formatDate(employee.dateOfBirth)}</Info>
-            <Info label="Gender">{employee.gender && employee.gender !== "Not specified" ? employee.gender : ""}</Info>
-            <Info label="City">{employee.residentialAddress?.city || employee.city}</Info>
+            <Info hideIfEmpty label="Full Legal Name">{employee.fullName}</Info>
+            <Info hideIfEmpty label="Preferred Name">{employee.preferredName}</Info>
+            <Info hideIfEmpty label="Work Email">{employee.email}</Info>
+            <Info hideIfEmpty label="Personal Email">{employee.personalEmail}</Info>
+            <Info hideIfEmpty label="Work Phone">{employee.phoneNumber}</Info>
+            <Info hideIfEmpty label="Personal Phone">{employee.personalPhone}</Info>
+            <Info hideIfEmpty label="Date of Birth">{formatDate(employee.dateOfBirth)}</Info>
+            <Info hideIfEmpty label="Gender">{employee.gender && employee.gender !== "Not specified" ? employee.gender : ""}</Info>
+            <Info hideIfEmpty label="City">{employee.residentialAddress?.city || employee.city}</Info>
           </div>
-        )}
-      </Card>
+        </Card>
 
-      <Card title="Address & Emergency Contact">
-        {isEditing ? (
-          <div className="epd-form-grid">
-            <TextField label="Street Address" value={editFormData.residentialStreet} onChange={(v) => handleEditChange("residentialStreet", v)} placeholder="Street Address" />
-            <TextField label="State" value={editFormData.residentialState} onChange={(v) => handleEditChange("residentialState", v)} placeholder="State" />
-            <TextField label="Postal Code" value={editFormData.residentialPostalCode} onChange={(v) => handleEditChange("residentialPostalCode", v)} placeholder="Postal Code" />
-            <TextField label="Emergency Contact Name" value={editFormData.emergencyName} onChange={(v) => handleEditChange("emergencyName", v)} placeholder="Emergency Contact Name" />
-            <TextField label="Emergency Relationship" value={editFormData.emergencyRel} onChange={(v) => handleEditChange("emergencyRel", v)} placeholder="e.g. Spouse, Parent, Sibling" />
-            <TextField label="Emergency Contact Phone" value={editFormData.emergencyPhone} onChange={(v) => handleEditChange("emergencyPhone", v)} placeholder="Phone Number" />
+        {addressLine || emergencyLine ? (
+          <div className={`epd-section-cols${addressLine && emergencyLine ? "" : " epd-section-cols--single"}`}>
+            {addressLine ? (
+              <div className="epd-section-col">
+                <Card title="Residential Address">
+                  <p className="epd-plain-value">{addressLine}</p>
+                </Card>
+              </div>
+            ) : null}
+            {emergencyLine ? (
+              <div className="epd-section-col">
+                <Card title="Emergency Contact">
+                  <p className="epd-plain-value">{emergencyLine}</p>
+                </Card>
+              </div>
+            ) : null}
           </div>
         ) : (
-          <div className="epd-info-grid">
-            <Info label="Residential Address">
-              {[
-                employee.residentialAddress?.street,
-                employee.residentialAddress?.city,
-                employee.residentialAddress?.state,
-                employee.residentialAddress?.postalCode,
-              ].filter(Boolean).join(", ") || employee.city}
-            </Info>
-            <Info label="Emergency Contact">
-              {employee.emergencyContact?.name
-                ? `${employee.emergencyContact.name}${employee.emergencyContact.relationship ? ` (${employee.emergencyContact.relationship})` : ""}${employee.emergencyContact.phone ? ` — ${employee.emergencyContact.phone}` : ""}`
-                : ""}
-            </Info>
-          </div>
+          <Card title="Address & Emergency Contact">
+            <EmptyState title="No address or emergency contact on file" />
+          </Card>
         )}
-      </Card>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const reportingManagerDisplay = manager ? (
     <>
-      <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+      {isSelf ? (
+        <span>{manager.fullName}</span>
+      ) : (
+        <Link className="epd-link" to={`/admin/employees/${manager._id}`}>{manager.fullName}</Link>
+      )}
       {manager.job?.jobTitle ? <span className="epd-info-sub">{manager.job.jobTitle}</span> : null}
     </>
   ) : (
     "No reporting manager"
   );
 
-  const renderWork = () => (
-    <div className="epd-stack">
-      <Card title="Job & Organization Role" subtitle="Corporate structure and placement">
-        {isEditing ? (
+  const renderWork = () => {
+    const jobCard = (
+      <Card
+        title="Job & Organization Role"
+        subtitle={isSelf ? "Maintained by HR — view only" : "Corporate structure and placement"}
+      >
+        {isEditing && canEditWork ? (
           <div className="epd-form-grid">
             <TextField label="Employee Code" tag="Read-only" value={employee.employeeCode || "—"} disabled />
             <div className="epd-span-all epd-designation">
@@ -1111,7 +1324,7 @@ export default function EmployeeProfile() {
               <ReportingManagerSelect
                 value={editFormData.reportingManagerId ?? null}
                 initialSelected={job.reportingManagerId && typeof job.reportingManagerId === "object" ? job.reportingManagerId : null}
-                excludeEmployeeId={id}
+                excludeEmployeeId={routeId}
                 disabled={savingEdit}
                 onChange={(nextId) => handleEditChange("reportingManagerId", nextId)}
               />
@@ -1119,21 +1332,23 @@ export default function EmployeeProfile() {
           </div>
         ) : (
           <div className="epd-info-grid epd-info-grid-3">
-            <Info label="Employee Code" mono>{employee.employeeCode}</Info>
-            <Info label="Official Job Title">{job.jobTitle}</Info>
-            <Info label="Department">{job.department}</Info>
-            <Info label="Job Grade / Level">{job.jobGrade}</Info>
-            <Info label="Employment Type">{job.employmentType}</Info>
+            <Info hideIfEmpty label="Employee Code" mono>{employee.employeeCode}</Info>
+            <Info hideIfEmpty label="Official Job Title">{job.jobTitle}</Info>
+            <Info hideIfEmpty label="Department">{job.department}</Info>
+            <Info hideIfEmpty label="Job Grade / Level">{job.jobGrade}</Info>
+            <Info hideIfEmpty label="Employment Type">{job.employmentType}</Info>
             <Info label="Employment Status"><StatusBadge status={employee.status || "ACTIVE"} /></Info>
-            <Info label="Date of Joining">{formatDate(job.joiningDate)}</Info>
-            <Info label="Work Location">{job.workLocation}</Info>
+            <Info hideIfEmpty label="Date of Joining">{formatDate(job.joiningDate)}</Info>
+            <Info hideIfEmpty label="Work Location">{job.workLocation}</Info>
             <Info label="Reporting Manager">{reportingManagerDisplay}</Info>
           </div>
         )}
       </Card>
+    );
 
+    const projectCard = (
       <Card title="Project Assignment" subtitle="Current project and deployment type">
-        {isEditing ? (
+        {isEditing && canEditWork ? (
           <div className="epd-form-grid">
             <TextField label="Assigned Project Name" value={editFormData.projectName} onChange={(v) => handleEditChange("projectName", v)} placeholder="e.g. Core Platform Modernization" />
             <Field label="Project Type">
@@ -1148,23 +1363,41 @@ export default function EmployeeProfile() {
         ) : project ? (
           <div className="epd-info-grid">
             <Info label="Assigned Project" highlight>{project.projectName}</Info>
-            <Info label="Project Type">{project.projectType}</Info>
+            <Info hideIfEmpty label="Project Type">{project.projectType}</Info>
           </div>
         ) : (
           <EmptyState title="No project assigned" />
         )}
       </Card>
+    );
 
-      {isInactive ? (
-        <Card title="Exit & Deactivation Details">
-          <div className="epd-info-grid">
-            <Info label="Last Working Day">{formatDate(job.terminationDate || employee.exit?.inactiveDate || employee.settlement?.lastWorkingDay)}</Info>
-            <Info label="Exit Reason">{employee.exit?.reason || employee.settlement?.exitReason}</Info>
+    const exitCard = isInactive ? (
+      <Card title="Exit & Deactivation Details">
+        <div className="epd-info-grid">
+          <Info hideIfEmpty label="Last Working Day">{formatDate(job.terminationDate || employee.exit?.inactiveDate || employee.settlement?.lastWorkingDay)}</Info>
+          <Info hideIfEmpty label="Exit Reason">{employee.exit?.reason || employee.settlement?.exitReason}</Info>
+        </div>
+      </Card>
+    ) : null;
+
+    /* Full-width stack avoids a tall Job card leaving ~277px blank beside an empty Project card */
+    return (
+      <div className="epd-stack">
+        {jobCard}
+        {project ? (
+          <div className="epd-section-cols">
+            <div className="epd-section-col">{projectCard}</div>
+            {exitCard ? <div className="epd-section-col">{exitCard}</div> : null}
           </div>
-        </Card>
-      ) : null}
-    </div>
-  );
+        ) : (
+          <>
+            {projectCard}
+            {exitCard}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderAttendance = () => {
     const toolbar = (
@@ -1222,8 +1455,9 @@ export default function EmployeeProfile() {
           </p>
         ) : null}
 
-        <div className="epd-grid-2">
-          <div className="epd-col">
+        {/* Three compact peers — Leave is a list so it stays full-width below */}
+        <div className="epd-section-cols epd-section-cols--3">
+          <div className="epd-section-col">
             <Card title="Attendance Rate">
               {analysis.rate === null ? (
                 <EmptyState title="No working days in this period" />
@@ -1239,8 +1473,25 @@ export default function EmployeeProfile() {
                 </>
               )}
             </Card>
+          </div>
 
-            <Card title="Attendance Trend" subtitle="Weekly attendance rate in the selected period">
+          <div className="epd-section-col">
+            <Card title="Today's Attendance Status">
+              {!todayDay ? (
+                <p className="epd-muted">Today is outside the selected period.</p>
+              ) : (
+                <div className="epd-today">
+                  <div><span>Current Status</span><b className={`epd-pill is-${todayDay.statusKey}`}>{ATTENDANCE_STATUS_LABELS[todayDay.statusKey] || (todayDay.statusKey === "weekend" ? "Weekend" : "Holiday")}</b></div>
+                  <div><span>Clock In</span><b>{todayDay.checkIn || "—"}</b></div>
+                  <div><span>Clock Out</span><b>{todayDay.checkOut || "—"}</b></div>
+                  <div><span>Worked Hours</span><b>{todayDay.hours || "—"}</b></div>
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <div className="epd-section-col">
+            <Card title="Attendance Trend" subtitle="Weekly rate in period">
               {analysis.weekly.length === 0 ? (
                 <EmptyState title="Not enough data for a trend" />
               ) : (
@@ -1256,53 +1507,34 @@ export default function EmployeeProfile() {
               )}
             </Card>
           </div>
-
-          <div className="epd-col">
-            <Card title="Today's Attendance Status">
-              {!todayDay ? (
-                <p className="epd-muted">Today is outside the selected period.</p>
-              ) : (
-                <div className="epd-today">
-                  <div><span>Current Status</span><b className={`epd-pill is-${todayDay.statusKey}`}>{ATTENDANCE_STATUS_LABELS[todayDay.statusKey] || (todayDay.statusKey === "weekend" ? "Weekend" : "Holiday")}</b></div>
-                  <div><span>Clock In</span><b>{todayDay.checkIn || "—"}</b></div>
-                  <div><span>Clock Out</span><b>{todayDay.checkOut || "—"}</b></div>
-                  <div><span>Worked Hours</span><b>{todayDay.hours || "—"}</b></div>
-                </div>
-              )}
-            </Card>
-
-            <Card title="Leave">
-              <p className="epd-compact-note" style={{ marginBottom: 10 }}>
-                Leave balances are not available from the HR API for this employee.
-              </p>
-              <h4 className="epd-card-sub" style={{ marginBottom: 8 }}>Recent leave history</h4>
-              {!canViewLeave ? (
-                <EmptyState title="Leave history unavailable">You don't have permission to view leave requests.</EmptyState>
-              ) : leaves.state === "loading" ? (
-                <p className="epd-muted">Loading leave history…</p>
-              ) : leaves.state === "error" ? (
-                <EmptyState title="Leave history unavailable">{leaves.error}</EmptyState>
-              ) : leaves.items.length === 0 ? (
-                <EmptyState title="No leave requests on record" />
-              ) : (
-                <ul className="epd-leave-list">
-                  {leaves.items.slice(0, 5).map((l) => (
-                    <li key={l._id} className={`is-${String(l.status || "").toLowerCase()}`}>
-                      <div>
-                        <strong>{l.leaveTypeCode || "Leave"}</strong>
-                        <span>
-                          {shortCivil(l.fromDate)}
-                          {l.toDate && l.toDate !== l.fromDate ? ` – ${shortCivil(l.toDate)}` : ""} · {l.daysCount} {l.daysCount === 1 ? "day" : "days"}
-                        </span>
-                      </div>
-                      <StatusBadge status={l.status} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </div>
         </div>
+
+        <Card title="Recent Leave History">
+          {!canViewLeave ? (
+            <EmptyState title="Leave history unavailable">You don't have permission to view leave requests.</EmptyState>
+          ) : leaves.state === "loading" ? (
+            <p className="epd-muted">Loading leave history…</p>
+          ) : leaves.state === "error" ? (
+            <EmptyState title="Leave history unavailable">{leaves.error}</EmptyState>
+          ) : leaves.items.length === 0 ? (
+            <EmptyState title="No leave requests on record" />
+          ) : (
+            <ul className="epd-leave-list">
+              {leaves.items.slice(0, 5).map((l) => (
+                <li key={l._id} className={`is-${String(l.status || "").toLowerCase()}`}>
+                  <div>
+                    <strong>{l.leaveTypeCode || "Leave"}</strong>
+                    <span>
+                      {shortCivil(l.fromDate)}
+                      {l.toDate && l.toDate !== l.fromDate ? ` – ${shortCivil(l.toDate)}` : ""} · {l.daysCount} {l.daysCount === 1 ? "day" : "days"}
+                    </span>
+                  </div>
+                  <StatusBadge status={l.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
         <Card
           title="Recent Attendance Logs"
@@ -1381,7 +1613,7 @@ export default function EmployeeProfile() {
               <StatCard tone="late" label="Company Rank" value={impact.data.rankInCompany} />
               <StatCard tone="absent" label="Department Rank" value={impact.data.rankInDepartment} />
             </div>
-            <div className="epd-info-grid" style={{ marginTop: 14 }}>
+            <div className="epd-info-grid epd-info-grid-3" style={{ marginTop: 14 }}>
               <Info label="Total Earned">{impact.data.totalEarned}</Info>
               <Info label="Total Deducted">{impact.data.totalDeducted}</Info>
             </div>
@@ -1391,24 +1623,29 @@ export default function EmployeeProfile() {
         )}
       </Card>
 
-      <Card title="Skills" subtitle="Skill tags on the employee record">
-        {skills.length > 0 ? (
-          <div className="epd-chips">{skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}</div>
-        ) : (
-          <EmptyState title="No skills recorded" />
-        )}
-      </Card>
-
-      <Card title="Reviews & KPIs">
-        <EmptyState title="No performance review data">
-          There is no performance review or KPI module connected yet, so no ratings or KPI scores are shown.
-        </EmptyState>
-      </Card>
+      <div className="epd-section-cols">
+        <div className="epd-section-col">
+          <Card title="Skills" subtitle="Skill tags on the employee record">
+            {skills.length > 0 ? (
+              <div className="epd-chips">{skills.map((s) => <span key={s} className="epd-chip">{s}</span>)}</div>
+            ) : (
+              <EmptyState title="No skills recorded" />
+            )}
+          </Card>
+        </div>
+        <div className="epd-section-col">
+          <Card title="Reviews & KPIs">
+            <EmptyState title="No performance review data">
+              No performance review or KPI module is connected yet.
+            </EmptyState>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 
   const renderPayroll = () => {
-    if (!canViewPayroll) {
+    if (!canViewPayroll && !isSelf) {
       return (
         <Card>
           <EmptyState title="Payroll details are restricted" icon={<IconShield size={18} />}>
@@ -1417,119 +1654,220 @@ export default function EmployeeProfile() {
         </Card>
       );
     }
+
+    const monthly = employee.currentMonthlySalary ?? employee.compensation?.monthlyCostToCompany ?? null;
+    const salaryComponents = employee.salaryComponents || employee.compensation?.salaryComponents || null;
+    const hasRichCompensation = canViewPayroll && monthly != null;
+
+    const compensationCard = canViewPayroll ? (
+      <Card title="Current Compensation Structure" subtitle="Visible only to HR users with payroll access">
+        {isEditing && canEditWork ? (
+          <div className="epd-form-grid">
+            <TextField label="Monthly CTC (₹)" type="number" min="0" value={editFormData.monthlySalary} onChange={(v) => handleEditChange("monthlySalary", v)} placeholder="e.g. 75000" />
+          </div>
+        ) : monthly == null ? (
+          <EmptyState title="No compensation record on file" />
+        ) : (
+          <>
+            <div className="epd-stat-row epd-stat-row-3">
+              <StatCard tone="present" label="Monthly CTC" value={formatCurrency(monthly)} />
+              <StatCard tone="leave" label="Annual CTC" value={formatCurrency(monthly * 12)} sub="Monthly × 12" />
+              <StatCard tone="late" label="Currency" value="INR (₹)" />
+            </div>
+            {salaryComponents ? (
+              <div className="epd-info-grid epd-info-grid-3" style={{ marginTop: 14 }}>
+                <Info label="Basic Salary">{formatCurrency(salaryComponents.basicSalary)}</Info>
+                <Info label="House Rent Allowance (HRA)">{formatCurrency(salaryComponents.houseRentAllowance)}</Info>
+                <Info label="Conveyance Allowance">{formatCurrency(salaryComponents.conveyanceAllowance)}</Info>
+                <Info label="Special Allowance">{formatCurrency(salaryComponents.specialAllowance)}</Info>
+                <Info label="Employer PF Contribution">{formatCurrency(salaryComponents.employerProvidentFund)}</Info>
+                <Info label="Statutory Deductions">{formatCurrency(salaryComponents.otherDeductions)}</Info>
+              </div>
+            ) : null}
+          </>
+        )}
+      </Card>
+    ) : (
+      <Card title="Compensation">
+        <EmptyState title="Compensation is managed by HR" icon={<IconShield size={18} />}>
+          Monthly CTC and salary components are not shown in self-service. Open Payslips for disbursement history.
+        </EmptyState>
+      </Card>
+    );
+
+    const bankCard = (
+      <Card title="Bank & Tax Details" subtitle={isSelf ? "You may update these details" : undefined}>
+        {isEditing && canEditBankTax ? (
+          <div className="epd-form-grid">
+            <TextField label="PAN Number" value={editFormData.panNumber} onChange={(v) => handleEditChange("panNumber", v.toUpperCase())} placeholder="ABCDE1234F" />
+            <TextField label="Bank Name" value={editFormData.bankName} onChange={(v) => handleEditChange("bankName", v)} placeholder="e.g. HDFC Bank" />
+            <TextField label="Account Number" value={editFormData.accountNumber} onChange={(v) => handleEditChange("accountNumber", v)} placeholder="Bank Account Number" />
+            <TextField label="IFSC Code" value={editFormData.ifscCode} onChange={(v) => handleEditChange("ifscCode", v.toUpperCase())} placeholder="IFSC" />
+          </div>
+        ) : (
+          <div className="epd-info-grid">
+            <Info label="PAN Number" mono>{tax?.panNumber || "Not recorded"}</Info>
+            <Info label="Bank Name">{bank?.bankName || "Not recorded"}</Info>
+            <Info label="Account Number" mono>{bank?.accountNumber ? `••••••••${String(bank.accountNumber).slice(-4)}` : "Not recorded"}</Info>
+            <Info label="IFSC Code" mono>{bank?.ifscCode || "Not recorded"}</Info>
+          </div>
+        )}
+      </Card>
+    );
+
+    const payslipsCard = (
+      <Card title="Payslips">
+        {isSelf ? (
+          <>
+            <EmptyState title="Payslips are available in self-service">
+              Download and review your payslips from the Payslips page.
+            </EmptyState>
+            <div style={{ marginTop: 12 }}>
+              <Link className="btn-secondary" to="/app/payslips">Open Payslips</Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <EmptyState title="Payslips live in the Payroll module">
+              There is no per-employee payslip list in the HR API. Open a payroll cycle to review or download this employee&apos;s payslip.
+            </EmptyState>
+            <div style={{ marginTop: 12 }}>
+              <Link className="btn-secondary" to="/admin/payroll">Open Payroll</Link>
+            </div>
+          </>
+        )}
+      </Card>
+    );
+
+    /* Rich compensation beside bank+payslips; otherwise stack to avoid tall blank columns */
+    if (hasRichCompensation) {
+      return (
+        <div className="epd-section-cols">
+          <div className="epd-section-col">{compensationCard}</div>
+          <div className="epd-section-col">
+            {bankCard}
+            {payslipsCard}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="epd-stack">
-        <Card title="Current Compensation Structure" subtitle="Visible only to HR users with payroll access">
-          {isEditing ? (
-            <div className="epd-form-grid">
-              <TextField label="Monthly CTC (₹)" type="number" min="0" value={editFormData.monthlySalary} onChange={(v) => handleEditChange("monthlySalary", v)} placeholder="e.g. 75000" />
-            </div>
-          ) : employee.currentMonthlySalary == null ? (
-            <EmptyState title="No compensation record on file" />
-          ) : (
-            <>
-              <div className="epd-stat-row epd-stat-row-3">
-                <StatCard tone="present" label="Monthly CTC" value={formatCurrency(employee.currentMonthlySalary)} />
-                <StatCard tone="leave" label="Annual CTC" value={formatCurrency(employee.currentMonthlySalary * 12)} sub="Monthly × 12" />
-                <StatCard tone="late" label="Currency" value="INR (₹)" />
-              </div>
-              {employee.salaryComponents ? (
-                <div className="epd-info-grid epd-info-grid-3" style={{ marginTop: 16 }}>
-                  <Info label="Basic Salary">{formatCurrency(employee.salaryComponents.basicSalary)}</Info>
-                  <Info label="House Rent Allowance (HRA)">{formatCurrency(employee.salaryComponents.houseRentAllowance)}</Info>
-                  <Info label="Conveyance Allowance">{formatCurrency(employee.salaryComponents.conveyanceAllowance)}</Info>
-                  <Info label="Special Allowance">{formatCurrency(employee.salaryComponents.specialAllowance)}</Info>
-                  <Info label="Employer PF Contribution">{formatCurrency(employee.salaryComponents.employerProvidentFund)}</Info>
-                  <Info label="Statutory Deductions">{formatCurrency(employee.salaryComponents.otherDeductions)}</Info>
-                </div>
-              ) : null}
-            </>
-          )}
-        </Card>
-
-        <Card title="Bank & Tax Details">
-          {isEditing ? (
-            <div className="epd-form-grid">
-              <TextField label="PAN Number" value={editFormData.panNumber} onChange={(v) => handleEditChange("panNumber", v.toUpperCase())} placeholder="ABCDE1234F" />
-              <TextField label="Bank Name" value={editFormData.bankName} onChange={(v) => handleEditChange("bankName", v)} placeholder="e.g. HDFC Bank" />
-              <TextField label="Account Number" value={editFormData.accountNumber} onChange={(v) => handleEditChange("accountNumber", v)} placeholder="Bank Account Number" />
-              <TextField label="IFSC Code" value={editFormData.ifscCode} onChange={(v) => handleEditChange("ifscCode", v.toUpperCase())} placeholder="IFSC" />
-            </div>
-          ) : (
-            <div className="epd-info-grid epd-info-grid-3">
-              <Info label="PAN Number" mono>{tax?.panNumber || "Not recorded"}</Info>
-              <Info label="Bank Name">{bank?.bankName || "Not recorded"}</Info>
-              <Info label="Account Number" mono>{bank?.accountNumber ? `••••••••${String(bank.accountNumber).slice(-4)}` : "Not recorded"}</Info>
-              <Info label="IFSC Code" mono>{bank?.ifscCode || "Not recorded"}</Info>
-            </div>
-          )}
-        </Card>
-
-        <Card title="Payslips">
-          <EmptyState title="Payslips live in the Payroll module">
-            There is no per-employee payslip list in the HR API. Open a payroll cycle to review or download this employee's payslip.
-          </EmptyState>
-          <div style={{ marginTop: 12 }}>
-            <Link className="btn-secondary" to="/admin/payroll">Open Payroll</Link>
-          </div>
-        </Card>
+        {compensationCard}
+        <div className="epd-section-cols">
+          <div className="epd-section-col">{bankCard}</div>
+          <div className="epd-section-col">{payslipsCard}</div>
+        </div>
       </div>
     );
   };
 
   const renderDocuments = () => (
-    <Card title="Uploaded Verification Documents" subtitle={`${employee.documents?.length || 0} document(s) on file`}>
-      {!employee.documents || employee.documents.length === 0 ? (
-        <EmptyState title="No documents uploaded" icon={<IconDocument size={18} />}>
-          No documents have been uploaded for this employee yet.
-        </EmptyState>
-      ) : (
-        employee.documents.map((doc) => (
-          <div key={doc._id} className="epv-doc-row">
-            <div className="epv-doc-left">
-              <div className="epv-doc-icon"><IconDocument size={18} /></div>
-              <div>
-                <div className="epv-doc-title">{doc.title || doc.fileName}</div>
-                <div className="epv-doc-meta">
-                  {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
-                </div>
-              </div>
+    <div className="epd-stack">
+      {canUploadDocuments ? (
+        <Card title="Upload Document" subtitle="PDF, PNG or JPG — max 10MB">
+          {docMsg.success ? <div className="success-alert" style={{ marginBottom: 12 }}>{docMsg.success}</div> : null}
+          {docMsg.error ? <div className="error" style={{ marginBottom: 12 }}>{docMsg.error}</div> : null}
+          <form onSubmit={handleUploadDocument} className="epd-form-grid" noValidate>
+            <Field label="Category *">
+              <select className="epv-edit-input" value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
+                <option value="ID_PROOF">ID Proof</option>
+                <option value="ADDRESS_PROOF">Address Proof</option>
+                <option value="EDUCATION">Educational Certificate</option>
+                <option value="CERTIFICATION">Professional Certification</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </Field>
+            <TextField label="Document Title *" value={uploadTitle} onChange={setUploadTitle} placeholder="e.g. Updated Aadhaar Card" required />
+            <Field label="File *" wide>
+              <input
+                className="epv-edit-input"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                required
+              />
+            </Field>
+            <div className="epd-span-all" style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="submit" className="btn-primary" disabled={uploadingDoc || !selectedFile}>
+                {uploadingDoc ? "Uploading…" : "Upload Document"}
+              </button>
             </div>
-            <button
-              type="button"
-              className="epv-doc-download-btn"
-              disabled={downloadingDocId === doc._id}
-              onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
-            >
-              <IconDownload size={14} />
-              <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
-            </button>
+          </form>
+        </Card>
+      ) : null}
+
+      <Card title="Uploaded Verification Documents" subtitle={`${employee.documents?.length || 0} document(s) on file`}>
+        {!employee.documents || employee.documents.length === 0 ? (
+          <EmptyState title="No documents uploaded" icon={<IconDocument size={18} />}>
+            {isSelf ? "You have not uploaded any documents yet." : "No documents have been uploaded for this employee yet."}
+          </EmptyState>
+        ) : (
+          <div className="epd-doc-list">
+            {employee.documents.map((doc) => (
+              <div key={doc._id} className="epv-doc-row">
+                <div className="epv-doc-left">
+                  <div className="epv-doc-icon"><IconDocument size={18} /></div>
+                  <div>
+                    <div className="epv-doc-title">{doc.title || doc.fileName}</div>
+                    <div className="epv-doc-meta">
+                      {doc.documentType?.replace("_", " ")} • {formatFileSize(doc.fileSize)} • Uploaded {formatDate(doc.uploadedAt)}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="epv-doc-download-btn"
+                  disabled={downloadingDocId === doc._id}
+                  onClick={() => handleDownloadDocument(doc._id, doc.fileName)}
+                >
+                  <IconDownload size={14} />
+                  <span>{downloadingDocId === doc._id ? "Downloading..." : "Download"}</span>
+                </button>
+              </div>
+            ))}
           </div>
-        ))
-      )}
-    </Card>
+        )}
+      </Card>
+    </div>
   );
 
-  const renderActivity = () => (
-    <Card title="Recent Activity" subtitle="Built from the employee record, attendance, leave and impact points — not a full audit log">
-      {activityEvents.length === 0 ? (
-        <EmptyState title="No activity to show yet" />
-      ) : (
-        <ol className="epd-timeline">
-          {activityEvents.map((ev, idx) => (
-            <li key={`${ev.ts}-${idx}`} className={`is-${ev.tone}`}>
-              <span className="epd-timeline-dot" aria-hidden="true" />
-              <div>
-                <strong>{ev.title}</strong>
-                {ev.detail ? <span>{ev.detail}</span> : null}
-                <time>{formatDateTime(ev.ts)}</time>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </Card>
-  );
+  const renderActivity = () => {
+    const visible = activityEvents.slice(0, 12);
+    return (
+      <div className="epd-stack">
+        <Card
+          title="Recent Activity"
+          subtitle="Built from the employee record, attendance, leave and impact points — not a full audit log"
+        >
+          {activityEvents.length === 0 ? (
+            <EmptyState title="No activity to show yet" />
+          ) : (
+            <>
+              <ol className="epd-timeline epd-timeline--compact">
+                {visible.map((ev, idx) => (
+                  <li key={`${ev.ts}-${idx}`} className={`is-${ev.tone}`}>
+                    <span className="epd-timeline-dot" aria-hidden="true" />
+                    <div>
+                      <strong>{ev.title}</strong>
+                      {ev.detail ? <span>{ev.detail}</span> : null}
+                      <time>{formatDateTime(ev.ts)}</time>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              {activityEvents.length > visible.length ? (
+                <p className="epd-muted" style={{ marginTop: 10 }}>
+                  Showing {visible.length} of {activityEvents.length} events
+                </p>
+              ) : null}
+            </>
+          )}
+        </Card>
+      </div>
+    );
+  };
 
   const tabBodies = {
     overview: renderOverview,
@@ -1553,18 +1891,25 @@ export default function EmployeeProfile() {
   return (
     <div className="epv-container epd-page">
       <AppHeader
-        title="Employee Detail"
+        title={isSelf ? "My Profile" : "Employee Detail"}
+        actions={isSelf ? <SoftRefresh active={loading} /> : null}
         leading={
-          <button type="button" className="epd-back" onClick={() => goBack()} aria-label="Go back">
-            <IconArrowLeft size={18} />
-          </button>
+          isSelf ? null : (
+            <button type="button" className="epd-back" onClick={() => goBack()} aria-label="Go back">
+              <IconArrowLeft size={18} />
+            </button>
+          )
         }
         nav={
-          <nav className="epv-breadcrumb" aria-label="Breadcrumb">
-            <Link to="/admin">Employees</Link>
-            <span className="epv-breadcrumb-sep">›</span>
-            <span className="epv-breadcrumb-current">{employee.fullName}</span>
-          </nav>
+          isSelf ? (
+            <p className="epv-header-sub">Your employment profile, contact details and documents</p>
+          ) : (
+            <nav className="epv-breadcrumb" aria-label="Breadcrumb">
+              <Link to="/admin">Employees</Link>
+              <span className="epv-breadcrumb-sep">›</span>
+              <span className="epv-breadcrumb-current">{employee.fullName}</span>
+            </nav>
+          )
         }
       />
 
@@ -1590,6 +1935,18 @@ export default function EmployeeProfile() {
                 {employee.employeeCode && job.jobTitle ? <span className="epd-dot">›</span> : null}
                 {job.jobTitle ? <span>{job.jobTitle}</span> : null}
               </p>
+              {isSelf ? (
+                <ProfilePhotoField
+                  hideAvatar
+                  className="epv-photo-field"
+                  onChanged={() => {
+                    invalidateProfile(queryClient);
+                    api.get("/employees/me").then((res) => {
+                      if (res.data?.employee) setEmployee(res.data.employee);
+                    }).catch(() => {});
+                  }}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -1604,9 +1961,15 @@ export default function EmployeeProfile() {
                 </button>
               </>
             ) : canEdit ? (
-              <button type="button" className="btn-primary epd-btn" onClick={handleStartEdit} title="Edit employee details" aria-label="Edit employee details">
+              <button
+                type="button"
+                className="btn-primary epd-btn"
+                onClick={handleStartEdit}
+                title={isSelf ? "Edit contact details" : "Edit employee details"}
+                aria-label={isSelf ? "Edit contact details" : "Edit employee details"}
+              >
                 <IconPencil />
-                <span>Edit</span>
+                <span>{isSelf ? "Edit Contact Info" : "Edit"}</span>
               </button>
             ) : null}
 
@@ -1684,7 +2047,9 @@ export default function EmployeeProfile() {
         <div className="epd-edit-banner" role="status">
           <IconUsers size={15} />
           <span>
-            Editing mode — changes in Personal Info, Work Info{canViewPayroll ? " and Payroll" : ""} are saved together.
+            {isSelf
+              ? "Editing mode — update Personal Info and bank/tax details. Employment fields stay read-only."
+              : `Editing mode — changes in Personal Info, Work Info${canViewPayroll ? " and Payroll" : ""} are saved together.`}
           </span>
         </div>
       ) : null}

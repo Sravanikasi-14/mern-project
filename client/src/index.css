@@ -2081,6 +2081,52 @@ input.has-error {
   grid-column: 1 / -1;
 }
 
+.settings-form-stack {
+  display: flex;
+  flex-direction: column;
+  max-width: 520px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.settings-actions .btn-primary,
+.settings-actions .btn-secondary {
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.settings-panel-lede {
+  margin: -4px 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted, #646d67);
+  max-width: 52rem;
+}
+
+/* Employee/HR list density preference */
+html[data-table-density="comfortable"] .app-table tbody td,
+html[data-table-density="comfortable"] table.el-balance-table td,
+html[data-table-density="comfortable"] .ep-table tbody td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+html[data-table-density="compact"] .app-table tbody td,
+html[data-table-density="compact"] table.el-balance-table td,
+html[data-table-density="compact"] .ep-table tbody td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .settings-field input,
 .settings-field select,
 .settings-field textarea {

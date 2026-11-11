@@ -106,9 +106,31 @@ export default function HrHomePage() {
 
   const summary = data?.summary || {};
   const funnel = data?.recruitmentFunnel || {};
-  const weekDays = Array.isArray(data?.attendanceOverview?.days) ? data.attendanceOverview.days : [];
-  const calendarDays = Array.isArray(data?.attendanceCalendar?.days) ? data.attendanceCalendar.days : [];
-  const chartDays = weekDays.length > 0 ? weekDays : calendarDays.slice(-7);
+  // Prefer backend rolling week (attendanceOverview.week/days). Month-tail calendar slices are inaccurate
+  // when the month is incomplete or includes future days — end at today / last non-future day instead.
+  const chartDays = useMemo(() => {
+    const overview = data?.attendanceOverview || {};
+    const week = overview.week || overview.days || [];
+    if (Array.isArray(week) && week.length > 0) return week;
+
+    const calendarDays = Array.isArray(data?.attendanceCalendar?.days)
+      ? data.attendanceCalendar.days
+      : [];
+    if (!calendarDays.length) return [];
+
+    let end = calendarDays.findIndex((d) => d.isToday);
+    if (end < 0) {
+      end = calendarDays.length - 1;
+      for (let i = calendarDays.length - 1; i >= 0; i -= 1) {
+        if (!calendarDays[i].isFuture) {
+          end = i;
+          break;
+        }
+      }
+    }
+    const start = Math.max(0, end - 6);
+    return calendarDays.slice(start, end + 1);
+  }, [data?.attendanceOverview, data?.attendanceCalendar?.days]);
   const recentLeaves = Array.isArray(data?.recentLeaves) ? data.recentLeaves : [];
   const payroll = data?.payrollCycleSummary || {};
   const companyAssets = data?.companyAssets || {};

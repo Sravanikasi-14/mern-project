@@ -1,4 +1,4 @@
-/* Organization Explorer shell + group views (Reporting still uses Organization.css). */
+/* Organization Explorer — full-width list + modal details (no empty detail pane). */
 
 .oe-page .app-header {
   margin-bottom: 12px;
@@ -43,7 +43,7 @@
 }
 
 .oe-view-panel {
-  min-height: 320px;
+  min-height: 0;
 }
 
 .oe-reporting-panel .org-header {
@@ -61,7 +61,9 @@
 .oe-group-view {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  width: 100%;
+  max-width: none;
 }
 
 .oe-group-toolbar {
@@ -69,7 +71,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px 14px;
 }
 
 .oe-group-search {
@@ -78,59 +80,85 @@
 }
 
 .oe-count {
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 650;
   color: var(--text-muted, #5c6b60);
+  background: var(--g-100, #e3f2e9);
+  border: 1px solid color-mix(in srgb, var(--g-400, #5dbd8b) 35%, transparent);
+  border-radius: 999px;
+  padding: 4px 10px;
 }
 
-.oe-split {
-  display: grid;
-  grid-template-columns: minmax(240px, 340px) 1fr;
-  gap: 14px;
-  align-items: start;
-}
-
-.oe-group-list,
-.oe-group-detail {
+/* Full-width table-style list — no reserved detail column */
+.oe-list-panel {
   background: #fff;
-  border: 1px solid color-mix(in srgb, var(--border, #d5ddd6) 90%, transparent);
-  border-radius: 16px;
-  padding: 12px;
-  min-height: 280px;
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
-.oe-group-list {
+.oe-list-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(90px, 0.5fr) 28px;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: color-mix(in srgb, var(--page, #f8faf8) 75%, #fff);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #646d67);
+}
+
+.oe-list-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: min(70vh, 720px);
-  overflow: auto;
 }
 
-.oe-group-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+.oe-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(90px, 0.5fr) 28px;
+  gap: 12px;
+  align-items: center;
   width: 100%;
   text-align: left;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--surface-2, #eef2ef) 55%, #fff);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--hair, #e6ede8);
+  background: #fff;
+  padding: 12px 16px;
   cursor: pointer;
   font-family: inherit;
   color: inherit;
+  transition: background 0.12s ease;
 }
 
-.oe-group-card:hover {
-  border-color: color-mix(in srgb, var(--brand, #155a37) 28%, transparent);
+.oe-list-row:last-child {
+  border-bottom: none;
 }
 
-.oe-group-card.is-selected {
-  border-color: var(--brand, #155a37);
-  background: color-mix(in srgb, var(--brand, #155a37) 8%, #fff);
+.oe-list-row:hover {
+  background: color-mix(in srgb, var(--g-100, #e3f2e9) 35%, #fff);
 }
 
-.oe-group-icon {
+.oe-list-row.is-selected {
+  background: color-mix(in srgb, var(--g-100, #e3f2e9) 55%, #fff);
+  box-shadow: inset 3px 0 0 var(--g-700, #1d7347);
+}
+
+.oe-list-row:focus-visible {
+  outline: 2px solid var(--g-600, #27865a);
+  outline-offset: -2px;
+}
+
+.oe-list-primary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.oe-list-icon {
   flex-shrink: 0;
   width: 34px;
   height: 34px;
@@ -142,41 +170,59 @@
   color: var(--brand, #155a37);
 }
 
-.oe-group-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.oe-group-body strong {
+.oe-list-name {
   font-size: 14px;
-  color: var(--text, #132015);
-}
-
-.oe-group-body span {
-  font-size: 12.5px;
-  color: var(--text-muted, #5c6b60);
-}
-
-.oe-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.oe-detail-head h2 {
-  margin: 0;
-  font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink, #131a15);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.oe-detail-head p {
-  margin: 4px 0 0;
+.oe-list-meta {
+  font-size: 12.5px;
+  color: var(--muted, #646d67);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oe-list-count {
   font-size: 13px;
-  color: var(--text-muted, #5c6b60);
+  font-weight: 650;
+  color: var(--ink, #131a15);
+}
+
+.oe-list-chevron {
+  color: var(--muted, #646d67);
+  justify-self: end;
+}
+
+.oe-list-empty {
+  margin: 0;
+  padding: 18px 16px;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+/* Detail modal content */
+.oe-detail-modal .app-modal-body {
+  padding-top: 12px;
+}
+
+.oe-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+.oe-detail-summary strong {
+  color: var(--ink, #131a15);
+  font-weight: 700;
 }
 
 .oe-person-grid {
@@ -191,7 +237,7 @@
   gap: 10px;
   text-align: left;
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--border, #d5ddd6) 90%, transparent);
+  border: 1px solid var(--hair, #e6ede8);
   border-left: 3px solid var(--dept-accent, var(--brand, #155a37));
   background: #fff;
   border-radius: 12px;
@@ -230,10 +276,14 @@
   margin-top: 16px;
 }
 
+.oe-team-section:first-child {
+  margin-top: 0;
+}
+
 .oe-team-section h3 {
   margin: 0 0 10px;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 750;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted, #5c6b60);
@@ -243,7 +293,13 @@
   opacity: 0.92;
 }
 
-@media (max-width: 900px) {
+.org-side-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+@media (max-width: 720px) {
   .oe-tabs {
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -254,20 +310,29 @@
     flex: 0 0 auto;
   }
 
-  .oe-split {
-    grid-template-columns: 1fr;
-  }
-
-  .oe-split:not(.has-detail) .oe-group-detail {
+  .oe-list-head {
     display: none;
   }
 
-  .oe-split.has-detail .oe-group-list {
+  .oe-list-row {
+    grid-template-columns: minmax(0, 1fr) 28px;
+    gap: 8px;
+  }
+
+  .oe-list-meta,
+  .oe-list-count {
     display: none;
   }
 
-  .oe-group-list,
-  .oe-group-detail {
-    max-height: none;
+  .oe-list-primary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .oe-list-primary::after {
+    content: attr(data-mobile-meta);
+    font-size: 12px;
+    color: var(--muted, #646d67);
   }
 }

@@ -2,13 +2,38 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
 import { qk } from "../lib/queryKeys";
 import { STALE } from "../lib/queryClient";
-import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
+import {
+  civilDaysInMonth,
+  formatCivilDate,
+  getCompanyBusinessDate,
+  resolveCompanyTimezone,
+} from "../utils/dateUtils";
+
+/**
+ * Focus date for HR dashboard trends: explicit date, else clamp to selected month.
+ * Past months end on month-end; current month uses company business "today".
+ */
+export function resolveAdminDashboardDate({ month, year, date, company } = {}) {
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(String(date))) return String(date);
+  const m = Number(month);
+  const y = Number(year);
+  const tz = resolveCompanyTimezone(company);
+  const todayStr = getCompanyBusinessDate(new Date(), tz);
+  if (!Number.isFinite(m) || !Number.isFinite(y) || m < 1 || m > 12) return todayStr;
+  const monthStart = formatCivilDate(y, m, 1);
+  const monthEnd = formatCivilDate(y, m, civilDaysInMonth(y, m));
+  if (todayStr < monthStart) return monthStart;
+  if (todayStr > monthEnd) return monthEnd;
+  return todayStr;
+}
 
 export function useAdminDashboardQuery(params = {}, options = {}) {
+  const date = resolveAdminDashboardDate(params);
   const normalized = {
     month: params.month,
     year: params.year,
     department: params.department || "ALL",
+    date,
   };
   return useQuery({
     queryKey: qk.adminDashboard(normalized),
@@ -19,6 +44,7 @@ export function useAdminDashboardQuery(params = {}, options = {}) {
             month: normalized.month,
             year: normalized.year,
             department: normalized.department,
+            date: normalized.date,
           },
         });
         if (res.data?.success) return { source: "aggregated", data: res.data };
@@ -364,11 +390,16 @@ export async function buildAdminDashboardFallback({
   selectedDept,
 }) {
   const todayStr = getCompanyBusinessDate(new Date(), resolveCompanyTimezone(company));
+  const focusDate = resolveAdminDashboardDate({
+    month: selectedMonth,
+    year: selectedYear,
+    company,
+  });
   const [empSummaryRes, attendanceRes, leavesRes, offersRes, cyclesRes] =
     await Promise.allSettled([
       api.get("/employees/summary"),
       api.get("/admin/attendance/overview", {
-        params: { date: todayStr, department: selectedDept },
+        params: { date: focusDate, department: selectedDept },
       }),
       api.get("/leave-requests"),
       api.get("/offer-letters/summary"),
@@ -399,33 +430,32 @@ export async function buildAdminDashboardFallback({
   const onLeave = leavesList.filter(
     (l) =>
       l.status === "APPROVED" &&
-      l.fromDate?.split("T")[0] <= todayStr &&
-      l.toDate?.split("T")[0] >= todayStr
+      l.fromDate?.split("T")[0] <= focusDate &&
+      l.toDate?.split("T")[0] >= focusDate
   ).length;
   const absent = Math.max(0, totalEmp - present - onLeave);
   const late = attSummary.lateCount ?? 0;
 
-  const fallbackDays = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    fallbackDays.push({
-      date: d.toISOString().split("T")[0],
-      dayOfWeek: d.getDay(),
-      isWeekend: d.getDay() === 0 || d.getDay() === 6,
-      isToday: i === 0,
-      presentCount: i === 0 ? present : Math.max(0, Math.round(totalEmp * 0.85)),
-      absentCount: i === 0 ? absent : Math.max(0, Math.round(totalEmp * 0.1)),
-      lateCount: i === 0 ? late : Math.max(0, Math.round(totalEmp * 0.05)),
-      leaveCount: i === 0 ? onLeave : 0,
-    });
-  }
+  // Real focus-day point when aggregated dashboard is unavailable.
+  // Never invent past-day percentages — empty history is preferable to dummy bars.
+  const fallbackDays = [
+    {
+      date: focusDate,
+      dayOfWeek: new Date(`${focusDate}T12:00:00`).getDay(),
+      isWeekend: false,
+      isToday: focusDate === todayStr,
+      presentCount: present,
+      absentCount: absent,
+      lateCount: late,
+      leaveCount: onLeave,
+    },
+  ];
 
   return {
     meta: {
       companyName: company?.companyName || "Organization",
       todayDate: todayStr,
-      selectedDate: todayStr,
+      selectedDate: focusDate,
       selectedMonth,
       selectedYear,
       currencySymbol: "₹",
@@ -490,6 +520,14 @@ export async function buildAdminDashboardFallback({
       month: selectedMonth,
       year: selectedYear,
       days: fallbackDays,
+    },
+    attendanceOverview: {
+      period: "Today",
+      endDate: todayStr,
+      days: fallbackDays,
+      week: fallbackDays,
+      thirtyDays: fallbackDays,
+      activeEmployees: totalEmp,
     },
     recentLeaves: leavesList.slice(0, 5).map((l) => ({
       id: l._id,

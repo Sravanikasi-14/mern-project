@@ -991,21 +991,41 @@
   margin-left: -5px;
 }
 
-/* Kanban Board with Native Drag & Drop */
-.wm-kanban-board {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+/* Kanban Board with Native Drag & Drop
+   Layout contract:
+   - .wm-kanban-board = ONLY the 4 workflow columns (flex row, never wrap)
+   - .wm-kanban-completed = separate full-width band BELOW the board (never a 5th column)
+*/
+.wm-kanban-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
   margin-bottom: 16px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  align-items: start;
+  min-width: 0;
+  width: 100%;
 }
 
-@media (max-width: 900px) {
-  .wm-kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.wm-kanban-board {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.wm-kanban-board > .wm-kanban-col {
+  flex: 0 0 240px;
+  width: 240px;
+  max-width: 240px;
+  min-width: 240px;
 }
 
 @media (max-width: 768px) {
@@ -1017,14 +1037,15 @@
     display: none;
   }
 
-  .wm-kanban-board {
-    grid-template-columns: 1fr;
-    overflow: visible;
+  .wm-kanban-board > .wm-kanban-col {
+    flex-basis: 220px;
+    width: 220px;
+    max-width: 220px;
+    min-width: 220px;
   }
 
   .wm-kanban-col,
   .wm-kanban-tasks {
-    overflow: visible;
     max-height: none;
     min-height: 0;
   }
@@ -1039,16 +1060,48 @@
   }
 }
 
-@media (max-width: 640px) {
-  .wm-kanban-board {
-    grid-template-columns: 1fr;
-  }
+.wm-kanban-completed {
+  display: flex;
+  flex-direction: column;
+  background: #f8faf8;
+  border: 1px solid #e2e5e2;
+  border-radius: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-self: stretch;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-@media (max-width: 580px) {
-  .wm-kanban-board {
-    grid-template-columns: 1fr;
-  }
+.wm-kanban-completed.is-drop-target {
+  border: 2px dashed #155a37;
+  background: #ecfdf5;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.wm-kanban-completed-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wm-kanban-completed-empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 11.5px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 6px;
+  grid-column: 1 / -1;
+}
+
+.wm-task-card--completed {
+  margin: 0;
 }
 
 .wm-kanban-col {

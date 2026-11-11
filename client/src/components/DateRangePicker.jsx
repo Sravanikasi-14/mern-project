@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { IconArrowLeft, IconArrowRight, IconClose } from "./Icons";
 import {
   buildMonthGrid,
@@ -76,6 +77,9 @@ export default function DateRangePicker({
   const [draftEnd, setDraftEnd] = useState(endDate || "");
   const [hoverDate, setHoverDate] = useState("");
   const [clickPhase, setClickPhase] = useState("idle"); // idle | wait-end
+  const [popoverStyle, setPopoverStyle] = useState(null);
+  const [useViewportPopover, setUseViewportPopover] = useState(false);
+  const triggerRef = useRef(null);
 
   useEffect(() => {
     if (!open) {
@@ -86,10 +90,57 @@ export default function DateRangePicker({
     }
   }, [open, startDate, endDate]);
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverStyle(null);
+      setUseViewportPopover(false);
+      return undefined;
+    }
+    const inFilterPanel = Boolean(rootRef.current?.closest("[data-filter-panel]"));
+    setUseViewportPopover(inFilterPanel);
+    if (!inFilterPanel) {
+      setPopoverStyle(null);
+      return undefined;
+    }
+
+    const place = () => {
+      const trigger = triggerRef.current || rootRef.current?.querySelector(".drp-trigger");
+      if (!trigger) return;
+      const r = trigger.getBoundingClientRect();
+      const margin = 8;
+      const width = 292;
+      const approxHeight = 340;
+      let top = r.bottom + 6;
+      if (top + Math.min(approxHeight, window.innerHeight - margin * 2) > window.innerHeight - margin) {
+        top = Math.max(margin, r.top - 6 - approxHeight);
+      }
+      let left = r.left;
+      left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+      setPopoverStyle({
+        position: "fixed",
+        top: `${Math.round(top)}px`,
+        left: `${Math.round(left)}px`,
+        width: `${width}px`,
+        zIndex: 1300,
+      });
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (!rootRef.current?.contains(e.target)) setOpen(false);
+      const t = e.target;
+      if (rootRef.current?.contains(t)) return;
+      if (typeof t?.closest === "function" && t.closest("[data-filter-submenu='true']")) return;
+      setOpen(false);
     };
     const onKey = (e) => {
       if (e.key === "Escape") setOpen(false);
@@ -225,6 +276,7 @@ export default function DateRangePicker({
       ) : null}
       <button
         id={triggerId}
+        ref={triggerRef}
         type="button"
         className={`drp-trigger ${startDate || endDate ? "has-value" : ""}`}
         aria-haspopup="dialog"
@@ -257,114 +309,127 @@ export default function DateRangePicker({
         )}
       </button>
 
-      {open && (
-        <div className="drp-popover" role="dialog" aria-label="Choose date range">
-          <div className="drp-nav">
-            <button
-              type="button"
-              className="drp-nav-btn"
-              aria-label="Previous month"
-              onClick={() => setView((v) => shiftMonth(v.year, v.month, -1))}
-            >
-              <IconArrowLeft size={16} />
-            </button>
-            <div className="drp-month-title">{monthTitle(view.year, view.month)}</div>
-            <button
-              type="button"
-              className="drp-nav-btn"
-              aria-label="Next month"
-              onClick={() => setView((v) => shiftMonth(v.year, v.month, 1))}
-            >
-              <IconArrowRight size={16} />
-            </button>
-          </div>
+      {open
+        ? (() => {
+            const popover = (
+              <div
+                className={`drp-popover${useViewportPopover ? " is-viewport-fixed" : ""}`}
+                role="dialog"
+                aria-label="Choose date range"
+                data-filter-submenu={useViewportPopover ? "true" : undefined}
+                style={popoverStyle || undefined}
+              >
+                <div className="drp-nav">
+                  <button
+                    type="button"
+                    className="drp-nav-btn"
+                    aria-label="Previous month"
+                    onClick={() => setView((v) => shiftMonth(v.year, v.month, -1))}
+                  >
+                    <IconArrowLeft size={16} />
+                  </button>
+                  <div className="drp-month-title">{monthTitle(view.year, view.month)}</div>
+                  <button
+                    type="button"
+                    className="drp-nav-btn"
+                    aria-label="Next month"
+                    onClick={() => setView((v) => shiftMonth(v.year, v.month, 1))}
+                  >
+                    <IconArrowRight size={16} />
+                  </button>
+                </div>
 
-          <div
-            className="drp-grid"
-            onPointerLeave={() => {
-              if (!draggingRef.current) setHoverDate("");
-            }}
-          >
-            {WEEKDAYS.map((d) => (
-              <div key={d} className="drp-weekday">
-                {d}
-              </div>
-            ))}
-            {days.map((day) => {
-              const disabledDay = isDisabledDay(day.dateStr);
-              const isStart = preview.startDate && day.dateStr === preview.startDate;
-              const isEnd = preview.endDate && day.dateStr === preview.endDate;
-              const isMid =
-                preview.startDate &&
-                preview.endDate &&
-                inRange(day.dateStr, preview.startDate, preview.endDate) &&
-                !isStart &&
-                !isEnd;
-
-              return (
-                <button
-                  key={day.dateStr}
-                  type="button"
-                  className={[
-                    "drp-day",
-                    day.isOtherMonth ? "is-other" : "",
-                    disabledDay ? "is-disabled" : "",
-                    isStart ? "is-start" : "",
-                    isEnd ? "is-end" : "",
-                    isMid ? "is-in-range" : "",
-                    isStart && isEnd ? "is-single" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  disabled={disabledDay}
-                  aria-label={day.dateStr}
-                  aria-pressed={isStart || isEnd || isMid}
-                  onPointerDown={(e) => handlePointerDown(e, day.dateStr)}
-                  onPointerEnter={() => handlePointerEnter(day.dateStr)}
-                  onPointerUp={(e) => handlePointerUp(e, day.dateStr)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      if (clickPhase === "wait-end" && draftStart) {
-                        const next = normalizeRange(draftStart, day.dateStr);
-                        commitRange(next.startDate, next.endDate);
-                        setClickPhase("idle");
-                      } else {
-                        setDraftStart(day.dateStr);
-                        setDraftEnd("");
-                        setClickPhase("wait-end");
-                      }
-                    }
+                <div
+                  className="drp-grid"
+                  onPointerLeave={() => {
+                    if (!draggingRef.current) setHoverDate("");
                   }}
                 >
-                  {day.day}
-                </button>
-              );
-            })}
-          </div>
+                  {WEEKDAYS.map((d) => (
+                    <div key={d} className="drp-weekday">
+                      {d}
+                    </div>
+                  ))}
+                  {days.map((day) => {
+                    const disabledDay = isDisabledDay(day.dateStr);
+                    const isStart = preview.startDate && day.dateStr === preview.startDate;
+                    const isEnd = preview.endDate && day.dateStr === preview.endDate;
+                    const isMid =
+                      preview.startDate &&
+                      preview.endDate &&
+                      inRange(day.dateStr, preview.startDate, preview.endDate) &&
+                      !isStart &&
+                      !isEnd;
 
-          <div className="drp-footer">
-            <button type="button" className="btn-secondary btn-sm" onClick={handleClear}>
-              Clear
-            </button>
-            <div className="drp-footer-right">
-              {!autoApply && (
-                <button type="button" className="btn-secondary btn-sm" onClick={handleCancel}>
-                  Cancel
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn-primary btn-sm"
-                onClick={handleApply}
-                disabled={!draftStart}
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                    return (
+                      <button
+                        key={day.dateStr}
+                        type="button"
+                        className={[
+                          "drp-day",
+                          day.isOtherMonth ? "is-other" : "",
+                          disabledDay ? "is-disabled" : "",
+                          isStart ? "is-start" : "",
+                          isEnd ? "is-end" : "",
+                          isMid ? "is-in-range" : "",
+                          isStart && isEnd ? "is-single" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        disabled={disabledDay}
+                        aria-label={day.dateStr}
+                        aria-pressed={isStart || isEnd || isMid}
+                        onPointerDown={(e) => handlePointerDown(e, day.dateStr)}
+                        onPointerEnter={() => handlePointerEnter(day.dateStr)}
+                        onPointerUp={(e) => handlePointerUp(e, day.dateStr)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (clickPhase === "wait-end" && draftStart) {
+                              const next = normalizeRange(draftStart, day.dateStr);
+                              commitRange(next.startDate, next.endDate);
+                              setClickPhase("idle");
+                            } else {
+                              setDraftStart(day.dateStr);
+                              setDraftEnd("");
+                              setClickPhase("wait-end");
+                            }
+                          }
+                        }}
+                      >
+                        {day.day}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="drp-footer">
+                  <button type="button" className="btn-secondary btn-sm" onClick={handleClear}>
+                    Clear
+                  </button>
+                  <div className="drp-footer-right">
+                    {!autoApply && (
+                      <button type="button" className="btn-secondary btn-sm" onClick={handleCancel}>
+                        Cancel
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-primary btn-sm"
+                      onClick={handleApply}
+                      disabled={!draftStart}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+            return useViewportPopover && typeof document !== "undefined"
+              ? createPortal(popover, document.body)
+              : popover;
+          })()
+        : null}
     </div>
   );
 }
