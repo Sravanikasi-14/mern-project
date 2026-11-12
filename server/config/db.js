@@ -33,6 +33,8 @@ import { getProjectModel } from "../models/Project.js";
 import { getProjectMembershipModel } from "../models/ProjectMembership.js";
 import { getRemoteWorkRequestModel } from "../models/RemoteWorkRequest.js";
 import { getLocationExceptionModel } from "../models/LocationException.js";
+import { getEmployeeFaceEnrollmentModel } from "../models/EmployeeFaceEnrollment.js";
+import { getAttendanceVerificationChallengeModel } from "../models/AttendanceVerificationChallenge.js";
 import { HttpError } from "../utils/httpError.js";
 
 const tenantConnections = new Map();
@@ -153,6 +155,8 @@ export async function getCompanyModels(company, { provision = false } = {}) {
     LiveTrackingSession: getLiveTrackingSessionModel(connection),
     RemoteWorkRequest: getRemoteWorkRequestModel(connection),
     LocationException: getLocationExceptionModel(connection),
+    EmployeeFaceEnrollment: getEmployeeFaceEnrollmentModel(connection),
+    AttendanceVerificationChallenge: getAttendanceVerificationChallengeModel(connection),
     PayrollCycle: getPayrollCycleModel(connection),
     Payslip: getPayslipModel(connection),
     CompanyAsset: getCompanyAssetModel(connection),

@@ -24,6 +24,8 @@ process.env.CLIENT_URL = "http://localhost:5173";
 process.env.BCRYPT_ROUNDS = "4";
 process.env.AUTH_COOKIE_NAME = "hrms_auth";
 process.env.HRMS_NATIVE_CLIENT_SECRET = "test-native-client-secret-key";
+process.env.ALLOW_LEGACY_NATIVE_HMAC_PROOF = "true";
+process.env.FACE_BIOMETRIC_KEY = "test-face-biometric-key-32chars-min!!";
 
 let mongo;
 let app;

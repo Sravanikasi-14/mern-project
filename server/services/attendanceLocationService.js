@@ -10,12 +10,34 @@ import {
 } from "../models/LocationException.js";
 import { REMOTE_WORK_STATUSES } from "../models/RemoteWorkRequest.js";
 import { NOTIFICATION_TYPES } from "../models/Notification.js";
+import { AUDIT_ACTIONS } from "../models/AuditLog.js";
+import { USER_ROLES } from "../models/User.js";
 import { isInsideGeofence, toFiniteNumber } from "../utils/geo.js";
 import {
   getCompanyBusinessDate,
   getCompanyMinutesOfDay,
   parseHmToMinutes,
 } from "../utils/companyTime.js";
+
+/**
+ * Active Company Admin + HR Admin user IDs in the current tenant DB.
+ * Notifications must target these system User documents (never Employee ids).
+ */
+export async function resolveHrPortalNotificationRecipients(models) {
+  if (!models?.User) return [];
+  try {
+    const users = await models.User.find({
+      isActive: { $ne: false },
+      role: { $in: [USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN] },
+    })
+      .select("_id role email fullName")
+      .lean();
+    return Array.isArray(users) ? users : [];
+  } catch (err) {
+    console.error("Failed to resolve HR portal notification recipients:", err.message);
+    return [];
+  }
+}
 
 export function getEmployeeWorkMode(employee) {
   const mode = String(employee?.job?.workArrangement?.mode || "OFFICE").toUpperCase();
@@ -200,7 +222,11 @@ export async function resolvePunchZone({
     if (mode === "WFH" && !allowConsumedApproval) {
       throw new HttpError(400, "WFH employees cannot start an office attendance session.");
     }
-    if (!locationRules.geofenceEnabled) {
+    const gpsMethodEnabled = Boolean(policy?.attendanceVerification?.gps?.enabled);
+    const legacyGeofenceEnabled = Boolean(locationRules.geofenceEnabled);
+    // GPS verification method must enforce the office zone even when the legacy
+    // locationRules.geofenceEnabled toggle was left off (common misconfiguration).
+    if (!legacyGeofenceEnabled && !gpsMethodEnabled) {
       return { zone: null, enforce: false, reason: "OFFICE_GEOFENCE_DISABLED" };
     }
     const zone = officeZoneFromPolicy(policy);
@@ -210,7 +236,11 @@ export async function resolvePunchZone({
         "Office geofencing is enabled but no office coordinates are configured. Contact HR."
       );
     }
-    return { zone, enforce: true, reason: "OFFICE" };
+    return {
+      zone,
+      enforce: true,
+      reason: legacyGeofenceEnabled ? "OFFICE" : "OFFICE_GPS_VERIFICATION",
+    };
   }
 
   // REMOTE
@@ -448,10 +478,51 @@ export async function applyGeofenceDecision({
   const phaseLabel = phase === "PUNCH_OUT" ? "Punch-out" : "Punch-in";
   let exception = null;
 
+  if (evaluation.reason === "MISSING_LOCATION" || !location) {
+    const message = `${phaseLabel} rejected: location coordinates are required for geofence enforcement.`;
+    await recordGeofencePunchRejection({
+      models,
+      employee,
+      phase,
+      workDate,
+      sessionType,
+      reason: "MISSING_LOCATION",
+      geofenceDecision: "BLOCK",
+      distanceMeters: null,
+      radiusMeters: zone.radiusMeters,
+      accuracyMeters: null,
+      zoneLabel: zone.label,
+      employeeMessage:
+        "Your attendance attempt was rejected because location could not be verified against the permitted office area.",
+      hrMessage: `${employee.fullName || "Employee"} attempted to ${
+        phase === "PUNCH_OUT" ? "punch out" : "punch in"
+      } without usable location coordinates. The attendance request was rejected.`,
+    }).catch(() => {});
+    throw new HttpError(400, message);
+  }
+
   // 1) Accuracy policy (independent of out-of-radius)
   if (evaluation.lowAccuracy) {
     const message = `GPS accuracy ${evaluation.accuracy}m exceeds the permitted ${maxAccuracy}m.`;
     if (accuracyFailurePolicy === "BLOCK") {
+      await recordGeofencePunchRejection({
+        models,
+        employee,
+        phase,
+        workDate,
+        sessionType,
+        reason: "LOW_ACCURACY",
+        geofenceDecision: "BLOCK",
+        distanceMeters: evaluation.distanceMeters,
+        radiusMeters: zone.radiusMeters,
+        accuracyMeters: evaluation.accuracy,
+        zoneLabel: zone.label,
+        employeeMessage:
+          "Your attendance attempt was rejected because GPS accuracy is too low to verify your office location.",
+        hrMessage: `${employee.fullName || "Employee"} attempted to ${
+          phase === "PUNCH_OUT" ? "punch out" : "punch in"
+        } with GPS accuracy outside policy limits. The attendance request was rejected.`,
+      }).catch(() => {});
       throw new HttpError(400, `${phaseLabel} rejected: ${message}`);
     }
     if (accuracyFailurePolicy === "WARN") {
@@ -475,6 +546,26 @@ export async function applyGeofenceDecision({
   if (evaluation.outside && outPolicy !== "OFF") {
     const message = `Location is ${evaluation.distanceMeters}m from ${zone.label} (allowed ${zone.radiusMeters}m).`;
     if (outPolicy === "BLOCK") {
+      await recordGeofencePunchRejection({
+        models,
+        employee,
+        phase,
+        workDate,
+        sessionType,
+        reason: "OUTSIDE_RADIUS",
+        geofenceDecision: "BLOCK",
+        distanceMeters: evaluation.distanceMeters,
+        radiusMeters: zone.radiusMeters,
+        accuracyMeters: evaluation.accuracy,
+        zoneLabel: zone.label,
+        employeeMessage:
+          "Your attendance attempt was rejected because you are outside the permitted office location.",
+        hrMessage: `Attendance rejected: ${employee.fullName || "Employee"} attempted to ${
+          phase === "PUNCH_OUT" ? "punch out" : "punch in"
+        } outside the permitted office location.`,
+      }).catch((err) => {
+        console.error("Geofence rejection notify failed:", err?.message || err);
+      });
       throw new HttpError(400, `${phaseLabel} rejected: ${message}`);
     }
     if (outPolicy === "WARN") {
@@ -506,7 +597,7 @@ export async function applyGeofenceDecision({
             : "Punch-in outside permitted area",
         message: `${employee.fullName || "Employee"} ${
           phase === "PUNCH_OUT" ? "punched out" : "punched in"
-        } ${evaluation.distanceMeters}m from ${zone.label} (allowed ${zone.radiusMeters}m).`,
+        } outside the permitted office geofence.`,
         link: "/admin/attendance?workspace=exceptions",
         metadata: {
           sessionId: sessionId ? String(sessionId) : null,
@@ -564,12 +655,199 @@ export async function notifyAttendanceStakeholders({
     });
   }
 
-  // HR role broadcast within tenant
-  await models.Notification.create({
-    ...payload,
-    userId: null,
-    role: "HR_ADMIN",
+  await deliverHrPortalAttendanceNotifications({
+    models,
+    title,
+    message,
+    link,
+    metadata: payload.metadata,
+    excludeUserIds: employee.userId ? [String(employee.userId)] : [],
   });
+}
+
+/**
+ * Deliver attendance alerts to active HR portal operators in this tenant.
+ * Prefers personal User-id notifications; falls back to role broadcasts.
+ */
+async function deliverHrPortalAttendanceNotifications({
+  models,
+  title,
+  message,
+  link = "/admin/attendance",
+  metadata = {},
+  excludeUserIds = [],
+}) {
+  if (!models?.Notification) return { delivered: 0 };
+
+  const exclude = new Set((excludeUserIds || []).map(String));
+  const recipients = (await resolveHrPortalNotificationRecipients(models)).filter(
+    (u) => u?._id && !exclude.has(String(u._id))
+  );
+
+  if (recipients.length) {
+    let delivered = 0;
+    for (const recipient of recipients) {
+      await models.Notification.create({
+        userId: recipient._id,
+        role: null,
+        title,
+        message,
+        type: NOTIFICATION_TYPES.ATTENDANCE,
+        link,
+        metadata: {
+          ...metadata,
+          recipientRole: recipient.role,
+          delivery: "PERSONAL",
+        },
+      });
+      delivered += 1;
+    }
+    return { delivered, mode: "personal" };
+  }
+
+  // Fallback when no active portal operators exist yet (keeps a durable record).
+  await models.Notification.create({
+    userId: null,
+    role: USER_ROLES.HR_ADMIN,
+    title,
+    message,
+    type: NOTIFICATION_TYPES.ATTENDANCE,
+    link,
+    metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
+  });
+  await models.Notification.create({
+    userId: null,
+    role: USER_ROLES.COMPANY_ADMIN,
+    title,
+    message,
+    type: NOTIFICATION_TYPES.ATTENDANCE,
+    link,
+    metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
+  });
+  return { delivered: 2, mode: "role_broadcast" };
+}
+
+/**
+ * Audit + notify a blocked geofence punch without creating an attendance session.
+ * Dedupes employee/HR notifications within the same minute for the same reason.
+ * Does not include exact GPS coordinates in notification bodies.
+ */
+export async function recordGeofencePunchRejection({
+  models,
+  employee,
+  phase = "PUNCH_IN",
+  workDate = null,
+  sessionType = ATTENDANCE_SESSION_TYPES.OFFICE,
+  reason = "OUTSIDE_RADIUS",
+  geofenceDecision = "BLOCK",
+  distanceMeters = null,
+  radiusMeters = null,
+  accuracyMeters = null,
+  zoneLabel = "",
+  employeeMessage,
+  hrMessage,
+}) {
+  const attemptedAt = new Date();
+  const minuteKey = attemptedAt.toISOString().slice(0, 16);
+  const dedupeKey = `geofence_reject:${String(employee._id)}:${phase}:${reason}:${minuteKey}`;
+
+  if (models?.AuditLog) {
+    try {
+      await models.AuditLog.create({
+        actorUserId: employee.userId || null,
+        actorEmail: employee.email || "unknown",
+        actorRole: "EMPLOYEE",
+        action: AUDIT_ACTIONS.ATTENDANCE_PUNCH_REJECTED,
+        targetType: "Attendance",
+        targetId: employee._id,
+        changes: {
+          companyId: employee.companyId ? String(employee.companyId) : null,
+          employeeId: String(employee._id),
+          employeeName: employee.fullName || "",
+          phase,
+          sessionType,
+          workDate,
+          attemptedAt: attemptedAt.toISOString(),
+          geofenceDecision,
+          reason,
+          distanceMeters: distanceMeters ?? null,
+          radiusMeters: radiusMeters ?? null,
+          accuracyMeters: accuracyMeters ?? null,
+          zoneLabel: zoneLabel || "",
+          // Exact coordinates intentionally omitted from ordinary rejection records.
+        },
+      });
+    } catch (err) {
+      console.error("Attendance rejection audit failed:", err.message);
+    }
+  }
+
+  if (!models?.Notification) return { dedupeKey, notified: false };
+
+  try {
+    const existing = await models.Notification.findOne({
+      "metadata.dedupeKey": dedupeKey,
+    })
+      .select("_id")
+      .lean();
+    if (existing) {
+      return { dedupeKey, notified: false, deduped: true };
+    }
+
+    const actionLabel = phase === "PUNCH_OUT" ? "punch out" : "punch in";
+    const empName = employee.fullName || "Employee";
+    const empMsg =
+      employeeMessage ||
+      "Your attendance attempt was rejected because you are outside the permitted office location.";
+    const hrMsg =
+      hrMessage ||
+      `Attendance rejected: ${empName} attempted to ${actionLabel} outside the permitted office location.`;
+
+    const sharedMeta = {
+      dedupeKey,
+      employeeId: String(employee._id),
+      phase,
+      reason,
+      geofenceDecision,
+      workDate,
+      attemptedAt: attemptedAt.toISOString(),
+      distanceMeters: distanceMeters ?? null,
+      radiusMeters: radiusMeters ?? null,
+      // No exact lat/lng in notifications.
+    };
+
+    if (employee.userId) {
+      await models.Notification.create({
+        userId: employee.userId,
+        role: null,
+        title: "Attendance rejected",
+        message: empMsg,
+        type: NOTIFICATION_TYPES.ATTENDANCE,
+        link: "/employee/attendance",
+        metadata: sharedMeta,
+      });
+    }
+
+    const hrDelivery = await deliverHrPortalAttendanceNotifications({
+      models,
+      title: "Attendance rejected — outside geofence",
+      message: hrMsg,
+      link: "/admin/attendance",
+      metadata: sharedMeta,
+      excludeUserIds: employee.userId ? [String(employee.userId)] : [],
+    });
+
+    return {
+      dedupeKey,
+      notified: true,
+      hrDelivered: hrDelivery?.delivered || 0,
+      hrDeliveryMode: hrDelivery?.mode || null,
+    };
+  } catch (err) {
+    // Notification failures must never affect punch rejection / audit.
+    console.error("Geofence rejection notification failed:", err.message);
+    return { dedupeKey, notified: false, error: err.message };
+  }
 }
 
 /**

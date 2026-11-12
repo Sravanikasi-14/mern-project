@@ -10,6 +10,8 @@ import useLocationPermission from "../../hooks/useLocationPermission";
 import { useAuth } from "../../app/AuthContext";
 import api from "../../services/api";
 import { watchPosition, clearWatch } from "../../services/location";
+import { readWifiEvidence } from "../../services/wifiEvidence";
+import { captureFaceImageBase64 } from "../../services/faceCapture";
 import {
   buildMonthGrid,
   formatCivilDate,
@@ -267,6 +269,77 @@ export default function EmployeeAttendancePage() {
     try {
       setPunching(true);
       setActionError("");
+
+      let verificationRequirements = null;
+      let faceEnrollment = { enrolled: false };
+      try {
+        const statusRes = await api.get("/employees/me/attendance/status");
+        verificationRequirements = statusRes.data?.attendance?.verificationRequirements || null;
+        faceEnrollment = statusRes.data?.attendance?.faceEnrollment || { enrolled: false };
+      } catch {
+        /* continue with GPS-only path when status unavailable */
+      }
+
+      const methods = verificationRequirements?.methods || {};
+      let wifiEvidence = null;
+      if (methods.wifi?.enabled) {
+        const wifi = await readWifiEvidence({ api, includeChallenge: Boolean(methods.wifi.mandatory) });
+        wifiEvidence = wifi.evidence;
+        if (methods.wifi.mandatory) {
+          const blockedReasons = new Set([
+            "WIFI_UNAVAILABLE",
+            "WIFI_CHALLENGE_FAILED",
+            "WIFI_DISABLED",
+            "WIFI_PERMISSION_DENIED",
+            "WIFI_LOCATION_REQUIRED",
+            "WIFI_PLUGIN_MISSING",
+            "WIFI_UNSUPPORTED_ANDROID_VERSION",
+            "WIFI_UNSUPPORTED_ON_CLIENT",
+            "WIFI_SSID_HIDDEN",
+            "WIFI_BSSID_UNKNOWN",
+          ]);
+          const missingIds = !wifiEvidence?.ssid && !wifiEvidence?.bssid;
+          if (
+            !wifi.supported ||
+            blockedReasons.has(wifi.reason) ||
+            missingIds ||
+            !wifiEvidence?.challengeId ||
+            !wifiEvidence?.challengeNonce
+          ) {
+            const msg =
+              wifi.reason === "WIFI_DISABLED"
+                ? "Connect to an authorized company Wi-Fi network."
+                : wifi.reason === "WIFI_PERMISSION_DENIED" ||
+                    wifi.reason === "WIFI_LOCATION_REQUIRED" ||
+                    wifi.reason === "WIFI_UNAVAILABLE" ||
+                    wifi.reason === "WIFI_BSSID_UNKNOWN" ||
+                    wifi.reason === "WIFI_SSID_HIDDEN"
+                  ? "Unable to detect Wi-Fi information. Check your Wi-Fi permissions."
+                  : wifi.reason === "WIFI_CHALLENGE_FAILED"
+                    ? "Verification expired. Please try again."
+                    : wifi.message || "Connect to an authorized company Wi-Fi network.";
+            setActionError(msg);
+            return;
+          }
+        }
+      }
+
+      let faceImageBase64 = null;
+      if (methods.face?.enabled) {
+        if (!faceEnrollment?.enrolled) {
+          setActionError("Enroll your face in the app before punching. Face verification is required.");
+          return;
+        }
+        try {
+          faceImageBase64 = await captureFaceImageBase64();
+        } catch (err) {
+          if (methods.face.mandatory) {
+            setActionError(err.message || "Face capture is required for punch.");
+            return;
+          }
+        }
+      }
+
       const loc = await geo.readPosition();
       const path = kind === "in" ? "/employees/me/attendance/punch-in" : "/employees/me/attendance/punch-out";
       const res = await api.post(path, {
@@ -274,6 +347,8 @@ export default function EmployeeAttendancePage() {
         longitude: loc.longitude,
         accuracy: loc.accuracy,
         location: loc,
+        ...(wifiEvidence ? { wifiEvidence } : {}),
+        ...(faceImageBase64 ? { faceImageBase64 } : {}),
         ...(kind === "in"
           ? {
               sessionType: sessionType === "REMOTE" ? "REMOTE" : "OFFICE",
@@ -292,7 +367,28 @@ export default function EmployeeAttendancePage() {
       await invalidateAttendance(queryClient);
       await refreshRemoteRequests();
     } catch (err) {
-      setActionError(err.response?.data?.message || err.message || "Could not record punch.");
+      const apiMsg = String(err.response?.data?.message || err.message || "Could not record punch.");
+      const lower = apiMsg.toLowerCase();
+      if (lower.includes("not authorized")) {
+        setActionError("Your connected Wi-Fi network is not authorized.");
+      } else if (
+        lower.includes("expired") ||
+        lower.includes("already used") ||
+        lower.includes("stale") ||
+        lower.includes("challenge")
+      ) {
+        setActionError("Verification expired. Please try again.");
+      } else if (
+        lower.includes("permission") ||
+        lower.includes("detect wifi") ||
+        lower.includes("unable to detect")
+      ) {
+        setActionError("Unable to detect Wi-Fi information. Check your Wi-Fi permissions.");
+      } else if (lower.includes("connect to an authorized") || lower.includes("wifi") || lower.includes("wi-fi")) {
+        setActionError("Connect to an authorized company Wi-Fi network.");
+      } else {
+        setActionError(apiMsg);
+      }
     } finally {
       setPunching(false);
     }

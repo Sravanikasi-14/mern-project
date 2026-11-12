@@ -27,6 +27,7 @@ router.post("/login", loginLimiter, login);
 router.post("/refresh", refreshSessionLimiter, refreshSession);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
+
 router.get("/company-logo", authenticate, streamCompanyLogo);
 router.put("/profile", authenticate, updateProfile);
 router.post("/profile/avatar", authenticate, uploadProfileAvatar);

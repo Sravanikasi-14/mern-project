@@ -65,6 +65,8 @@ const KEYS = [
   "holidays",
   "weekendRules",
   "locationRules",
+  "attendanceVerification",
+  "workArrangementRules",
   "payrollRules",
   "salaryComponentRules",
   "taxStatutoryRules",

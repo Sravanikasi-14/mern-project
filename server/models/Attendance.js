@@ -63,6 +63,40 @@ const GeofenceResultSubSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/** Safe audit of attendance verification attempts (no biometrics / raw Wi-Fi secrets). */
+const VerificationMethodResultSubSchema = new mongoose.Schema(
+  {
+    method: { type: String, enum: ["GPS", "WIFI", "FACE"], required: true },
+    attempted: { type: Boolean, default: true },
+    mandatory: { type: Boolean, default: false },
+    ok: { type: Boolean, default: false },
+    reason: { type: String, default: "", trim: true },
+    message: { type: String, default: "", trim: true },
+    distanceMeters: { type: Number, default: null },
+    radiusMeters: { type: Number, default: null },
+    accuracyMeters: { type: Number, default: null },
+    networkRef: { type: String, default: "", trim: true },
+    modelId: { type: String, default: "", trim: true },
+    threshold: { type: Number, default: null },
+    distance: { type: Number, default: null },
+    livenessScore: { type: Number, default: null },
+    faceCount: { type: Number, default: null },
+    capturedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+const VerificationAuditSubSchema = new mongoose.Schema(
+  {
+    attemptedAt: { type: Date, default: Date.now },
+    clientPlatform: { type: String, default: "", trim: true },
+    allMandatoryPassed: { type: Boolean, default: true },
+    blockedReason: { type: String, default: "", trim: true },
+    methods: { type: [VerificationMethodResultSubSchema], default: [] },
+  },
+  { _id: false }
+);
+
 const AttendanceSessionSubSchema = new mongoose.Schema(
   {
     sessionType: {
@@ -83,6 +117,8 @@ const AttendanceSessionSubSchema = new mongoose.Schema(
     checkOutLocation: { type: LocationSubSchema, default: null },
     checkInGeofence: { type: GeofenceResultSubSchema, default: null },
     checkOutGeofence: { type: GeofenceResultSubSchema, default: null },
+    checkInVerification: { type: VerificationAuditSubSchema, default: null },
+    checkOutVerification: { type: VerificationAuditSubSchema, default: null },
     remoteWorkRequestId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "RemoteWorkRequest",

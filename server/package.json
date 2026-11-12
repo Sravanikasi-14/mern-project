@@ -14,7 +14,8 @@
     "provision:company": "node scripts/provisionCompany.js",
     "provision:tenants": "node scripts/provisionAllTenants.js",
     "seed:offer-template-master": "node scripts/seedOfferTemplateMaster.js",
-    "test:email": "node scripts/sendTestEmail.js"
+    "test:email": "node scripts/sendTestEmail.js",
+    "face:models": "node scripts/downloadFaceModels.js"
   },
   "keywords": [],
   "author": "",
@@ -24,7 +25,11 @@
     "@aws-sdk/client-s3": "^3.1161.0",
     "@aws-sdk/s3-request-presigner": "^3.1161.0",
     "@google/genai": "^2.31.0",
+    "@napi-rs/canvas": "^0.1.100",
     "@sparticuz/chromium": "^153.0.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-cpu": "^4.22.0",
+    "@vladmandic/face-api": "^1.7.15",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

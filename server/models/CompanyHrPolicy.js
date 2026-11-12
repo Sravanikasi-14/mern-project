@@ -72,6 +72,18 @@ export const DEFAULT_HR_POLICY = Object.freeze({
     /** Allow minor client clock skew into the future (seconds). */
     maxLocationFutureSkewSeconds: 60,
   },
+  /**
+   * Attendance verification methods (GPS / Wi-Fi / Face).
+   * Defaults keep existing companies backward-compatible (methods off).
+   * Legacy geofence via locationRules.geofenceEnabled remains authoritative when enabled.
+   */
+  attendanceVerification: {
+    verificationRequired: false,
+    gps: { enabled: false, mandatory: true },
+    wifi: { enabled: false, mandatory: true },
+    face: { enabled: false, mandatory: true, matchThreshold: 0.55, requireLiveness: true },
+    wifiNetworks: [],
+  },
   workArrangementRules: {
     /** WFH_APPROVED_LOCATION | WFH_UNRESTRICTED */
     wfhLocationMode: "WFH_UNRESTRICTED",
@@ -287,6 +299,34 @@ export function createCompanyHrPolicySchema() {
         },
         maxLocationAgeSeconds: { type: Number, default: 180, min: 30, max: 900 },
         maxLocationFutureSkewSeconds: { type: Number, default: 60, min: 0, max: 300 },
+      },
+      attendanceVerification: {
+        verificationRequired: { type: Boolean, default: false },
+        gps: {
+          enabled: { type: Boolean, default: false },
+          mandatory: { type: Boolean, default: true },
+        },
+        wifi: {
+          enabled: { type: Boolean, default: false },
+          mandatory: { type: Boolean, default: true },
+        },
+        face: {
+          enabled: { type: Boolean, default: false },
+          mandatory: { type: Boolean, default: true },
+          matchThreshold: { type: Number, default: 0.55, min: 0.2, max: 1.2 },
+          requireLiveness: { type: Boolean, default: true },
+        },
+        wifiNetworks: {
+          type: [
+            {
+              label: { type: String, default: "", trim: true },
+              ssid: { type: String, default: "", trim: true },
+              bssid: { type: String, default: "", trim: true },
+              active: { type: Boolean, default: true },
+            },
+          ],
+          default: [],
+        },
       },
       workArrangementRules: {
         wfhLocationMode: {

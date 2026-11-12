@@ -62,6 +62,54 @@ function extractLocationPayload(req) {
   return null;
 }
 
+function extractWifiEvidence(req) {
+  const raw = req.body?.wifiEvidence;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpError(400, "wifiEvidence must be an object.");
+  }
+  // Never accept client-side verification booleans as proof (wifiVerified, etc.).
+  // challengeId/nonce are server-issued; validated/consumed on the backend.
+  // wifiEnabled / clientReason are device state signals used only to reject
+  // (never to approve). Cached SSID while the radio is off must not pass.
+  return {
+    ssid: raw.ssid,
+    bssid: raw.bssid,
+    capturedAt: raw.capturedAt,
+    platform: raw.platform,
+    pluginVersion: raw.pluginVersion,
+    challengeId: raw.challengeId,
+    challengeNonce: raw.challengeNonce || raw.nonce,
+    clientReason: raw.clientReason,
+    wifiEnabled: raw.wifiEnabled,
+  };
+}
+
+function extractFaceImage(req) {
+  const img = req.body?.faceImageBase64 ?? req.body?.faceImage;
+  if (img === undefined || img === null || img === "") return null;
+  if (typeof img !== "string") throw new HttpError(400, "faceImageBase64 must be a string.");
+  return img;
+}
+
+function extractClientClaims(req) {
+  return {
+    faceVerified: req.body?.faceVerified,
+    wifiVerified: req.body?.wifiVerified,
+    gpsVerified: req.body?.gpsVerified,
+  };
+}
+
+/**
+ * Platform is resolved only from the AuthSession (informational / audit).
+ * Never trusts body, query, or client-supplied platform headers.
+ * Must never be treated as device authenticity proof for Wi-Fi.
+ */
+async function resolvePunchClientPlatform(req) {
+  const token = extractRequestAuthToken(req) || req.cookies?.[getAuthCookieName()];
+  return resolveClientPlatformFromAuthSession(req.auth.models, token);
+}
+
 /**
  * POST /api/employees/me/attendance/punch-in
  * Strictly requires browser geolocation coordinates.
@@ -79,6 +127,7 @@ export async function punchIn(req, res, next) {
     const sessionType = String(req.body?.sessionType || "OFFICE").toUpperCase() === "REMOTE" ? "REMOTE" : "OFFICE";
     const remoteWorkRequestId = req.body?.remoteWorkRequestId || null;
 
+    const clientPlatform = await resolvePunchClientPlatform(req);
     const result = await punchInEmployee({
       models: req.auth.models,
       employee,
@@ -87,6 +136,11 @@ export async function punchIn(req, res, next) {
       companyTimezone,
       sessionType,
       remoteWorkRequestId,
+      wifiEvidence: extractWifiEvidence(req),
+      faceImageBase64: extractFaceImage(req),
+      clientPlatform,
+      clientClaims: extractClientClaims(req),
+      companyId: req.auth.company?._id,
     });
 
     res.status(200).json(result);
@@ -109,12 +163,18 @@ export async function punchOut(req, res, next) {
       throw new HttpError(400, "Location coordinates (latitude and longitude) are required to punch out.");
     }
 
+    const clientPlatform = await resolvePunchClientPlatform(req);
     const result = await punchOutEmployee({
       models: req.auth.models,
       employee,
       location,
       requireLocation: true,
       companyTimezone,
+      wifiEvidence: extractWifiEvidence(req),
+      faceImageBase64: extractFaceImage(req),
+      clientPlatform,
+      clientClaims: extractClientClaims(req),
+      companyId: req.auth.company?._id,
     });
 
     res.status(200).json(result);
@@ -134,6 +194,7 @@ export async function handleCheckIn(req, res, next) {
     const sessionType = String(req.body?.sessionType || "OFFICE").toUpperCase() === "REMOTE" ? "REMOTE" : "OFFICE";
     const remoteWorkRequestId = req.body?.remoteWorkRequestId || null;
 
+    const clientPlatform = await resolvePunchClientPlatform(req);
     const result = await punchInEmployee({
       models: req.auth.models,
       employee,
@@ -142,6 +203,11 @@ export async function handleCheckIn(req, res, next) {
       companyTimezone,
       sessionType,
       remoteWorkRequestId,
+      wifiEvidence: extractWifiEvidence(req),
+      faceImageBase64: extractFaceImage(req),
+      clientPlatform,
+      clientClaims: extractClientClaims(req),
+      companyId: req.auth.company?._id,
     });
 
     res.status(200).json(result);
@@ -159,12 +225,18 @@ export async function handleCheckOut(req, res, next) {
     const location = extractLocationPayload(req);
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
 
+    const clientPlatform = await resolvePunchClientPlatform(req);
     const result = await punchOutEmployee({
       models: req.auth.models,
       employee,
       location,
       requireLocation: Boolean(location),
       companyTimezone,
+      wifiEvidence: extractWifiEvidence(req),
+      faceImageBase64: extractFaceImage(req),
+      clientPlatform,
+      clientClaims: extractClientClaims(req),
+      companyId: req.auth.company?._id,
     });
 
     res.status(200).json(result);

@@ -24,6 +24,11 @@ import {
 } from "../hooks/useEmployeeQueries";
 import { invalidateAttendance } from "../lib/queryKeys";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
+import AttendanceVerificationPanel, {
+  FaceEnrollmentCapture,
+  VERIFICATION_STATUS,
+  captureFaceImageBase64,
+} from "../components/AttendanceVerificationPanel";
 import DateRangePicker from "../components/DateRangePicker";
 import {
   civilDaysInMonth,
@@ -139,6 +144,16 @@ export default function EmployeeAttendance() {
   }, [historyRange]);
 
   const [remoteRequests, setRemoteRequests] = useState([]);
+  const [verificationRequirements, setVerificationRequirements] = useState(null);
+  const [faceEnrollment, setFaceEnrollment] = useState({ enrolled: false });
+  const [gpsVerifyStatus, setGpsVerifyStatus] = useState(VERIFICATION_STATUS.IDLE);
+  const [wifiVerifyStatus, setWifiVerifyStatus] = useState(VERIFICATION_STATUS.UNSUPPORTED);
+  const [faceVerifyStatus, setFaceVerifyStatus] = useState(VERIFICATION_STATUS.IDLE);
+  const [faceImageBase64, setFaceImageBase64] = useState(null);
+  const [capturingFace, setCapturingFace] = useState(false);
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [gpsDetail, setGpsDetail] = useState("");
+  const [faceDetail, setFaceDetail] = useState("");
 
   const refreshRemoteRequests = async () => {
     try {
@@ -149,9 +164,71 @@ export default function EmployeeAttendance() {
     }
   };
 
+  const refreshVerificationStatus = async () => {
+    try {
+      const res = await api.get("/employees/me/attendance/status");
+      setVerificationRequirements(res.data?.attendance?.verificationRequirements || null);
+      setFaceEnrollment(res.data?.attendance?.faceEnrollment || { enrolled: false });
+      const methods = res.data?.attendance?.verificationRequirements?.methods || {};
+      if (methods.wifi?.enabled) {
+        setWifiVerifyStatus(VERIFICATION_STATUS.UNSUPPORTED);
+      }
+    } catch {
+      /* keep previous */
+    }
+  };
+
   useEffect(() => {
     refreshRemoteRequests();
+    refreshVerificationStatus();
   }, []);
+
+  const mandatoryWifiBlocksDesktop = Boolean(
+    verificationRequirements?.methods?.wifi?.enabled && verificationRequirements?.methods?.wifi?.mandatory
+  );
+  const faceRequiredMissing =
+    Boolean(verificationRequirements?.methods?.face?.enabled && verificationRequirements?.methods?.face?.mandatory) &&
+    !faceEnrollment?.enrolled;
+  const faceCaptureMissing =
+    Boolean(verificationRequirements?.methods?.face?.enabled && verificationRequirements?.methods?.face?.mandatory) &&
+    faceEnrollment?.enrolled &&
+    !faceImageBase64;
+
+  const handleCaptureFaceForPunch = async () => {
+    try {
+      setCapturingFace(true);
+      setFaceVerifyStatus(VERIFICATION_STATUS.PENDING);
+      setFaceDetail("Capturing face…");
+      const image = await captureFaceImageBase64();
+      setFaceImageBase64(image);
+      setFaceVerifyStatus(VERIFICATION_STATUS.VERIFIED);
+      setFaceDetail("Face captured. Server will match on punch.");
+    } catch (err) {
+      setFaceVerifyStatus(VERIFICATION_STATUS.FAILED);
+      setFaceDetail(err.message || "Face capture failed.");
+      setFaceImageBase64(null);
+    } finally {
+      setCapturingFace(false);
+    }
+  };
+
+  const handleEnrollFaceSubmit = async ({ imageBase64, consentAccepted }) => {
+    try {
+      setCapturingFace(true);
+      await api.post("/employees/me/face-enrollment", {
+        imageBase64,
+        consentAccepted,
+        consentTextVersion: "v1",
+      });
+      setShowEnrollModal(false);
+      setActionSuccess("Face enrolled successfully.");
+      await refreshVerificationStatus();
+    } catch (err) {
+      setActionError(err.response?.data?.message || "Face enrollment failed.");
+    } finally {
+      setCapturingFace(false);
+    }
+  };
 
   const handleCheckIn = async (sessionType = "OFFICE", remoteWorkRequestId = null) => {
     try {
@@ -160,17 +237,47 @@ export default function EmployeeAttendance() {
       setActionSuccess("");
       setGeoError("");
       setGeoStatus("ACQUIRING");
+      setGpsVerifyStatus(VERIFICATION_STATUS.PENDING);
+
+      if (mandatoryWifiBlocksDesktop) {
+        setWifiVerifyStatus(VERIFICATION_STATUS.UNSUPPORTED);
+        setActionError(
+          "Office Wi-Fi verification is mandatory. Use the Android HRMS app — desktop browsers cannot verify Wi-Fi."
+        );
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
+      if (faceRequiredMissing) {
+        setActionError("Enroll your face before punching in. Face verification is mandatory for your company.");
+        setShowEnrollModal(true);
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
+      if (faceCaptureMissing) {
+        setActionError("Capture your face for verification before punching in.");
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
 
       let loc = null;
       try {
         loc = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
         setLastCapturedLocation(loc);
         setGeoStatus("SUCCESS");
+        setGpsVerifyStatus(VERIFICATION_STATUS.VERIFIED);
+        setGpsDetail(
+          loc.accuracy != null ? `Accuracy ±${Math.round(loc.accuracy)}m (server validates geofence)` : "Location captured"
+        );
       } catch (err) {
         setGeoStatus("ERROR");
+        setGpsVerifyStatus(VERIFICATION_STATUS.FAILED);
         const msg = `${err.message} ${err.action || "Please enable location in browser settings to punch in."}`;
         setGeoError(msg);
         setActionError(msg);
+        setGpsDetail(msg);
         return;
       }
 
@@ -178,12 +285,34 @@ export default function EmployeeAttendance() {
         location: loc,
         sessionType: sessionType === "REMOTE" ? "REMOTE" : "OFFICE",
         ...(remoteWorkRequestId ? { remoteWorkRequestId } : {}),
+        ...(faceImageBase64 ? { faceImageBase64 } : {}),
+        clientPlatform: "web",
       });
+      setFaceImageBase64(null);
+      setFaceVerifyStatus(VERIFICATION_STATUS.IDLE);
       setActionSuccess(response.data?.message || "Punched in successfully!");
       await invalidateAttendance(queryClient);
       await refreshRemoteRequests();
+      await refreshVerificationStatus();
     } catch (err) {
-      setActionError(err.response?.data?.message || "Unable to punch in. Please try again.");
+      const msg = err.response?.data?.message || "Unable to punch in. Please try again.";
+      setActionError(msg);
+      const lower = String(msg).toLowerCase();
+      if (lower.includes("face")) {
+        setFaceVerifyStatus(VERIFICATION_STATUS.FAILED);
+        setFaceDetail(msg);
+      }
+      if (
+        lower.includes("outside") ||
+        lower.includes("geofence") ||
+        lower.includes("radius") ||
+        lower.includes("location") ||
+        lower.includes("accuracy")
+      ) {
+        setGpsVerifyStatus(VERIFICATION_STATUS.FAILED);
+        setGpsDetail(msg);
+        setGeoStatus("ERROR");
+      }
     } finally {
       setCheckingAttendance(false);
     }
@@ -217,21 +346,57 @@ export default function EmployeeAttendance() {
       setActionSuccess("");
       setGeoError("");
       setGeoStatus("ACQUIRING");
+      setGpsVerifyStatus(VERIFICATION_STATUS.PENDING);
+
+      if (mandatoryWifiBlocksDesktop) {
+        setWifiVerifyStatus(VERIFICATION_STATUS.UNSUPPORTED);
+        setActionError(
+          "Office Wi-Fi verification is mandatory. Use the Android HRMS app — desktop browsers cannot verify Wi-Fi."
+        );
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
+      if (faceRequiredMissing) {
+        setActionError("Enroll your face before punching out. Face verification is mandatory for your company.");
+        setShowEnrollModal(true);
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
+      if (faceCaptureMissing) {
+        setActionError("Capture your face for verification before punching out.");
+        setGeoStatus("IDLE");
+        setGpsVerifyStatus(VERIFICATION_STATUS.IDLE);
+        return;
+      }
 
       let loc = null;
       try {
         loc = await acquireCurrentLocation({ enableHighAccuracy: true, timeout: 15000 });
         setLastCapturedLocation(loc);
         setGeoStatus("SUCCESS");
+        setGpsVerifyStatus(VERIFICATION_STATUS.VERIFIED);
+        setGpsDetail(
+          loc.accuracy != null ? `Accuracy ±${Math.round(loc.accuracy)}m (server validates geofence)` : "Location captured"
+        );
       } catch (err) {
         setGeoStatus("ERROR");
+        setGpsVerifyStatus(VERIFICATION_STATUS.FAILED);
         const msg = `${err.message} ${err.action || "Please enable location in browser settings to punch out."}`;
         setGeoError(msg);
         setActionError(msg);
+        setGpsDetail(msg);
         return;
       }
 
-      const response = await api.post("/employees/me/attendance/punch-out", { location: loc });
+      const response = await api.post("/employees/me/attendance/punch-out", {
+        location: loc,
+        ...(faceImageBase64 ? { faceImageBase64 } : {}),
+        clientPlatform: "web",
+      });
+      setFaceImageBase64(null);
+      setFaceVerifyStatus(VERIFICATION_STATUS.IDLE);
       // Server stops tracking on punch-out; clear local watcher immediately.
       if (unwatchRef.current) {
         unwatchRef.current();
@@ -245,7 +410,20 @@ export default function EmployeeAttendance() {
       }
       await invalidateAttendance(queryClient);
     } catch (err) {
-      setActionError(err.response?.data?.message || "Unable to punch out. Please try again.");
+      const msg = err.response?.data?.message || "Unable to punch out. Please try again.";
+      setActionError(msg);
+      const lower = String(msg).toLowerCase();
+      if (
+        lower.includes("outside") ||
+        lower.includes("geofence") ||
+        lower.includes("radius") ||
+        lower.includes("location") ||
+        lower.includes("accuracy")
+      ) {
+        setGpsVerifyStatus(VERIFICATION_STATUS.FAILED);
+        setGpsDetail(msg);
+        setGeoStatus("ERROR");
+      }
     } finally {
       setCheckingAttendance(false);
     }
@@ -570,7 +748,12 @@ export default function EmployeeAttendance() {
                     type="button"
                     className="btn-primary"
                     onClick={() => handleCheckIn("OFFICE")}
-                    disabled={checkingAttendance}
+                    disabled={
+                      checkingAttendance ||
+                      mandatoryWifiBlocksDesktop ||
+                      faceRequiredMissing ||
+                      faceCaptureMissing
+                    }
                     style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600 }}
                   >
                     {checkingAttendance ? "Acquiring GPS..." : todayStatus === "CHECKED_OUT" ? "Start Office Session" : "Punch In (Office)"}
@@ -620,7 +803,12 @@ export default function EmployeeAttendance() {
                 type="button"
                 className="btn-primary"
                 onClick={handleCheckOut}
-                disabled={checkingAttendance}
+                disabled={
+                  checkingAttendance ||
+                  mandatoryWifiBlocksDesktop ||
+                  faceRequiredMissing ||
+                  faceCaptureMissing
+                }
                 style={{ padding: "10px 22px", fontSize: 14, fontWeight: 600, background: "#dc2626", borderColor: "#dc2626" }}
               >
                 {checkingAttendance ? "Acquiring GPS..." : "Punch Out Session"}
@@ -654,6 +842,30 @@ export default function EmployeeAttendance() {
             )}
           </div>
         </div>
+
+        <AttendanceVerificationPanel
+          requirements={verificationRequirements}
+          faceEnrollment={faceEnrollment}
+          gpsStatus={gpsVerifyStatus}
+          gpsDetail={gpsDetail}
+          wifiStatus={wifiVerifyStatus}
+          faceStatus={faceVerifyStatus}
+          faceDetail={faceDetail}
+          capturingFace={capturingFace}
+          disabled={checkingAttendance}
+          onCaptureFace={handleCaptureFaceForPunch}
+          onEnrollFace={() => setShowEnrollModal(true)}
+        />
+
+        {showEnrollModal ? (
+          <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--hair, #e6ede8)", borderRadius: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: "#14532d" }}>Face enrollment</div>
+            <FaceEnrollmentCapture
+              onCaptured={handleEnrollFaceSubmit}
+              onCancel={() => setShowEnrollModal(false)}
+            />
+          </div>
+        ) : null}
 
         {/* Geolocation feedback bar */}
         {geoStatus === "ACQUIRING" && (

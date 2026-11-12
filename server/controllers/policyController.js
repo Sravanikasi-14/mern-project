@@ -6,6 +6,10 @@ import {
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { HttpError } from "../utils/httpError.js";
 import { parseTimeToMinutes, toDateString, parseDateOnly } from "../services/leaveService.js";
+import {
+  sanitizeAttendanceVerification,
+  buildVerificationOperationalStatus,
+} from "../services/attendanceVerificationService.js";
 
 async function recordPolicyAudit(AuditLog, req, action, policyId, changes) {
   try {
@@ -349,6 +353,8 @@ export function validatePolicyPayload(body, existingPolicy = null) {
         : 60,
   };
 
+  const sanitizedAttendanceVerification = sanitizeAttendanceVerification(body, existingPolicy);
+
   const rawWorkArr =
     body.workArrangementRules !== undefined
       ? body.workArrangementRules
@@ -603,6 +609,7 @@ export function validatePolicyPayload(body, existingPolicy = null) {
     weekendRules: sanitizedWeekendRules,
     holidays: sanitizedHolidays,
     locationRules: sanitizedLocationRules,
+    attendanceVerification: sanitizedAttendanceVerification,
     workArrangementRules: sanitizedWorkArrangementRules,
     payrollRules: sanitizedPayrollRules,
     salaryComponentRules: sanitizedSalaryComponentRules,
@@ -634,6 +641,7 @@ export async function getActivePolicy(req, res, next) {
       success: true,
       policy,
       asOfDate: toDateString(isNaN(asOfDate.getTime()) ? new Date() : asOfDate),
+      verificationOperationalStatus: buildVerificationOperationalStatus(policy),
     });
   } catch (error) {
     next(error);
@@ -823,6 +831,9 @@ export async function updatePolicyRevision(req, res, next) {
     existingPolicy.weekendRules = sanitized.weekendRules;
     existingPolicy.holidays = sanitized.holidays;
     existingPolicy.locationRules = sanitized.locationRules;
+    if (sanitized.attendanceVerification) {
+      existingPolicy.attendanceVerification = sanitized.attendanceVerification;
+    }
     existingPolicy.workArrangementRules = sanitized.workArrangementRules;
     existingPolicy.payrollRules = sanitized.payrollRules;
     existingPolicy.salaryComponentRules = sanitized.salaryComponentRules;

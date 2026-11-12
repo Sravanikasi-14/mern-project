@@ -43,21 +43,14 @@ export function isRequestTimeoutError(error) {
   return code === "ECONNABORTED" || message.includes("timeout");
 }
 
-// Request interceptor: attach Bearer token and native client proof headers.
-// Proof binds AuthSession.clientPlatform at login (allowWebTracking enforcement).
+// Request interceptor: attach Bearer token only.
+// No APK shared secrets. Client platform is informational; Wi-Fi uses server challenges.
 api.interceptors.request.use(async (config) => {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("hrms_token");
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-  }
-  try {
-    const { buildNativeClientAuthHeaders } = await import("./nativeClientAuth.js");
-    const nativeHeaders = await buildNativeClientAuthHeaders();
-    Object.assign(config.headers, nativeHeaders);
-  } catch {
-    // Non-native or missing secret — leave as web session.
   }
   return config;
 });

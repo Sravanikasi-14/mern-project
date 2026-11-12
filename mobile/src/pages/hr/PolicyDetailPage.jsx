@@ -405,6 +405,66 @@ export default function HrPolicyDetailPage({ readOnly = false }) {
           <label>Office address<input value={location.officeAddress || ""} onChange={(event) => setPolicy({ ...policy, locationRules: { ...location, officeAddress: event.target.value } })} disabled={readOnly} /></label>
           <label>Geofence radius (m)<input type="number" value={location.geofenceRadiusMeters ?? 200} onChange={(event) => setPolicy({ ...policy, locationRules: { ...location, geofenceRadiusMeters: Number(event.target.value) } })} disabled={readOnly} /></label>
           <p className="caption">Coordinates are never invented. Office lat/long stay empty until set from the web policy editor.</p>
+
+          <h3 className="summary-title" style={{ marginTop: 12 }}>Attendance verification</h3>
+          <Toggle
+            label="Require verification"
+            description="When on, enable at least one method below."
+            checked={Boolean((policy.attendanceVerification || {}).verificationRequired)}
+            disabled={readOnly}
+            onChange={(on) =>
+              setPolicy({
+                ...policy,
+                attendanceVerification: {
+                  ...(policy.attendanceVerification || {}),
+                  verificationRequired: on,
+                },
+              })
+            }
+          />
+          {["gps", "wifi", "face"].map((key) => {
+            const av = policy.attendanceVerification || {};
+            const method = av[key] || { enabled: false, mandatory: true };
+            const labels = { gps: "GPS geofencing", wifi: "Wi-Fi (Android)", face: "Face recognition" };
+            return (
+              <div key={key} className="summary-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+                <Toggle
+                  label={labels[key]}
+                  checked={Boolean(method.enabled)}
+                  disabled={readOnly}
+                  onChange={(on) =>
+                    setPolicy({
+                      ...policy,
+                      attendanceVerification: {
+                        ...av,
+                        [key]: { ...method, enabled: on },
+                      },
+                    })
+                  }
+                />
+                <label>
+                  Requirement
+                  <select
+                    value={method.mandatory !== false ? "mandatory" : "optional"}
+                    disabled={readOnly || !method.enabled}
+                    onChange={(event) =>
+                      setPolicy({
+                        ...policy,
+                        attendanceVerification: {
+                          ...av,
+                          [key]: { ...method, mandatory: event.target.value === "mandatory" },
+                        },
+                      })
+                    }
+                  >
+                    <option value="mandatory">Mandatory</option>
+                    <option value="optional">Optional</option>
+                  </select>
+                </label>
+              </div>
+            );
+          })}
+          <p className="caption">Authorized Wi-Fi SSIDs and face thresholds are managed in the desktop policy editor.</p>
           {!readOnly ? <button type="button" className="btn-primary" disabled={saving} onClick={() => persist(policy)}>{saving ? "Saving..." : "Save Changes"}</button> : null}
         </form>
       ) : null}

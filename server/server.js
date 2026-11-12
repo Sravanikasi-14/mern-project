@@ -14,6 +14,9 @@ const HOST = "0.0.0.0";
 
 const startServer = async () => {
   try {
+    const { validateFaceBiometricKeyConfig } = await import("./utils/biometricKey.js");
+    validateFaceBiometricKeyConfig({ throwOnError: true });
+
     await connectCentralDB();
 
     // Skip heavy multi-tenant provisioning on Vercel serverless cold starts.

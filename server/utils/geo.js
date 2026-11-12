@@ -26,9 +26,11 @@ export function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Returns whether a point is inside a circular geofence.
- * Accuracy (meters) is optionally added to distance before comparing radius
- * so poorer GPS does not silently pass when clearly outside.
+ * Returns whether a point is inside a circular geofence using raw Haversine distance.
+ *
+ * GPS accuracy is NOT used to shrink distance (that allowed far punches to pass by
+ * submitting an inflated accuracy while accuracyFailurePolicy=WARN). Accuracy must be
+ * evaluated separately via locationRules.accuracyFailurePolicy.
  */
 export function isInsideGeofence({
   latitude,
@@ -48,13 +50,12 @@ export function isInsideGeofence({
   }
   const distanceMeters = haversineDistanceMeters(cLat, cLon, lat, lon);
   const accuracy = toFiniteNumber(accuracyMeters);
-  const effectiveDistance =
-    accuracy != null && accuracy > 0 ? Math.max(0, distanceMeters - accuracy) : distanceMeters;
-  const inside = effectiveDistance <= radius;
+  const inside = distanceMeters <= radius;
   return {
     ok: inside,
     distanceMeters,
-    effectiveDistanceMeters: effectiveDistance,
+    effectiveDistanceMeters: distanceMeters,
+    accuracyMeters: accuracy,
     radiusMeters: radius,
     reason: inside ? "INSIDE" : "OUTSIDE_RADIUS",
   };

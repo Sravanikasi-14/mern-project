@@ -22,6 +22,12 @@ import {
   consumeRemoteWorkApproval,
   releaseRemoteWorkApprovalConsumption,
 } from "./attendanceLocationService.js";
+import {
+  buildEmployeeVerificationRequirements,
+  resolveAttendanceVerificationConfig,
+  runAttendanceVerifications,
+  publicVerificationSummary,
+} from "./attendanceVerificationService.js";
 export { getCompanyBusinessDate };
 
 function isDuplicateKeyError(err) {
@@ -367,6 +373,11 @@ export async function punchInEmployee({
   companyTimezone = "Asia/Kolkata",
   sessionType = ATTENDANCE_SESSION_TYPES.OFFICE,
   remoteWorkRequestId = null,
+  wifiEvidence = null,
+  faceImageBase64 = null,
+  clientPlatform = "",
+  clientClaims = null,
+  companyId = null,
 }) {
   const { Attendance } = models;
   const policy = await loadAttendancePolicy(models);
@@ -374,6 +385,7 @@ export async function punchInEmployee({
     String(sessionType || ATTENDANCE_SESSION_TYPES.OFFICE).toUpperCase() === ATTENDANCE_SESSION_TYPES.REMOTE
       ? ATTENDANCE_SESSION_TYPES.REMOTE
       : ATTENDANCE_SESSION_TYPES.OFFICE;
+  const verificationCfg = resolveAttendanceVerificationConfig(policy);
 
   const serverNow = new Date();
   const todayStr = getCompanyBusinessDate(serverNow, companyTimezone);
@@ -389,6 +401,9 @@ export async function punchInEmployee({
     now: serverNow,
   });
 
+  // resolvePunchZone already enforces when geofenceEnabled OR attendanceVerification.gps.enabled.
+  const enforceGeofence = Boolean(resolved.enforce);
+
   /**
    * GPS failure policy (final behavior):
    * - Mandatory geofence (enforce=true) always requires coordinates — WARN cannot bypass geofence.
@@ -399,13 +414,13 @@ export async function punchInEmployee({
   const needsLocation =
     requireLocation ||
     policy?.locationRules?.requireLocationForPunch !== false ||
-    resolved.enforce ||
+    enforceGeofence ||
     (normalizedSessionType === ATTENDANCE_SESSION_TYPES.OFFICE && policy?.locationRules?.geofenceEnabled) ||
     normalizedSessionType === ATTENDANCE_SESSION_TYPES.REMOTE;
 
   let validatedLocation = null;
   if (!location) {
-    if (resolved.enforce) {
+    if (enforceGeofence) {
       throw new HttpError(400, "Location coordinates are required for this attendance mode.");
     }
     if (needsLocation && gpsFailurePolicy === "BLOCK") {
@@ -416,21 +431,21 @@ export async function punchInEmployee({
     assertLocationTimestampFresh(validatedLocation, policy, serverNow);
   }
 
-  if (resolved.enforce && !validatedLocation) {
+  if (enforceGeofence && !validatedLocation) {
     throw new HttpError(400, "Location coordinates are required for this attendance mode.");
   }
 
   // Geofence before any persistence / approval consumption.
   let geofenceMeta = null;
   let exception = null;
-  if (validatedLocation || resolved.enforce) {
+  if (validatedLocation || enforceGeofence) {
     const decision = await applyGeofenceDecision({
       models,
       employee,
       policy,
       location: validatedLocation,
       zone: resolved.zone,
-      enforce: resolved.enforce,
+      enforce: enforceGeofence,
       attendanceId: null,
       sessionId: null,
       workDate: todayStr,
@@ -440,6 +455,24 @@ export async function punchInEmployee({
     geofenceMeta = decision.geofence;
     exception = decision.exception;
   }
+
+  const geofenceApplies =
+    normalizedSessionType === ATTENDANCE_SESSION_TYPES.OFFICE || Boolean(resolved.enforce);
+  const verificationAudit = await runAttendanceVerifications({
+    models,
+    employee: {
+      _id: employee._id,
+      companyId: companyId || employee.companyId || null,
+    },
+    policy,
+    sessionType: normalizedSessionType,
+    geofenceApplies,
+    geofenceMeta,
+    wifiEvidence,
+    faceImageBase64,
+    clientPlatform,
+    clientClaims,
+  });
 
   const sessionId = new mongoose.Types.ObjectId();
   const approvalId = resolved.zone?.remoteWorkRequestId || null;
@@ -466,6 +499,7 @@ export async function punchInEmployee({
     checkInLocation: validatedLocation,
     checkOutLocation: null,
     checkInGeofence: geofenceMeta,
+    checkInVerification: verificationAudit,
     remoteWorkRequestId: approvalId,
     durationMinutes: 0,
     // Seed monitoring state from punch-in geofence so already-outside punches
@@ -568,6 +602,7 @@ export async function punchInEmployee({
       status: ATTENDANCE_SESSION_STATUSES.ACTIVE,
       checkInTime: serverNow.toISOString(),
       geofence: geofenceMeta,
+      verification: publicVerificationSummary(verificationAudit),
       exceptionId: exception?._id ? String(exception._id) : null,
     },
     today: {
@@ -601,9 +636,15 @@ export async function punchOutEmployee({
   location,
   requireLocation = false,
   companyTimezone = "Asia/Kolkata",
+  wifiEvidence = null,
+  faceImageBase64 = null,
+  clientPlatform = "",
+  clientClaims = null,
+  companyId = null,
 }) {
   const { Attendance } = models;
   const policy = await loadAttendancePolicy(models);
+  const verificationCfg = resolveAttendanceVerificationConfig(policy);
   const serverNow = new Date();
   let validatedLocation = null;
   if (location || requireLocation || policy?.locationRules?.requireLocationForPunch !== false) {
@@ -691,34 +732,76 @@ export async function punchOutEmployee({
 
   let geofenceMeta = null;
   let exception = null;
-  if (validatedLocation) {
-    const resolved = await resolvePunchZone({
-      models,
-      employee,
-      policy,
-      sessionType: openSession.sessionType || ATTENDANCE_SESSION_TYPES.OFFICE,
-      workDate: todayStr,
-      remoteWorkRequestId: openSession.remoteWorkRequestId,
-      companyTimezone,
-      now: serverNow,
-      allowConsumedApproval: true,
-    }).catch(() => ({ zone: null, enforce: false }));
+  const punchOutSessionType = openSession.sessionType || ATTENDANCE_SESSION_TYPES.OFFICE;
+  let resolvedOut = { zone: null, enforce: false };
+  const shouldResolveOutZone =
+    Boolean(validatedLocation) ||
+    verificationCfg.gps.enabled ||
+    Boolean(policy?.locationRules?.geofenceEnabled);
+  if (shouldResolveOutZone) {
+    try {
+      resolvedOut = await resolvePunchZone({
+        models,
+        employee,
+        policy,
+        sessionType: punchOutSessionType,
+        workDate: todayStr,
+        remoteWorkRequestId: openSession.remoteWorkRequestId,
+        companyTimezone,
+        now: serverNow,
+        allowConsumedApproval: true,
+      });
+    } catch (err) {
+      // Never swallow geofence resolution failures for office sessions that must enforce.
+      const mustEnforceOut =
+        punchOutSessionType === ATTENDANCE_SESSION_TYPES.OFFICE &&
+        (verificationCfg.gps.enabled || Boolean(policy?.locationRules?.geofenceEnabled));
+      if (mustEnforceOut) throw err;
+      resolvedOut = { zone: null, enforce: false };
+    }
+  }
+  const enforceOut = Boolean(
+    resolvedOut.enforce && policy?.locationRules?.applyGeofenceOnPunchOut !== false
+  );
+
+  if (validatedLocation || enforceOut) {
+    if (enforceOut && !validatedLocation) {
+      throw new HttpError(400, "Location coordinates are required to punch out.");
+    }
     const decision = await applyGeofenceDecision({
       models,
       employee,
       policy,
       location: validatedLocation,
-      zone: resolved.zone,
-      enforce: Boolean(resolved.enforce && policy?.locationRules?.applyGeofenceOnPunchOut !== false),
+      zone: resolvedOut.zone,
+      enforce: enforceOut,
       attendanceId: attendance._id,
       sessionId: openSession._id,
       workDate: todayStr,
-      sessionType: openSession.sessionType || ATTENDANCE_SESSION_TYPES.OFFICE,
+      sessionType: punchOutSessionType,
       phase: "PUNCH_OUT",
     });
     geofenceMeta = decision.geofence;
     exception = decision.exception;
   }
+
+  const geofenceAppliesOut =
+    punchOutSessionType === ATTENDANCE_SESSION_TYPES.OFFICE || Boolean(resolvedOut.enforce);
+  const verificationAudit = await runAttendanceVerifications({
+    models,
+    employee: {
+      _id: employee._id,
+      companyId: companyId || employee.companyId || null,
+    },
+    policy,
+    sessionType: punchOutSessionType,
+    geofenceApplies: geofenceAppliesOut,
+    geofenceMeta,
+    wifiEvidence,
+    faceImageBase64,
+    clientPlatform,
+    clientClaims,
+  });
 
   const diffMs = Math.max(0, serverNow.getTime() - new Date(openSession.checkIn).getTime());
   const durationMinutes = Math.round(diffMs / 60000);
@@ -735,6 +818,7 @@ export async function punchOutEmployee({
         "sessions.$[s].checkOut": serverNow,
         "sessions.$[s].checkOutLocation": validatedLocation,
         "sessions.$[s].checkOutGeofence": geofenceMeta,
+        "sessions.$[s].checkOutVerification": verificationAudit,
         "sessions.$[s].status": ATTENDANCE_SESSION_STATUSES.COMPLETED,
         "sessions.$[s].outsideRadius": false,
         "sessions.$[s].durationMinutes": durationMinutes,
@@ -826,6 +910,7 @@ export async function punchOutEmployee({
       checkOutTime: serverNow.toISOString(),
       durationMinutes: closedSession.durationMinutes ?? durationMinutes,
       geofence: geofenceMeta,
+      verification: publicVerificationSummary(verificationAudit),
       exceptionId: exception?._id ? String(exception._id) : null,
     },
     today: {
@@ -929,6 +1014,24 @@ export async function getEmployeeAttendanceStatus({
   }
 
   const workMode = getEmployeeWorkMode(employee);
+  const policy = await loadAttendancePolicy(models);
+  const openSessionType =
+    sessions.find((s) => s.id === openSessionId)?.sessionType || ATTENDANCE_SESSION_TYPES.OFFICE;
+  const verificationRequirements = buildEmployeeVerificationRequirements(policy, {
+    sessionType: hasActiveSession ? openSessionType : ATTENDANCE_SESSION_TYPES.OFFICE,
+    geofenceApplies: true,
+  });
+
+  let faceEnrollment = { enrolled: false };
+  if (models.EmployeeFaceEnrollment) {
+    const { getFaceEnrollmentStatus } = await import("./faceRecognitionService.js");
+    faceEnrollment = await getFaceEnrollmentStatus({
+      FaceEnrollment: models.EmployeeFaceEnrollment,
+      companyId: employee.companyId || null,
+      employeeId: employee._id,
+    });
+  }
+
   return {
     date: todayStr,
     status: todayStatus,
@@ -944,6 +1047,8 @@ export async function getEmployeeAttendanceStatus({
     canPunchIn: !hasActiveSession && todayStatus !== "ON_LEAVE",
     canPunchOut: hasActiveSession || todayStatus === "CHECKED_IN",
     canRequestRemote: workMode === "HYBRID" || workMode === "WFH",
+    verificationRequirements,
+    faceEnrollment,
   };
 }
 

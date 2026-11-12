@@ -272,6 +272,19 @@ export default function AdminPolicies() {
     gpsFailurePolicy: "BLOCK",
   });
 
+  const [attendanceVerification, setAttendanceVerification] = useState({
+    verificationRequired: false,
+    gps: { enabled: false, mandatory: true },
+    wifi: { enabled: false, mandatory: true },
+    face: { enabled: false, mandatory: true, matchThreshold: 0.55, requireLiveness: true },
+    wifiNetworks: [],
+  });
+  const [verificationOperationalStatus, setVerificationOperationalStatus] = useState({
+    faceEngineReady: false,
+    validatedLivenessConfigured: false,
+    warnings: [],
+  });
+
   const [workArrangementRules, setWorkArrangementRules] = useState({
     wfhLocationMode: "WFH_UNRESTRICTED",
     wfhRequireHomeApproval: false,
@@ -450,6 +463,13 @@ export default function AdminPolicies() {
 
       const historyList = historyRes.data?.policies || [];
       const activePolicy = activeRes.data?.policy;
+      setVerificationOperationalStatus(
+        activeRes.data?.verificationOperationalStatus || {
+          faceEngineReady: false,
+          validatedLivenessConfigured: false,
+          warnings: [],
+        }
+      );
 
       setRevisions(historyList);
 
@@ -568,6 +588,32 @@ export default function AdminPolicies() {
       maxAccuracyMeters: policy.locationRules?.maxAccuracyMeters ?? 100,
       accuracyFailurePolicy: policy.locationRules?.accuracyFailurePolicy || "WARN",
       gpsFailurePolicy: policy.locationRules?.gpsFailurePolicy || "BLOCK",
+    });
+
+    setAttendanceVerification({
+      verificationRequired: Boolean(policy.attendanceVerification?.verificationRequired),
+      gps: {
+        enabled: Boolean(policy.attendanceVerification?.gps?.enabled),
+        mandatory: policy.attendanceVerification?.gps?.mandatory !== false,
+      },
+      wifi: {
+        enabled: Boolean(policy.attendanceVerification?.wifi?.enabled),
+        mandatory: policy.attendanceVerification?.wifi?.mandatory !== false,
+      },
+      face: {
+        enabled: Boolean(policy.attendanceVerification?.face?.enabled),
+        mandatory: policy.attendanceVerification?.face?.mandatory !== false,
+        matchThreshold: policy.attendanceVerification?.face?.matchThreshold ?? 0.55,
+        requireLiveness: policy.attendanceVerification?.face?.requireLiveness !== false,
+      },
+      wifiNetworks: Array.isArray(policy.attendanceVerification?.wifiNetworks)
+        ? policy.attendanceVerification.wifiNetworks.map((n) => ({
+            label: n.label || "",
+            ssid: n.ssid || "",
+            bssid: n.bssid || "",
+            active: n.active !== false,
+          }))
+        : [],
     });
 
     setWorkArrangementRules({
@@ -863,6 +909,7 @@ export default function AdminPolicies() {
         officeLatitude: locationRules.officeLatitude !== "" ? Number(locationRules.officeLatitude) : null,
         officeLongitude: locationRules.officeLongitude !== "" ? Number(locationRules.officeLongitude) : null,
       },
+      attendanceVerification,
       workArrangementRules,
       payrollRules,
       salaryComponentRules,
@@ -2868,6 +2915,280 @@ export default function AdminPolicies() {
                   disabled={Boolean(savingSection)}
                 >
                   {savingSection === "location_tracking" ? "Saving..." : "Save Location Settings"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activePolicyCard === "attendance_leave" && (
+            <div id="pol-attendance-verification" className="policies-section-card">
+              <div className="policies-card-header">
+                <div className="policies-card-title-group">
+                  <div className="policies-card-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="policies-card-title">Attendance Verification</h3>
+                    <p className="policies-field-hint" style={{ marginTop: 4 }}>
+                      Enable GPS, Wi-Fi, and face recognition. Mandatory methods must all pass before punch-in/out is accepted.
+                      Defaults keep existing companies unrestricted until you enable methods.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {Array.isArray(verificationOperationalStatus?.warnings) &&
+              verificationOperationalStatus.warnings.length > 0 ? (
+                <div
+                  role="status"
+                  style={{
+                    marginBottom: 14,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(180, 83, 9, 0.35)",
+                    background: "rgba(254, 243, 199, 0.45)",
+                  }}
+                >
+                  <strong style={{ display: "block", marginBottom: 6 }}>Verification readiness</strong>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {verificationOperationalStatus.warnings.map((w) => (
+                      <li key={`${w.code}-${w.method}`} style={{ marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{w.method}</span>
+                        {w.severity === "error" ? " (blocking): " : ": "}
+                        {w.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <label className="policies-checkbox-card" style={{ marginBottom: 14 }}>
+                <input
+                  type="checkbox"
+                  className="policies-checkbox-input"
+                  checked={attendanceVerification.verificationRequired}
+                  onChange={(e) =>
+                    setAttendanceVerification({
+                      ...attendanceVerification,
+                      verificationRequired: e.target.checked,
+                    })
+                  }
+                />
+                <div className="policies-checkbox-text">
+                  <span className="policies-checkbox-title">Require attendance verification</span>
+                  <span className="policies-checkbox-desc">
+                    When on, at least one verification method must be enabled. When all methods are off and this is off,
+                    punches follow legacy location/geofence rules only.
+                  </span>
+                </div>
+              </label>
+
+              <div className="policies-form-grid-3">
+                {[
+                  {
+                    key: "gps",
+                    title: "GPS geofencing",
+                    hint: "Uses office coordinates, radius, and out-of-radius policy above. Enabling this enforces the office geofence even if the legacy geofence toggle is off. Not applied to approved remote sessions.",
+                  },
+                  {
+                    key: "wifi",
+                    title: "Wi-Fi verification",
+                    hint: "Android app + server challenge. Mandatory Wi-Fi requires router BSSID/MAC (SSID-only is not unique). OS-reported — not 802.1X proof. Desktop cannot satisfy mandatory Wi-Fi.",
+                  },
+                  {
+                    key: "face",
+                    title: "Face recognition",
+                    hint: "Server-side embedding match. Mandatory face requires models + a validated liveness provider (heuristic is not anti-spoofing).",
+                  },
+                ].map((m) => (
+                  <div key={m.key} className="policies-field-group" style={{ border: "1px solid var(--hair,#e6ede8)", borderRadius: 8, padding: 12 }}>
+                    <label className="policies-checkbox-card" style={{ marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        className="policies-checkbox-input"
+                        checked={Boolean(attendanceVerification[m.key]?.enabled)}
+                        onChange={(e) =>
+                          setAttendanceVerification({
+                            ...attendanceVerification,
+                            [m.key]: { ...attendanceVerification[m.key], enabled: e.target.checked },
+                          })
+                        }
+                      />
+                      <div className="policies-checkbox-text">
+                        <span className="policies-checkbox-title">{m.title}</span>
+                        <span className="policies-checkbox-desc">{m.hint}</span>
+                      </div>
+                    </label>
+                    <label className="policies-field-label">Requirement</label>
+                    <select
+                      className="policies-input-control"
+                      value={attendanceVerification[m.key]?.mandatory ? "mandatory" : "optional"}
+                      disabled={!attendanceVerification[m.key]?.enabled}
+                      onChange={(e) =>
+                        setAttendanceVerification({
+                          ...attendanceVerification,
+                          [m.key]: {
+                            ...attendanceVerification[m.key],
+                            mandatory: e.target.value === "mandatory",
+                          },
+                        })
+                      }
+                    >
+                      <option value="mandatory">Mandatory</option>
+                      <option value="optional">Optional</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              {attendanceVerification.face?.enabled ? (
+                <div className="policies-form-grid-3" style={{ marginTop: 14 }}>
+                  <div className="policies-field-group">
+                    <label className="policies-field-label">Face match threshold</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.2"
+                      max="1.2"
+                      className="policies-input-control"
+                      value={attendanceVerification.face.matchThreshold}
+                      onChange={(e) =>
+                        setAttendanceVerification({
+                          ...attendanceVerification,
+                          face: {
+                            ...attendanceVerification.face,
+                            matchThreshold: Number(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                    <span className="policies-field-hint">Euclidean distance (lower = stricter). Default 0.55.</span>
+                  </div>
+                  <div className="policies-field-group">
+                    <label className="policies-field-label">Liveness check</label>
+                    <select
+                      className="policies-input-control"
+                      value={attendanceVerification.face.requireLiveness ? "on" : "off"}
+                      onChange={(e) =>
+                        setAttendanceVerification({
+                          ...attendanceVerification,
+                          face: {
+                            ...attendanceVerification.face,
+                            requireLiveness: e.target.value === "on",
+                          },
+                        })
+                      }
+                    >
+                      <option value="on">Required</option>
+                      <option value="off">Off (not recommended)</option>
+                    </select>
+                  </div>
+                </div>
+              ) : null}
+
+              {attendanceVerification.wifi?.enabled ? (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <label className="policies-field-label" style={{ margin: 0 }}>Authorized office Wi-Fi networks</label>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() =>
+                        setAttendanceVerification({
+                          ...attendanceVerification,
+                          wifiNetworks: [
+                            ...attendanceVerification.wifiNetworks,
+                            { label: "", ssid: "", bssid: "", active: true },
+                          ],
+                        })
+                      }
+                    >
+                      Add network
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {attendanceVerification.wifiNetworks.map((net, idx) => (
+                      <div key={idx} className="policies-form-grid-3" style={{ alignItems: "end" }}>
+                        <div className="policies-field-group">
+                          <label className="policies-field-label">Label</label>
+                          <input
+                            className="policies-input-control"
+                            value={net.label}
+                            onChange={(e) => {
+                              const wifiNetworks = [...attendanceVerification.wifiNetworks];
+                              wifiNetworks[idx] = { ...net, label: e.target.value };
+                              setAttendanceVerification({ ...attendanceVerification, wifiNetworks });
+                            }}
+                          />
+                        </div>
+                        <div className="policies-field-group">
+                          <label className="policies-field-label">SSID</label>
+                          <input
+                            className="policies-input-control"
+                            value={net.ssid}
+                            onChange={(e) => {
+                              const wifiNetworks = [...attendanceVerification.wifiNetworks];
+                              wifiNetworks[idx] = { ...net, ssid: e.target.value };
+                              setAttendanceVerification({ ...attendanceVerification, wifiNetworks });
+                            }}
+                          />
+                        </div>
+                        <div className="policies-field-group">
+                          <label className="policies-field-label">BSSID (optional)</label>
+                          <input
+                            className="policies-input-control"
+                            placeholder="aa:bb:cc:dd:ee:ff"
+                            value={net.bssid}
+                            onChange={(e) => {
+                              const wifiNetworks = [...attendanceVerification.wifiNetworks];
+                              wifiNetworks[idx] = { ...net, bssid: e.target.value };
+                              setAttendanceVerification({ ...attendanceVerification, wifiNetworks });
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <label className="policies-checkbox-card" style={{ flex: 1 }}>
+                            <input
+                              type="checkbox"
+                              checked={net.active !== false}
+                              onChange={(e) => {
+                                const wifiNetworks = [...attendanceVerification.wifiNetworks];
+                                wifiNetworks[idx] = { ...net, active: e.target.checked };
+                                setAttendanceVerification({ ...attendanceVerification, wifiNetworks });
+                              }}
+                            />
+                            <span className="policies-checkbox-title">Active</span>
+                          </label>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-sm"
+                            onClick={() => {
+                              const wifiNetworks = attendanceVerification.wifiNetworks.filter((_, i) => i !== idx);
+                              setAttendanceVerification({ ...attendanceVerification, wifiNetworks });
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {!attendanceVerification.wifiNetworks.length ? (
+                      <span className="policies-field-hint">No authorized networks configured yet.</span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="policies-save-bar">
+                <button
+                  type="button"
+                  className="policies-section-save-btn"
+                  onClick={() => handleSaveSection("attendance_verification")}
+                  disabled={Boolean(savingSection)}
+                >
+                  {savingSection === "attendance_verification" ? "Saving..." : "Save Verification Settings"}
                 </button>
               </div>
             </div>

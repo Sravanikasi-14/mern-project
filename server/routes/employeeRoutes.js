@@ -51,6 +51,14 @@ import {
   getMyRemoteWorkRequests,
   cancelMyRemoteWorkRequest,
 } from "../controllers/attendanceController.js";
+import {
+  getMyFaceEnrollment,
+  enrollMyFace,
+  revokeMyFace,
+  getEmployeeFaceEnrollmentAdmin,
+  revokeEmployeeFaceEnrollmentAdmin,
+} from "../controllers/faceEnrollmentController.js";
+import { issuePunchVerificationChallenge } from "../controllers/verificationChallengeController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
 import {
@@ -74,6 +82,16 @@ router.post("/me/attendance/check-in", authenticate, handleCheckIn);
 router.post("/me/attendance/check-out", authenticate, handleCheckOut);
 router.get("/me/attendance/status", authenticate, getAttendanceStatus);
 router.get("/me/attendance/history", authenticate, getAttendanceHistory);
+router.post(
+  "/me/attendance/verification-challenge",
+  authenticate,
+  issuePunchVerificationChallenge
+);
+
+// Face biometric enrollment (self-service)
+router.get("/me/face-enrollment", authenticate, getMyFaceEnrollment);
+router.post("/me/face-enrollment", authenticate, enrollMyFace);
+router.delete("/me/face-enrollment", authenticate, revokeMyFace);
 router.post("/me/attendance/remote-requests", authenticate, postRemoteWorkRequest);
 router.get("/me/attendance/remote-requests", authenticate, getMyRemoteWorkRequests);
 router.post("/me/attendance/remote-requests/:id/cancel", authenticate, cancelMyRemoteWorkRequest);
@@ -224,6 +242,18 @@ router.post(
   requireHrPermission("people.edit"),
   requireEmployeeInScope((req) => req.params.id),
   resendInvitation
+);
+router.get(
+  "/:id/face-enrollment",
+  requireHrPermission("people.view"),
+  requireEmployeeInScope((req) => req.params.id),
+  getEmployeeFaceEnrollmentAdmin
+);
+router.delete(
+  "/:id/face-enrollment",
+  requireHrPermission("people.edit"),
+  requireEmployeeInScope((req) => req.params.id),
+  revokeEmployeeFaceEnrollmentAdmin
 );
 router.get(
   "/:id",

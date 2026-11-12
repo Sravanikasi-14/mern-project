@@ -408,9 +408,16 @@ describe("out-of-radius location notifications", () => {
       type: NOTIFICATION_TYPES.ATTENDANCE,
       title: /outside permitted/i,
     }).lean();
-    assert.ok(outsideNotes.length >= 2, "employee + HR broadcast expected");
+    assert.ok(outsideNotes.length >= 2, "employee + HR portal recipients expected");
     assert.ok(outsideNotes.some((n) => String(n.userId) === String(userA._id)));
-    assert.ok(outsideNotes.some((n) => n.userId == null && n.role === "HR_ADMIN"));
+    assert.ok(
+      outsideNotes.some(
+        (n) =>
+          String(n.userId) === String(hrUser._id) ||
+          (n.userId == null && (n.role === "HR_ADMIN" || n.role === "COMPANY_ADMIN"))
+      ),
+      "HR portal operator must receive the outside-radius alert"
+    );
 
     const forA = await request(app).get("/api/notifications").set("Cookie", cookies.a);
     const forB = await request(app).get("/api/notifications").set("Cookie", cookies.b);
@@ -470,8 +477,16 @@ describe("out-of-radius location notifications", () => {
       type: NOTIFICATION_TYPES.ATTENDANCE,
       "metadata.type": "OUTSIDE_GEOFENCE",
     }).lean();
-    // employee personal + HR role broadcast
-    assert.equal(afterLeave.length, 2);
+    // employee personal + at least one HR portal recipient
+    assert.ok(afterLeave.length >= 2);
+    assert.ok(afterLeave.some((n) => String(n.userId) === String(userA._id)));
+    assert.ok(
+      afterLeave.some(
+        (n) =>
+          String(n.userId) === String(hrUser._id) ||
+          (n.userId == null && (n.role === "HR_ADMIN" || n.role === "COMPANY_ADMIN"))
+      )
+    );
 
     await models.LiveTrackingSession.updateOne(
       { employeeId: empA._id, status: "ACTIVE" },
@@ -489,7 +504,7 @@ describe("out-of-radius location notifications", () => {
       type: NOTIFICATION_TYPES.ATTENDANCE,
       "metadata.type": "RETURNED_INSIDE",
     }).lean();
-    assert.equal(returns.length, 2);
+    assert.ok(returns.length >= 2);
 
     const forB = await request(app).get("/api/notifications").set("Cookie", cookies.b);
     assert.equal(JSON.stringify(forB.body).includes("Employee A"), false);

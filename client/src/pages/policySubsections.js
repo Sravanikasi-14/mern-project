@@ -11,6 +11,7 @@ export const POLICY_SUBSECTIONS = {
     { id: "pol-holidays", label: "Holidays" },
     { id: "pol-weekends", label: "Weekends" },
     { id: "pol-geofence", label: "Location / Geofence" },
+    { id: "pol-attendance-verification", label: "Verification" },
     { id: "pol-wfh-hybrid", label: "WFH & Hybrid" },
   ],
   payroll_compensation: [

@@ -1,13 +1,15 @@
 import crypto from "node:crypto";
 
 /**
- * Server-validated client platform for live-tracking policy (allowWebTracking).
+ * Server-validated client platform helpers.
  *
- * Android/native clients prove identity at login with HMAC headers using
- * HRMS_NATIVE_CLIENT_SECRET (never trust body/query platform or User-Agent alone).
- * The verified platform is stored on AuthSession and reused for tracking start.
+ * AuthSession.clientPlatform is informational for audit / live-tracking UX.
+ * It is NEVER treated as proof of device authenticity for attendance Wi-Fi.
+ * Client-reported body/header platform values are never trusted for punch gates.
  *
- * Web builds do not ship the native secret, so they cannot forge ANDROID/IOS.
+ * Shared-secret HMAC is DISABLED in production — VITE_* secrets must never ship in APKs.
+ * Legacy HMAC is available only when NODE_ENV=test AND ALLOW_LEGACY_NATIVE_HMAC_PROOF=true
+ * (automated tests / live-tracking privacy tests).
  */
 
 export const CLIENT_PLATFORMS = Object.freeze({
@@ -25,7 +27,12 @@ export const CLIENT_PLATFORM_HEADERS = Object.freeze({
   PROOF: "x-hrms-client-proof",
 });
 
+function legacyHmacAllowed() {
+  return process.env.NODE_ENV === "test" && process.env.ALLOW_LEGACY_NATIVE_HMAC_PROOF === "true";
+}
+
 function getNativeClientSecret() {
+  if (!legacyHmacAllowed()) return null;
   const secret = process.env.HRMS_NATIVE_CLIENT_SECRET;
   if (typeof secret === "string" && secret.trim().length >= 16) {
     return secret.trim();
@@ -51,6 +58,7 @@ function timingSafeEqualHex(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+/** @deprecated Test-only. Do not use in production clients. */
 export function buildNativeClientProof(platform, timestampMs, secret = getNativeClientSecret()) {
   if (!secret) return null;
   const normalized = normalizePlatform(platform);
@@ -60,8 +68,8 @@ export function buildNativeClientProof(platform, timestampMs, secret = getNative
 }
 
 /**
- * Verify native client proof from request headers.
- * Returns a native platform on success; otherwise null (caller should treat as web).
+ * Verify legacy native HMAC proof (test-only).
+ * Returns a native platform on success; otherwise null (caller treats as web).
  */
 export function verifyNativeClientPlatformFromHeaders(headers = {}) {
   const secret = getNativeClientSecret();
@@ -91,7 +99,7 @@ export function verifyNativeClientPlatformFromHeaders(headers = {}) {
 
 /**
  * Resolve platform for a new AuthSession at login / token issue time.
- * Unverified or missing native proof → WEB (fail closed for web-tracking bypass).
+ * Production always starts as WEB (informational). Test harness may elevate via HMAC.
  */
 export function resolveClientPlatformForAuthSession(req) {
   const verified = verifyNativeClientPlatformFromHeaders(req?.headers || {});
@@ -106,16 +114,22 @@ export function isWebClientPlatform(platform) {
 /**
  * Read platform previously bound to the active AuthSession for this token.
  * Defaults to WEB when session is missing or platform unset.
+ * Never trusts request body or client-supplied platform headers.
+ * Informational only — must not be used as device authenticity proof.
  */
 export async function resolveClientPlatformFromAuthSession(models, token) {
   if (!token || !models?.AuthSession) {
     return CLIENT_PLATFORMS.WEB;
   }
-  const session = await models.AuthSession.findOne({ token, isActive: true })
-    .select("clientPlatform")
-    .lean();
-  const normalized = normalizePlatform(session?.clientPlatform);
-  return normalized || CLIENT_PLATFORMS.WEB;
+  try {
+    const session = await models.AuthSession.findOne({ token, isActive: true })
+      .select("clientPlatform")
+      .lean();
+    const normalized = normalizePlatform(session?.clientPlatform);
+    return normalized || CLIENT_PLATFORMS.WEB;
+  } catch {
+    return CLIENT_PLATFORMS.WEB;
+  }
 }
 
 export function extractRequestAuthToken(req, cookieName = process.env.AUTH_COOKIE_NAME || "hrms_auth") {

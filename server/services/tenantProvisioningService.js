@@ -6,6 +6,8 @@ import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrP
 import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getOfferTemplateModel } from "../models/OfferTemplate.js";
 import { getAttendanceModel } from "../models/Attendance.js";
+import { getEmployeeFaceEnrollmentModel } from "../models/EmployeeFaceEnrollment.js";
+import { getAttendanceVerificationChallengeModel } from "../models/AttendanceVerificationChallenge.js";
 import { getLiveTrackingSessionModel } from "../models/LiveTrackingSession.js";
 import { getPayrollCycleModel } from "../models/PayrollCycle.js";
 import { getPayslipModel } from "../models/Payslip.js";
@@ -179,6 +181,32 @@ export async function provisionTenantDatabase(company, connection) {
   try {
     await Attendance.createIndexes();
     outcome.indexesCreated.push("attendances: { employeeId: 1, date: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  if (!existingColNames.has("employee_face_enrollments")) {
+    await db.createCollection("employee_face_enrollments");
+    outcome.collectionsCreated.push("employee_face_enrollments");
+    outcome.repaired = true;
+  }
+  const EmployeeFaceEnrollment = getEmployeeFaceEnrollmentModel(conn);
+  try {
+    await EmployeeFaceEnrollment.createIndexes();
+    outcome.indexesCreated.push("employee_face_enrollments: { companyId, employeeId, status }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  if (!existingColNames.has("attendance_verification_challenges")) {
+    await db.createCollection("attendance_verification_challenges");
+    outcome.collectionsCreated.push("attendance_verification_challenges");
+    outcome.repaired = true;
+  }
+  const AttendanceVerificationChallenge = getAttendanceVerificationChallengeModel(conn);
+  try {
+    await AttendanceVerificationChallenge.createIndexes();
+    outcome.indexesCreated.push("attendance_verification_challenges: nonce unique, employeeId+purpose");
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }
