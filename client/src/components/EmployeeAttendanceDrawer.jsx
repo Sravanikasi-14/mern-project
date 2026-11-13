@@ -335,11 +335,26 @@ export default function EmployeeAttendanceDrawer({
   }, [employeeList, currentIndex, employeeId]);
 
   const displayEmployee = employeeInfo || listEmployee;
-  const subtitle = [
-    displayEmployee?.employeeCode || "—",
-    displayEmployee?.jobTitle || displayEmployee?.role || "Team Member",
-    displayEmployee?.department || "General",
-  ].join(" · ");
+  const employeeCode = displayEmployee?.employeeCode || "—";
+  const jobTitle =
+    displayEmployee?.jobTitle || displayEmployee?.role || "Team Member";
+  const department = displayEmployee?.department || "General";
+  const reportingManager = (() => {
+    const raw =
+      displayEmployee?.reportingManager ||
+      displayEmployee?.reportingManagerName ||
+      displayEmployee?.managerName ||
+      displayEmployee?.job?.reportingManagerId;
+    if (!raw) return "";
+    if (typeof raw === "string") return raw.trim();
+    if (typeof raw === "object") {
+      return String(raw.fullName || raw.name || "").trim();
+    }
+    return "";
+  })();
+  const subtitle = [employeeCode, jobTitle, department]
+    .filter(Boolean)
+    .join(" · ");
 
   const legend = (
     <ul className="mc-legend" aria-label="Attendance legend">
@@ -405,31 +420,26 @@ export default function EmployeeAttendanceDrawer({
       }
     >
       {displayEmployee ? (
-        <div className="att-drawer-emp-avatar" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div className="att-drawer-emp-profile">
           <AuthedAvatar
             className="att-drawer-emp-avatar"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #1d7347, #0d3a23)",
-              color: "#fff",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 13,
-              fontWeight: 700,
-              overflow: "hidden",
+            employee={{
+              _id: employeeId || displayEmployee._id || displayEmployee.employeeId,
+              avatar: displayEmployee.avatar,
             }}
-            employee={{ _id: employeeId || displayEmployee._id || displayEmployee.employeeId, avatar: displayEmployee.avatar }}
             avatar={displayEmployee.avatar}
             name={displayEmployee.fullName}
             initials={initialsFromName(displayEmployee.fullName, "E")}
             alt={displayEmployee.fullName || "Employee"}
           />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700 }}>{displayEmployee.fullName}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>{subtitle}</div>
+          <div className="att-drawer-emp-info">
+            <h3 className="att-drawer-emp-name">{displayEmployee.fullName}</h3>
+            <div className="att-drawer-emp-meta">
+              <span className="att-drawer-emp-tag">{employeeCode}</span>
+              <span>{jobTitle}</span>
+              <span>{department}</span>
+              {reportingManager ? <span>Reports to {reportingManager}</span> : null}
+            </div>
           </div>
         </div>
       ) : null}
