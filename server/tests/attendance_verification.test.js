@@ -267,6 +267,139 @@ describe("attendance verification unit helpers", () => {
   });
 });
 
+describe("face liveness provider registry (Phase 1)", () => {
+  async function loadRegistry() {
+    return import("../services/faceLivenessProvider.js");
+  }
+
+  function withEnv(provider, fn) {
+    const prev = process.env.FACE_LIVENESS_PROVIDER;
+    const prevNode = process.env.NODE_ENV;
+    return (async () => {
+      try {
+        if (provider === undefined) delete process.env.FACE_LIVENESS_PROVIDER;
+        else process.env.FACE_LIVENESS_PROVIDER = provider;
+        await fn();
+      } finally {
+        process.env.NODE_ENV = prevNode;
+        if (prev === undefined) delete process.env.FACE_LIVENESS_PROVIDER;
+        else process.env.FACE_LIVENESS_PROVIDER = prev;
+      }
+    })();
+  }
+
+  function assertMandatoryFaceSanitizeBlocked() {
+    // Keep NODE_ENV=test so recognition-model disk probe is skipped; liveness registry still fails.
+    setFaceEngine({
+      analyze: async () => ({
+        ok: true,
+        faceCount: 1,
+        embedding: hashSeedToEmbedding("alice"),
+        livenessScore: 0.9,
+      }),
+    });
+    assert.throws(
+      () =>
+        sanitizeAttendanceVerification({
+          attendanceVerification: {
+            verificationRequired: true,
+            gps: { enabled: false },
+            wifi: { enabled: false },
+            face: { enabled: true, mandatory: true, matchThreshold: 0.55, requireLiveness: true },
+          },
+        }),
+      /mandatory face|liveness|Unknown FACE_LIVENESS_PROVIDER|PAD|MiniFASNet|not implemented|Phase 2/i
+    );
+  }
+
+  it("arbitrary provider strings cannot unlock mandatory verification", async () => {
+    const { isValidatedLivenessConfigured } = await loadRegistry();
+    await withEnv("vendor:paid-api", () => {
+      process.env.NODE_ENV = "production";
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.equal(status.reason, "UNKNOWN_PROVIDER");
+    });
+    await withEnv("challenge-response", () => {
+      process.env.NODE_ENV = "production";
+      assert.equal(isValidatedLivenessConfigured().ok, false);
+      assert.equal(isValidatedLivenessConfigured().reason, "UNKNOWN_PROVIDER");
+    });
+    await withEnv("vendor:paid-api", () => {
+      process.env.NODE_ENV = "test";
+      assertMandatoryFaceSanitizeBlocked();
+    });
+  });
+
+  it("heuristic-only verification cannot unlock mandatory verification", async () => {
+    const { isValidatedLivenessConfigured } = await loadRegistry();
+    await withEnv("heuristic", () => {
+      process.env.NODE_ENV = "production";
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.equal(status.reason, "NOT_VALIDATED_PAD");
+    });
+    await withEnv(undefined, () => {
+      process.env.NODE_ENV = "production";
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.equal(status.provider, "heuristic");
+    });
+    await withEnv("heuristic", () => {
+      process.env.NODE_ENV = "test";
+      assertMandatoryFaceSanitizeBlocked();
+    });
+  });
+
+  it("uninitialized / not-implemented MiniFASNet cannot unlock mandatory verification", async () => {
+    const { isValidatedLivenessConfigured, getLivenessProvider } = await loadRegistry();
+    await withEnv("minifasnet", () => {
+      process.env.NODE_ENV = "production";
+      const entry = getLivenessProvider("minifasnet");
+      assert.equal(entry.implemented, false);
+      assert.equal(entry.isReady().ok, false);
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.ok(["NOT_IMPLEMENTED", "NOT_READY"].includes(status.reason));
+    });
+    await withEnv("minifasnet", () => {
+      process.env.NODE_ENV = "test";
+      assertMandatoryFaceSanitizeBlocked();
+    });
+  });
+
+  it("missing PAD models cannot unlock mandatory verification (minifasnet not ready)", async () => {
+    const { isValidatedLivenessConfigured } = await loadRegistry();
+    // Phase 1: minifasnet is registered as PAD but has no models/integration — isReady fails.
+    await withEnv("minifasnet", () => {
+      process.env.NODE_ENV = "development";
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.match(status.message || "", /not implemented|Phase 2|models|unavailable/i);
+    });
+  });
+
+  it("test-harness cannot unlock outside NODE_ENV=test", async () => {
+    const { isValidatedLivenessConfigured } = await loadRegistry();
+    await withEnv("test-harness", () => {
+      process.env.NODE_ENV = "production";
+      const status = isValidatedLivenessConfigured();
+      assert.equal(status.ok, false);
+      assert.equal(status.reason, "NOT_READY");
+    });
+  });
+
+  it("existing recognition encryption flows remain intact", () => {
+    const emb = hashSeedToEmbedding("phase1-alice");
+    const sealed = encryptEmbedding(emb);
+    assert.ok(sealed.embeddingCiphertext);
+    assert.ok(sealed.embeddingIv);
+    assert.ok(sealed.embeddingAuthTag);
+    const back = decryptEmbedding(sealed);
+    assert.equal(compareEmbeddings(emb, back, 0.01).matched, true);
+  });
+});
+
 describe("attendance verification integration", () => {
   let mongoServer;
   let app;
@@ -276,6 +409,7 @@ describe("attendance verification integration", () => {
   let employeeUser;
   let employee;
   let cookies = {};
+  let prevFaceLivenessProvider;
 
   async function punchChallenge(cookie) {
     const res = await request(app)
@@ -289,6 +423,10 @@ describe("attendance verification integration", () => {
   }
 
   before(async () => {
+    // Mandatory-face punch tests need a registered PAD unlock; production stays locked.
+    prevFaceLivenessProvider = process.env.FACE_LIVENESS_PROVIDER;
+    process.env.FACE_LIVENESS_PROVIDER = "test-harness";
+
     mongoServer = await MongoMemoryServer.create();
     process.env.MONGO_URI = mongoServer.getUri();
     await connectCentralDB();
@@ -381,6 +519,8 @@ describe("attendance verification integration", () => {
 
   after(async () => {
     resetFaceEngine();
+    if (prevFaceLivenessProvider === undefined) delete process.env.FACE_LIVENESS_PROVIDER;
+    else process.env.FACE_LIVENESS_PROVIDER = prevFaceLivenessProvider;
     if (server) await new Promise((resolve) => server.close(resolve));
     await disconnectAll();
     if (mongoServer) await mongoServer.stop();
@@ -1321,6 +1461,9 @@ describe("attendance verification integration", () => {
     delete process.env.FACE_LIVENESS_PROVIDER;
     const status = isValidatedLivenessConfigured();
     assert.equal(status.ok, false);
+    // Sanitize model-disk probe skips when NODE_ENV=test; use test + empty provider for policy gate.
+    process.env.NODE_ENV = "test";
+    delete process.env.FACE_LIVENESS_PROVIDER;
     assert.throws(
       () =>
         sanitizeAttendanceVerification({
@@ -1331,7 +1474,7 @@ describe("attendance verification integration", () => {
             face: { enabled: true, mandatory: true, matchThreshold: 0.55, requireLiveness: true },
           },
         }),
-      /liveness|mandatory face/i
+      /liveness|mandatory face|PAD|heuristic/i
     );
     process.env.NODE_ENV = prev;
     if (prevProvider === undefined) delete process.env.FACE_LIVENESS_PROVIDER;

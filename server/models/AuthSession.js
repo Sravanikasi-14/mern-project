@@ -64,6 +64,11 @@ export function createAuthSessionSchema() {
     }
   );
 
+  // Revoke-all / password-change: updateMany({ userId, isActive: true })
+  authSessionSchema.index({ userId: 1, isActive: 1 });
+  // Authenticate hot path: findOne({ token, isActive: true })
+  authSessionSchema.index({ token: 1, isActive: 1 });
+
   return authSessionSchema;
 }
 

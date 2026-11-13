@@ -11,12 +11,15 @@ import { TableSkeletonRows } from "../components/TableSkeleton";
 import { IconMapPin, IconClipboardList } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { useTrackingSessionsQuery } from "../hooks/useAdminQueries";
+import { attendancePollIntervalMs } from "../lib/attendancePollInterval";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import AuthedAvatar from "../components/AuthedAvatar";
 import { initialsFromName } from "../utils/employeeAvatar";
 import "./Attendance.css";
 
+/** Live map refresh while the tab is visible; slower when nobody is eligible. */
 const POLL_MS = 60_000;
+const POLL_EMPTY_MS = 180_000;
 
 const HISTORY_STATUS_OPTIONS = [
   { value: "ALL", label: "All statuses" },
@@ -156,15 +159,23 @@ export default function AdminLiveTracking() {
   const [drawer, setDrawer] = useState({ employeeId: null, index: -1, source: "live" });
 
   // Live map: punched-in employees (+ optional live sharing); no date range → `live` only.
+  // F38: single poller for live; history is on-demand (no duplicate 60s cycle).
   const liveQuery = useTrackingSessionsQuery(
     { department },
-    { refetchInterval: POLL_MS, refetchIntervalInBackground: false }
+    {
+      refetchInterval: (query) =>
+        attendancePollIntervalMs(POLL_MS, query, {
+          slowWhenEmptyMs: POLL_EMPTY_MS,
+          emptyPath: (data) => data?.live,
+        }),
+      refetchIntervalInBackground: false,
+    }
   );
 
-  // History: sessions started within the selected range.
+  // History: sessions started within the selected range (fetch on filter change only).
   const historyQuery = useTrackingSessionsQuery(
     { startDate, endDate, department, status: historyStatus },
-    { refetchInterval: POLL_MS, refetchIntervalInBackground: false }
+    { refetchInterval: false, refetchIntervalInBackground: false }
   );
 
   const liveRows = useMemo(() => liveQuery.data?.live || [], [liveQuery.data]);

@@ -76,6 +76,7 @@ export default function AdminPayroll() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [settlementPage, setSettlementPage] = useState(1);
   const [settlementPageSize, setSettlementPageSize] = useState(10);
+  const [settlementTotal, setSettlementTotal] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -88,12 +89,9 @@ export default function AdminPayroll() {
     setSettlementPage(1);
   }, [debouncedSearchTerm, statusFilter]);
 
-  const totalSettlements = settlements.length;
+  const totalSettlements = settlementTotal;
   const totalSettlementPages = Math.ceil((totalSettlements || 1) / settlementPageSize);
-  const paginatedSettlements = useMemo(() => {
-    const start = (settlementPage - 1) * settlementPageSize;
-    return settlements.slice(start, start + settlementPageSize);
-  }, [settlements, settlementPage, settlementPageSize]);
+  const paginatedSettlements = settlements;
 
   // Selected Settlement Details State
   const [selectedSettlementId, setSelectedSettlementId] = useState(null);
@@ -202,10 +200,15 @@ export default function AdminPayroll() {
         const queryParams = new URLSearchParams();
         if (debouncedSearchTerm.trim()) queryParams.set("search", debouncedSearchTerm.trim());
         if (statusFilter !== "ALL") queryParams.set("status", statusFilter);
+        queryParams.set("page", String(settlementPage));
+        queryParams.set("limit", String(settlementPageSize));
 
         const res = await api.get(`/settlements?${queryParams.toString()}`);
         if (!cancelled) {
           setSettlements(res.data?.settlements || []);
+          setSettlementTotal(
+            typeof res.data?.total === "number" ? res.data.total : res.data?.settlements?.length || 0
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -220,7 +223,7 @@ export default function AdminPayroll() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, debouncedSearchTerm, statusFilter, refreshKey]);
+  }, [activeTab, debouncedSearchTerm, statusFilter, refreshKey, settlementPage, settlementPageSize]);
 
   // Fetch selected settlement details
   useEffect(() => {

@@ -16,15 +16,20 @@ export {
   maxActiveTasks,
   autoAssignPriorities,
   lockTtlMs,
+  companyConcurrency,
+  schedulerBudgetMs,
+  maxCompaniesPerInvocation,
 } from "./config.js";
 
 export { loadAssignableTaskQueue } from "./taskQueue.js";
 export { resolveTaskPriorityScore, sortTasksByPriority } from "./priorityResolver.js";
 export {
   loadEligibleEmployees,
+  loadOnLeaveEmployeeIds,
   evaluateAssigneeEligibility,
   evaluateAssigneeEligibilitySync,
   assertAssigneeEligibleForTask,
+  ELIGIBLE_EMPLOYEE_SELECT,
 } from "./eligibility.js";
 export { calculateWorkloadByEmployee, applyAssignmentToWorkload } from "./workload.js";
 export { scoreEmployeeForTask, pickBestEmployee } from "./fairness.js";
@@ -40,4 +45,16 @@ export {
   runSchedulerForAllCompanies,
   acquireCompanySchedulerLock,
   releaseCompanySchedulerLock,
+  orderCompaniesForScheduler,
+  mapWithBoundedConcurrency,
 } from "./executionController.js";
+export {
+  FLEET_STATE_ID,
+  FLEET_COLLECTION,
+  FLEET_WAVE_STALE_MS,
+  beginOrResumeSchedulerWave,
+  clearFleetProgress,
+  companyNeedsSchedulerRun,
+  loadFleetProgress,
+  saveFleetProgress,
+} from "./fleetProgress.js";

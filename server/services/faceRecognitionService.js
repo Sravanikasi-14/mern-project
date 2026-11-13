@@ -1,24 +1,50 @@
 import crypto from "crypto";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { HttpError } from "../utils/httpError.js";
 import {
   FACE_ENROLLMENT_STATUSES,
   encryptEmbedding,
   decryptEmbedding,
 } from "../models/EmployeeFaceEnrollment.js";
+import {
+  isValidatedLivenessConfigured as registryIsValidatedLivenessConfigured,
+  listLivenessProviders,
+  resolveConfiguredLivenessProviderId,
+  getLivenessProvider,
+  LIVENESS_PROVIDER_IDS,
+} from "./faceLivenessProvider.js";
+import {
+  buildDetectionCanvas,
+  disposeFaceDetections,
+  ensureFaceRuntime,
+  getFaceModelsDir as runtimeGetFaceModelsDir,
+  getFaceRuntimeDiagnostics,
+  resetFaceRuntimeForTests,
+  setFaceRuntimeLoaderForTests,
+  withFaceInferenceSlot,
+} from "./faceRecognitionRuntime.js";
 
 export const FACE_MODEL_ID = "face-api-ssd-mobilenetv1-facenet";
 export const FACE_MODEL_VERSION = "1";
 export const DEFAULT_MATCH_THRESHOLD = 0.55; // euclidean distance; lower = stricter
 export const LIVENESS_MIN_SCORE = 0.55;
 
+export {
+  listLivenessProviders,
+  resolveConfiguredLivenessProviderId,
+  getLivenessProvider,
+  LIVENESS_PROVIDER_IDS,
+  ensureFaceRuntime,
+  getFaceRuntimeDiagnostics,
+  resetFaceRuntimeForTests,
+  setFaceRuntimeLoaderForTests,
+};
+
 /**
  * IMPORTANT: Heuristic liveness (landmark variance + detection score) is NOT
- * production-grade anti-spoofing. A validated commercial or challenge-response
- * liveness solution is required before treating face verification as
- * spoof-resistant in production.
+ * production-grade anti-spoofing. Mandatory face requires a registered PAD
+ * provider that is implemented and ready (see faceLivenessProvider.js).
+ * MiniFASNet is Phase 2 — not enabled yet.
  */
 
 /** Optional injectable engine for tests / production model backends */
@@ -33,10 +59,7 @@ export function resetFaceEngine() {
 }
 
 export function getFaceModelsDir() {
-  return (
-    process.env.FACE_MODELS_DIR ||
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "../assets/face-models")
-  );
+  return runtimeGetFaceModelsDir();
 }
 
 /** Synchronous readiness probe used by policy validation. */
@@ -66,31 +89,11 @@ export function isFaceEngineReady() {
 }
 
 /**
- * Heuristic landmark/confidence checks are NOT production anti-spoofing.
- * Mandatory face requires an explicitly configured validated provider.
- *
- * Set FACE_LIVENESS_PROVIDER to a non-heuristic value once a validated
- * commercial or challenge-response liveness integration is wired
- * (e.g. vendor:<name> or challenge-response).
+ * Mandatory face unlock gate — strict registry only (never arbitrary env strings).
+ * @see ./faceLivenessProvider.js
  */
 export function isValidatedLivenessConfigured() {
-  if (process.env.NODE_ENV === "test") {
-    return { ok: true, source: "test", provider: "test" };
-  }
-  const provider = String(process.env.FACE_LIVENESS_PROVIDER || "")
-    .trim()
-    .toLowerCase();
-  if (!provider || provider === "heuristic" || provider === "none" || provider === "off") {
-    return {
-      ok: false,
-      provider: provider || "heuristic",
-      message:
-        "Mandatory face verification requires a validated liveness provider. " +
-        "Heuristic checks are not production anti-spoofing. Set FACE_LIVENESS_PROVIDER " +
-        "after integrating a validated solution (or keep face optional).",
-    };
-  }
-  return { ok: true, provider, source: "env" };
+  return registryIsValidatedLivenessConfigured();
 }
 
 function cosineDistance(a, b) {
@@ -118,17 +121,29 @@ function euclideanDistance(a, b) {
   return Math.sqrt(sum);
 }
 
+/** Max base64 character length (~6 MB decoded when not a data-URL). */
+export const FACE_MAX_BASE64_CHARS = 8_000_000;
+/** Max decoded image bytes accepted by parseFaceImageInput. */
+export const FACE_MAX_DECODED_BYTES = 6_000_000;
+
 /**
- * Parse data-URL or base64 image buffer. Rejects oversized payloads.
+ * Parse data-URL or base64 image buffer. Rejects oversized / invalid payloads.
  */
 export function parseFaceImageInput(imageBase64) {
   if (!imageBase64 || typeof imageBase64 !== "string") {
     throw new HttpError(400, "Face image is required.");
   }
   let raw = imageBase64.trim();
+  if (!raw) {
+    throw new HttpError(400, "Face image is required.");
+  }
   const match = raw.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/i);
-  if (match) raw = match[2];
-  if (raw.length > 8_000_000) {
+  if (match) {
+    raw = match[2];
+  } else if (/^data:/i.test(raw)) {
+    throw new HttpError(400, "Unsupported face image type. Use JPEG, PNG, or WebP.");
+  }
+  if (raw.length > FACE_MAX_BASE64_CHARS) {
     throw new HttpError(400, "Face image is too large.");
   }
   let buffer;
@@ -137,16 +152,16 @@ export function parseFaceImageInput(imageBase64) {
   } catch {
     throw new HttpError(400, "Invalid face image encoding.");
   }
-  if (!buffer.length || buffer.length > 6_000_000) {
+  if (!buffer.length || buffer.length > FACE_MAX_DECODED_BYTES) {
     throw new HttpError(400, "Invalid face image payload.");
   }
   return buffer;
 }
 
 /**
- * Analyze a face image. Uses injected engine when available; otherwise attempts
- * @vladmandic/face-api + @tensorflow/tfjs lazy load. If models are unavailable,
- * returns a structured failure (never a fake success).
+ * Analyze a face image. Uses injected engine when available; otherwise uses the
+ * coalesced TFJS / face-api runtime (F39). Models unavailable → structured failure
+ * (never a fake success). Mandatory punch paths still await this before attendance write.
  */
 export async function analyzeFaceImage(imageBase64, { requireLiveness = true } = {}) {
   const buffer = parseFaceImageInput(imageBase64);
@@ -155,10 +170,8 @@ export async function analyzeFaceImage(imageBase64, { requireLiveness = true } =
     return faceEngine.analyze(buffer, { requireLiveness });
   }
 
-  // Attempt real face-api pipeline
   try {
-    const result = await runFaceApiPipeline(buffer, { requireLiveness });
-    return result;
+    return await withFaceInferenceSlot(() => runFaceApiPipeline(buffer, { requireLiveness }));
   } catch (err) {
     if (err instanceof HttpError) throw err;
     return {
@@ -176,137 +189,126 @@ export async function analyzeFaceImage(imageBase64, { requireLiveness = true } =
 }
 
 async function runFaceApiPipeline(buffer, { requireLiveness }) {
-  // Dynamic import keeps cold-start lighter when face verification is disabled
-  const tf = await import("@tensorflow/tfjs");
-  await import("@tensorflow/tfjs-backend-cpu");
-  await tf.setBackend("cpu");
-  await tf.ready();
-
-  const faceapi = await import("@vladmandic/face-api");
-  const path = await import("path");
-  const fs = await import("fs");
-  const { fileURLToPath } = await import("url");
-  const { createCanvas, loadImage } = await import("@napi-rs/canvas").catch(() => ({ createCanvas: null, loadImage: null }));
-
-  if (!createCanvas || !loadImage) {
-    throw new Error("Canvas backend (@napi-rs/canvas) is required for face recognition.");
-  }
-
-  const modelsDir = getFaceModelsDir();
-
-  if (!fs.existsSync(modelsDir)) {
-    throw new Error(`Face models directory not found: ${modelsDir}`);
-  }
-
-  if (!runFaceApiPipeline._loaded) {
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelsDir);
-    await faceapi.nets.faceLandmark68Net.loadFromDisk(modelsDir);
-    await faceapi.nets.faceRecognitionNet.loadFromDisk(modelsDir);
-    runFaceApiPipeline._loaded = true;
-  }
+  const runtime = await ensureFaceRuntime();
+  const { tf, faceapi, canvasApi } = runtime;
+  const { createCanvas, loadImage } = canvasApi;
 
   const img = await loadImage(buffer);
-  const canvas = createCanvas(img.width, img.height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0);
+  const { canvas, scale } = buildDetectionCanvas(img, { createCanvas });
 
-  const detections = await faceapi
-    .detectAllFaces(canvas)
-    .withFaceLandmarks()
-    .withFaceDescriptors();
+  const tensorsBefore = typeof tf.memory === "function" ? tf.memory().numTensors : null;
+  let detections = [];
+  try {
+    detections = await faceapi
+      .detectAllFaces(canvas)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
 
-  if (!detections.length) {
+    if (!detections.length) {
+      return {
+        ok: false,
+        reason: "NO_FACE_DETECTED",
+        message: "No face detected. Center your face in the frame with good lighting.",
+        faceCount: 0,
+        embedding: null,
+        livenessScore: null,
+        qualityScore: null,
+      };
+    }
+
+    if (detections.length > 1) {
+      return {
+        ok: false,
+        reason: "MULTIPLE_FACES",
+        message: "Multiple faces detected. Only the enrolled employee should be visible.",
+        faceCount: detections.length,
+        embedding: null,
+        livenessScore: null,
+        qualityScore: null,
+      };
+    }
+
+    const det = detections[0];
+    const box = det.detection.box;
+    const score = det.detection.score;
+    // areaRatio is scale-invariant; min box size scales with detection canvas.
+    const areaRatio = (box.width * box.height) / Math.max(1, canvas.width * canvas.height);
+    const qualityScore = Math.min(1, score * 0.7 + Math.min(areaRatio * 4, 0.3));
+    const minBox = 80 * scale;
+
+    if (qualityScore < 0.35 || box.width < minBox || box.height < minBox) {
+      return {
+        ok: false,
+        reason: "LOW_IMAGE_QUALITY",
+        message: "Face image quality is too low. Move closer and ensure your face is well lit.",
+        faceCount: 1,
+        embedding: null,
+        livenessScore: null,
+        qualityScore,
+      };
+    }
+
+    // Lightweight liveness heuristics (not a commercial anti-spoof stack).
+    // Uses landmark variance + detection confidence; document limitation in README.
+    const landmarks = det.landmarks?.positions || [];
+    let landmarkVar = 0;
+    if (landmarks.length) {
+      const xs = landmarks.map((p) => p.x);
+      const ys = landmarks.map((p) => p.y);
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+      const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+      landmarkVar =
+        xs.reduce((a, x) => a + (x - mx) ** 2, 0) / xs.length +
+        ys.reduce((a, y) => a + (y - my) ** 2, 0) / ys.length;
+    }
+    // Landmark variance shrinks with canvas scale²; normalize back to original-pixel space.
+    const landmarkVarScaled = landmarkVar / Math.max(scale * scale, 1e-6);
+    const livenessScore = Math.min(1, score * 0.6 + Math.min(landmarkVarScaled / 5000, 0.4));
+
+    if (requireLiveness && livenessScore < LIVENESS_MIN_SCORE) {
+      return {
+        ok: false,
+        reason: "LIVENESS_FAILED",
+        message:
+          "Liveness check failed. Do not use a photo of a photo — look directly at the camera in live conditions.",
+        faceCount: 1,
+        embedding: null,
+        livenessScore,
+        qualityScore,
+      };
+    }
+
+    const embedding = Array.from(det.descriptor);
     return {
-      ok: false,
-      reason: "NO_FACE_DETECTED",
-      message: "No face detected. Center your face in the frame with good lighting.",
-      faceCount: 0,
-      embedding: null,
-      livenessScore: null,
-      qualityScore: null,
-    };
-  }
-
-  if (detections.length > 1) {
-    return {
-      ok: false,
-      reason: "MULTIPLE_FACES",
-      message: "Multiple faces detected. Only the enrolled employee should be visible.",
-      faceCount: detections.length,
-      embedding: null,
-      livenessScore: null,
-      qualityScore: null,
-    };
-  }
-
-  const det = detections[0];
-  const box = det.detection.box;
-  const score = det.detection.score;
-  const areaRatio = (box.width * box.height) / Math.max(1, img.width * img.height);
-  const qualityScore = Math.min(1, score * 0.7 + Math.min(areaRatio * 4, 0.3));
-
-  if (qualityScore < 0.35 || box.width < 80 || box.height < 80) {
-    return {
-      ok: false,
-      reason: "LOW_IMAGE_QUALITY",
-      message: "Face image quality is too low. Move closer and ensure your face is well lit.",
+      ok: true,
+      reason: "FACE_CAPTURED",
+      message: "Face captured successfully.",
       faceCount: 1,
-      embedding: null,
-      livenessScore: null,
-      qualityScore,
-    };
-  }
-
-  // Lightweight liveness heuristics (not a commercial anti-spoof stack).
-  // Uses landmark variance + detection confidence; document limitation in README.
-  const landmarks = det.landmarks?.positions || [];
-  let landmarkVar = 0;
-  if (landmarks.length) {
-    const xs = landmarks.map((p) => p.x);
-    const ys = landmarks.map((p) => p.y);
-    const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
-    const my = ys.reduce((a, b) => a + b, 0) / ys.length;
-    landmarkVar =
-      xs.reduce((a, x) => a + (x - mx) ** 2, 0) / xs.length +
-      ys.reduce((a, y) => a + (y - my) ** 2, 0) / ys.length;
-  }
-  const livenessScore = Math.min(1, score * 0.6 + Math.min(landmarkVar / 5000, 0.4));
-
-  if (requireLiveness && livenessScore < LIVENESS_MIN_SCORE) {
-    return {
-      ok: false,
-      reason: "LIVENESS_FAILED",
-      message:
-        "Liveness check failed. Do not use a photo of a photo — look directly at the camera in live conditions.",
-      faceCount: 1,
-      embedding: null,
+      embedding,
       livenessScore,
       qualityScore,
+      modelId: FACE_MODEL_ID,
+      modelVersion: FACE_MODEL_VERSION,
     };
+  } finally {
+    disposeFaceDetections(tf, detections);
+    detections = null;
+    // Soft check: do not throw on tensor growth (weights stay resident); diagnostics only.
+    if (tensorsBefore != null && typeof tf.memory === "function") {
+      void tf.memory().numTensors;
+    }
   }
-
-  const embedding = Array.from(det.descriptor);
-  return {
-    ok: true,
-    reason: "FACE_CAPTURED",
-    message: "Face captured successfully.",
-    faceCount: 1,
-    embedding,
-    livenessScore,
-    qualityScore,
-    modelId: FACE_MODEL_ID,
-    modelVersion: FACE_MODEL_VERSION,
-  };
 }
 
 export function compareEmbeddings(probe, enrolled, threshold = DEFAULT_MATCH_THRESHOLD) {
   const distance = euclideanDistance(probe, enrolled);
-  const cosine = cosineDistance(probe, enrolled);
+  // Match decision uses Euclidean only (unchanged threshold semantics).
   const matched = distance <= threshold;
   return {
     matched,
     distance,
-    cosineDistance: cosine,
+    // Cosine kept for diagnostics / callers; cheap vs TFJS inference.
+    cosineDistance: cosineDistance(probe, enrolled),
     threshold,
   };
 }

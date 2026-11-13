@@ -29,6 +29,7 @@ import workforceSchedulerRoutes from "./routes/workforceSchedulerRoutes.js";
 import departmentRoutes from "./routes/departmentRoutes.js";
 import designationRoutes from "./routes/designationRoutes.js";
 import projectEntityRoutes from "./routes/projectEntityRoutes.js";
+import { tenantConnectionScopeMiddleware } from "./config/db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,9 @@ export function createApp() {
 
   app.use(express.json({ limit: "15mb" }));
   app.use(cookieParser());
+
+  // F35: request-scoped tenant connection retain/release (before authenticate/routes).
+  app.use(tenantConnectionScopeMiddleware);
 
   // Root endpoint returning simple service status
   app.get("/", (_req, res) => {

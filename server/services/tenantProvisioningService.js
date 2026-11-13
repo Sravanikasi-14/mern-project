@@ -1,10 +1,15 @@
 import Company from "../models/Company.js";
-import { getCentralDbName, getTenantConnection } from "../config/db.js";
+import {
+  getCentralDbName,
+  getTenantConnection,
+  runWithTenantConnectionScope,
+} from "../config/db.js";
 import { getLeaveRequestModel } from "../models/LeaveRequest.js";
 import { getLeaveBackupProposalModel } from "../models/LeaveBackupProposal.js";
 import { getCompanyHrPolicyModel, DEFAULT_HR_POLICY } from "../models/CompanyHrPolicy.js";
 import { getOfferLetterModel } from "../models/OfferLetter.js";
 import { getOfferTemplateModel } from "../models/OfferTemplate.js";
+import { ensureOfferLetterEmployeeIdIndex } from "./offerLetterEmployeeIdIndex.js";
 import { getAttendanceModel } from "../models/Attendance.js";
 import { getEmployeeFaceEnrollmentModel } from "../models/EmployeeFaceEnrollment.js";
 import { getAttendanceVerificationChallengeModel } from "../models/AttendanceVerificationChallenge.js";
@@ -18,6 +23,10 @@ import { getTeamModel } from "../models/Team.js";
 import { getDepartmentModel } from "../models/Department.js";
 import { getProjectModel } from "../models/Project.js";
 import { getProjectMembershipModel } from "../models/ProjectMembership.js";
+import { getNotificationModel } from "../models/Notification.js";
+import { getNotificationReadStateModel } from "../models/NotificationReadState.js";
+import { getAuthSessionModel } from "../models/AuthSession.js";
+import { getUserModel } from "../models/User.js";
 
 /**
  * Ensures leave_requests and company_hr_policies collections, approved indexes,
@@ -152,6 +161,56 @@ export async function provisionTenantDatabase(company, connection) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }
 
+  // Unique partial employeeId index — explicit name; never auto-drop legacy on ordinary startup.
+  const applyOfferEmployeeIdMigration =
+    String(process.env.APPLY_OFFER_LETTER_EMPLOYEEID_INDEX_MIGRATION || "").toLowerCase() === "true";
+  try {
+    const employeeIdIndex = await ensureOfferLetterEmployeeIdIndex(db, {
+      applyMigration: applyOfferEmployeeIdMigration,
+    });
+    outcome.offerLetterEmployeeIdIndex = employeeIdIndex;
+    if (employeeIdIndex.status === "ok") {
+      if (employeeIdIndex.createdDesired || employeeIdIndex.applied) {
+        outcome.indexesCreated.push(
+          `offer_letters: ${employeeIdIndex.desiredName} (unique partial ObjectId)`
+        );
+        outcome.repaired = true;
+      }
+    } else if (employeeIdIndex.status === "migration_required") {
+      outcome.needsManualConfiguration = true;
+      outcome.message = [outcome.message, employeeIdIndex.message].filter(Boolean).join(" ");
+      console.warn(
+        `[TenantProvisioning] offer_letters employeeId index migration required on ${company.databaseName}:`,
+        employeeIdIndex.message
+      );
+    } else {
+      outcome.needsManualConfiguration = true;
+      outcome.indexErrors = outcome.indexErrors || [];
+      outcome.indexErrors.push({
+        collection: "offer_letters",
+        index: employeeIdIndex.desiredName,
+        message: employeeIdIndex.message,
+        duplicates: employeeIdIndex.duplicates || undefined,
+      });
+      console.error(
+        `[TenantProvisioning] offer_letters employeeId index error on ${company.databaseName}:`,
+        employeeIdIndex.message
+      );
+    }
+  } catch (idxErr) {
+    outcome.needsManualConfiguration = true;
+    outcome.indexErrors = outcome.indexErrors || [];
+    outcome.indexErrors.push({
+      collection: "offer_letters",
+      index: "uniq_offer_letter_employeeId_objectId",
+      message: idxErr.message,
+    });
+    console.error(
+      `[TenantProvisioning] offer_letters employeeId index exception on ${company.databaseName}:`,
+      idxErr.message
+    );
+  }
+
   // 5b. Ensure empty offer_templates collection + indexes (legacy; no documents are seeded)
   if (!existingColNames.has("offer_templates")) {
     await db.createCollection("offer_templates");
@@ -221,7 +280,9 @@ export async function provisionTenantDatabase(company, connection) {
   const LiveTrackingSession = getLiveTrackingSessionModel(conn);
   try {
     await LiveTrackingSession.createIndexes();
-    outcome.indexesCreated.push("live_tracking_sessions: { employeeId: 1, status: 1 }");
+    outcome.indexesCreated.push(
+      "live_tracking_sessions: { employeeId: 1, status: 1 }, { startedAt: -1, status: 1 }"
+    );
   } catch (idxErr) {
     console.warn(`[TenantProvisioning] Index creation warning on ${company.databaseName}:`, idxErr.message);
   }
@@ -377,6 +438,54 @@ export async function provisionTenantDatabase(company, connection) {
     );
   }
 
+  // Notifications + bounded read-state (F32/F33)
+  if (!existingColNames.has("notifications")) {
+    await db.createCollection("notifications");
+    outcome.collectionsCreated.push("notifications");
+    outcome.repaired = true;
+  }
+  try {
+    await getNotificationModel(conn).createIndexes();
+    outcome.indexesCreated.push(
+      "notifications: userId+createdAt, userId+role+createdAt, userId+isRead+createdAt"
+    );
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] Notification index warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  if (!existingColNames.has("notification_read_states")) {
+    await db.createCollection("notification_read_states");
+    outcome.collectionsCreated.push("notification_read_states");
+    outcome.repaired = true;
+  }
+  try {
+    await getNotificationReadStateModel(conn).createIndexes();
+    outcome.indexesCreated.push(
+      "notification_read_states: unique (userId, notificationKey)"
+    );
+  } catch (idxErr) {
+    console.warn(
+      `[TenantProvisioning] NotificationReadState index warning on ${company.databaseName}:`,
+      idxErr.message
+    );
+  }
+
+  // AuthSession revoke-all indexes (F31) — createIndexes is additive / idempotent
+  try {
+    await getAuthSessionModel(conn).createIndexes();
+    outcome.indexesCreated.push("authSessions: { userId: 1, isActive: 1 }, { token: 1, isActive: 1 }");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] AuthSession index warning on ${company.databaseName}:`, idxErr.message);
+  }
+
+  // Users: keep onboarding.offerLetterId index for hiring $lookup filters (F34)
+  try {
+    await getUserModel(conn).createIndexes();
+    outcome.indexesCreated.push("users: onboarding.offerLetterId (hiring lookup support)");
+  } catch (idxErr) {
+    console.warn(`[TenantProvisioning] User index warning on ${company.databaseName}:`, idxErr.message);
+  }
+
   outcome.message = outcome.repaired
     ? `Tenant database '${company.databaseName}' was successfully repaired/provisioned.`
     : `Tenant database '${company.databaseName}' is fully provisioned and up to date.`;
@@ -416,7 +525,9 @@ export async function provisionAllTenantDatabases() {
 
     try {
       report.checked.push({ slug, databaseName: dbName });
-      const outcome = await provisionTenantDatabase(company);
+      const outcome = await runWithTenantConnectionScope(() =>
+        provisionTenantDatabase(company)
+      );
 
       if (outcome.repaired) {
         report.repaired.push({

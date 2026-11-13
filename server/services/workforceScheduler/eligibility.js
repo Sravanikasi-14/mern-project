@@ -5,7 +5,7 @@ import { HttpError } from "../../utils/httpError.js";
 import { maxActiveTasks } from "./config.js";
 import { calculateWorkloadByEmployee } from "./workload.js";
 
-async function loadOnLeaveEmployeeIds(models, company, now = new Date()) {
+export async function loadOnLeaveEmployeeIds(models, company, now = new Date()) {
   const { LeaveRequest } = models;
   if (!LeaveRequest) return new Set();
   const timezone = resolveCompanyTimezone(company);
@@ -23,32 +23,49 @@ async function loadOnLeaveEmployeeIds(models, company, now = new Date()) {
   return new Set(leaves.map((row) => String(row.employeeId)));
 }
 
+/** Lean ACTIVE roster fields needed for eligibility + fairness (F41 once-per-run cache). */
+export const ELIGIBLE_EMPLOYEE_SELECT = "_id fullName email employeeCode skills job status";
+
 /**
  * Active employees not on approved leave covering "today" in company timezone.
  * Skills: if task.requiredSkills is non-empty and employee.skills is empty,
  * employee is ineligible (never invent skills).
+ *
+ * Pass `employees` / `onLeaveIds` to reuse a per-company cache (F41) — scoring rules unchanged.
  */
 export async function loadEligibleEmployees(
   models,
   task,
-  { maxActive, workloadByEmployee, company = null, now = new Date() }
+  {
+    maxActive,
+    workloadByEmployee,
+    company = null,
+    now = new Date(),
+    employees = null,
+    onLeaveIds = null,
+  } = {}
 ) {
   const { Employee } = models;
 
-  const employees = await Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE })
-    .select("_id fullName email employeeCode skills job status")
-    .lean();
+  const roster =
+    employees ||
+    (await Employee.find({ status: EMPLOYEE_STATUSES.ACTIVE })
+      .select(ELIGIBLE_EMPLOYEE_SELECT)
+      .lean());
 
-  const onLeaveIds = await loadOnLeaveEmployeeIds(models, company, now);
+  const leaveSet =
+    onLeaveIds instanceof Set
+      ? onLeaveIds
+      : await loadOnLeaveEmployeeIds(models, company, now);
 
   const eligible = [];
   const rejected = [];
 
-  for (const emp of employees) {
+  for (const emp of roster) {
     const result = evaluateAssigneeEligibilitySync(task, emp, {
       maxActive,
       workloadByEmployee,
-      onLeaveIds,
+      onLeaveIds: leaveSet,
       enforceCapacity: true,
     });
     if (result.ok) {

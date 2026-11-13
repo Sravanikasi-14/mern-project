@@ -12,10 +12,13 @@ import { TableSkeletonRows } from "../components/TableSkeleton";
 import { IconClipboardList } from "../components/Icons";
 import { useAuth } from "../context/AuthContext";
 import { useAttendanceOverviewQuery } from "../hooks/useAdminQueries";
+import { attendancePollIntervalMs } from "../lib/attendancePollInterval";
 import { getCompanyBusinessDate, resolveCompanyTimezone } from "../utils/dateUtils";
 import AuthedAvatar from "../components/AuthedAvatar";
 import { initialsFromName } from "../utils/employeeAvatar";
 import "./Attendance.css";
+
+const OVERVIEW_POLL_MS = 60_000;
 
 const WORKSPACES = [
   { key: "roster", label: "Daily roster" },
@@ -110,11 +113,25 @@ export default function AdminAttendanceOverview() {
   const [drawerIndex, setDrawerIndex] = useState(-1);
 
   const attendanceQuery = useAttendanceOverviewQuery(
-    { startDate, endDate, department },
+    {
+      startDate,
+      endDate,
+      department,
+      // F38: server-page historical range lists; single-day roster stays unpaged for map/filters.
+      ...(isRangeMode
+        ? {
+            page: attendancePage,
+            limit: attendancePageSize,
+            search: tableSearch.trim() || undefined,
+          }
+        : {}),
+    },
     {
       enabled: !redirectToTracking && workspace === "roster",
-      // Live tracking needs refresh, but 30s fought staleTime and hammered the full roster.
-      refetchInterval: 60_000,
+      // F38: poll only while visible; range mode does not need a live ticker.
+      refetchInterval: isRangeMode
+        ? false
+        : (query) => attendancePollIntervalMs(OVERVIEW_POLL_MS, query),
       refetchIntervalInBackground: false,
     }
   );
@@ -238,28 +255,26 @@ export default function AdminAttendanceOverview() {
     };
   }, [overviewData.summary, overviewData.employees]);
 
-  // Multi-day mode: per-day attendance records returned by the server for the selected range.
+  // Multi-day mode: per-day attendance records (F38: server-paginated when page/limit sent).
   const rangeRecords = useMemo(
     () => (isRangeMode ? overviewData.rangeRecords || [] : []),
     [isRangeMode, overviewData.rangeRecords]
   );
 
-  const filteredRangeRecords = useMemo(() => {
-    const q = tableSearch.trim().toLowerCase();
-    if (!q) return rangeRecords;
-    return rangeRecords.filter(
-      (r) =>
-        (r.fullName || "").toLowerCase().includes(q) ||
-        (r.employeeCode || "").toLowerCase().includes(q) ||
-        (r.department || "").toLowerCase().includes(q)
-    );
-  }, [rangeRecords, tableSearch]);
-
-  const totalRangePages = Math.ceil((filteredRangeRecords.length || 1) / attendancePageSize);
+  const rangePagination = overviewData.rangePagination || null;
+  const filteredRangeRecords = rangeRecords;
+  const rangeTotalItems =
+    rangePagination?.total ??
+    overviewData.summary?.rangeRecordCount ??
+    filteredRangeRecords.length;
+  const totalRangePages = rangePagination
+    ? rangePagination.totalPages || 1
+    : Math.ceil((filteredRangeRecords.length || 1) / attendancePageSize);
   const paginatedRangeRecords = useMemo(() => {
+    if (rangePagination) return filteredRangeRecords;
     const start = (attendancePage - 1) * attendancePageSize;
     return filteredRangeRecords.slice(start, start + attendancePageSize);
-  }, [filteredRangeRecords, attendancePage, attendancePageSize]);
+  }, [filteredRangeRecords, attendancePage, attendancePageSize, rangePagination]);
 
   // Drawer navigation in range mode walks unique employees, not individual day rows.
   const rangeEmployees = useMemo(() => {
@@ -461,7 +476,7 @@ export default function AdminAttendanceOverview() {
         </span>
         {isRangeMode && (
           <span style={{ fontSize: 12, color: "var(--muted)", marginRight: 6 }}>
-            {startDate} to {endDate} · {rangeRecords.length} record{rangeRecords.length === 1 ? "" : "s"}
+            {startDate} to {endDate} · {rangeTotalItems} record{rangeTotalItems === 1 ? "" : "s"}
           </span>
         )}
         {visibleCards.map((c) => {
@@ -822,7 +837,7 @@ export default function AdminAttendanceOverview() {
             }}
           >
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
-              Attendance Records ({filteredRangeRecords.length})
+              Attendance Records ({rangeTotalItems})
             </h3>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
               {startDate} to {endDate}
@@ -916,7 +931,7 @@ export default function AdminAttendanceOverview() {
           <Pagination
             currentPage={attendancePage}
             totalPages={totalRangePages}
-            totalItems={filteredRangeRecords.length}
+            totalItems={rangeTotalItems}
             pageSize={attendancePageSize}
             pageSizeOptions={[10, 25, 50, 100]}
             onPageChange={(p) => setAttendancePage(p)}

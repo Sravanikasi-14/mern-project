@@ -408,7 +408,7 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
     assertCompanyAttendanceAccess(req);
 
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
-    const { date, startDate, endDate, department } = req.query;
+    const { date, startDate, endDate, department, page, limit, search } = req.query;
 
     const overview = await getAdminAttendanceOverview({
       models: req.auth.models,
@@ -418,6 +418,9 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
       endDate,
       department,
       hrAccess: req.hrAccess,
+      page: page != null && page !== "" ? page : null,
+      limit: limit != null && limit !== "" ? limit : null,
+      search: search || "",
     });
 
     res.status(200).json({
@@ -431,14 +434,15 @@ export async function getAdminAttendanceOverviewHandler(req, res, next) {
 
 /**
  * GET /api/admin/attendance/tracking-sessions
- * Live ACTIVE sessions plus optional historical sessions in a date range.
+ * Live open-punch / ACTIVE sessions plus optional historical sessions in a date range.
  */
 export async function getAdminTrackingSessionsHandler(req, res, next) {
   try {
     assertCompanyAttendanceAccess(req);
 
     const companyTimezone = req.auth.company?.config?.timezone || "Asia/Kolkata";
-    const { startDate, endDate, department, status } = req.query;
+    const { startDate, endDate, department, status, historyPage, historyLimit, page, limit } =
+      req.query;
 
     const payload = await getAdminTrackingSessions({
       models: req.auth.models,
@@ -448,6 +452,8 @@ export async function getAdminTrackingSessionsHandler(req, res, next) {
       department,
       status,
       hrAccess: req.hrAccess,
+      historyPage: historyPage ?? page ?? null,
+      historyLimit: historyLimit ?? limit ?? null,
     });
 
     res.status(200).json({

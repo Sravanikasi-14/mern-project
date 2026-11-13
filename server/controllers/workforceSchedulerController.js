@@ -34,12 +34,36 @@ export async function runWorkforceSchedulerCron(req, res, next) {
 
     const forceDryRun = String(req.query.dryRun || req.body?.dryRun || "").toLowerCase() === "true";
     const mode = forceDryRun ? "dry-run" : schedulerMode();
-    console.info("[workforce-scheduler] cron start", { mode });
-    const result = await runSchedulerForAllCompanies({ mode });
+    // F41: optional resume cursor + budget/concurrency overrides (cron-authenticated only).
+    const afterCompanyId =
+      req.query.afterCompanyId || req.body?.afterCompanyId || null;
+    const budgetMsRaw = req.query.budgetMs ?? req.body?.budgetMs;
+    const concurrencyRaw = req.query.concurrency ?? req.body?.concurrency;
+    const maxCompaniesRaw = req.query.maxCompanies ?? req.body?.maxCompanies;
+    const budgetMs = budgetMsRaw != null && budgetMsRaw !== "" ? Number(budgetMsRaw) : undefined;
+    const concurrency =
+      concurrencyRaw != null && concurrencyRaw !== "" ? Number(concurrencyRaw) : undefined;
+    const maxCompanies =
+      maxCompaniesRaw != null && maxCompaniesRaw !== "" ? Number(maxCompaniesRaw) : undefined;
+
+    console.info("[workforce-scheduler] cron start", {
+      mode,
+      afterCompanyId: afterCompanyId ? String(afterCompanyId) : null,
+    });
+    const result = await runSchedulerForAllCompanies({
+      mode,
+      afterCompanyId,
+      ...(Number.isFinite(budgetMs) ? { budgetMs } : {}),
+      ...(Number.isFinite(concurrency) ? { concurrency } : {}),
+      ...(Number.isFinite(maxCompanies) ? { maxCompanies } : {}),
+    });
     console.info("[workforce-scheduler] cron done", {
       mode,
       skipped: result.skipped,
       companies: result.companies,
+      attempted: result.attempted,
+      truncated: result.truncated,
+      nextAfterCompanyId: result.nextAfterCompanyId || null,
       reason: result.reason,
     });
 

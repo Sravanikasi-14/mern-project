@@ -88,11 +88,12 @@ export default function HrHomePage() {
     let cancelled = false;
     (async () => {
       try {
-        const { data: ov } = await api.get("/admin/attendance/overview");
+        // F38: live counts from tracking-sessions (not full attendance overview roster).
+        const { data } = await api.get("/admin/attendance/tracking-sessions");
         if (cancelled) return;
-        const s = ov?.summary || {};
+        const s = data?.summary || {};
         setTrackingHint({
-          live: Number(s.liveTrackingCount || 0),
+          live: Number(s.liveCount || 0),
           withLoc: Number(s.withLocationCount || 0),
         });
       } catch {

@@ -71,6 +71,21 @@ export function createNotificationSchema() {
 
   notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
   notificationSchema.index({ role: 1, createdAt: -1 });
+  // Personal inbox: equality on userId + sort createdAt (F32)
+  notificationSchema.index(
+    { userId: 1, createdAt: -1 },
+    { name: "notifications_userId_createdAt" }
+  );
+  // Role / company-wide broadcasts (userId is null)
+  notificationSchema.index(
+    { userId: 1, role: 1, createdAt: -1 },
+    { name: "notifications_userId_role_createdAt" }
+  );
+  // F42: event-level dedupe lookups (same key may appear on multiple recipient docs)
+  notificationSchema.index(
+    { "metadata.dedupeKey": 1 },
+    { name: "notifications_metadata_dedupeKey", sparse: true }
+  );
 
   return notificationSchema;
 }

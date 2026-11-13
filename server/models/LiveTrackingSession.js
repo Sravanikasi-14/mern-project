@@ -93,6 +93,8 @@ export function createLiveTrackingSessionSchema() {
   sessionSchema.index({ employeeId: 1, status: 1 });
   sessionSchema.index({ status: 1, expiresAt: 1 });
   sessionSchema.index({ employeeId: 1, createdAt: -1 });
+  // F38: admin history lists filter by startedAt (+ optional status) without full-roster $in.
+  sessionSchema.index({ startedAt: -1, status: 1 });
 
   return sessionSchema;
 }

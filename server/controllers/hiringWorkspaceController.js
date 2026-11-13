@@ -156,68 +156,81 @@ function sectionStatusProjection() {
 }
 
 /**
- * Base pipeline: light offer fields + light candidate onboarding (`user.ob`) + derived stage.
- * Only statuses, dates and a document COUNT are read from the candidate User.
+ * Shared $lookup match: join user by _id, keep onboarding only when it belongs to this offer
+ * (or has no offerLetterId yet — same semantics as pre-F34 / F34).
  */
-function buildBaseStages(usersCollection, firstMatch = null) {
+function userLookupPipeline(extraProject) {
+  return [
+    {
+      $match: {
+        $expr: {
+          $and: [
+            { $eq: [{ $type: "$onboarding" }, "object"] },
+            {
+              $or: [
+                { $eq: ["$onboarding.offerLetterId", "$$oid"] },
+                { $eq: [{ $ifNull: ["$onboarding.offerLetterId", null] }, null] },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    { $project: extraProject },
+    { $limit: 1 },
+  ];
+}
+
+/**
+ * F36 — Minimal stages for summary counters + pagination identity only.
+ * Derives the same `stage` as {@link buildBaseStages} / {@link deriveHiringStage}, but
+ * projects only the offer/user fields required for stageExpression (no section maps,
+ * document arrays, or list display fields). Used for full-collection counts; list rows
+ * are hydrated separately via {@link buildBaseStages} for the current page ids only.
+ */
+export function buildLightStageStages(usersCollection, firstMatch = null) {
   const stages = [];
   if (firstMatch) stages.push({ $match: firstMatch });
-  stages.push({ $project: OFFER_PROJECTION });
+  stages.push({
+    $project: {
+      status: 1,
+      employeeId: 1,
+      candidateUserId: 1,
+      onboardingId: 1,
+      candidate: 1,
+      position: 1,
+      department: 1,
+      updatedAt: 1,
+      createdAt: 1,
+    },
+  });
+  stages.push({
+    $addFields: {
+      _lookupUserId: { $ifNull: ["$candidateUserId", "$onboardingId"] },
+    },
+  });
   stages.push({
     $lookup: {
       from: usersCollection,
-      let: {
-        uid: { $ifNull: ["$candidateUserId", "$onboardingId"] },
-        oid: "$_id",
-      },
-      pipeline: [
-        {
-          $match: {
-            $expr: {
-              $and: [
-                { $eq: ["$_id", "$$uid"] },
-                { $eq: [{ $type: "$onboarding" }, "object"] },
-                {
-                  $or: [
-                    { $eq: ["$onboarding.offerLetterId", "$$oid"] },
-                    { $eq: [{ $ifNull: ["$onboarding.offerLetterId", null] }, null] },
-                  ],
-                },
-              ],
-            },
-          },
+      localField: "_lookupUserId",
+      foreignField: "_id",
+      let: { oid: "$_id" },
+      pipeline: userLookupPipeline({
+        _id: 1,
+        updatedAt: 1,
+        employeeId: 1,
+        ob: {
+          status: "$onboarding.status",
+          employeeId: "$onboarding.employeeId",
         },
-        {
-          $project: {
-            _id: 1,
-            email: 1,
-            updatedAt: 1,
-            employeeId: 1,
-            ob: {
-              status: "$onboarding.status",
-              candidateName: "$onboarding.candidate.fullName",
-              personalName: "$onboarding.personalDetails.fullName",
-              submittedAt: "$onboarding.submittedAt",
-              reviewedAt: "$onboarding.reviewedAt",
-              approvedAt: "$onboarding.approvedAt",
-              invitationSentAt: "$onboarding.invitationSentAt",
-              accountActivatedAt: "$onboarding.accountActivatedAt",
-              employeeId: "$onboarding.employeeId",
-              correctionReason: "$onboarding.correctionReason",
-              docsCount: { $size: { $ifNull: ["$onboarding.documents", []] } },
-              sections: sectionStatusProjection(),
-            },
-          },
-        },
-        { $limit: 1 },
-      ],
+      }),
       as: "userDocs",
     },
   });
   stages.push({
     $addFields: { user: { $arrayElemAt: ["$userDocs", 0] } },
   });
-  stages.push({ $project: { userDocs: 0 } });
+  stages.push({ $project: { userDocs: 0, _lookupUserId: 0 } });
   stages.push({
     $addFields: {
       stage: stageExpression(),
@@ -225,6 +238,108 @@ function buildBaseStages(usersCollection, firstMatch = null) {
     },
   });
   return stages;
+}
+
+/**
+ * Base pipeline: list offer fields + candidate onboarding (`user.ob`) + derived stage.
+ * Heavier than {@link buildLightStageStages}; intended for a small page of offers
+ * (or a single offer detail), not for full-collection summary scans.
+ */
+export function buildBaseStages(usersCollection, firstMatch = null) {
+  const stages = [];
+  if (firstMatch) stages.push({ $match: firstMatch });
+  stages.push({ $project: OFFER_PROJECTION });
+  // Resolve join key before $lookup so foreign _id equality can use the users _id index
+  // (avoids $expr-only equality which often forces a collection scan — F34).
+  stages.push({
+    $addFields: {
+      _lookupUserId: { $ifNull: ["$candidateUserId", "$onboardingId"] },
+    },
+  });
+  stages.push({
+    $lookup: {
+      from: usersCollection,
+      localField: "_lookupUserId",
+      foreignField: "_id",
+      let: { oid: "$_id" },
+      pipeline: userLookupPipeline({
+        _id: 1,
+        email: 1,
+        updatedAt: 1,
+        employeeId: 1,
+        ob: {
+          status: "$onboarding.status",
+          candidateName: "$onboarding.candidate.fullName",
+          personalName: "$onboarding.personalDetails.fullName",
+          submittedAt: "$onboarding.submittedAt",
+          reviewedAt: "$onboarding.reviewedAt",
+          approvedAt: "$onboarding.approvedAt",
+          invitationSentAt: "$onboarding.invitationSentAt",
+          accountActivatedAt: "$onboarding.accountActivatedAt",
+          employeeId: "$onboarding.employeeId",
+          correctionReason: "$onboarding.correctionReason",
+          docsCount: { $size: { $ifNull: ["$onboarding.documents", []] } },
+          sections: sectionStatusProjection(),
+        },
+      }),
+      as: "userDocs",
+    },
+  });
+  stages.push({
+    $addFields: { user: { $arrayElemAt: ["$userDocs", 0] } },
+  });
+  stages.push({ $project: { userDocs: 0, _lookupUserId: 0 } });
+  stages.push({
+    $addFields: {
+      stage: stageExpression(),
+      lastActivityAt: { $max: ["$updatedAt", "$user.updatedAt"] },
+    },
+  });
+  return stages;
+}
+
+/**
+ * Pre-F36 list pipeline (heavy lookup on every offer, then facet). Kept for parity tests.
+ */
+export function buildLegacyHiringListPipeline(usersCollection, { rowMatch, skip, limit }) {
+  return [
+    ...buildBaseStages(usersCollection),
+    {
+      $facet: {
+        counts: [{ $group: { _id: "$stage", n: { $sum: 1 } } }],
+        rows: [
+          { $match: rowMatch },
+          { $sort: { lastActivityAt: -1, _id: -1 } },
+          { $skip: skip },
+          { $limit: limit },
+        ],
+        total: [{ $match: rowMatch }, { $count: "n" }],
+      },
+    },
+  ];
+}
+
+/**
+ * F36 list pipeline: light stage derivation for all offers → summary + page ids;
+ * callers hydrate page rows with {@link buildBaseStages} for those ids only.
+ */
+export function buildOptimizedHiringListPipeline(usersCollection, { rowMatch, skip, limit }) {
+  return [
+    ...buildLightStageStages(usersCollection),
+    {
+      $facet: {
+        counts: [{ $group: { _id: "$stage", n: { $sum: 1 } } }],
+        pageIds: [
+          { $match: rowMatch },
+          { $sort: { lastActivityAt: -1, _id: -1 } },
+          { $skip: skip },
+          { $limit: limit },
+          { $project: { _id: 1 } },
+        ],
+        total: [{ $match: rowMatch }, { $count: "n" }],
+      },
+    },
+  ];
 }
 
 function sectionReviewsFrom(ob) {
@@ -405,7 +520,7 @@ function emptySummary() {
   };
 }
 
-function buildSummary(counts) {
+export function buildHiringSummaryFromCounts(counts) {
   const summary = emptySummary();
   for (const item of counts || []) {
     const n = item.n || 0;
@@ -450,8 +565,45 @@ function buildSummary(counts) {
   return summary;
 }
 
+function buildHiringRowMatch({ stage, search }) {
+  const rowMatch = {};
+  if (stage === HIRING_STAGES.ALL) {
+    rowMatch.stage = { $ne: HIRING_STAGES.WITHDRAWN };
+  } else {
+    rowMatch.stage = stage;
+  }
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
+    rowMatch.$or = [
+      { "candidate.fullName": regex },
+      { "candidate.email": regex },
+      { position: regex },
+      { department: regex },
+    ];
+  }
+  return rowMatch;
+}
+
+/**
+ * Hydrate list display rows for a page of offer ids (preserves id order).
+ */
+async function hydrateHiringListRows(OfferLetter, usersCollection, pageIds) {
+  if (!pageIds.length) return [];
+  const objectIds = pageIds.map((id) =>
+    id instanceof mongoose.Types.ObjectId ? id : new mongoose.Types.ObjectId(String(id))
+  );
+  const docs = await OfferLetter.aggregate(
+    buildBaseStages(usersCollection, { _id: { $in: objectIds } })
+  ).allowDiskUse(true);
+  const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+  return objectIds.map((id) => byId.get(String(id))).filter(Boolean);
+}
+
 /**
  * GET /api/hiring/candidates?page&limit&search&stage
+ *
+ * F36: summary + pagination use a light stage pipeline over all offers; the heavy
+ * list projection/lookup runs only for the current page of offer ids.
  */
 export async function listHiringCandidates(req, res, next) {
   try {
@@ -464,46 +616,21 @@ export async function listHiringCandidates(req, res, next) {
     );
     const search = typeof req.query.search === "string" ? req.query.search.trim().slice(0, 100) : "";
     const stage = normalizeStage(req.query.stage);
+    const skip = (page - 1) * limit;
+    const rowMatch = buildHiringRowMatch({ stage, search });
 
-    const rowMatch = {};
-    if (stage === HIRING_STAGES.ALL) {
-      rowMatch.stage = { $ne: HIRING_STAGES.WITHDRAWN };
-    } else {
-      rowMatch.stage = stage;
-    }
-    if (search) {
-      const regex = new RegExp(escapeRegex(search), "i");
-      rowMatch.$or = [
-        { "candidate.fullName": regex },
-        { "candidate.email": regex },
-        { position: regex },
-        { department: regex },
-      ];
-    }
+    const [result] = await OfferLetter.aggregate(
+      buildOptimizedHiringListPipeline(User.collection.name, { rowMatch, skip, limit })
+    ).allowDiskUse(true);
 
-    const pipeline = [
-      ...buildBaseStages(User.collection.name),
-      {
-        $facet: {
-          counts: [{ $group: { _id: "$stage", n: { $sum: 1 } } }],
-          rows: [
-            { $match: rowMatch },
-            { $sort: { lastActivityAt: -1, _id: -1 } },
-            { $skip: (page - 1) * limit },
-            { $limit: limit },
-          ],
-          total: [{ $match: rowMatch }, { $count: "n" }],
-        },
-      },
-    ];
-
-    const [result] = await OfferLetter.aggregate(pipeline).allowDiskUse(true);
     const total = result?.total?.[0]?.n || 0;
+    const pageIds = (result?.pageIds || []).map((row) => row._id);
+    const rows = await hydrateHiringListRows(OfferLetter, User.collection.name, pageIds);
 
     res.json({
       success: true,
-      candidates: (result?.rows || []).map(mapListRow),
-      summary: buildSummary(result?.counts),
+      candidates: rows.map(mapListRow),
+      summary: buildHiringSummaryFromCounts(result?.counts),
       stage,
       pagination: {
         page,

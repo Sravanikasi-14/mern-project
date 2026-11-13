@@ -27,6 +27,9 @@ export async function decideAssignment(models, task, workloadByEmployee, options
     workloadByEmployee,
     company: options.company || null,
     now: options.now,
+    // F41: optional once-per-company roster / leave cache (same eligibility rules).
+    employees: options.employees || null,
+    onLeaveIds: options.onLeaveIds || null,
   });
 
   if (!eligible.length) {

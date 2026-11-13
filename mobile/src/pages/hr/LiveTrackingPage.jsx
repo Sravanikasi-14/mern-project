@@ -48,6 +48,37 @@ function trackingState(row) {
   return { key: "unavailable", label: "Location unavailable" };
 }
 
+/** Map tracking-sessions live/history rows onto the overview shape this page already uses. */
+function mapTrackingSessionRow(row) {
+  if (!row) return null;
+  const lastLocation = row.lastLocation || null;
+  const isTrackingActive = Boolean(row.isTrackingActive);
+  return {
+    employeeId: row.employeeId,
+    fullName: row.fullName,
+    employeeCode: row.employeeCode,
+    department: row.department,
+    jobTitle: row.jobTitle,
+    avatar: row.avatar || "",
+    attendanceStatus: row.attendanceStatus || row.status || null,
+    checkInTime: row.checkInTime || row.punchInAt || null,
+    checkOutTime: row.checkOutTime || null,
+    checkInLocation: row.checkInLocation || null,
+    checkOutLocation: row.checkOutLocation || null,
+    isTrackingActive,
+    liveTracking:
+      isTrackingActive || lastLocation
+        ? {
+            sessionId: row.sessionId || null,
+            expiresAt: row.expiresAt || null,
+            lastLocation,
+          }
+        : null,
+  };
+}
+
+const LIVE_POLL_MS = 60_000;
+
 export default function HrLiveTrackingPage() {
   const { company, user } = useAuth();
   const notify = useNotify();
@@ -67,12 +98,20 @@ export default function HrLiveTrackingPage() {
   const [date, setDate] = useState(todayStr);
   const [view, setView] = useState("map");
 
-  const loadOverview = async () => {
+  const loadTracking = async () => {
     try {
       setLoading(true);
       setError("");
-      const res = await api.get("/admin/attendance/overview", { params: { date } });
-      setRows(res.data?.employees || []);
+      // F38: use slim tracking-sessions (open punch / history) instead of full attendance overview.
+      if (date === todayStr) {
+        const res = await api.get("/admin/attendance/tracking-sessions");
+        setRows((res.data?.live || []).map(mapTrackingSessionRow).filter(Boolean));
+      } else {
+        const res = await api.get("/admin/attendance/tracking-sessions", {
+          params: { startDate: date, endDate: date },
+        });
+        setRows((res.data?.history || []).map(mapTrackingSessionRow).filter(Boolean));
+      }
     } catch (err) {
       setError(err.response?.data?.message || "Could not load live tracking.");
       setRows([]);
@@ -82,9 +121,32 @@ export default function HrLiveTrackingPage() {
   };
 
   useEffect(() => {
-    const t = setTimeout(loadOverview, 120);
+    const t = setTimeout(loadTracking, 120);
     return () => clearTimeout(t);
-  }, [date]);
+  }, [date, todayStr]);
+
+  // Poll live only for today while the page is visible (single interval; no overview roster).
+  useEffect(() => {
+    if (date !== todayStr) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        const res = await api.get("/admin/attendance/tracking-sessions");
+        if (!cancelled) {
+          setRows((res.data?.live || []).map(mapTrackingSessionRow).filter(Boolean));
+        }
+      } catch {
+        /* keep prior rows on soft poll failure */
+      }
+    };
+    const id = setInterval(tick, LIVE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [date, todayStr]);
 
   const selected = useMemo(() => {
     const fromOverview = rows.find((row) => String(row.employeeId) === String(selectedId));
@@ -322,7 +384,7 @@ export default function HrLiveTrackingPage() {
         ) : null}
       </section>
 
-      {error ? <ErrorState message={error} onRetry={loadOverview} /> : null}
+      {error ? <ErrorState message={error} onRetry={loadTracking} /> : null}
 
       {!selectedId ? (
         <EmptyState message="Select one employee to view their location and travelled route." />

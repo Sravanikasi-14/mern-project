@@ -78,15 +78,17 @@ Set `FACE_MODELS_DIR` if models live elsewhere. Production startup validates bio
 - Dev-only: `ALLOW_INSECURE_FACE_BIOMETRIC_FALLBACK=true`
 - **Rotation:** changing the key invalidates existing embeddings — revoke and re-enroll (or migrate offline with the old key)
 
-### Liveness
+### Liveness / PAD
 
-Heuristic landmark/confidence checks are **not** production-grade anti-spoofing.
+Heuristic landmark/confidence checks are **not** production-grade anti-spoofing and **cannot** unlock mandatory face.
 
 | Variable | Purpose |
 | --- | --- |
-| `FACE_LIVENESS_PROVIDER` | Required for **mandatory** face. Omit / `heuristic` keeps mandatory face unavailable. Set after integrating a validated commercial or challenge-response liveness solution (e.g. `vendor:<name>` or `challenge-response`). |
+| `FACE_LIVENESS_PROVIDER` | Must be a **registered** id from `faceLivenessProvider.js`. Default `heuristic` keeps mandatory face unavailable. `minifasnet` is reserved for Phase 2 and does **not** unlock until PAD models are implemented and `isReady()` succeeds. Arbitrary strings (e.g. `vendor:foo`) are rejected. |
 
-Optional face may still be used for readiness testing with heuristic checks; do not treat it as spoof-resistant.
+See [FACE_VERIFICATION_PHASE0.md](./FACE_VERIFICATION_PHASE0.md) for licensing, Vercel constraints, and Phase 2 prerequisites.
+
+Optional face may still be used for readiness testing with heuristic checks; do not treat it as spoof-resistant. **Do not enable mandatory face in production yet.**
 
 ## Backend enforcement
 
@@ -103,15 +105,17 @@ Optional face may still be used for readiness testing with heuristic checks; do 
 | --- | --- | --- |
 | `FACE_BIOMETRIC_KEY` | server | Required in production |
 | `FACE_MODELS_DIR` | server | Optional path override |
-| `FACE_LIVENESS_PROVIDER` | server | Required to enable **mandatory** face |
+| `FACE_LIVENESS_PROVIDER` | server | Strict allowlist only; mandatory face blocked until a registered PAD provider is implemented and ready |
 | `ALLOW_LEGACY_NATIVE_HMAC_PROOF` | server tests only | Never enable in production |
 | ~~`PLAY_INTEGRITY_*`~~ | — | **Removed — not used** |
 | ~~`VITE_HRMS_NATIVE_CLIENT_SECRET`~~ | — | **Removed — do not configure** |
 
 ## Remaining blockers before claiming production readiness
 
-1. Validated liveness product (heuristic is insufficient for mandatory face)
-2. Face models installed on every production host
-3. `FACE_BIOMETRIC_KEY` set and backed up
-4. Wi-Fi remains best-effort OS evidence (no 802.1X claim)
-5. Android device smoke tests for permission / location / Wi-Fi edge cases
+1. Phase 2: implement MiniFASNet PAD and register a ready provider (Phase 0/1 only closed the config bypass)
+2. Face recognition models installed on every production host (or dedicated face worker)
+3. Counsel sign-off on face-api recognition weights **or** migrate to YuNet + SFace (Apache-2.0)
+4. Face challenge binding / replay protection
+5. `FACE_BIOMETRIC_KEY` set and backed up
+6. Wi-Fi remains best-effort OS evidence (no 802.1X claim)
+7. Android device smoke tests for permission / location / Wi-Fi / face edge cases

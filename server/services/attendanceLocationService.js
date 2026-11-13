@@ -626,6 +626,41 @@ export async function applyGeofenceDecision({
   };
 }
 
+/**
+ * F42 — Persist attendance notification docs with a single bulk write when possible.
+ * `ordered: false` keeps successfully inserted docs if one recipient fails validation.
+ * Returns how many documents were inserted (including partial success).
+ */
+export async function insertAttendanceNotificationDocs(models, docs) {
+  if (!models?.Notification || !Array.isArray(docs) || docs.length === 0) {
+    return 0;
+  }
+  try {
+    const inserted = await models.Notification.insertMany(docs, { ordered: false });
+    return Array.isArray(inserted) ? inserted.length : docs.length;
+  } catch (err) {
+    const partial =
+      (Array.isArray(err?.insertedDocs) && err.insertedDocs.length) ||
+      Number(err?.result?.result?.nInserted) ||
+      Number(err?.result?.nInserted) ||
+      0;
+    if (partial > 0) {
+      console.error(
+        `[attendance-notifications] partial insertMany ${partial}/${docs.length}:`,
+        err?.message || err
+      );
+      return partial;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Notify the employee (personal) and all active HR portal operators (Company Admin + HR Admin).
+ * F42: one recipient query + bulk insertMany (not sequential create).
+ * Optional `dedupeKey` prevents duplicate fan-out on retries (same event key).
+ * Failures are returned/logged — callers must not roll back a successful punch.
+ */
 export async function notifyAttendanceStakeholders({
   models,
   employee,
@@ -633,43 +668,75 @@ export async function notifyAttendanceStakeholders({
   message,
   link = "/admin/attendance",
   metadata = {},
+  dedupeKey = null,
 }) {
-  if (!models?.Notification) return;
-  const payload = {
-    title,
-    message,
-    type: NOTIFICATION_TYPES.ATTENDANCE,
-    link,
-    metadata: {
-      employeeId: String(employee._id),
-      ...metadata,
-    },
+  if (!models?.Notification) {
+    return { delivered: 0, mode: null };
+  }
+
+  const eventKey = dedupeKey ? String(dedupeKey) : null;
+  if (eventKey) {
+    const existing = await models.Notification.findOne({ "metadata.dedupeKey": eventKey })
+      .select("_id")
+      .lean();
+    if (existing) {
+      return { delivered: 0, deduped: true, mode: null };
+    }
+  }
+
+  const sharedMeta = {
+    employeeId: String(employee._id),
+    ...metadata,
+    ...(eventKey ? { dedupeKey: eventKey } : {}),
   };
 
-  // Employee (linked user)
+  const docs = [];
+
+  // Employee (linked user) — personal inbox
   if (employee.userId) {
-    await models.Notification.create({
-      ...payload,
+    docs.push({
       userId: employee.userId,
       role: null,
+      title,
+      message,
+      type: NOTIFICATION_TYPES.ATTENDANCE,
+      link,
+      metadata: sharedMeta,
     });
   }
 
-  await deliverHrPortalAttendanceNotifications({
+  const hrDeliveryDocs = await buildHrPortalAttendanceNotificationDocs({
     models,
     title,
     message,
     link,
-    metadata: payload.metadata,
+    metadata: sharedMeta,
     excludeUserIds: employee.userId ? [String(employee.userId)] : [],
   });
+  docs.push(...hrDeliveryDocs.docs);
+
+  try {
+    const delivered = await insertAttendanceNotificationDocs(models, docs);
+    return {
+      delivered,
+      mode: hrDeliveryDocs.mode,
+      recipientCount: hrDeliveryDocs.recipientCount,
+    };
+  } catch (err) {
+    console.error(
+      "[attendance-notifications] notifyAttendanceStakeholders failed:",
+      err?.message || err
+    );
+    return { delivered: 0, mode: null, error: err?.message || String(err) };
+  }
 }
 
 /**
- * Deliver attendance alerts to active HR portal operators in this tenant.
+ * Build HR portal notification docs (Company Admin + HR Admin).
  * Prefers personal User-id notifications; falls back to role broadcasts.
+ * Does not write — caller bulk-inserts (F42).
  */
-async function deliverHrPortalAttendanceNotifications({
+export async function buildHrPortalAttendanceNotificationDocs({
   models,
   title,
   message,
@@ -677,7 +744,9 @@ async function deliverHrPortalAttendanceNotifications({
   metadata = {},
   excludeUserIds = [],
 }) {
-  if (!models?.Notification) return { delivered: 0 };
+  if (!models?.Notification) {
+    return { docs: [], mode: null, recipientCount: 0 };
+  }
 
   const exclude = new Set((excludeUserIds || []).map(String));
   const recipients = (await resolveHrPortalNotificationRecipients(models)).filter(
@@ -685,9 +754,10 @@ async function deliverHrPortalAttendanceNotifications({
   );
 
   if (recipients.length) {
-    let delivered = 0;
-    for (const recipient of recipients) {
-      await models.Notification.create({
+    return {
+      mode: "personal",
+      recipientCount: recipients.length,
+      docs: recipients.map((recipient) => ({
         userId: recipient._id,
         role: null,
         title,
@@ -699,32 +769,71 @@ async function deliverHrPortalAttendanceNotifications({
           recipientRole: recipient.role,
           delivery: "PERSONAL",
         },
-      });
-      delivered += 1;
-    }
-    return { delivered, mode: "personal" };
+      })),
+    };
   }
 
   // Fallback when no active portal operators exist yet (keeps a durable record).
-  await models.Notification.create({
-    userId: null,
-    role: USER_ROLES.HR_ADMIN,
+  return {
+    mode: "role_broadcast",
+    recipientCount: 0,
+    docs: [
+      {
+        userId: null,
+        role: USER_ROLES.HR_ADMIN,
+        title,
+        message,
+        type: NOTIFICATION_TYPES.ATTENDANCE,
+        link,
+        metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
+      },
+      {
+        userId: null,
+        role: USER_ROLES.COMPANY_ADMIN,
+        title,
+        message,
+        type: NOTIFICATION_TYPES.ATTENDANCE,
+        link,
+        metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
+      },
+    ],
+  };
+}
+
+/**
+ * Deliver attendance alerts to active HR portal operators in this tenant.
+ * F42: bulk insertMany — preserves personal vs role-broadcast visibility rules.
+ */
+export async function deliverHrPortalAttendanceNotifications({
+  models,
+  title,
+  message,
+  link = "/admin/attendance",
+  metadata = {},
+  excludeUserIds = [],
+}) {
+  if (!models?.Notification) return { delivered: 0 };
+
+  const built = await buildHrPortalAttendanceNotificationDocs({
+    models,
     title,
     message,
-    type: NOTIFICATION_TYPES.ATTENDANCE,
     link,
-    metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
+    metadata,
+    excludeUserIds,
   });
-  await models.Notification.create({
-    userId: null,
-    role: USER_ROLES.COMPANY_ADMIN,
-    title,
-    message,
-    type: NOTIFICATION_TYPES.ATTENDANCE,
-    link,
-    metadata: { ...metadata, delivery: "ROLE_BROADCAST" },
-  });
-  return { delivered: 2, mode: "role_broadcast" };
+  if (!built.docs.length) return { delivered: 0, mode: built.mode };
+
+  try {
+    const delivered = await insertAttendanceNotificationDocs(models, built.docs);
+    return { delivered, mode: built.mode, recipientCount: built.recipientCount };
+  } catch (err) {
+    console.error(
+      "[attendance-notifications] deliverHrPortalAttendanceNotifications failed:",
+      err?.message || err
+    );
+    return { delivered: 0, mode: built.mode, error: err?.message || String(err) };
+  }
 }
 
 /**

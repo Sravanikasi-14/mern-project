@@ -1,5 +1,13 @@
 import { USER_ROLES } from "../models/User.js";
 import { getCompanyBusinessDate } from "../services/attendanceService.js";
+import {
+  applyLegacyAttendanceLogFallback,
+  buildCompanyAssetsSummary,
+  buildCompensationMap,
+  buildWorkforcePayrollAndProjects,
+  countPresentAndLateFromAttendance,
+  loadDashboardEmployeeFacts,
+} from "../services/adminDashboardMetrics.js";
 import { addCivilDays, parseCivilDate, formatCivilDate, weekdaySunday0 } from "../utils/companyTime.js";
 import {
   filterPayslipsByScope,
@@ -245,63 +253,46 @@ export async function getAdminDashboard(req, res, next) {
       }
     }
 
+    // F37: lean employee facts only (no roster PII / attendanceLogs / avatars).
     const [activeEmployees, allDistinctDepartments] = await Promise.all([
-      Employee.find(empQueryFilter)
-        // Keep projection narrow, but include the customFields used by payroll + assets
-        // (monthlySalary/salary fallback and legacy assignedAssets). Omitting them
-        // under-counted payroll and employeesWithAssets.
-        .select(
-          "_id employeeCode fullName email job avatar status dateOfBirth customFields.attendanceLogs customFields.monthlySalary customFields.salary customFields.assignedAssets"
-        )
-        .lean(),
+      loadDashboardEmployeeFacts(Employee, empQueryFilter),
       Employee.distinct("job.department", empBaseFilter),
     ]);
 
     const activeEmployeeIds = activeEmployees.map((e) => e._id);
     const activeCount = activeEmployees.length;
 
-    // 3. Attendance for targetDate
+    // 3. Attendance for targetDate — count from Attendance rows, not by walking every employee.
     const attendanceRecordsToday = await Attendance.find({
       date: targetDate,
       employeeId: { $in: activeEmployeeIds },
-    }).lean();
+    })
+      .select("employeeId checkIn status")
+      .lean();
 
-    const attendanceMapToday = new Map();
-    for (const att of attendanceRecordsToday) {
-      attendanceMapToday.set(String(att.employeeId), att);
-    }
+    const attendanceCounted = countPresentAndLateFromAttendance({
+      attendanceRecords: attendanceRecordsToday,
+      companyTimezone,
+      lateThresholdMinutes,
+      getTimeInTimezone,
+      parseTimeToMinutes,
+    });
+    let todayPresent = attendanceCounted.todayPresent;
+    let todayLate = attendanceCounted.todayLate;
+    const presentIds = attendanceCounted.presentIds;
 
-    let todayPresent = 0;
-    let todayLate = 0;
-
-    for (const emp of activeEmployees) {
-      const empIdStr = String(emp._id);
-      const att = attendanceMapToday.get(empIdStr);
-      if (att) {
-        if (att.checkIn || att.status === "CHECKED_IN" || att.status === "CHECKED_OUT" || att.status === "PRESENT") {
-          todayPresent++;
-          if (att.checkIn) {
-            const checkInLocalTime = getTimeInTimezone(att.checkIn, companyTimezone);
-            const checkInMins = parseTimeToMinutes(checkInLocalTime);
-            if (checkInMins !== null && checkInMins > lateThresholdMinutes) {
-              todayLate++;
-            }
-          }
-        }
-      } else {
-        // Fallback to legacy customFields if present
-        const legacyLogs = emp.customFields?.attendanceLogs || [];
-        const todayLog = legacyLogs.find((l) => l.date === targetDate);
-        if (todayLog && (todayLog.checkIn || todayLog.status === "PRESENT")) {
-          todayPresent++;
-          if (todayLog.checkIn) {
-            const checkInMins = parseTimeToMinutes(todayLog.checkIn);
-            if (checkInMins !== null && checkInMins > lateThresholdMinutes) {
-              todayLate++;
-            }
-          }
-        }
-      }
+    const missingAttendanceIds = activeEmployeeIds.filter((id) => !presentIds.has(String(id)));
+    if (missingAttendanceIds.length > 0) {
+      const legacy = await applyLegacyAttendanceLogFallback({
+        Employee,
+        candidateEmployeeIds: missingAttendanceIds,
+        targetDate,
+        lateThresholdMinutes,
+        parseTimeToMinutes,
+        presentIds,
+      });
+      todayPresent += legacy.todayPresent;
+      todayLate += legacy.todayLate;
     }
 
     // 4. On Leave Today
@@ -313,7 +304,9 @@ export async function getAdminDashboard(req, res, next) {
       status: "APPROVED",
       fromDate: { $lte: targetDateEnd },
       toDate: { $gte: targetDateStart },
-    }).lean();
+    })
+      .select("employeeId")
+      .lean();
 
     const onLeaveEmployeeIds = new Set(leavesToday.map((l) => String(l.employeeId)));
     const onLeaveCount = onLeaveEmployeeIds.size;
@@ -322,41 +315,18 @@ export async function getAdminDashboard(req, res, next) {
     const todayAbsent = Math.max(0, activeCount - todayPresent - onLeaveCount);
 
     // 6. Monthly Payroll Calculation (latest revision for active employees)
-    let totalMonthlyPayroll = 0;
     const compensationRecords = await EmployeeCompensation.find({
       employeeId: { $in: activeEmployeeIds },
-    }).lean();
-
-    const compMap = new Map();
-    for (const comp of compensationRecords) {
-      // Find latest revision effective on or before targetDate
-      const revisions = (comp.revisions || []).filter(
-        (r) => new Date(r.effectiveFromDate) <= targetDateEnd
-      );
-      if (revisions.length > 0) {
-        revisions.sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
-        const latest = revisions[0];
-        const val = parseFloat(String(latest.monthlyCostToCompany || 0));
-        if (!isNaN(val)) {
-          compMap.set(String(comp.employeeId), val);
-        }
-      }
-    }
-
-    for (const emp of activeEmployees) {
-      const empIdStr = String(emp._id);
-      const val = compMap.get(empIdStr);
-      if (val !== undefined) {
-        totalMonthlyPayroll += val;
-      } else {
-        const customSalary = parseFloat(
-          String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0)
-        );
-        if (!isNaN(customSalary)) {
-          totalMonthlyPayroll += customSalary;
-        }
-      }
-    }
+    })
+      .select("employeeId revisions")
+      .lean();
+    const compMap = buildCompensationMap(compensationRecords, targetDateEnd);
+    const {
+      totalMonthlyPayroll,
+      payrollAllocation,
+      workforceDepartments,
+      projectTeams,
+    } = buildWorkforcePayrollAndProjects(activeEmployees, compMap);
 
     // 7. Recruitment Funnel (from OfferLetter)
     let recruitmentFunnel = {
@@ -572,7 +542,10 @@ export async function getAdminDashboard(req, res, next) {
       for (const cycle of cycleDocs) {
         const monthNumber = Number(cycle.periodMonth);
         if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) continue;
-        const rows = await Payslip.find({ payrollCycleId: cycle._id })
+        const rows = await Payslip.find({
+          payrollCycleId: cycle._id,
+          employeeId: { $in: activeEmployeeIds },
+        })
           .select("employeeId netPayable netSalary")
           .lean();
         const scoped = filterPayslipsByScope(req.hrAccess, rows);
@@ -636,12 +609,14 @@ export async function getAdminDashboard(req, res, next) {
     const weeklyOverview = buildTrendSeries(7);
     const thirtyDayOverview = buildTrendSeries(30);
 
-    // 13. Company Assets
-    let employeesWithAssets = 0;
+    // 13. Company Assets (assignments collection + lean legacy assignedAssets on facts)
     const assignedEmpIds = new Set();
     if (req.auth.models.CompanyAsset) {
       const activeAssignments = await req.auth.models.CompanyAsset.find(
-        { status: "ASSIGNED", "currentAssignment.employeeId": { $ne: null } },
+        {
+          status: "ASSIGNED",
+          "currentAssignment.employeeId": { $in: activeEmployeeIds },
+        },
         "currentAssignment.employeeId"
       ).lean();
       for (const a of activeAssignments) {
@@ -650,90 +625,9 @@ export async function getAdminDashboard(req, res, next) {
         }
       }
     }
+    const companyAssets = buildCompanyAssetsSummary(activeEmployees, assignedEmpIds);
 
-    for (const emp of activeEmployees) {
-      const assets = emp.customFields?.assignedAssets;
-      const hasLegacy = Array.isArray(assets) && assets.length > 0;
-      if (assignedEmpIds.has(String(emp._id)) || hasLegacy) {
-        employeesWithAssets++;
-      }
-    }
-    const employeesWithoutAssets = Math.max(0, activeCount - employeesWithAssets);
-    const companyAssets = {
-      totalEmployees: activeCount,
-      employeesWithAssets,
-      employeesWithAssetsPct: activeCount > 0 ? Math.round((employeesWithAssets / activeCount) * 100) : 0,
-      employeesWithoutAssets,
-      employeesWithoutAssetsPct: activeCount > 0 ? Math.round((employeesWithoutAssets / activeCount) * 100) : 0,
-    };
-
-    // 14. Payroll Allocation (Department-wise)
-    const deptSalaryMap = new Map();
-    for (const emp of activeEmployees) {
-      const dept = emp.job?.department || "General / Unassigned";
-      const empIdStr = String(emp._id);
-      const sal = compMap.get(empIdStr) || parseFloat(String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0)) || 0;
-      deptSalaryMap.set(dept, (deptSalaryMap.get(dept) || 0) + sal);
-    }
-
-    const payrollAllocation = [];
-    for (const [department, cost] of deptSalaryMap.entries()) {
-      const pct = totalMonthlyPayroll > 0 ? Math.round((cost / totalMonthlyPayroll) * 100) : 0;
-      payrollAllocation.push({
-        department,
-        cost,
-        percentage: pct,
-      });
-    }
-    payrollAllocation.sort((a, b) => b.cost - a.cost);
-
-    const deptHeadcount = new Map();
-    for (const emp of activeEmployees) {
-      const dept = emp.job?.department || "General / Unassigned";
-      deptHeadcount.set(dept, (deptHeadcount.get(dept) || 0) + 1);
-    }
-    const workforceDepartments = Array.from(deptHeadcount.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // 15. Project Teams
-    const projectTypeCountMap = {
-      MANDATE: 0,
-      RETAIL: 0,
-      INTERNAL: 0,
-      BENCH: 0,
-    };
-    const projectNameMap = new Map();
-    let totalEmployeesWithProjects = 0;
-
-    for (const emp of activeEmployees) {
-      const p = emp.job?.project;
-      if (p) {
-        if (p.projectType && projectTypeCountMap[p.projectType] !== undefined) {
-          projectTypeCountMap[p.projectType]++;
-          totalEmployeesWithProjects++;
-        }
-        if (p.projectName && p.projectName.trim()) {
-          const pName = p.projectName.trim();
-          projectNameMap.set(pName, (projectNameMap.get(pName) || 0) + 1);
-        }
-      }
-    }
-
-    const projectTeams = {
-      mandate: {
-        count: projectTypeCountMap.MANDATE,
-        pct: totalEmployeesWithProjects > 0 ? Math.round((projectTypeCountMap.MANDATE / totalEmployeesWithProjects) * 100) : 0,
-      },
-      retail: {
-        count: projectTypeCountMap.RETAIL,
-        pct: totalEmployeesWithProjects > 0 ? Math.round((projectTypeCountMap.RETAIL / totalEmployeesWithProjects) * 100) : 0,
-      },
-      topStaffed: Array.from(projectNameMap.entries())
-        .map(([name, members]) => ({ name, members }))
-        .sort((a, b) => b.members - a.members)
-        .slice(0, 5),
-    };
+    // 14–15. Payroll allocation, workforce departments, project teams — from lean facts (F37)
 
     // 16. Real Payroll Cycle Summary & Payroll Action Centre
     let payrollCycleSummary = {
@@ -860,7 +754,11 @@ export async function getAdminDashboard(req, res, next) {
       if (isCustomHr) {
         async function scopedPayslipsForCycle(cycleDoc) {
           if (!cycleDoc?._id || !Payslip) return [];
-          const rows = await Payslip.find({ payrollCycleId: cycleDoc._id }).lean();
+          // F37: scope payslips to dashboard employee ids before in-memory HR filter.
+          const rows = await Payslip.find({
+            payrollCycleId: cycleDoc._id,
+            employeeId: { $in: activeEmployeeIds },
+          }).lean();
           return filterPayslipsByScope(hrAccess, rows);
         }
 

@@ -1,9 +1,15 @@
 import mongoose from "mongoose";
 import { HttpError } from "../utils/httpError.js";
 import {
+  findVisibleNotifications,
   notificationSubjectEmployeeId,
   notificationVisibilityFilter,
 } from "../utils/notificationVisibility.js";
+import {
+  loadUserReadNotificationKeys,
+  markNotificationKeyRead,
+  normalizeNotificationKey,
+} from "../services/notificationReadStateService.js";
 
 /**
  * GET /api/notifications
@@ -31,9 +37,7 @@ export async function getNotifications(req, res, next) {
       });
     }
 
-    const userReadIds = new Set(
-      (user.preferences?.readNotificationIds || []).map((id) => String(id))
-    );
+    const userReadIds = await loadUserReadNotificationKeys(models, user);
     const readAllAt = user.preferences?.readAllNotificationsAt
       ? new Date(user.preferences.readAllNotificationsAt).getTime()
       : 0;
@@ -41,12 +45,9 @@ export async function getNotifications(req, res, next) {
     const items = [];
 
     // 1. Fetch persisted database notifications owned by / broadcast to this user.
-    // Never match `{ role: null }` alone — personal docs often store role:null with a userId.
+    // Parallel per-branch indexed queries (see findVisibleNotifications).
     if (Notification) {
-      const persisted = await Notification.find(notificationVisibilityFilter(user))
-        .sort({ createdAt: -1 })
-        .limit(40)
-        .lean();
+      const persisted = await findVisibleNotifications(Notification, user, { limit: 40 });
 
       for (const notif of persisted) {
         const subjectEmployeeId = notificationSubjectEmployeeId(notif);
@@ -231,10 +232,10 @@ export async function getNotifications(req, res, next) {
 export async function markNotificationRead(req, res, next) {
   try {
     const { user, models } = req.auth;
-    const { Notification, User } = models;
+    const { Notification } = models;
     const rawId = req.params.id;
 
-    const cleanId = rawId.replace(/^(leave|task)-/, "");
+    const cleanId = normalizeNotificationKey(rawId);
 
     // Scope to notifications this user is allowed to see. Never flip global
     // isRead on shared/role broadcasts — that would mark them read for everyone.
@@ -255,12 +256,8 @@ export async function markNotificationRead(req, res, next) {
       }
     }
 
-    // Persist per-user read state (synthetic leave-/task- ids and DB ids)
-    if (User) {
-      await User.findByIdAndUpdate(user._id, {
-        $addToSet: { "preferences.readNotificationIds": cleanId },
-      });
-    }
+    // Bounded per-user read state (does not grow User.preferences.readNotificationIds)
+    await markNotificationKeyRead(models, user._id, cleanId);
 
     res.json({ success: true });
   } catch (error) {

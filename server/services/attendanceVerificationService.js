@@ -127,7 +127,7 @@ export function buildEmployeeVerificationRequirements(policy, { sessionType = "O
       gpsRemote:
         "Approved remote / WFH sessions do not require office geofence GPS verification.",
       faceLiveness:
-        "Heuristic liveness is not production anti-spoofing. Mandatory face stays unavailable until a validated liveness provider is configured.",
+        "Heuristic checks are not production anti-spoofing. Mandatory face stays unavailable until a registered PAD provider (Phase 2 MiniFASNet) is implemented and ready.",
     },
   };
 }

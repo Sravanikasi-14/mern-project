@@ -583,6 +583,7 @@ export async function punchInEmployee({
   }
   await employee.save();
 
+  // F42: bulk HR fan-out; failures must not undo a successful punch (await + log only).
   await notifyAttendanceStakeholders({
     models,
     employee,
@@ -590,7 +591,13 @@ export async function punchInEmployee({
     message: `${employee.fullName || "Employee"} punched in (${normalizedSessionType.toLowerCase()} session).`,
     link: "/admin/attendance",
     metadata: { sessionId: String(sessionId), sessionType: normalizedSessionType },
-  }).catch(() => {});
+    dedupeKey: `punch_in:${String(employee._id)}:${String(sessionId)}`,
+  }).catch((err) => {
+    console.error(
+      "[attendance] punch-in notification failed after successful punch:",
+      err?.message || err
+    );
+  });
 
   return {
     success: true,
@@ -887,6 +894,7 @@ export async function punchOutEmployee({
       "Punch-out was recorded, but stopping the live tracking session failed. Please stop tracking manually or contact support.";
   }
 
+  // F42: bulk HR fan-out; failures must not undo a successful punch (await + log only).
   await notifyAttendanceStakeholders({
     models,
     employee,
@@ -894,7 +902,13 @@ export async function punchOutEmployee({
     message: `${employee.fullName || "Employee"} punched out. Day total ${workingHours}.`,
     link: "/admin/attendance",
     metadata: { sessionId: String(openSessionId) },
-  }).catch(() => {});
+    dedupeKey: `punch_out:${String(employee._id)}:${String(openSessionId)}`,
+  }).catch((err) => {
+    console.error(
+      "[attendance] punch-out notification failed after successful punch:",
+      err?.message || err
+    );
+  });
 
   return {
     success: true,
@@ -1151,11 +1165,19 @@ export async function getEmployeeAttendanceHistory({
   const customLogs = employee.customFields?.attendanceLogs || [];
   const hasLegacyLogs = Array.isArray(customLogs) && customLogs.length > 0;
 
+  const { ADMIN_ATTENDANCE_DAY_SELECT, assertBoundedAttendanceRange } = await import(
+    "./attendanceAdminQuery.js"
+  );
+  if (startKey && endKey) {
+    assertBoundedAttendanceRange(startKey, endKey);
+  }
+
   // Fast path: no legacy logs — paginate in Mongo instead of loading full history.
   if (!hasLegacyLogs && Attendance) {
     const [total, records] = await Promise.all([
       Attendance.countDocuments(filter),
       Attendance.find(filter)
+        .select(ADMIN_ATTENDANCE_DAY_SELECT)
         .sort({ date: -1, createdAt: -1 })
         .skip(skip)
         .limit(parsedLimit)
@@ -1173,7 +1195,10 @@ export async function getEmployeeAttendanceHistory({
   }
 
   const records = Attendance
-    ? await Attendance.find(filter).sort({ date: -1, createdAt: -1 }).lean()
+    ? await Attendance.find(filter)
+        .select(ADMIN_ATTENDANCE_DAY_SELECT)
+        .sort({ date: -1, createdAt: -1 })
+        .lean()
     : [];
 
   const byDate = new Map();
@@ -1493,8 +1518,9 @@ export async function getLiveTrackingStatus({
 
 /**
  * HR Admin Attendance Overview & Map Data:
- * Aggregates all employee attendance, punch locations, and active live tracking sessions
- * for a specific business date. Optional startDate/endDate also returns rangeRecords.
+ * Aggregates scoped employee attendance, punch locations, and active live tracking sessions
+ * for a specific business date. Optional startDate/endDate also returns rangeRecords
+ * (bounded + optionally paginated).
  */
 export async function getAdminAttendanceOverview({
   models,
@@ -1504,7 +1530,22 @@ export async function getAdminAttendanceOverview({
   endDate,
   department,
   hrAccess = null,
+  page = null,
+  limit = null,
+  search = "",
 }) {
+  const {
+    ADMIN_ATTENDANCE_DAY_SELECT,
+    ADMIN_ATTENDANCE_EMPLOYEE_SELECT,
+    ADMIN_TRACKING_SESSION_SELECT,
+    MAX_RANGE_RECORDS_UNBOUNDED,
+    activeTrackingSessionFilter,
+    assertBoundedAttendanceRange,
+    buildScopedEmployeeFilter,
+    loadLegacyAttendanceLogsForMissing,
+    parsePagination,
+  } = await import("./attendanceAdminQuery.js");
+
   const { Attendance, Employee, LiveTrackingSession } = models;
   const rangeStart = civilDateKey(startDate) || civilDateKey(date) || "";
   const rangeEnd = civilDateKey(endDate) || civilDateKey(date) || "";
@@ -1514,39 +1555,49 @@ export async function getAdminAttendanceOverview({
     date ||
     getCompanyBusinessDate(new Date(), companyTimezone);
 
-  let employeeFilter = { status: { $ne: "TERMINATED" } };
-  if (department && department !== "ALL") {
-    employeeFilter["job.department"] = department;
-  }
-  if (hrAccess) {
-    const { mergeEmployeeScopeFilter } = await import("./hrAccessEnforcementService.js");
-    employeeFilter = mergeEmployeeScopeFilter(hrAccess, employeeFilter);
+  if (rangeStart && rangeEnd && rangeStart !== rangeEnd) {
+    assertBoundedAttendanceRange(rangeStart, rangeEnd);
   }
 
+  const employeeFilter = await buildScopedEmployeeFilter({ department, hrAccess });
+
+  // Slim roster: table/map fields only — never full customFields.
   const employees = await Employee.find(employeeFilter)
-    .select("_id employeeCode fullName email job avatar status customFields")
+    .select(ADMIN_ATTENDANCE_EMPLOYEE_SELECT)
     .lean();
 
   const employeeIds = employees.map((e) => e._id);
 
-  // Fetch Attendance records for the date
-  const attendanceRecords = await Attendance.find({
-    employeeId: { $in: employeeIds },
-    date: targetDate,
-  }).lean();
+  const attendanceRecords = Attendance
+    ? await Attendance.find({
+        employeeId: { $in: employeeIds },
+        date: targetDate,
+      })
+        .select(ADMIN_ATTENDANCE_DAY_SELECT)
+        .lean()
+    : [];
 
   const attendanceMap = new Map();
   for (const record of attendanceRecords) {
     attendanceMap.set(String(record.employeeId), record);
   }
 
-  // Fetch active live tracking sessions
+  const missingForLegacy = employeeIds.filter((id) => !attendanceMap.has(String(id)));
+  const legacyByEmployee = await loadLegacyAttendanceLogsForMissing({
+    Employee,
+    employeeIds: missingForLegacy,
+    targetDate,
+  });
+
   const now = new Date();
-  const activeSessions = await LiveTrackingSession.find({
-    employeeId: { $in: employeeIds },
-    status: "ACTIVE",
-    expiresAt: { $gt: now },
-  }).lean();
+  const activeSessions = LiveTrackingSession
+    ? await LiveTrackingSession.find({
+        ...activeTrackingSessionFilter(now),
+        employeeId: { $in: employeeIds },
+      })
+        .select(ADMIN_TRACKING_SESSION_SELECT)
+        .lean()
+    : [];
 
   const trackingMap = new Map();
   for (const session of activeSessions) {
@@ -1591,9 +1642,7 @@ export async function getAdminAttendanceOverview({
         status = "ON_LEAVE";
       }
     } else {
-      // Fallback to legacy customFields
-      const legacyLogs = emp.customFields?.attendanceLogs || [];
-      const todayLegacy = legacyLogs.find((l) => l.date === targetDate);
+      const todayLegacy = legacyByEmployee.get(empIdStr);
       if (todayLegacy) {
         checkInTime = todayLegacy.checkIn || null;
         checkOutTime = todayLegacy.checkOut || null;
@@ -1648,16 +1697,18 @@ export async function getAdminAttendanceOverview({
   });
 
   let rangeRecords = [];
+  let rangePagination = null;
+  let rangeTruncated = false;
+
   if (rangeStart && rangeEnd && rangeStart !== rangeEnd && Attendance) {
-    const rangeAttendance = await Attendance.find({
+    const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
+    const rangeFilter = {
       employeeId: { $in: employeeIds },
       date: { $gte: rangeStart, $lte: rangeEnd },
-    })
-      .sort({ date: -1, checkIn: -1 })
-      .lean();
+    };
 
-    const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
-    rangeRecords = rangeAttendance.map((record) => {
+    const q = String(search || "").trim().toLowerCase();
+    const mapRecord = (record) => {
       const emp = employeeById.get(String(record.employeeId));
       return {
         ...formatCollectionAttendance(record),
@@ -1667,7 +1718,65 @@ export async function getAdminAttendanceOverview({
         department: emp?.job?.department || "General",
         jobTitle: emp?.job?.jobTitle || "Team Member",
       };
-    });
+    };
+
+    const useServerPage = page != null || limit != null;
+    if (useServerPage) {
+      const paging = parsePagination(page, limit);
+      if (q) {
+        // Search needs employee name fields — load bounded set then filter/paginate in memory.
+        const rangeAttendance = await Attendance.find(rangeFilter)
+          .select(ADMIN_ATTENDANCE_DAY_SELECT)
+          .sort({ date: -1, checkIn: -1 })
+          .limit(MAX_RANGE_RECORDS_UNBOUNDED)
+          .lean();
+        const filtered = rangeAttendance
+          .map(mapRecord)
+          .filter(
+            (r) =>
+              (r.fullName || "").toLowerCase().includes(q) ||
+              (r.employeeCode || "").toLowerCase().includes(q) ||
+              (r.department || "").toLowerCase().includes(q)
+          );
+        const total = filtered.length;
+        rangeRecords = filtered.slice(paging.skip, paging.skip + paging.limit);
+        rangePagination = {
+          total,
+          page: paging.page,
+          limit: paging.limit,
+          totalPages: Math.ceil(total / paging.limit) || 1,
+        };
+        rangeTruncated = rangeAttendance.length >= MAX_RANGE_RECORDS_UNBOUNDED;
+      } else {
+        const [total, rangeAttendance] = await Promise.all([
+          Attendance.countDocuments(rangeFilter),
+          Attendance.find(rangeFilter)
+            .select(ADMIN_ATTENDANCE_DAY_SELECT)
+            .sort({ date: -1, checkIn: -1 })
+            .skip(paging.skip)
+            .limit(paging.limit)
+            .lean(),
+        ]);
+        rangeRecords = rangeAttendance.map(mapRecord);
+        rangePagination = {
+          total,
+          page: paging.page,
+          limit: paging.limit,
+          totalPages: Math.ceil(total / paging.limit) || 1,
+        };
+      }
+    } else {
+      const rangeAttendance = await Attendance.find(rangeFilter)
+        .select(ADMIN_ATTENDANCE_DAY_SELECT)
+        .sort({ date: -1, checkIn: -1 })
+        .limit(MAX_RANGE_RECORDS_UNBOUNDED + 1)
+        .lean();
+      rangeTruncated = rangeAttendance.length > MAX_RANGE_RECORDS_UNBOUNDED;
+      rangeRecords = (rangeTruncated
+        ? rangeAttendance.slice(0, MAX_RANGE_RECORDS_UNBOUNDED)
+        : rangeAttendance
+      ).map(mapRecord);
+    }
   }
 
   return {
@@ -1682,10 +1791,12 @@ export async function getAdminAttendanceOverview({
       notCheckedInCount: employees.length - presentCount,
       liveTrackingCount,
       withLocationCount,
-      rangeRecordCount: rangeRecords.length,
+      rangeRecordCount: rangePagination?.total ?? rangeRecords.length,
     },
     employees: employeeOverviews,
     rangeRecords,
+    rangePagination,
+    rangeTruncated,
   };
 }
 
@@ -1763,9 +1874,9 @@ function classifyLiveLocation({ tracking, punchLocation, now = new Date() }) {
 
 /**
  * Live Tracking workspace payload:
- * - `live`: employees with an open punch today (active attendance), enriched with optional
- *   LiveTrackingSession sharing state. Punch-in alone does not invent coordinates.
- * - `history`: LiveTrackingSession rows started in the selected date range.
+ * - `live`: open-punch / ACTIVE-session employees only (hydrate roster after punch/session query).
+ * - `history`: LiveTrackingSession rows started in the selected date range (no breadcrumbs).
+ * Punch-in alone does not invent coordinates. Expired sessions are excluded from ACTIVE live.
  */
 export async function getAdminTrackingSessions({
   models,
@@ -1775,42 +1886,77 @@ export async function getAdminTrackingSessions({
   department,
   status = "ALL",
   hrAccess = null,
+  historyPage = null,
+  historyLimit = null,
 }) {
+  const {
+    ADMIN_ATTENDANCE_DAY_SELECT,
+    ADMIN_ATTENDANCE_EMPLOYEE_SELECT,
+    ADMIN_TRACKING_SESSION_SELECT,
+    activeTrackingSessionFilter,
+    assertBoundedAttendanceRange,
+    buildScopedEmployeeFilter,
+    openPunchAttendanceFilter,
+    parsePagination,
+  } = await import("./attendanceAdminQuery.js");
+
   const { Employee, LiveTrackingSession, Attendance } = models;
-
-  let employeeFilter = { status: { $ne: "TERMINATED" } };
-  if (department && department !== "ALL") {
-    employeeFilter["job.department"] = department;
-  }
-  if (hrAccess) {
-    const { mergeEmployeeScopeFilter } = await import("./hrAccessEnforcementService.js");
-    employeeFilter = mergeEmployeeScopeFilter(hrAccess, employeeFilter);
-  }
-
-  const employees = await Employee.find(employeeFilter)
-    .select("_id employeeCode fullName email job status avatar")
-    .lean();
-  const employeeIds = employees.map((e) => e._id);
-  const employeeById = new Map(employees.map((emp) => [String(emp._id), emp]));
+  const employeeFilter = await buildScopedEmployeeFilter({ department, hrAccess });
 
   const now = new Date();
   const today = getCompanyBusinessDate(now, companyTimezone);
 
-  const [attendanceRows, activeSessions] = await Promise.all([
+  // Narrow scopes (department / HR access) need an ID list; full-company live stays punch/session-first.
+  const needsIdScope = Boolean(
+    (department && department !== "ALL") || hrAccess
+  );
+  let scopeEmployeeIds = null;
+  if (needsIdScope) {
+    scopeEmployeeIds = (
+      await Employee.find(employeeFilter).select("_id").lean()
+    ).map((e) => e._id);
+    if (!scopeEmployeeIds.length) {
+      return {
+        live: [],
+        history: [],
+        historyPagination: null,
+        summary: {
+          liveCount: 0,
+          punchedInCount: 0,
+          activelySharingCount: 0,
+          historyCount: 0,
+          withLocationCount: 0,
+        },
+        startDate: civilDateKey(startDate) || "",
+        endDate: civilDateKey(endDate) || "",
+        supportsHistory: Boolean(LiveTrackingSession),
+        companyTimezone,
+        businessDate: today,
+      };
+    }
+  }
+
+  const punchFilter = openPunchAttendanceFilter(today);
+  const trackingFilter = activeTrackingSessionFilter(now);
+  if (scopeEmployeeIds) {
+    punchFilter.employeeId = { $in: scopeEmployeeIds };
+    trackingFilter.employeeId = { $in: scopeEmployeeIds };
+  }
+
+  // Punch/session-first: do not load the full roster before filtering live candidates.
+  const [openAttendanceRows, activeSessions] = await Promise.all([
     Attendance
-      ? Attendance.find({ employeeId: { $in: employeeIds }, date: today }).lean()
+      ? Attendance.find(punchFilter).select(ADMIN_ATTENDANCE_DAY_SELECT).lean()
       : Promise.resolve([]),
     LiveTrackingSession
-      ? LiveTrackingSession.find({
-          employeeId: { $in: employeeIds },
-          status: "ACTIVE",
-          expiresAt: { $gt: now },
-        }).lean()
+      ? LiveTrackingSession.find(trackingFilter)
+          .select(ADMIN_TRACKING_SESSION_SELECT)
+          .lean()
       : Promise.resolve([]),
   ]);
 
   const punchByEmployee = new Map();
-  for (const row of attendanceRows) {
+  for (const row of openAttendanceRows) {
     const open = resolveOpenPunch(row);
     if (open) punchByEmployee.set(String(row.employeeId), open);
   }
@@ -1819,16 +1965,24 @@ export async function getAdminTrackingSessions({
     activeSessions.map((session) => [String(session.employeeId), session])
   );
 
-  // Include every punched-in employee; attach live-sharing metadata when present.
-  const liveEmployeeIds = new Set([
-    ...punchByEmployee.keys(),
-    ...trackingByEmployee.keys(),
-  ]);
+  const liveCandidateIds = [
+    ...new Set([...punchByEmployee.keys(), ...trackingByEmployee.keys()]),
+  ].filter((id) => mongoose.isValidObjectId(id));
 
-  const live = [...liveEmployeeIds]
+  const liveEmployees = liveCandidateIds.length
+    ? await Employee.find({
+        ...employeeFilter,
+        _id: { $in: liveCandidateIds },
+      })
+        .select(ADMIN_ATTENDANCE_EMPLOYEE_SELECT)
+        .lean()
+    : [];
+  const employeeById = new Map(liveEmployees.map((emp) => [String(emp._id), emp]));
+
+  const live = liveCandidateIds
     .map((empId) => {
       const emp = employeeById.get(empId);
-      if (!emp) return null;
+      if (!emp) return null; // out of HR scope / department / terminated
       const punch = punchByEmployee.get(empId) || null;
       const tracking = trackingByEmployee.get(empId) || null;
       // Tracking without an open punch is rare (should stop on punch-out); still show if ACTIVE.
@@ -1867,13 +2021,13 @@ export async function getAdminTrackingSessions({
         locationState: classified.locationState,
         locationLabel: classified.locationLabel,
         isTrackingActive: classified.isTrackingActive,
-        breadcrumbCount: Array.isArray(tracking?.breadcrumbs) ? tracking.breadcrumbs.length : 0,
+        // Breadcrumbs are excluded from admin reads; count unknown without loading the array.
+        breadcrumbCount: 0,
         source: "live",
       };
     })
     .filter(Boolean)
     .sort((a, b) => {
-      // Actively sharing first, then by punch-in time desc
       if (a.isTrackingActive !== b.isTrackingActive) return a.isTrackingActive ? -1 : 1;
       return new Date(b.punchInAt || 0) - new Date(a.punchInAt || 0);
     });
@@ -1881,48 +2035,86 @@ export async function getAdminTrackingSessions({
   const rangeStart = civilDateKey(startDate);
   const rangeEnd = civilDateKey(endDate);
   let history = [];
+  let historyPagination = null;
 
   if (LiveTrackingSession && rangeStart && rangeEnd) {
-    const startBound = new Date(`${rangeStart}T00:00:00.000Z`);
-    const endBound = new Date(`${rangeEnd}T23:59:59.999Z`);
+    const { startKey, endKey } = assertBoundedAttendanceRange(rangeStart, rangeEnd);
+    const startBound = new Date(`${startKey}T00:00:00.000Z`);
+    const endBound = new Date(`${endKey}T23:59:59.999Z`);
     const historyFilter = {
-      employeeId: { $in: employeeIds },
       startedAt: { $gte: startBound, $lte: endBound },
       status: { $in: ["STOPPED", "EXPIRED", "ACTIVE"] },
     };
+    if (scopeEmployeeIds) {
+      historyFilter.employeeId = { $in: scopeEmployeeIds };
+    }
     if (status && status !== "ALL") {
       historyFilter.status = String(status).toUpperCase();
     }
 
-    const historySessions = await LiveTrackingSession.find(historyFilter)
-      .sort({ startedAt: -1 })
-      .limit(200)
-      .lean();
+    const paging =
+      historyPage != null || historyLimit != null
+        ? parsePagination(historyPage, historyLimit, { defaultLimit: 50, maxLimit: 200 })
+        : { page: 1, limit: 200, skip: 0 };
 
-    history = historySessions.map((session) => {
-      const emp = employeeById.get(String(session.employeeId));
-      const isLive =
-        session.status === "ACTIVE" && session.expiresAt && new Date(session.expiresAt) > now;
-      return {
-        id: String(session._id),
-        sessionId: session._id,
-        employeeId: session.employeeId,
-        employeeCode: emp?.employeeCode || "",
-        fullName: emp?.fullName || "",
-        email: emp?.email || "",
-        avatar: emp?.avatar || "",
-        department: emp?.job?.department || "General",
-        jobTitle: emp?.job?.jobTitle || "Team Member",
-        status: isLive ? "ACTIVE" : session.status,
-        startedAt: session.startedAt,
-        expiresAt: session.expiresAt,
-        stoppedAt: session.stoppedAt,
-        lastLocation: session.lastLocation || null,
-        isTrackingActive: isLive,
-        breadcrumbCount: Array.isArray(session.breadcrumbs) ? session.breadcrumbs.length : 0,
-        source: isLive ? "live" : "history",
-      };
-    });
+    // Session-first history: hydrate only employees on the returned page.
+    const [historyTotal, historySessions] = await Promise.all([
+      LiveTrackingSession.countDocuments(historyFilter),
+      LiveTrackingSession.find(historyFilter)
+        .select(ADMIN_TRACKING_SESSION_SELECT)
+        .sort({ startedAt: -1 })
+        .skip(paging.skip)
+        .limit(paging.limit)
+        .lean(),
+    ]);
+
+    const histIds = [
+      ...new Set(historySessions.map((s) => String(s.employeeId)).filter((id) => mongoose.isValidObjectId(id))),
+    ];
+    const histEmployees = histIds.length
+      ? await Employee.find({
+          ...employeeFilter,
+          _id: { $in: histIds },
+        })
+          .select(ADMIN_ATTENDANCE_EMPLOYEE_SELECT)
+          .lean()
+      : [];
+    const histById = new Map(histEmployees.map((emp) => [String(emp._id), emp]));
+
+    history = historySessions
+      .map((session) => {
+        const emp = histById.get(String(session.employeeId));
+        if (!emp) return null; // out of scope
+        const isLive =
+          session.status === "ACTIVE" && session.expiresAt && new Date(session.expiresAt) > now;
+        return {
+          id: String(session._id),
+          sessionId: session._id,
+          employeeId: session.employeeId,
+          employeeCode: emp.employeeCode || "",
+          fullName: emp.fullName || "",
+          email: emp.email || "",
+          avatar: emp.avatar || "",
+          department: emp.job?.department || "General",
+          jobTitle: emp.job?.jobTitle || "Team Member",
+          status: isLive ? "ACTIVE" : session.status,
+          startedAt: session.startedAt,
+          expiresAt: session.expiresAt,
+          stoppedAt: session.stoppedAt,
+          lastLocation: session.lastLocation || null,
+          isTrackingActive: isLive,
+          breadcrumbCount: 0,
+          source: isLive ? "live" : "history",
+        };
+      })
+      .filter(Boolean);
+
+    historyPagination = {
+      total: historyTotal,
+      page: paging.page,
+      limit: paging.limit,
+      totalPages: Math.ceil(historyTotal / paging.limit) || 1,
+    };
   }
 
   const withLocationCount = live.filter((row) => hasNumericCoords(row.lastLocation)).length;
@@ -1931,11 +2123,12 @@ export async function getAdminTrackingSessions({
   return {
     live,
     history,
+    historyPagination,
     summary: {
       liveCount: live.length,
       punchedInCount: live.filter((row) => Boolean(row.punchInAt)).length,
       activelySharingCount,
-      historyCount: history.length,
+      historyCount: historyPagination?.total ?? history.length,
       withLocationCount,
     },
     startDate: rangeStart || "",

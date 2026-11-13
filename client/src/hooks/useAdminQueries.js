@@ -194,6 +194,8 @@ export function useActiveLeavePoliciesQuery(options = {}) {
   });
 }
 
+export { attendancePollIntervalMs } from "../lib/attendancePollInterval.js";
+
 export function useAttendanceOverviewQuery(params = {}, options = {}) {
   const endDate = params.endDate || params.date || params.startDate || "";
   const startDate = params.startDate || endDate;
@@ -203,6 +205,9 @@ export function useAttendanceOverviewQuery(params = {}, options = {}) {
     startDate,
     endDate,
     department: params.department || "ALL",
+    page: params.page || null,
+    limit: params.limit || null,
+    search: params.search || "",
   };
   return useQuery({
     queryKey: qk.attendanceOverview(normalized),
@@ -213,6 +218,9 @@ export function useAttendanceOverviewQuery(params = {}, options = {}) {
         endDate: normalized.endDate,
       };
       if (normalized.department !== "ALL") request.department = normalized.department;
+      if (normalized.page != null) request.page = normalized.page;
+      if (normalized.limit != null) request.limit = normalized.limit;
+      if (normalized.search) request.search = normalized.search;
       const res = await api.get("/admin/attendance/overview", {
         params: request,
         signal,
@@ -231,6 +239,8 @@ export function useTrackingSessionsQuery(params = {}, options = {}) {
     endDate: params.endDate || params.startDate || "",
     department: params.department || "ALL",
     status: params.status || "ALL",
+    historyPage: params.historyPage || params.page || null,
+    historyLimit: params.historyLimit || params.limit || null,
   };
   return useQuery({
     queryKey: qk.trackingSessions(normalized),
@@ -242,6 +252,8 @@ export function useTrackingSessionsQuery(params = {}, options = {}) {
       }
       if (normalized.department !== "ALL") request.department = normalized.department;
       if (normalized.status !== "ALL") request.status = normalized.status;
+      if (normalized.historyPage != null) request.historyPage = normalized.historyPage;
+      if (normalized.historyLimit != null) request.historyLimit = normalized.historyLimit;
       const res = await api.get("/admin/attendance/tracking-sessions", {
         params: request,
         signal,

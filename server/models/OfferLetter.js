@@ -278,10 +278,9 @@ export function createOfferLetterSchema() {
   offerLetterSchema.index({ updatedAt: -1 });
   offerLetterSchema.index({ "candidate.email": 1 });
   offerLetterSchema.index({ "candidate.fullName": 1 });
-  offerLetterSchema.index(
-    { employeeId: 1 },
-    { unique: true, partialFilterExpression: { employeeId: { $type: "objectId" } } }
-  );
+  // employeeId uniqueness is managed explicitly with a stable name via
+  // server/services/offerLetterEmployeeIdIndex.js (avoids clashing with legacy
+  // non-unique auto-named employeeId_1). Do not re-add an unnamed { employeeId: 1 } index here.
 
   offerLetterSchema.set("toJSON", {
     transform(_doc, ret) {

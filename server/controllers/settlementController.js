@@ -250,51 +250,66 @@ export async function initiateSettlement(req, res, next) {
   }
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+}
+
+/** List projection — fields required by AdminPayroll settlements table / filters. */
+const SETTLEMENT_LIST_SELECT =
+  "employeeId status holdReason exitDetails.lastWorkingDay exitDetails.exitReason exitDetails.initiatedAt exitDetails.hrRemarks financialBreakdown.netSettlementAmount paymentDetails.paymentDate paymentDetails.paymentMethod approvedAt completedAt createdAt updatedAt";
+
 export async function getSettlements(req, res, next) {
   try {
     const { search = "", status = "", page = 1, limit = 50 } = req.query;
     const models = await getCompanyModels(req.auth.company);
+    const { Settlement, Employee } = models;
 
     const query = {};
     if (status && status !== "ALL" && Object.values(SETTLEMENT_STATUSES).includes(status.toUpperCase())) {
       query.status = status.toUpperCase();
     }
 
-    const scopedQuery = mergeEmployeeIdScopeFilter(req.hrAccess, query);
+    let scopedQuery = mergeEmployeeIdScopeFilter(req.hrAccess, query);
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
-    let settlements = await models.Settlement.find(scopedQuery)
-      .populate("employeeId", "fullName employeeCode email job status exit")
-      .populate("exitDetails.initiatedBy", "name email")
-      .populate("paymentDetails.recordedBy", "name email")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      settlements = settlements.filter((s) => {
-        const empName = s.employeeId?.fullName?.toLowerCase() || "";
-        const empCode = s.employeeId?.employeeCode?.toLowerCase() || "";
-        const empEmail = s.employeeId?.email?.toLowerCase() || "";
-        const reason = s.exitDetails?.exitReason?.toLowerCase() || "";
-        return (
-          empName.includes(q) ||
-          empCode.includes(q) ||
-          empEmail.includes(q) ||
-          reason.includes(q)
-        );
-      });
+    const searchTerm = typeof search === "string" ? search.trim() : "";
+    if (searchTerm) {
+      const regex = new RegExp(escapeRegex(searchTerm), "i");
+      const matchingEmployees = await Employee.find({
+        $or: [{ fullName: regex }, { employeeCode: regex }, { email: regex }],
+      })
+        .select("_id")
+        .lean();
+      const employeeIds = matchingEmployees.map((e) => e._id);
+      const searchClause = {
+        $or: [
+          { employeeId: { $in: employeeIds } },
+          { "exitDetails.exitReason": regex },
+        ],
+      };
+      scopedQuery =
+        Object.keys(scopedQuery).length === 0
+          ? searchClause
+          : { $and: [scopedQuery, searchClause] };
     }
 
-    const total = settlements.length;
-    const paginated = settlements.slice(skip, skip + limitNum);
+    const [total, settlements] = await Promise.all([
+      Settlement.countDocuments(scopedQuery),
+      Settlement.find(scopedQuery)
+        .select(SETTLEMENT_LIST_SELECT)
+        .populate("employeeId", "fullName employeeCode email job.department job.jobTitle status exit")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+    ]);
 
     res.json({
       success: true,
-      settlements: paginated,
+      settlements,
       total,
       page: pageNum,
       limit: limitNum,

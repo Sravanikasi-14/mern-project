@@ -11,7 +11,7 @@ import Company, { COMPANY_STATUSES } from "../models/Company.js";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { NOTIFICATION_TYPES } from "../models/Notification.js";
 import { USER_ROLES } from "../models/User.js";
-import { getCompanyModels } from "../config/db.js";
+import { getCompanyModels, runWithTenantConnectionScope } from "../config/db.js";
 import { assertHrPermission } from "./hrAccessEnforcementService.js";
 import { HR_SCOPE_MODES } from "../constants/hrAccessCatalog.js";
 import { HttpError } from "../utils/httpError.js";
@@ -272,8 +272,10 @@ export async function publishDueForAllCompanies(now = new Date()) {
   const companies = await Company.find({ status: COMPANY_STATUSES.ACTIVE }).select("databaseName status companyName");
   let published = 0;
   for (const company of companies) {
-    const models = await getCompanyModels(company);
-    published += await publishDueAnnouncements(models, now);
+    published += await runWithTenantConnectionScope(async () => {
+      const models = await getCompanyModels(company);
+      return publishDueAnnouncements(models, now);
+    });
   }
   return { companies: companies.length, published };
 }
