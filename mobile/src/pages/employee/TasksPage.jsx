@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Calendar,
@@ -134,6 +135,7 @@ export default function EmployeeTasksPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const notify = useNotify();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { company, user } = useAuth();
   const timezone = resolveCompanyTimezone(company);
   const [todayStr, setTodayStr] = useState(() => getCompanyBusinessDate(new Date(), timezone));
@@ -300,6 +302,28 @@ export default function EmployeeTasksPage() {
       setDetailLoading(false);
     }
   };
+
+  // Notification deep link: ?task=…
+  useEffect(() => {
+    const focusTaskId = (searchParams.get("task") || "").trim();
+    if (!focusTaskId) return;
+    if (myTasksQuery.isLoading) return;
+    const found =
+      tasks.find((task) => String(task._id) === focusTaskId) ||
+      teamTasks.find((task) => String(task._id) === focusTaskId);
+    if (found) {
+      openTask(found);
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("task");
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("task"), tasks, teamTasks, myTasksQuery.isLoading]);
 
   const start = async (task) => {
     try {

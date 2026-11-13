@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
@@ -48,6 +49,7 @@ export default function AdminWorkManagement() {
   const { user, company } = useAuth();
   const canEditPeople = hrPortalAllows(user, company, "people.edit");
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const timeZone = resolveCompanyTimezone(company);
   const [activeTab, setActiveTab] = useState(TASK_TABS.ALL);
   const [viewMode, setViewMode] = useState(VIEW_MODES.KANBAN);
@@ -188,6 +190,48 @@ export default function AdminWorkManagement() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryTasks]);
+
+  // Notification deep link: ?task=… opens details when found; otherwise stay on board.
+  useEffect(() => {
+    const focusTaskId = (searchParams.get("task") || "").trim();
+    if (!focusTaskId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromList = tasks.find((t) => String(t._id) === focusTaskId);
+        if (fromList) {
+          if (!cancelled) {
+            setSelectedTask(fromList);
+            setSidePanelMode("details");
+          }
+        } else {
+          const res = await api.get(`/tasks/${focusTaskId}`);
+          const full = res.data?.task || res.data?.data;
+          if (!cancelled && full?._id) {
+            setSelectedTask(full);
+            setSidePanelMode("details");
+          }
+        }
+      } catch {
+        // Missing or inaccessible task — keep work-management list visible.
+      } finally {
+        if (!cancelled) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("task");
+              return next;
+            },
+            { replace: true }
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("task"), tasks]);
 
   useEffect(() => {
     if (tasksQuery.error) {

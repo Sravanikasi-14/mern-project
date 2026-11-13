@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
@@ -52,10 +53,12 @@ import "./Attendance.css";
 export default function EmployeeAttendance() {
   const { user, company } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const timeZone = resolveCompanyTimezone(company);
 
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
+  const [focusedRemoteId, setFocusedRemoteId] = useState("");
 
   const [checkingAttendance, setCheckingAttendance] = useState(false);
 
@@ -163,6 +166,30 @@ export default function EmployeeAttendance() {
       setRemoteRequests([]);
     }
   };
+
+  // Notification deep link: ?remoteWorkRequestId= highlights own remote request if present.
+  useEffect(() => {
+    const remoteId = (searchParams.get("remoteWorkRequestId") || "").trim();
+    if (!remoteId) return;
+    const hit = remoteRequests.find((r) => String(r._id || r.id) === remoteId);
+    if (hit) {
+      setFocusedRemoteId(String(hit._id || hit.id));
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`remote-req-${hit._id || hit.id}`);
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("remoteWorkRequestId");
+        next.delete("sessionId");
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("remoteWorkRequestId"), remoteRequests]);
 
   const refreshVerificationStatus = async () => {
     try {
@@ -797,6 +824,26 @@ export default function EmployeeAttendance() {
                 ) : null}
               </>
             )}
+
+            {focusedRemoteId
+              ? (() => {
+                  const focused = remoteRequests.find(
+                    (r) => String(r._id || r.id) === String(focusedRemoteId)
+                  );
+                  if (!focused) return null;
+                  return (
+                    <div
+                      id={`remote-req-${focusedRemoteId}`}
+                      className="success-alert"
+                      style={{ marginTop: 12, width: "100%" }}
+                    >
+                      Remote work request ({focused.status || "UNKNOWN"}) for{" "}
+                      {focused.workDate || "selected date"}
+                      {focused.decisionRemarks ? ` — ${focused.decisionRemarks}` : ""}.
+                    </div>
+                  );
+                })()
+              : null}
 
             {todayStatus === "CHECKED_IN" && (
               <button

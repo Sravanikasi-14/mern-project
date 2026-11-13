@@ -113,7 +113,14 @@ export default function EmployeeLeavePage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("ALL");
+  const [section, setSection] = useState(
+    (params.get("tab") || "").toLowerCase() === "handovers" ? "handovers" : "requests"
+  );
   const [selected, setSelected] = useState(null);
+  const [handovers, setHandovers] = useState({ outgoing: [], incoming: [], managing: [] });
+  const [handoversLoading, setHandoversLoading] = useState(false);
+  const [handoversError, setHandoversError] = useState("");
+  const [focusedHandoverId, setFocusedHandoverId] = useState("");
 
   const load = () => dashQuery.refetch();
 
@@ -138,9 +145,100 @@ export default function EmployeeLeavePage() {
     });
   }, [typeKey]);
 
+  useEffect(() => {
+    if ((params.get("tab") || "").toLowerCase() === "handovers") setSection("handovers");
+  }, [params]);
+
+  const loadHandovers = async () => {
+    try {
+      setHandoversLoading(true);
+      setHandoversError("");
+      const res = await api.get("/handovers/mine");
+      setHandovers({
+        outgoing: res.data?.outgoing || [],
+        incoming: res.data?.incoming || [],
+        managing: res.data?.managing || [],
+      });
+    } catch (err) {
+      setHandoversError(err.response?.data?.message || "Could not load handovers.");
+      setHandovers({ outgoing: [], incoming: [], managing: [] });
+    } finally {
+      setHandoversLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section === "handovers") loadHandovers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
+  // Notification deep link: ?leaveId=…
+  useEffect(() => {
+    const leaveId = (params.get("leaveId") || "").trim();
+    if (!leaveId) return;
+    if (!requests.length && !dashQuery.isLoading) {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("leaveId");
+          return next;
+        },
+        { replace: true }
+      );
+      return;
+    }
+    if (!requests.length) return;
+    const hit = requests.find((req) => String(req._id || req.id) === leaveId);
+    if (hit) {
+      setSection("requests");
+      setSelected(hit);
+    }
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("leaveId");
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.get("leaveId"), requests, dashQuery.isLoading]);
+
+  // Notification deep link: ?handoverId=…
+  useEffect(() => {
+    const handoverId = (params.get("handoverId") || "").trim();
+    if (!handoverId) return;
+    if (section !== "handovers") setSection("handovers");
+    if (handoversLoading) return;
+    const pools = [
+      ...(handovers.outgoing || []),
+      ...(handovers.incoming || []),
+      ...(handovers.managing || []),
+    ];
+    const hit = pools.find(
+      (h) =>
+        String(h._id) === handoverId ||
+        String(h.leaveRequestId || h.leaveId || "") === handoverId
+    );
+    if (hit?._id) setFocusedHandoverId(String(hit._id));
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("handoverId");
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.get("handoverId"), section, handovers, handoversLoading]);
+
   const visible = useMemo(
     () => (tab === "ALL" ? requests : requests.filter((req) => String(req.status || "").toUpperCase() === tab)),
     [requests, tab]
+  );
+  const allHandovers = useMemo(
+    () => [...(handovers.outgoing || []), ...(handovers.incoming || []), ...(handovers.managing || [])],
+    [handovers]
   );
 
   const submit = async (event) => {
@@ -319,54 +417,113 @@ export default function EmployeeLeavePage() {
       />
 
       <SegmentedTabs
-        value={tab}
-        onChange={setTab}
+        value={section}
+        onChange={(next) => {
+          setSection(next);
+          setParams(
+            (prev) => {
+              const p = new URLSearchParams(prev);
+              if (next === "handovers") p.set("tab", "handovers");
+              else p.delete("tab");
+              return p;
+            },
+            { replace: true }
+          );
+        }}
         options={[
-          { value: "ALL", label: "All" },
-          { value: "PENDING", label: "Pending" },
-          { value: "APPROVED", label: "Approved" },
-          { value: "REJECTED", label: "Rejected" },
+          { value: "requests", label: "Requests" },
+          { value: "handovers", label: "Handovers" },
         ]}
       />
 
-      <section>
-        <div className="lv-section-head">
-          <h2>Recent Requests</h2>
-        </div>
-        {visible.length === 0 ? (
-          <EmptyState
-            message="You have no leave requests in this view."
-            actionLabel={tab === "ALL" ? "Apply Leave" : undefined}
-            onAction={tab === "ALL" ? openApply : undefined}
+      {section === "requests" ? (
+        <>
+          <SegmentedTabs
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "ALL", label: "All" },
+              { value: "PENDING", label: "Pending" },
+              { value: "APPROVED", label: "Approved" },
+              { value: "REJECTED", label: "Rejected" },
+            ]}
           />
-        ) : (
-          <div className="lv-list">
-            {visible.map((req) => {
-              const status = String(req.status || "").toUpperCase();
-              return (
-                <button
-                  key={req._id || req.id}
-                  type="button"
-                  className={`lv-row${status === "REJECTED" ? " is-rejected" : ""}`}
-                  onClick={() => setSelected(req)}
-                >
-                  <span className="lv-row-icon">
-                    <Icon name="documents" size={18} />
-                  </span>
-                  <span className="lv-row-body">
-                    <span className="lv-row-title">
-                      {formatLeaveType(req.leaveTypeCode || req.leaveType, types)}
-                    </span>
-                    <span className="lv-row-sub">{requestSubtitle(req) || "Dates unavailable"}</span>
-                  </span>
-                  <StatusBadge status={req.status} />
-                  <span className="chevron" aria-hidden="true" />
-                </button>
-              );
-            })}
+
+          <section>
+            <div className="lv-section-head">
+              <h2>Recent Requests</h2>
+            </div>
+            {visible.length === 0 ? (
+              <EmptyState
+                message="You have no leave requests in this view."
+                actionLabel={tab === "ALL" ? "Apply Leave" : undefined}
+                onAction={tab === "ALL" ? openApply : undefined}
+              />
+            ) : (
+              <div className="lv-list">
+                {visible.map((req) => {
+                  const status = String(req.status || "").toUpperCase();
+                  return (
+                    <button
+                      key={req._id || req.id}
+                      type="button"
+                      className={`lv-row${status === "REJECTED" ? " is-rejected" : ""}`}
+                      onClick={() => setSelected(req)}
+                    >
+                      <span className="lv-row-icon">
+                        <Icon name="documents" size={18} />
+                      </span>
+                      <span className="lv-row-body">
+                        <span className="lv-row-title">
+                          {formatLeaveType(req.leaveTypeCode || req.leaveType, types)}
+                        </span>
+                        <span className="lv-row-sub">{requestSubtitle(req) || "Dates unavailable"}</span>
+                      </span>
+                      <StatusBadge status={req.status} />
+                      <span className="chevron" aria-hidden="true" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </>
+      ) : (
+        <section>
+          <div className="lv-section-head">
+            <h2>Work handovers</h2>
+            {handoversLoading ? <SoftRefresh active /> : null}
           </div>
-        )}
-      </section>
+          {handoversError ? <ErrorState message={handoversError} onRetry={loadHandovers} /> : null}
+          {!handoversLoading && !handoversError && allHandovers.length === 0 ? (
+            <EmptyState message="No coverage arrangements yet." />
+          ) : null}
+          <div className="lv-list">
+            {allHandovers.map((h) => (
+              <div
+                key={h._id}
+                id={`handover-card-${h._id}`}
+                className={`lv-row${focusedHandoverId === String(h._id) ? " is-focused" : ""}`}
+                style={{ cursor: "default" }}
+              >
+                <span className="lv-row-icon">
+                  <Icon name="leave" size={18} />
+                </span>
+                <span className="lv-row-body">
+                  <span className="lv-row-title">
+                    {h.originalEmployee?.fullName || h.ownerName || "Coverage arrangement"}
+                  </span>
+                  <span className="lv-row-sub">
+                    {(h.items || []).filter((it) => it.status !== "CANCELLED").length} responsibilities
+                    {h.status ? ` · ${h.status}` : ""}
+                  </span>
+                </span>
+                <StatusBadge status={h.status} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <Modal open={Boolean(selected)} onClose={() => setSelected(null)} title="Leave request">
         {selected ? (

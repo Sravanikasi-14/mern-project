@@ -33,6 +33,32 @@
   z-index: 5;
 }
 
+.msg-channel-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px var(--pad-x) 0;
+}
+
+.msg-channel-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hair);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.msg-channel-tabs button.is-active {
+  background: var(--g-700, #1f6b4a);
+  border-color: transparent;
+  color: #fff;
+}
+
 .msg-list-header h1 {
   margin: 0;
   flex: 1;

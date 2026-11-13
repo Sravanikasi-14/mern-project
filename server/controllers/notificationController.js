@@ -74,6 +74,10 @@ export async function getNotifications(req, res, next) {
           message: notif.message,
           type: notif.type || "SYSTEM",
           link: notif.link || "",
+          metadata:
+            notif.metadata && typeof notif.metadata === "object" && !Array.isArray(notif.metadata)
+              ? notif.metadata
+              : {},
           createdAt: notif.createdAt,
           isRead,
         });
@@ -126,6 +130,11 @@ export async function getNotifications(req, res, next) {
             message: `${lr.leaveTypeCode} leave for ${lr.daysCount || 1} day(s)${lr.reason ? ` ("${lr.reason}")` : ""}`,
             type: "LEAVE",
             link: "/admin/leave?status=PENDING",
+            metadata: {
+              leaveId: String(lr._id),
+              employeeId: lr.employeeId ? String(lr.employeeId) : null,
+              event: "PENDING_LEAVE",
+            },
             createdAt: lr.createdAt,
             isRead,
           });
@@ -148,6 +157,10 @@ export async function getNotifications(req, res, next) {
             message: `"${task.title}" is awaiting review and impact approval.`,
             type: "TASK",
             link: "/admin/work-management",
+            metadata: {
+              taskId: String(task._id),
+              event: "TASK_IN_REVIEW",
+            },
             createdAt: task.updatedAt || task.createdAt,
             isRead,
           });
@@ -176,6 +189,11 @@ export async function getNotifications(req, res, next) {
             }`,
             type: "LEAVE",
             link: "/app/leave",
+            metadata: {
+              leaveId: String(lr._id),
+              event: "LEAVE_STATUS",
+              status: lr.status,
+            },
             createdAt: notifDate,
             isRead,
           });
@@ -200,6 +218,11 @@ export async function getNotifications(req, res, next) {
             message: `Status: ${task.status}. Priority: ${task.priority || "MEDIUM"}.`,
             type: "TASK",
             link: "/app/tasks",
+            metadata: {
+              taskId: String(task._id),
+              event: "ACTIVE_TASK",
+              status: task.status,
+            },
             createdAt: task.updatedAt || task.createdAt,
             isRead,
           });

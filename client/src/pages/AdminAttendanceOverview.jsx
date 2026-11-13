@@ -57,9 +57,15 @@ export default function AdminAttendanceOverview() {
   const redirectToTracking = requestedTab === "tracking";
   const legacyWorkspaceTab =
     requestedTab === "remote" || requestedTab === "exceptions" ? requestedTab : "";
+  const inferredWorkspace = searchParams.get("remoteWorkRequestId")
+    ? "remote"
+    : searchParams.get("sessionId")
+      ? "exceptions"
+      : "";
   const workspaceParam = (
     searchParams.get("workspace") ||
     legacyWorkspaceTab ||
+    inferredWorkspace ||
     "roster"
   ).toLowerCase();
   const workspace = WORKSPACES.some((w) => w.key === workspaceParam) ? workspaceParam : "roster";
@@ -297,6 +303,36 @@ export default function AdminAttendanceOverview() {
 
   const drawerEmployees = isRangeMode ? rangeEmployees : filteredEmployees;
 
+  // Notification deep link: ?employeeId=… opens the attendance drawer when present.
+  useEffect(() => {
+    const focusEmployeeId = (searchParams.get("employeeId") || "").trim();
+    if (!focusEmployeeId || drawerEmployees.length === 0) return;
+    const idx = drawerEmployees.findIndex(
+      (e) => String(e.employeeId || e._id) === focusEmployeeId
+    );
+    if (idx < 0) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("employeeId");
+          return next;
+        },
+        { replace: true }
+      );
+      return;
+    }
+    setDrawerEmployeeId(drawerEmployees[idx].employeeId || drawerEmployees[idx]._id);
+    setDrawerIndex(idx);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("employeeId");
+        return next;
+      },
+      { replace: true }
+    );
+  }, [searchParams, drawerEmployees, setSearchParams]);
+
   const fmtClock = (value) =>
     value ? new Date(value).toLocaleTimeString([], { timeZone, hour: "2-digit", minute: "2-digit" }) : "—";
 
@@ -399,8 +435,38 @@ export default function AdminAttendanceOverview() {
         ))}
       </div>
 
-      {workspace === "remote" ? <AttendanceLocationWorkspace mode="remote" /> : null}
-      {workspace === "exceptions" ? <AttendanceLocationWorkspace mode="exceptions" /> : null}
+      {workspace === "remote" ? (
+        <AttendanceLocationWorkspace
+          mode="remote"
+          focusRemoteWorkRequestId={searchParams.get("remoteWorkRequestId") || ""}
+          onFocusConsumed={() => {
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("remoteWorkRequestId");
+                return next;
+              },
+              { replace: true }
+            );
+          }}
+        />
+      ) : null}
+      {workspace === "exceptions" ? (
+        <AttendanceLocationWorkspace
+          mode="exceptions"
+          focusSessionId={searchParams.get("sessionId") || ""}
+          onFocusConsumed={() => {
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("sessionId");
+                return next;
+              },
+              { replace: true }
+            );
+          }}
+        />
+      ) : null}
 
       {workspace === "roster" ? (
         <>

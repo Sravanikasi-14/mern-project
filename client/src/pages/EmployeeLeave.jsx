@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
 import SoftRefresh from "../components/SoftRefresh";
@@ -10,6 +11,7 @@ import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
+import HandoverWorkspace from "../components/HandoverWorkspace";
 import { useAuth } from "../context/AuthContext";
 import { useDashboardQuery } from "../hooks/useEmployeeQueries";
 import { invalidateLeave } from "../lib/queryKeys";
@@ -31,9 +33,15 @@ const STATUS_FILTERS = [
   { value: "REJECTED", label: "Rejected" },
 ];
 
+const PAGE_TABS = [
+  { value: "requests", label: "Requests" },
+  { value: "handovers", label: "Handovers" },
+];
+
 export default function EmployeeLeave() {
   const { company } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const timeZone = resolveCompanyTimezone(company);
   const todayParts = parseCivilDate(getCompanyBusinessDate(new Date(), timeZone));
   const [calMonth, setCalMonth] = useState(() => ({
@@ -42,6 +50,10 @@ export default function EmployeeLeave() {
   }));
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
+  const [selectedLeave, setSelectedLeave] = useState(null);
+
+  const initialTab = (searchParams.get("tab") || "").toLowerCase() === "handovers" ? "handovers" : "requests";
+  const [pageTab, setPageTab] = useState(initialTab);
 
   const dashboardQuery = useDashboardQuery();
   const dashboardData = dashboardQuery.data ?? null;
@@ -277,7 +289,37 @@ export default function EmployeeLeave() {
   const firstName = employeeName.split(" ")[0];
   const leave = dashboardData?.leave;
   const detailedBalances = leave?.detailed || [];
-  const recentRequests = leave?.recentRequests || [];
+  const recentRequests = leave?.recentRequests || leave?.requests || leave?.history || [];
+
+  // Notification deep links: ?tab=handovers, ?leaveId=, ?handoverId=
+  useEffect(() => {
+    const tab = (searchParams.get("tab") || "").toLowerCase();
+    if (tab === "handovers") setPageTab("handovers");
+  }, [searchParams]);
+
+  useEffect(() => {
+    const leaveId = (searchParams.get("leaveId") || "").trim();
+    if (!leaveId) return;
+    if (dashboardQuery.isLoading) return;
+    const hit = recentRequests.find((r) => String(r._id || r.id) === leaveId);
+    if (hit) {
+      setPageTab("requests");
+      setSelectedLeave(hit);
+    }
+    // Missing/unauthorized: stay on page without error noise (employee list is self-scoped).
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("leaveId");
+        return next;
+      },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("leaveId"), recentRequests, dashboardQuery.isLoading]);
+
+  const focusHandoverId = (searchParams.get("handoverId") || "").trim() || null;
+
   const scheduledUpcoming = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -329,8 +371,59 @@ export default function EmployeeLeave() {
 
       {/* Alerts */}
       {actionSuccess && <div className="success-alert" style={{ marginBottom: 14 }}>{actionSuccess}</div>}
+      {actionError && <div className="error" style={{ marginBottom: 14 }}>{actionError}</div>}
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
+      <div className="text-filter-group" style={{ marginBottom: 14 }} role="tablist" aria-label="Leave sections">
+        {PAGE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            role="tab"
+            aria-selected={pageTab === tab.value}
+            className={`text-filter-link ${pageTab === tab.value ? "active" : ""}`}
+            onClick={() => {
+              setPageTab(tab.value);
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (tab.value === "handovers") next.set("tab", "handovers");
+                  else next.delete("tab");
+                  return next;
+                },
+                { replace: true }
+              );
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === "handovers" ? (
+        <section className="el-requests-section" aria-label="Work handovers">
+          <div className="el-card">
+            <HandoverWorkspace
+              mode="employee"
+              canManage
+              focusHandoverId={focusHandoverId}
+              onFocusConsumed={() => {
+                setSearchParams(
+                  (prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.delete("handoverId");
+                    return next;
+                  },
+                  { replace: true }
+                );
+              }}
+            />
+          </div>
+        </section>
+      ) : null}
+
+      {pageTab !== "handovers" ? (
+      <>
       <section className="el-summary-bar" aria-label="Leave summary">
         <div className="el-summary-metrics">
           <div className="el-summary-metric is-available">
@@ -595,7 +688,12 @@ export default function EmployeeLeave() {
                   </tr>
                 ) : (
                   paginatedRequests.map((req) => (
-                    <tr key={req._id || req.id}>
+                    <tr
+                      key={req._id || req.id}
+                      className={selectedLeave && String(selectedLeave._id || selectedLeave.id) === String(req._id || req.id) ? "is-focused" : ""}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setSelectedLeave(req)}
+                    >
                       <td>
                         <strong>{formatDate(req.startDate)}</strong>
                         <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
@@ -638,6 +736,46 @@ export default function EmployeeLeave() {
           )}
         </div>
       </section>
+      </>
+      ) : null}
+
+      {selectedLeave && (
+        <div className="modal-overlay" onClick={() => setSelectedLeave(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h2>Leave request</h2>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setSelectedLeave(null)}
+                aria-label="Close"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+            <dl className="el-leave-detail">
+              <div>
+                <dt>Type</dt>
+                <dd>{selectedLeave.leaveTypeCode || selectedLeave.leaveType || "—"}</dd>
+              </div>
+              <div>
+                <dt>Dates</dt>
+                <dd>
+                  {formatDate(selectedLeave.startDate)} – {formatDate(selectedLeave.endDate)}
+                </dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd><StatusBadge status={selectedLeave.status} /></dd>
+              </div>
+              <div>
+                <dt>Reason</dt>
+                <dd>{selectedLeave.reason || "—"}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      )}
 
       {/* -----------------------------------------------------------------------
           APPLY FOR LEAVE MODAL

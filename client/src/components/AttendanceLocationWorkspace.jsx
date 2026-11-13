@@ -100,9 +100,21 @@ function eligibilityFromRow(row) {
  * Mounted from Admin Attendance under ?workspace=remote|exceptions.
  * Punch eligibility is rendered from backend punchEligibility — not inferred locally.
  */
-export default function AttendanceLocationWorkspace({ mode = "remote" }) {
+export default function AttendanceLocationWorkspace({
+  mode = "remote",
+  focusRemoteWorkRequestId = "",
+  focusSessionId = "",
+  onFocusConsumed = null,
+}) {
   const isRemote = mode === "remote";
-  const [status, setStatus] = useState(isRemote ? "PENDING" : "OPEN");
+  const focusRemoteId = String(focusRemoteWorkRequestId || "").trim();
+  const focusSessId = String(focusSessionId || "").trim();
+  const needsDeepLinkLookup = Boolean(
+    (isRemote && focusRemoteId) || (!isRemote && focusSessId)
+  );
+  const [status, setStatus] = useState(
+    needsDeepLinkLookup ? "ALL" : isRemote ? "PENDING" : "OPEN"
+  );
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
@@ -110,6 +122,7 @@ export default function AttendanceLocationWorkspace({ mode = "remote" }) {
   const [busyId, setBusyId] = useState("");
   const [remarksById, setRemarksById] = useState({});
   const [companyTimezone, setCompanyTimezone] = useState("");
+  const [focusedRowId, setFocusedRowId] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -131,13 +144,41 @@ export default function AttendanceLocationWorkspace({ mode = "remote" }) {
   }, [isRemote, status]);
 
   useEffect(() => {
-    setStatus(isRemote ? "PENDING" : "OPEN");
-  }, [isRemote]);
+    if (needsDeepLinkLookup) setStatus("ALL");
+    else setStatus(isRemote ? "PENDING" : "OPEN");
+  }, [isRemote, needsDeepLinkLookup]);
 
   useEffect(() => {
     setLoading(true);
     load();
   }, [load]);
+
+  // Deep-link focus: match remote request id or exception sessionId, then settle status tab.
+  useEffect(() => {
+    if (!needsDeepLinkLookup || loading) return;
+    const hit = rows.find((row) => {
+      if (isRemote) {
+        return String(row._id || row.id) === focusRemoteId;
+      }
+      return (
+        String(row.sessionId || "") === focusSessId ||
+        String(row._id || row.id) === focusSessId
+      );
+    });
+    if (hit) {
+      const id = String(hit._id || hit.id);
+      setFocusedRowId(id);
+      if (hit.status && String(hit.status).toUpperCase() !== String(status).toUpperCase()) {
+        setStatus(String(hit.status).toUpperCase());
+      }
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`alw-card-${id}`);
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+    if (typeof onFocusConsumed === "function") onFocusConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsDeepLinkLookup, loading, rows, focusRemoteId, focusSessId, isRemote]);
 
   const decideRemote = async (id, decision) => {
     try {
@@ -254,7 +295,11 @@ export default function AttendanceLocationWorkspace({ mode = "remote" }) {
             const distance = !isRemote ? formatDistance(row) : null;
 
             return (
-              <li key={id} className="alw-card">
+              <li
+                key={id}
+                id={`alw-card-${id}`}
+                className={`alw-card${focusedRowId === id ? " is-focused" : ""}`}
+              >
                 <div className="alw-card-top">
                   <div className="alw-identity">
                     <div className="alw-identity-row">

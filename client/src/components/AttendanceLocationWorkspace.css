@@ -86,6 +86,11 @@
   gap: 12px;
 }
 
+.alw-card.is-focused {
+  outline: 2px solid var(--g-600, #2a8f63);
+  box-shadow: 0 0 0 4px rgba(42, 143, 99, 0.18);
+}
+
 .alw-card {
   border: 1px solid var(--hair, #e3e7e4);
   border-radius: 14px;

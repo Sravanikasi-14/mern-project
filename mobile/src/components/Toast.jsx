@@ -6,8 +6,13 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   const push = useCallback((message) => {
+    const text = String(message || "").trim();
+    if (!text) return;
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((prev) => [...prev, { id, message }]);
+    setToasts((prev) => {
+      if (prev.some((item) => item.message === text)) return prev;
+      return [...prev, { id, message: text }];
+    });
     setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
     }, 4000);

@@ -61,6 +61,8 @@ export default function HandoverWorkspace({
   impactReady = false,
   arrangements = [],
   refreshToken = 0,
+  focusHandoverId = null,
+  onFocusConsumed = null,
 }) {
   const [data, setData] = useState(null);
   const [handover, setHandover] = useState(null);
@@ -69,6 +71,7 @@ export default function HandoverWorkspace({
   const [busy, setBusy] = useState("");
   const [noteDrafts, setNoteDrafts] = useState({});
   const [responseDrafts, setResponseDrafts] = useState({});
+  const [focusedId, setFocusedId] = useState("");
 
   const loadMine = useCallback(async () => {
     setLoading(true);
@@ -102,6 +105,26 @@ export default function HandoverWorkspace({
     if (mode === "employee") loadMine();
     else loadForLeave();
   }, [mode, loadMine, loadForLeave, refreshToken]);
+
+  // Notification deep link: focus a handover by id or leaveRequestId.
+  useEffect(() => {
+    const target = String(focusHandoverId || "").trim();
+    if (!target || !data) return;
+    const pools = [...(data.outgoing || []), ...(data.incoming || []), ...(data.managing || [])];
+    const hit = pools.find(
+      (h) =>
+        String(h._id) === target ||
+        String(h.leaveRequestId || h.leaveId || "") === target
+    );
+    if (hit?._id) {
+      setFocusedId(String(hit._id));
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`handover-card-${hit._id}`);
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+    if (typeof onFocusConsumed === "function") onFocusConsumed();
+  }, [focusHandoverId, data, onFocusConsumed]);
 
   const createHandover = async () => {
     if (!leaveRequestId) return;
@@ -318,6 +341,7 @@ export default function HandoverWorkspace({
             <HandoverCard
               key={h._id}
               handover={h}
+              focused={focusedId === String(h._id)}
               noteDrafts={noteDrafts}
               setNoteDrafts={setNoteDrafts}
               responseDrafts={responseDrafts}
@@ -340,6 +364,7 @@ export default function HandoverWorkspace({
             <HandoverCard
               key={`in-${h._id}`}
               handover={h}
+              focused={focusedId === String(h._id)}
               noteDrafts={noteDrafts}
               setNoteDrafts={setNoteDrafts}
               responseDrafts={responseDrafts}
@@ -363,6 +388,7 @@ export default function HandoverWorkspace({
             <HandoverCard
               key={`mgr-${h._id}`}
               handover={h}
+              focused={focusedId === String(h._id)}
               noteDrafts={noteDrafts}
               setNoteDrafts={setNoteDrafts}
               responseDrafts={responseDrafts}
@@ -386,6 +412,7 @@ export default function HandoverWorkspace({
 
 function HandoverCard({
   handover,
+  focused = false,
   noteDrafts,
   setNoteDrafts,
   responseDrafts,
@@ -440,7 +467,10 @@ function HandoverCard({
   };
 
   return (
-    <div className="lm-backup-block lm-handover-card">
+    <div
+      id={`handover-card-${handover._id}`}
+      className={`lm-backup-block lm-handover-card${focused ? " lm-handover-selected" : ""}`}
+    >
       <div className="lm-backup-task-head">
         <div>
           <div className="lm-impact-task-title">{ownerName}</div>

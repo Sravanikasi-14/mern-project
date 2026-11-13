@@ -32,8 +32,11 @@ describe("attendance location workspace contracts", () => {
     assert.match(overview, /workspace=remote|set\("workspace"/);
     assert.match(overview, /requestedTab === "remote"/);
     assert.match(overview, /requestedTab === "exceptions"/);
-    assert.match(overview, /AttendanceLocationWorkspace mode="remote"/);
-    assert.match(overview, /AttendanceLocationWorkspace mode="exceptions"/);
+    assert.match(overview, /AttendanceLocationWorkspace/);
+    assert.match(overview, /mode="remote"/);
+    assert.match(overview, /mode="exceptions"/);
+    assert.match(overview, /focusRemoteWorkRequestId|remoteWorkRequestId/);
+    assert.match(overview, /focusSessionId|sessionId/);
   });
 
   it("styles eligibility prominently for desktop and mobile", () => {

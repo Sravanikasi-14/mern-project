@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it } from "node:test";
+
+const root = dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(join(root, "NotificationSheet.jsx"), "utf8");
+
+describe("NotificationSheet context-aware navigation wiring", () => {
+  it("uses shared activateNotification helper", () => {
+    assert.match(src, /activateNotification/);
+    assert.match(src, /@shared\/notificationNavigation/);
+  });
+
+  it("guards nested controls with data-notif-stop", () => {
+    assert.match(src, /data-notif-stop="true"/);
+    assert.match(src, /closest\?\.\("\[data-notif-stop\]"\)/);
+  });
+
+  it("does not navigate using raw item.link alone", () => {
+    assert.doesNotMatch(src, /navigate\(link\)/);
+    assert.doesNotMatch(src, /navigate\(item\.link\)/);
+  });
+
+  it("passes mobile platform into activation", () => {
+    assert.match(src, /platform:\s*"mobile"/);
+  });
+});

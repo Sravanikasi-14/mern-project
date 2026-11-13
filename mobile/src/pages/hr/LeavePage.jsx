@@ -148,6 +148,44 @@ export default function HrLeavePage() {
     }
   }, [items, location.state, location.pathname, navigate]);
 
+  // Notification deep link: ?leaveId=…
+  useEffect(() => {
+    const leaveId = (searchParams.get("leaveId") || "").trim();
+    if (!leaveId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromList =
+          items.find((item) => String(item._id) === leaveId) ||
+          myItems.find((item) => String(item._id) === leaveId);
+        if (fromList) {
+          if (!cancelled) {
+            setSelected(fromList);
+            setScope(items.some((item) => String(item._id) === leaveId) ? "team" : "mine");
+          }
+        } else {
+          const res = await api.get(`/leave-requests/${leaveId}`);
+          const detail = res.data?.leaveRequest || res.data?.data;
+          if (!cancelled && detail?._id) {
+            setSelected(detail);
+            setScope("team");
+          }
+        }
+      } catch {
+        // Missing/unauthorized — stay on leave list.
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("leaveId");
+          navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : "" }, { replace: true });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, items, myItems, navigate, location.pathname]);
+
   const teamPending = useMemo(
     () =>
       summaryCounts?.pending ??

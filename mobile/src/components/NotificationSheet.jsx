@@ -7,10 +7,13 @@ import api from "../services/api";
 import { useAuth } from "../app/AuthContext";
 import { useNotificationsQuery } from "../hooks/useEmployeeQueries";
 import { invalidateNotifications, qk } from "../app/queryKeys";
+import { activateNotification } from "@shared/notificationNavigation.js";
+import { useToast } from "./Toast";
 
 export default function NotificationSheet({ open, onClose }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { user } = useAuth();
   const userId = user?._id || user?.id || null;
   const notesQuery = useNotificationsQuery({ enabled: open });
@@ -39,7 +42,8 @@ export default function NotificationSheet({ open, onClose }) {
     });
   };
 
-  const markAll = async () => {
+  const markAll = async (event) => {
+    event?.stopPropagation?.();
     const previous = queryClient.getQueryData(qk.notifications(userId));
     clearVisibleList();
     try {
@@ -52,22 +56,33 @@ export default function NotificationSheet({ open, onClose }) {
     }
   };
 
-  const markOne = async (item) => {
-    const notifId = item.id || item._id;
-    removeFromVisibleList(notifId);
-    try {
-      await api.patch(`/notifications/${notifId}/read`);
-    } catch {
-      await notesQuery.refetch();
+  const markOne = async (item, event) => {
+    if (event?.target?.closest?.("[data-notif-stop]")) {
+      return;
     }
-    if (item.link) {
-      // Close overlay first so its history entry is released before route push.
-      onClose();
-      queueMicrotask(() => {
-        const link = String(item.link);
-        if (link.startsWith("/")) navigate(link);
-      });
-    }
+
+    await activateNotification(item, {
+      role: user?.role,
+      platform: "mobile",
+      closePanel: onClose,
+      markRead: async (notif) => {
+        const notifId = notif.id || notif._id;
+        removeFromVisibleList(notifId);
+        try {
+          await api.patch(`/notifications/${notifId}/read`);
+        } catch {
+          await notesQuery.refetch();
+          toast.push("Could not mark the notification as read. It may still appear as unread.");
+        }
+      },
+      navigateTo: (to, opts) => {
+        if (!to) return;
+        // Close overlay first so its history entry is released before route push.
+        queueMicrotask(() => {
+          navigate(to, opts);
+        });
+      },
+    });
   };
 
   return (
@@ -77,7 +92,12 @@ export default function NotificationSheet({ open, onClose }) {
       title="Notifications"
       footer={
         items.length > 0 ? (
-          <button type="button" className="btn-secondary" onClick={markAll}>
+          <button
+            type="button"
+            className="btn-secondary"
+            data-notif-stop="true"
+            onClick={markAll}
+          >
             Mark all as read{unreadCount > 0 ? ` (${unreadCount})` : ""}
           </button>
         ) : null
@@ -100,7 +120,7 @@ export default function NotificationSheet({ open, onClose }) {
             key={item._id || item.id}
             type="button"
             className="summary-row"
-            onClick={() => markOne(item)}
+            onClick={(e) => markOne(item, e)}
             style={{ marginBottom: 8 }}
           >
             <span className="summary-body">

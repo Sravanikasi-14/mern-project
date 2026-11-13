@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Calendar, CheckCircle2, ChevronRight, ClipboardList, Clock, Plus } from "lucide-react";
 import { useSmartBack } from "../../hooks/useSmartBack";
 import HrPortalHeader from "../../components/HrPortalHeader";
@@ -72,6 +73,7 @@ function priorityLabel(priority) {
 export default function HrWorkPage() {
   const goBack = useSmartBack("/admin/more");
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, company } = useAuth();
   const canEditPeople = hrPortalAllows(user, company, "people.edit");
   const [tasks, setTasks] = useState([]);
@@ -141,6 +143,42 @@ export default function HrWorkPage() {
     if (needsReview) setTab("SUBMITTED");
     setDefaultedTab(true);
   }, [tasks, loading, defaultedTab]);
+
+  // Notification deep link: ?task=…
+  useEffect(() => {
+    const focusTaskId = (searchParams.get("task") || "").trim();
+    if (!focusTaskId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromList = tasks.find((task) => String(task._id) === focusTaskId);
+        if (fromList) {
+          if (!cancelled) setSelected(fromList);
+        } else {
+          const res = await api.get(`/tasks/${focusTaskId}`);
+          const full = res.data?.task || res.data?.data;
+          if (!cancelled && full?._id) setSelected(full);
+        }
+      } catch {
+        // Missing/unauthorized — keep work list.
+      } finally {
+        if (!cancelled) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("task");
+              return next;
+            },
+            { replace: true }
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("task"), tasks]);
 
   const visible = useMemo(() => tasks.filter((task) => matchesTab(task, tab)), [tasks, tab]);
 

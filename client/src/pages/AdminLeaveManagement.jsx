@@ -354,6 +354,42 @@ export default function AdminLeaveManagement() {
     await loadLeaveReviewContext(reqItem);
   };
 
+  // Notification deep link: ?leaveId=… opens the request when accessible; otherwise stay on list.
+  useEffect(() => {
+    const leaveId = (searchParams.get("leaveId") || "").trim();
+    if (!leaveId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fromList = requests.find((r) => String(r._id) === leaveId);
+        if (fromList) {
+          if (!cancelled) await handleOpenDetails(fromList);
+        } else {
+          const res = await api.get(`/leave-requests/${leaveId}`);
+          const detail = res.data?.leaveRequest || res.data?.data;
+          if (!cancelled && detail?._id) await handleOpenDetails(detail);
+        }
+      } catch {
+        // Missing or unauthorized — remain on leave module without error toast noise.
+      } finally {
+        if (!cancelled) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("leaveId");
+              return next;
+            },
+            { replace: true }
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("leaveId"), requests]);
+
   const handleSelectProposedBackup = async (taskId, backupEmployeeId, explanationSnapshot) => {
     if (!selectedRequest?._id) return;
     try {

@@ -5,6 +5,8 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useNotificationsQuery } from "../hooks/useEmployeeQueries";
 import { invalidateNotifications, qk } from "../lib/queryKeys";
+import { activateNotification } from "@shared/notificationNavigation.js";
+import { useToast } from "./Toast";
 
 function formatTimeAgo(dateStr) {
   if (!dateStr) return "";
@@ -30,6 +32,7 @@ function formatTimeAgo(dateStr) {
 export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { user } = useAuth();
   const userId = user?._id || user?.id || null;
   const panelRef = useRef(null);
@@ -108,26 +111,32 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
     });
   };
 
-  const handleItemClick = async (notif) => {
-    // Optimistically remove from the unread panel; document stays in DB via mark-read API.
-    if (!notif.isRead) {
-      removeFromVisibleList(notif.id);
-      try {
-        await api.patch(`/notifications/${notif.id}/read`);
-      } catch {
-        // Roll back by refetching authoritative unread list.
-        await notificationsQuery.refetch();
-      }
+  const handleItemClick = async (notif, event) => {
+    if (event?.target?.closest?.("[data-notif-stop]")) {
+      return;
     }
 
-    onClose();
-
-    if (notif.link) {
-      navigate(notif.link);
-    }
+    await activateNotification(notif, {
+      role: user?.role,
+      platform: "desktop",
+      closePanel: onClose,
+      markRead: async (item) => {
+        removeFromVisibleList(item.id);
+        try {
+          await api.patch(`/notifications/${item.id}/read`);
+        } catch {
+          await notificationsQuery.refetch();
+          toast.push("Could not mark the notification as read. It may still appear as unread.");
+        }
+      },
+      navigateTo: (to, opts) => {
+        if (to) navigate(to, opts);
+      },
+    });
   };
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllRead = async (event) => {
+    event?.stopPropagation?.();
     const previous = queryClient.getQueryData(qk.notifications(userId));
     clearVisibleList();
     try {
@@ -163,6 +172,7 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
             <button
               type="button"
               className="notif-mark-all-btn"
+              data-notif-stop="true"
               onClick={handleMarkAllRead}
             >
               Mark all read
@@ -171,6 +181,7 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
           <button
             type="button"
             className="notif-close-btn"
+            data-notif-stop="true"
             onClick={onClose}
             aria-label="Close notifications"
           >
@@ -225,12 +236,12 @@ export default function NotificationPanel({ isOpen, onClose, onCountChange }) {
               <div
                 key={notif.id}
                 className={`notif-item ${notif.isRead ? "notif-item--read" : "notif-item--unread"}`}
-                onClick={() => handleItemClick(notif)}
+                onClick={(e) => handleItemClick(notif, e)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
-                    handleItemClick(notif);
+                    handleItemClick(notif, e);
                   }
                 }}
               >

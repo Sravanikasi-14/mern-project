@@ -8,6 +8,7 @@ import HrModuleGate from "./components/HrModuleGate";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SessionBoot from "./components/SessionBoot";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ToastProvider } from "./components/Toast";
 import { queryClient } from "./lib/queryClient";
 import "./index.css";
 
@@ -93,6 +94,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <AuthProvider>
+    <ToastProvider>
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
@@ -279,6 +281,7 @@ function App() {
         </Routes>
         </Suspense>
       </BrowserRouter>
+    </ToastProvider>
     </AuthProvider>
     </QueryClientProvider>
   );
