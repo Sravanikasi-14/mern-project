@@ -1,5 +1,11 @@
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
-import { buildOrganizationHierarchy } from "../services/organizationHierarchyService.js";
+import {
+  buildOrganizationBootstrap,
+  buildOrganizationHierarchy,
+  listOrganizationChildren,
+  resolveOrganizationStatusParam,
+  searchOrganizationHierarchy,
+} from "../services/organizationHierarchyService.js";
 import { buildEmployeeOrganizationView } from "../services/employeeOrganizationViewService.js";
 import {
   assertDepartmentsViewEnabled,
@@ -40,20 +46,74 @@ function scopeExplorerEmployees(req, payload) {
 
 /**
  * GET /api/employees/organization
- * HR-only company org chart (light fields, cycle-safe tree edges).
+ * F48 — Default: bounded bootstrap (roots + meta).
+ * Legacy full tree: ?mode=full (kept for tests / migration consumers).
  */
 export async function getOrganizationHierarchy(req, res, next) {
   try {
     const { Employee } = req.auth.models;
-    const raw = typeof req.query.status === "string" ? req.query.status.trim().toUpperCase() : "ACTIVE";
-    const status =
-      raw === "ALL"
-        ? "ALL"
-        : raw === EMPLOYEE_STATUSES.INACTIVE
-          ? EMPLOYEE_STATUSES.INACTIVE
-          : EMPLOYEE_STATUSES.ACTIVE;
+    const status = resolveOrganizationStatusParam(req.query.status);
+    const modeRaw = typeof req.query.mode === "string" ? req.query.mode.trim().toLowerCase() : "";
+    const legacyFull = modeRaw === "full" || modeRaw === "legacy";
 
-    const payload = await buildOrganizationHierarchy(Employee, {
+    if (legacyFull) {
+      const payload = await buildOrganizationHierarchy(Employee, {
+        status,
+        hrAccess: req.hrAccess,
+      });
+      res.json({
+        success: true,
+        mode: "full",
+        ...payload,
+      });
+      return;
+    }
+
+    const payload = await buildOrganizationBootstrap(Employee, {
+      status,
+      hrAccess: req.hrAccess,
+    });
+    res.json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/employees/organization/children?managerId=
+ * F48 — Direct reports (or unassigned pool when managerId=none).
+ */
+export async function getOrganizationChildren(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const status = resolveOrganizationStatusParam(req.query.status);
+    const payload = await listOrganizationChildren(Employee, {
+      managerId: req.query.managerId,
+      status,
+      hrAccess: req.hrAccess,
+    });
+    res.json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/employees/organization/search?q=
+ * F48 — Server-side org search with ancestor path ids.
+ */
+export async function getOrganizationSearch(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const status = resolveOrganizationStatusParam(req.query.status);
+    const payload = await searchOrganizationHierarchy(Employee, {
+      q: req.query.q,
       status,
       hrAccess: req.hrAccess,
     });
@@ -74,8 +134,11 @@ export async function getOrganizationHierarchy(req, res, next) {
 export async function getEmployeeOrganizationView(req, res, next) {
   try {
     const { Employee } = req.auth.models;
+    const mode =
+      typeof req.query.mode === "string" ? req.query.mode.trim().toLowerCase() : "";
     const payload = await buildEmployeeOrganizationView(Employee, req.auth.user, {
       hrAccess: req.hrAccess,
+      mode,
     });
     res.json({
       success: true,

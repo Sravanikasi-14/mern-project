@@ -1088,6 +1088,11 @@ export async function reverseTransactionService({ models, user, transactionId, r
  * High-performance aggregation pipeline to compute the leaderboard.
  * Balances are computed directly from the immutable transaction ledger.
  */
+/**
+ * F71 — Impact leaderboard with server page/limit/search and filter-scoped summary.
+ * Scope (employeeIds) is applied before skip/limit so CUSTOM HR pages stay correct.
+ * Returns { leaderboard, pagination, summary } (leaderboard alone was the legacy return).
+ */
 export async function getLeaderboardService({
   models,
   department = "ALL",
@@ -1095,6 +1100,9 @@ export async function getLeaderboardService({
   startDate,
   endDate,
   limit = 50,
+  page = 1,
+  search = "",
+  employeeIds = null,
 }) {
   const { ImpactPointTransaction } = models;
 
@@ -1127,6 +1135,18 @@ export async function getLeaderboardService({
       matchStage.createdAt.$lte = end;
     }
   }
+
+  if (Array.isArray(employeeIds)) {
+    matchStage.employeeId = {
+      $in: employeeIds.map((id) =>
+        mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
+      ),
+    };
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.min(Math.max(1, parseInt(limit, 10) || 50), 100);
+  const searchQ = String(search || "").trim();
 
   // Prefer denormalized employeeSnapshot — avoids per-transaction $lookup into employees.
   const pipeline = [
@@ -1166,51 +1186,91 @@ export async function getLeaderboardService({
     });
   }
 
+  pipeline.push({
+    $group: {
+      _id: "$employeeId",
+      employeeId: { $first: "$employeeId" },
+      fullName: { $first: "$resolvedFullName" },
+      employeeCode: { $first: "$resolvedEmployeeCode" },
+      department: { $first: "$resolvedDepartment" },
+      balance: { $sum: "$points" },
+      totalPoints: { $sum: "$points" },
+      pointsEarned: {
+        $sum: {
+          $cond: [{ $gt: ["$points", 0] }, "$points", 0],
+        },
+      },
+      pointsDeducted: {
+        $sum: {
+          $cond: [{ $lt: ["$points", 0] }, { $abs: "$points" }, 0],
+        },
+      },
+      earnedCount: {
+        $sum: { $cond: [{ $eq: ["$transactionType", TRANSACTION_TYPES.EARNED] }, 1, 0] },
+      },
+      deductedCount: {
+        $sum: { $cond: [{ $eq: ["$transactionType", TRANSACTION_TYPES.DEDUCTED] }, 1, 0] },
+      },
+      lastTransactionAt: { $max: "$createdAt" },
+    },
+  });
+
+  if (searchQ) {
+    const rx = searchQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    pipeline.push({
+      $match: {
+        $or: [
+          { fullName: { $regex: rx, $options: "i" } },
+          { employeeCode: { $regex: rx, $options: "i" } },
+          { department: { $regex: rx, $options: "i" } },
+        ],
+      },
+    });
+  }
+
+  // MongoDB requires $rank sortBy to have exactly one field. Order rows by
+  // balance then recency first; rank by balance only (ties share a rank).
   pipeline.push(
+    { $sort: { balance: -1, lastTransactionAt: -1 } },
     {
-      $group: {
-        _id: "$employeeId",
-        employeeId: { $first: "$employeeId" },
-        fullName: { $first: "$resolvedFullName" },
-        employeeCode: { $first: "$resolvedEmployeeCode" },
-        department: { $first: "$resolvedDepartment" },
-        balance: { $sum: "$points" },
-        totalPoints: { $sum: "$points" },
-        pointsEarned: {
-          $sum: {
-            $cond: [{ $gt: ["$points", 0] }, "$points", 0],
-          },
-        },
-        pointsDeducted: {
-          $sum: {
-            $cond: [{ $lt: ["$points", 0] }, { $abs: "$points" }, 0],
-          },
-        },
-        earnedCount: {
-          $sum: { $cond: [{ $eq: ["$transactionType", TRANSACTION_TYPES.EARNED] }, 1, 0] },
-        },
-        deductedCount: {
-          $sum: { $cond: [{ $eq: ["$transactionType", TRANSACTION_TYPES.DEDUCTED] }, 1, 0] },
-        },
-        lastTransactionAt: { $max: "$createdAt" },
+      $setWindowFields: {
+        sortBy: { balance: -1 },
+        output: { rank: { $rank: {} } },
       },
     },
-    { $sort: { balance: -1, lastTransactionAt: -1 } },
-    { $limit: Math.min(Number(limit) || 50, 100) }
+    {
+      $facet: {
+        summary: [
+          {
+            $group: {
+              _id: null,
+              participants: { $sum: 1 },
+              circulation: { $sum: "$balance" },
+              totalEarned: { $sum: "$pointsEarned" },
+              totalDeducted: { $sum: "$pointsDeducted" },
+            },
+          },
+        ],
+        totalCount: [{ $count: "n" }],
+        page: [
+          { $sort: { balance: -1, lastTransactionAt: -1 } },
+          { $skip: (pageNum - 1) * pageSize },
+          { $limit: pageSize },
+        ],
+      },
+    }
   );
 
-  const aggregation = await ImpactPointTransaction.aggregate(pipeline);
+  const [facet] = await ImpactPointTransaction.aggregate(pipeline);
+  const summaryRow = facet?.summary?.[0] || {};
+  const total = facet?.totalCount?.[0]?.n || 0;
+  const pageRows = facet?.page || [];
 
-  // Compute stable ranks (1, 2, 3...)
-  let currentRank = 1;
-  const ranked = aggregation.map((entry, index) => {
-    if (index > 0 && entry.balance < aggregation[index - 1].balance) {
-      currentRank = index + 1;
-    }
+  const leaderboard = pageRows.map((entry) => {
     const name = entry.fullName || "Employee";
     const dept = entry.department || "General";
     return {
-      rank: currentRank,
+      rank: entry.rank || 0,
       employeeId: entry.employeeId,
       _id: entry.employeeId,
       name,
@@ -1237,7 +1297,23 @@ export async function getLeaderboardService({
     };
   });
 
-  return ranked;
+  return {
+    leaderboard,
+    pagination: {
+      page: pageNum,
+      limit: pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil((total || 0) / pageSize)),
+      pages: Math.max(1, Math.ceil((total || 0) / pageSize)),
+    },
+    summary: {
+      circulation: summaryRow.circulation || 0,
+      totalEarned: summaryRow.totalEarned || 0,
+      totalDeducted: summaryRow.totalDeducted || 0,
+      participants: summaryRow.participants || 0,
+      totalPoints: summaryRow.circulation || 0,
+    },
+  };
 }
 
 /**

@@ -98,6 +98,7 @@ function messageDto(message, senderName = "", replyTo = null) {
     senderName,
     body: removed ? "" : message.body || "",
     deleted: removed,
+    deletedAt: removed ? message.deletedAt : null,
     attachments: publicAttachments(message),
     editedAt: message.editedAt || null,
     createdAt: message.createdAt,
@@ -144,6 +145,158 @@ async function unreadCountForMember(Message, member, userId) {
     filter._id = { $gt: member.lastReadMessageId };
   }
   return Message.countDocuments(filter);
+}
+
+/**
+ * F46 — Latest visible message per membership (respects joinedAt). Soft-deleted rows still
+ * win as "latest" so previewText can show the deleted placeholder (same as pre-F46).
+ * One aggregation; does not load full histories.
+ */
+function asObjectId(value) {
+  if (!value) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  return new mongoose.Types.ObjectId(String(value));
+}
+
+async function batchLatestMessagePreviews(Message, memberships) {
+  const previews = new Map();
+  if (!Message || memberships.length === 0) return previews;
+
+  // Aggregate does not cast — normalize ObjectIds explicitly.
+  const clauses = memberships.map((member) => ({
+    conversationId: asObjectId(member.conversationId),
+    createdAt: { $gte: visibleSince(member) },
+  }));
+
+  const rows = await Message.aggregate([
+    { $match: { $or: clauses } },
+    { $sort: { conversationId: 1, createdAt: -1, _id: -1 } },
+    {
+      $group: {
+        _id: "$conversationId",
+        body: { $first: "$body" },
+        deletedAt: { $first: "$deletedAt" },
+        attachments: { $first: "$attachments" },
+        createdAt: { $first: "$createdAt" },
+        senderUserId: { $first: "$senderUserId" },
+      },
+    },
+  ]);
+
+  for (const row of rows) {
+    const message = {
+      body: row.body,
+      deletedAt: row.deletedAt,
+      attachments: row.attachments || [],
+      createdAt: row.createdAt,
+      senderUserId: row.senderUserId,
+    };
+    previews.set(String(row._id), {
+      preview: previewText(message),
+      lastMessageAt: row.createdAt || null,
+      lastSenderUserId: row.senderUserId ? String(row.senderUserId) : null,
+    });
+  }
+  return previews;
+}
+
+/**
+ * F46 — Unread counts per conversation for one viewer. Same filters as unreadCountForMember.
+ * One aggregation grouped by conversationId.
+ */
+async function batchUnreadCountsForMembers(Message, memberships, userId) {
+  const counts = new Map();
+  if (!Message || memberships.length === 0) return counts;
+
+  const viewerId = asObjectId(userId);
+  const clauses = memberships.map((member) => {
+    const clause = {
+      conversationId: asObjectId(member.conversationId),
+      senderUserId: { $ne: viewerId },
+      deletedAt: null,
+      createdAt: { $gte: visibleSince(member) },
+    };
+    if (member.lastReadMessageId) {
+      clause._id = { $gt: asObjectId(member.lastReadMessageId) };
+    }
+    return clause;
+  });
+
+  const rows = await Message.aggregate([
+    { $match: { $or: clauses } },
+    { $group: { _id: "$conversationId", count: { $sum: 1 } } },
+  ]);
+
+  for (const row of rows) {
+    counts.set(String(row._id), row.count || 0);
+  }
+  return counts;
+}
+
+async function batchGroupMemberCounts(ConversationMember, groupConversationIds) {
+  const counts = new Map();
+  if (!ConversationMember || groupConversationIds.length === 0) return counts;
+  const rows = await ConversationMember.aggregate([
+    {
+      $match: {
+        conversationId: { $in: groupConversationIds },
+        leftAt: null,
+      },
+    },
+    { $group: { _id: "$conversationId", count: { $sum: 1 } } },
+  ]);
+  for (const row of rows) {
+    counts.set(String(row._id), row.count || 0);
+  }
+  return counts;
+}
+
+/** Batch DM peer cards for the current user across many direct conversations. */
+async function batchPeersForDirectConversations(models, directConversations, userId) {
+  const peers = new Map();
+  if (!directConversations.length) return peers;
+
+  const dmIds = directConversations.map((row) => row._id);
+  const otherMembers = await models.ConversationMember.find({
+    conversationId: { $in: dmIds },
+    userId: { $ne: userId },
+    leftAt: null,
+  })
+    .select("conversationId userId")
+    .lean();
+
+  const peerUserIds = [...new Set(otherMembers.map((row) => String(row.userId)))];
+  const people =
+    peerUserIds.length === 0
+      ? []
+      : await models.User.find({ _id: { $in: peerUserIds } })
+          .select("fullName email role employeeId isActive")
+          .lean();
+  const peopleById = new Map(people.map((person) => [String(person._id), person]));
+  const employeeMap = await employeesByUser(models.Employee, people);
+
+  const peerUserByConversation = new Map();
+  for (const row of otherMembers) {
+    const key = String(row.conversationId);
+    if (!peerUserByConversation.has(key)) {
+      peerUserByConversation.set(key, String(row.userId));
+    }
+  }
+
+  for (const conversation of directConversations) {
+    const peerUserId = peerUserByConversation.get(String(conversation._id));
+    if (!peerUserId) {
+      peers.set(String(conversation._id), null);
+      continue;
+    }
+    const person = peopleById.get(peerUserId);
+    if (!person) {
+      peers.set(String(conversation._id), null);
+      continue;
+    }
+    peers.set(String(conversation._id), publicCard(person, employeeMap.get(String(person._id))));
+  }
+  return peers;
 }
 
 async function notifyRecipient({ models, recipient, senderName, conversationId, preview }) {
@@ -419,18 +572,38 @@ export async function listConversations(req) {
   }).select("-imageData").lean();
   const byId = new Map(conversations.map((row) => [String(row._id), row]));
 
+  // Keep memberships that still resolve to a conversation (tenant-local ids only).
+  const activeMemberships = memberships.filter((member) => byId.has(String(member.conversationId)));
+  if (activeMemberships.length === 0) return [];
+
+  const groupConversations = [];
+  const directConversations = [];
+  for (const conversation of conversations) {
+    if (conversation.type === CONVERSATION_TYPES.GROUP) groupConversations.push(conversation);
+    else directConversations.push(conversation);
+  }
+
+  // F46: O(1) Message aggregations + batched member/peer lookups (not per-conversation).
+  const [previewByConversation, unreadByConversation, memberCountByConversation, peerByConversation] =
+    await Promise.all([
+      batchLatestMessagePreviews(models.Message, activeMemberships),
+      batchUnreadCountsForMembers(models.Message, activeMemberships, user._id),
+      batchGroupMemberCounts(
+        models.ConversationMember,
+        groupConversations.map((row) => row._id)
+      ),
+      batchPeersForDirectConversations(models, directConversations, user._id),
+    ]);
+
+  const emptyPreview = { preview: "", lastMessageAt: null, lastSenderUserId: null };
   const items = [];
-  for (const member of memberships) {
+  for (const member of activeMemberships) {
     const conversation = byId.get(String(member.conversationId));
     if (!conversation) continue;
-    const preview = await lastMessagePreview(models.Message, conversation._id, visibleSince(member));
-    const unreadCount = await unreadCountForMember(models.Message, member, user._id);
+    const preview = previewByConversation.get(String(conversation._id)) || emptyPreview;
+    const unreadCount = unreadByConversation.get(String(conversation._id)) || 0;
     const activityAt = preview.lastMessageAt || conversation.createdAt;
     if (conversation.type === CONVERSATION_TYPES.GROUP) {
-      const memberCount = await models.ConversationMember.countDocuments({
-        conversationId: conversation._id,
-        leftAt: null,
-      });
       const admins = (conversation.adminUserIds || []).map((id) => String(id));
       items.push({
         id: String(conversation._id),
@@ -439,7 +612,7 @@ export async function listConversations(req) {
         description: conversation.description || "",
         hasImage: Boolean(conversation.imageStorageKey && conversation.imageMimeType),
         imageVersion: conversation.imageStorageKey || null,
-        memberCount,
+        memberCount: memberCountByConversation.get(String(conversation._id)) || 0,
         isAdmin: admins.includes(String(user._id)),
         peer: null,
         preview: preview.preview,
@@ -450,11 +623,10 @@ export async function listConversations(req) {
       });
       continue;
     }
-    const peer = await peerFor(models, conversation, user._id);
     items.push({
       id: String(conversation._id),
       type: conversation.type,
-      peer,
+      peer: peerByConversation.get(String(conversation._id)) || null,
       preview: preview.preview,
       lastMessageAt: activityAt,
       lastSenderUserId: preview.lastSenderUserId,
@@ -1088,9 +1260,13 @@ export async function unreadTotal(req) {
     userId: user._id,
     leftAt: null,
   }).lean();
+  if (memberships.length === 0) return { unreadCount: 0 };
+
+  // F46: one batched aggregation instead of per-membership countDocuments.
+  const counts = await batchUnreadCountsForMembers(models.Message, memberships, user._id);
   let total = 0;
-  for (const member of memberships) {
-    total += await unreadCountForMember(models.Message, member, user._id);
+  for (const value of counts.values()) {
+    total += value;
   }
   return { unreadCount: total };
 }

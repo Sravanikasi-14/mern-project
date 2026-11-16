@@ -84,7 +84,8 @@ export default function AttendanceVerificationPanel({
   const methods = requirements?.methods || {};
   const showGps = Boolean(methods.gps?.enabled);
   const showWifi = Boolean(methods.wifi?.enabled);
-  const showFace = Boolean(methods.face?.enabled);
+  const showFace =
+    Boolean(methods.face?.enabled) && methods.face?.platformCapabilityAllowed !== false;
 
   if (!showGps && !showWifi && !showFace) return null;
 

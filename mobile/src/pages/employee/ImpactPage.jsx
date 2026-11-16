@@ -87,7 +87,7 @@ export default function EmployeeImpactPage() {
   const boardQuery = useImpactLeaderboardQuery({ period: periodFilter, department: departmentFilter });
 
   const me = meQuery.data || null;
-  const board = boardQuery.data || [];
+  const board = Array.isArray(boardQuery.data?.leaderboard) ? boardQuery.data.leaderboard : [];
   const meta = metaQuery.data || {};
   const isManager = Boolean(meta.isManager);
   const reports = Array.isArray(meta.assignableEmployees) ? meta.assignableEmployees : [];

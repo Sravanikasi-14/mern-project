@@ -29,6 +29,7 @@ import workforceSchedulerRoutes from "./routes/workforceSchedulerRoutes.js";
 import departmentRoutes from "./routes/departmentRoutes.js";
 import designationRoutes from "./routes/designationRoutes.js";
 import projectEntityRoutes from "./routes/projectEntityRoutes.js";
+import platformRoutes from "./routes/platformRoutes.js";
 import { tenantConnectionScopeMiddleware } from "./config/db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -131,6 +132,7 @@ export function createApp() {
 
   // API Routes
   app.use("/api/auth", authRoutes);
+  app.use("/api/platform", platformRoutes);
   app.use("/api/admin", adminRoutes);
   app.use("/api/company-admin", companyAdminRoutes);
   app.use("/api/employees", employeeRoutes);

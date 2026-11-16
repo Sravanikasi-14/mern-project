@@ -354,10 +354,28 @@ export function sanitizeHrEmployeePayload(employeeLike) {
  * Build a relationship-aware visible profile for an authenticated viewer.
  * Relationship is always resolved server-side — never trusted from the client.
  */
+/**
+ * Basic discovery card for unrelated colleagues (Global Search / people-profile).
+ * Name + designation only — never email, code, phone, or sensitive fields.
+ */
+function serializeBasicDiscoveryCard(target) {
+  return {
+    _id: target._id,
+    fullName: target.fullName || "",
+    avatar: "",
+    job: {
+      jobTitle: target.job?.jobTitle || "",
+      department: "",
+      workLocation: "",
+    },
+  };
+}
+
 export async function buildVisibleEmployeeProfile({
   Employee,
   user,
   targetEmployeeId,
+  allowBasicDiscovery = false,
 }) {
   if (!user) {
     throw new HttpError(401, "Authentication required");
@@ -417,6 +435,7 @@ export async function buildVisibleEmployeeProfile({
     return {
       relationship: EMPLOYEE_RELATIONSHIPS.OTHER,
       visibilityTier: "HR_ADMIN",
+      accessLevel: "DETAILED",
       employee: hrSafe,
     };
   }
@@ -427,19 +446,34 @@ export async function buildVisibleEmployeeProfile({
     targetEmployeeId,
   });
 
-  // Batch A: unrelated / unresolved profiles are not discoverable (404, not 403).
+  // Batch A default: unrelated / unresolved profiles are not openable (404).
+  // Global Search discovery may request a basic name + designation card instead.
   if (!isHierarchyVisibleRelationship(relation.relationship)) {
-    throw new HttpError(404, "Employee not found", {
-      code: "EMPLOYEE_NOT_FOUND",
-    });
+    if (!allowBasicDiscovery) {
+      throw new HttpError(404, "Employee not found", {
+        code: "EMPLOYEE_NOT_FOUND",
+      });
+    }
+    const basic = serializeBasicDiscoveryCard(target);
+    assertNoSensitiveLeak(basic);
+    return {
+      relationship: relation.relationship || EMPLOYEE_RELATIONSHIPS.OTHER,
+      visibilityTier: "OTHER",
+      accessLevel: "BASIC",
+      employee: basic,
+    };
   }
 
   const employee = serializeEmployeeByRelationship(target, relation.relationship);
   assertNoSensitiveLeak(employee);
+  const tier = visibilityTierForRelationship(relation.relationship);
+  const accessLevel =
+    tier === "SELF" ? "SELF" : tier === "UPWARD" ? "LIMITED" : "DETAILED";
 
   return {
     relationship: relation.relationship,
-    visibilityTier: visibilityTierForRelationship(relation.relationship),
+    visibilityTier: tier,
+    accessLevel,
     employee,
   };
 }
@@ -551,6 +585,91 @@ export function serializeDirectoryCard(employeeDoc, relationship) {
 
   assertNoSensitiveLeak(card);
   return card;
+}
+
+/**
+ * Global people-search hit — all ACTIVE employees are discoverable; payload is
+ * relationship-redacted on the server. Lower/unrelated viewers get name + title only.
+ * Phone/email appear only when the viewer is authorized for those attributes.
+ * Never includes bank, identity tokens, invitation secrets, or other sensitive fields.
+ */
+export function serializePeopleSearchHit(employeeDoc, relationship, options = {}) {
+  const lean =
+    employeeDoc && typeof employeeDoc.toObject === "function"
+      ? employeeDoc.toObject()
+      : { ...(employeeDoc || {}) };
+
+  const rel = relationship || EMPLOYEE_RELATIONSHIPS.OTHER;
+  const tier = visibilityTierForRelationship(rel);
+  const jobTitle = lean.job?.jobTitle || lean.jobTitle || "";
+  // Detailed professional fields / profile open — never for UPWARD/OTHER viewers.
+  const detailedVisibility =
+    tier === "SELF" || tier === "PEER" || tier === "DOWNWARD";
+  const base = {
+    _id: lean._id,
+    fullName: lean.fullName || "",
+    jobTitle,
+    relationship: rel,
+    visibilityTier: tier,
+    canOpenProfile: false,
+  };
+
+  // HR / Company Admin portal operators — full professional search surface (incl. phone).
+  if (options.hrExpanded) {
+    const hrHit = {
+      ...base,
+      preferredName: lean.preferredName || "",
+      employeeCode: lean.employeeCode || "",
+      avatar: lean.avatar || "",
+      department: lean.job?.department || lean.department || "",
+      workLocation: lean.job?.workLocation || "",
+      employmentType: lean.job?.employmentType || "",
+      email: lean.email || "",
+      phoneNumber: lean.phoneNumber || "",
+      status: lean.status || "",
+      canOpenProfile: true,
+    };
+    assertNoSensitiveLeak(hrHit);
+    return hrHit;
+  }
+
+  // Lower in hierarchy (viewing managers) or unrelated: name + designation only.
+  if (tier === "UPWARD" || tier === "OTHER") {
+    assertNoSensitiveLeak(base);
+    return base;
+  }
+
+  // Peer / downward / self — only attributes already permitted by directory visibility.
+  const expanded = {
+    ...base,
+    preferredName: lean.preferredName || "",
+    employeeCode: lean.employeeCode || "",
+    avatar: lean.avatar || "",
+    department: lean.job?.department || lean.department || "",
+    canOpenProfile: detailedVisibility,
+  };
+
+  if (tier === "PEER") {
+    expanded.workLocation = lean.job?.workLocation || "";
+    expanded.employmentType = lean.job?.employmentType || "";
+    expanded.email = lean.email || "";
+  }
+
+  if (tier === "DOWNWARD") {
+    expanded.workLocation = lean.job?.workLocation || "";
+    expanded.employmentType = lean.job?.employmentType || "";
+    expanded.email = lean.email || "";
+  }
+
+  if (tier === "SELF") {
+    expanded.workLocation = lean.job?.workLocation || "";
+    expanded.employmentType = lean.job?.employmentType || "";
+    expanded.email = lean.email || "";
+    expanded.phoneNumber = lean.phoneNumber || "";
+  }
+
+  assertNoSensitiveLeak(expanded);
+  return expanded;
 }
 
 export {

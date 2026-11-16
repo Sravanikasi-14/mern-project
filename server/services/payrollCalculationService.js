@@ -1,4 +1,13 @@
-import { getCompanyBusinessDate } from "./attendanceService.js";
+/**
+ * Payroll cycle calculation (read-only).
+ *
+ * F50-C: ACTIVE employees are processed in bounded `_id`-ascending batches so
+ * source Employee / Compensation / Leave / Attendance / Offer docs are not all
+ * held at once. Batch-local maps are discarded after each batch.
+ *
+ * Remaining O(N) memory: accumulated `employeeRecords` and `validationIssues`
+ * (required by the calculate → transactional write contract in F50-A/B/F).
+ */
 
 function toDateString(date) {
   if (!date) return "";
@@ -10,210 +19,175 @@ function toDateString(date) {
   return `${year}-${month}-${day}`;
 }
 
+/** Default ACTIVE-employee page size for F50-C batching. */
+export const DEFAULT_PAYROLL_EMPLOYEE_BATCH_SIZE = 100;
+
+/** Hard cap so env misconfig cannot unbounded-load a single page. */
+export const MAX_PAYROLL_EMPLOYEE_BATCH_SIZE = 500;
+
+export const EMPLOYEE_PAYROLL_SELECT =
+  "_id employeeCode fullName email job bankDetails panNumber customFields.monthlySalary customFields.salary";
+
+/** Fields actually read for effective revision + CTC / components. */
+export const COMPENSATION_PAYROLL_SELECT =
+  "employeeId revisions._id revisions.effectiveFromDate revisions.monthlyCostToCompany revisions.salaryComponents";
+
 /**
- * Calculates payroll for a company tenant and period.
- * 
- * @param {Object} options
- * @param {Object} options.models - Tenant database models (Employee, EmployeeCompensation, Attendance, LeaveRequest, CompanyHrPolicy)
- * @param {Object} options.company - Authenticated company context
- * @param {number} options.periodMonth - Month number 1..12
- * @param {number} options.periodYear - Year (e.g. 2026)
- * @returns {Promise<Object>} Calculation result with cycleSummary, employeeRecords, and validationIssues
+ * Resolve bounded batch size: explicit option → env → default.
+ * Always clamped to [1, MAX_PAYROLL_EMPLOYEE_BATCH_SIZE].
  */
-export async function calculatePayrollCycle({
-  models,
-  company,
-  periodMonth,
-  periodYear,
-}) {
-  const {
-    Employee,
-    EmployeeCompensation,
-    Attendance,
-    LeaveRequest,
-    CompanyHrPolicy,
-    OfferLetter,
-  } = models;
-
-  const month = parseInt(periodMonth, 10);
-  const year = parseInt(periodYear, 10);
-
-  if (isNaN(month) || month < 1 || month > 12) {
-    throw new Error(`Invalid payroll month: ${periodMonth}`);
+export function resolvePayrollEmployeeBatchSize(override) {
+  const raw =
+    override != null && override !== ""
+      ? Number(override)
+      : Number(process.env.PAYROLL_EMPLOYEE_BATCH_SIZE);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_PAYROLL_EMPLOYEE_BATCH_SIZE;
   }
-  if (isNaN(year) || year < 2020 || year > 2100) {
-    throw new Error(`Invalid payroll year: ${periodYear}`);
+  return Math.min(Math.max(1, Math.floor(raw)), MAX_PAYROLL_EMPLOYEE_BATCH_SIZE);
+}
+
+/** F50: O(1) set of employee IDs that appear in monthly attendance (parity with Array.some). */
+export function buildEmployeesWithAttendanceSet(attendances) {
+  const employeesWithAttendance = new Set();
+  for (const a of attendances || []) {
+    employeesWithAttendance.add(String(a.employeeId));
   }
+  return employeesWithAttendance;
+}
 
-  // 1. Period Dates
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const monthStr = String(month).padStart(2, "0");
-  const periodStartDate = new Date(`${year}-${monthStr}-01T00:00:00.000Z`);
-  const periodEndDate = new Date(`${year}-${monthStr}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
-  const monthPrefix = `${year}-${monthStr}`;
-
-  // 2. Fetch Active HR Policy for payroll, weekend and holiday rules
-  let policy = null;
-  if (CompanyHrPolicy) {
-    policy = await CompanyHrPolicy.findOne({
-      effectiveFromDate: { $lte: periodEndDate },
-    })
-      .sort({ effectiveFromDate: -1 })
-      .lean();
-
-    if (!policy) {
-      policy = await CompanyHrPolicy.findOne({}).sort({ effectiveFromDate: -1 }).lean();
-    }
+/**
+ * F50: first-match monthly salary by normalized email (parity with Array.find).
+ * Normalization: String(email).trim().toLowerCase()
+ */
+export function buildOfferSalaryByEmailMap(acceptedOffers) {
+  const offerSalaryByEmail = new Map();
+  for (const o of acceptedOffers || []) {
+    const emailKey = String(o.candidate?.email || "").trim().toLowerCase();
+    if (!emailKey || offerSalaryByEmail.has(emailKey)) continue;
+    offerSalaryByEmail.set(emailKey, o.monthlySalary);
   }
+  return offerSalaryByEmail;
+}
 
-  const currencySymbol = policy?.payrollRules?.currencySymbol || "₹";
-  const currencyCode = policy?.payrollRules?.currencyCode || "INR";
-  const deductLopForUnpaidLeave = policy?.payrollRules?.deductLopForUnpaidLeave ?? true;
-  const weekendRules = policy?.weekendRules || {
-    saturdayOff: true,
-    sundayOff: true,
-    alternateSaturdaysOff: false,
-    isPaidWeekend: true,
-  };
-  const policyHolidays = policy?.holidays || [];
-
-  // Holiday map for the month
-  const holidayDateMap = new Map();
-  for (const h of policyHolidays) {
-    if (h.date) {
-      const dStr = toDateString(h.date);
-      if (dStr.startsWith(monthPrefix)) {
-        holidayDateMap.set(dStr, h.name || "Holiday");
+/**
+ * F50: pre-parse leave ranges into empId_dateStr → { isUnpaidLeave }.
+ * First covering leave wins (same order as former empLeaves.find).
+ * Date strings use the same toDateString local-boundary semantics as before.
+ */
+export function buildLeaveInfoByEmpAndDate(leavesByEmp, calendarDayTypes) {
+  const leaveInfoByEmpAndDate = new Map();
+  for (const [empIdStr, empLeaves] of leavesByEmp.entries()) {
+    for (const l of empLeaves) {
+      const fromStr = toDateString(l.fromDate);
+      const toStr = toDateString(l.toDate);
+      const isUnpaidLeave =
+        l.leaveTypeCode === "UNPAID" || l.leaveTypeCode === "LOP" || l.isPaid === false;
+      for (const day of calendarDayTypes) {
+        const dStr = day.dateStr;
+        if (dStr < fromStr || dStr > toStr) continue;
+        const key = `${empIdStr}_${dStr}`;
+        if (leaveInfoByEmpAndDate.has(key)) continue;
+        leaveInfoByEmpAndDate.set(key, { isUnpaidLeave });
       }
     }
   }
+  return leaveInfoByEmpAndDate;
+}
 
-  // Calculate calendar days in the month
-  let totalWorkingDays = 0;
-  let totalWeekendDays = 0;
-  let totalHolidayDays = 0;
+export { toDateString };
 
-  const calendarDayTypes = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dStr = `${year}-${monthStr}-${String(d).padStart(2, "0")}`;
-    const dateObj = new Date(`${dStr}T12:00:00.000Z`);
-    const dayOfWeek = dateObj.getDay(); // 0 = Sun, 6 = Sat
+/**
+ * F50-C: stable `_id` pagination over ACTIVE employees (no offset, no full roster load).
+ * @yields {object[]} employee docs for one page (length 1..batchSize; last may be partial)
+ */
+export async function* iterateActiveEmployeeBatches(Employee, batchSize) {
+  const size = resolvePayrollEmployeeBatchSize(batchSize);
+  let afterId = null;
 
-    let isWeekend = false;
-    if (dayOfWeek === 0 && weekendRules.sundayOff) {
-      isWeekend = true;
-    } else if (dayOfWeek === 6 && weekendRules.saturdayOff) {
-      isWeekend = true;
+  for (;;) {
+    const filter = afterId
+      ? { status: "ACTIVE", _id: { $gt: afterId } }
+      : { status: "ACTIVE" };
+
+    const batch = await Employee.find(filter)
+      .select(EMPLOYEE_PAYROLL_SELECT)
+      .sort({ _id: 1 })
+      .limit(size)
+      .lean();
+
+    if (!batch.length) {
+      break;
     }
 
-    const isHoliday = holidayDateMap.has(dStr);
+    yield batch;
+    afterId = batch[batch.length - 1]._id;
 
-    if (isHoliday) {
-      totalHolidayDays++;
-    } else if (isWeekend) {
-      totalWeekendDays++;
-    } else {
-      totalWorkingDays++;
+    if (batch.length < size) {
+      break;
     }
-
-    calendarDayTypes.push({
-      dateStr: dStr,
-      isWeekend,
-      isHoliday,
-      isWorkingDay: !isWeekend && !isHoliday,
-    });
   }
+}
 
-  // 3. Fetch Active Employees
-  const activeEmployees = await Employee.find({ status: "ACTIVE" })
-    .select("_id employeeCode fullName email job bankDetails customFields panNumber")
-    .lean();
-
-  const employeeIds = activeEmployees.map((e) => e._id);
-
-  // 4. Batch Fetch Compensation, Leaves, and Attendance for Period
-  const employeeEmails = activeEmployees
-    .map((e) => String(e.email || "").trim().toLowerCase())
-    .filter(Boolean);
-
-  const [compensations, leaves, attendances, acceptedOffers] = await Promise.all([
-    EmployeeCompensation.find({ employeeId: { $in: employeeIds } }).lean(),
-    LeaveRequest.find({
-      employeeId: { $in: employeeIds },
-      status: "APPROVED",
-      fromDate: { $lte: periodEndDate },
-      toDate: { $gte: periodStartDate },
-    }).lean(),
-    Attendance.find({
-      employeeId: { $in: employeeIds },
-      date: {
-        $gte: `${monthPrefix}-01`,
-        $lte: `${monthPrefix}-31`,
-      },
-    }).lean(),
-    OfferLetter && employeeEmails.length > 0
-      ? OfferLetter.find({
-          "candidate.email": { $in: employeeEmails },
-          status: "ACCEPTED",
-          monthlySalary: { $gt: 0 },
-        })
-          .select("candidate.email monthlySalary")
-          .lean()
-      : Promise.resolve([]),
-  ]);
-
-  // Group by employee
-  const compMap = new Map();
-  for (const c of compensations) {
-    compMap.set(String(c.employeeId), c);
+/**
+ * Same effective-revision selection as the pre-batching path:
+ * latest revision with effectiveFromDate <= periodEndDate, else revisions[0].
+ */
+export function selectEffectiveCompensationRevision(compRecord, periodEndDate) {
+  if (!compRecord || !Array.isArray(compRecord.revisions) || compRecord.revisions.length === 0) {
+    return null;
   }
+  const validRevs = compRecord.revisions
+    .filter((r) => new Date(r.effectiveFromDate) <= periodEndDate)
+    .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
 
-  const leavesByEmp = new Map();
-  for (const l of leaves) {
-    const k = String(l.employeeId);
-    if (!leavesByEmp.has(k)) leavesByEmp.set(k, []);
-    leavesByEmp.get(k).push(l);
+  if (validRevs.length > 0) {
+    return validRevs[0];
   }
+  return compRecord.revisions[0];
+}
 
-  const attendanceByEmpAndDate = new Map();
-  for (const a of attendances) {
-    const k = `${String(a.employeeId)}_${a.date}`;
-    attendanceByEmpAndDate.set(k, a);
-  }
-
+function processEmployeeBatchRecords({
+  activeEmployees,
+  compMap,
+  leaveInfoByEmpAndDate,
+  attendanceByEmpAndDate,
+  employeesWithAttendance,
+  offerSalaryByEmail,
+  calendarDayTypes,
+  policy,
+  periodEndDate,
+  periodStartDate,
+  daysInMonth,
+  totalWorkingDays,
+  totalWeekendDays,
+  totalHolidayDays,
+  month,
+  year,
+  monthStr,
+  currencyCode,
+  currencySymbol,
+  deductLopForUnpaidLeave,
+}) {
   const employeeRecords = [];
   const validationIssues = [];
-
-  let cycleTotalGross = 0;
-  let cycleTotalDeductions = 0;
-  let cycleTotalEmployerContributions = 0;
-  let cycleTotalNetPay = 0;
+  let batchGross = 0;
+  let batchDeductions = 0;
+  let batchEmployer = 0;
+  let batchNet = 0;
 
   for (const emp of activeEmployees) {
     const empIdStr = String(emp._id);
     const compRecord = compMap.get(empIdStr);
+    const effectiveRevision = selectEffectiveCompensationRevision(compRecord, periodEndDate);
 
-    // Find effective revision
-    let effectiveRevision = null;
-    if (compRecord && Array.isArray(compRecord.revisions) && compRecord.revisions.length > 0) {
-      const validRevs = compRecord.revisions
-        .filter((r) => new Date(r.effectiveFromDate) <= periodEndDate)
-        .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
-
-      if (validRevs.length > 0) {
-        effectiveRevision = validRevs[0];
-      } else {
-        // Earliest revision if none <= periodEndDate
-        effectiveRevision = compRecord.revisions[0];
-      }
-    }
-
-    // Determine monthly CTC
     let monthlyCtc = 0;
     if (effectiveRevision) {
       monthlyCtc = parseFloat(effectiveRevision.monthlyCostToCompany?.toString() || 0);
     } else {
-      const legacySalary = parseFloat(String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0));
+      const legacySalary = parseFloat(
+        String(emp.customFields?.monthlySalary || emp.customFields?.salary || 0)
+      );
       if (!isNaN(legacySalary) && legacySalary > 0) {
         monthlyCtc = legacySalary;
       }
@@ -221,10 +195,7 @@ export async function calculatePayrollCycle({
 
     if (!monthlyCtc || isNaN(monthlyCtc) || monthlyCtc <= 0) {
       const emailKey = String(emp.email || "").trim().toLowerCase();
-      const offer = (acceptedOffers || []).find(
-        (o) => String(o.candidate?.email || "").trim().toLowerCase() === emailKey
-      );
-      const offerSalary = parseFloat(String(offer?.monthlySalary || 0));
+      const offerSalary = parseFloat(String(offerSalaryByEmail.get(emailKey) || 0));
       if (!isNaN(offerSalary) && offerSalary > 0) {
         monthlyCtc = offerSalary;
       }
@@ -235,36 +206,23 @@ export async function calculatePayrollCycle({
         employeeId: emp._id,
         employeeCode: emp.employeeCode || "N/A",
         fullName: emp.fullName,
-        issue: "No monthly CTC is configured. Open the employee profile and add compensation before including them in payroll.",
+        issue:
+          "No monthly CTC is configured. Open the employee profile and add compensation before including them in payroll.",
       });
       continue;
     }
 
-    // Calculate attendance & leaves for this employee
-    const empLeaves = leavesByEmp.get(empIdStr) || [];
-
     let presentDays = 0;
     let paidLeaveDays = 0;
     let lossOfPayDays = 0;
+    const empHadAnyPunches = employeesWithAttendance.has(empIdStr);
 
     for (const day of calendarDayTypes) {
       const dStr = day.dateStr;
 
-      // Check if employee has an approved leave on this date
-      const activeLeave = empLeaves.find((l) => {
-        const fromStr = toDateString(l.fromDate);
-        const toStr = toDateString(l.toDate);
-        return dStr >= fromStr && dStr <= toStr;
-      });
-
-      if (activeLeave) {
-        // If leave type is UNPAID or LOP, it's loss of pay
-        const isUnpaidLeave =
-          activeLeave.leaveTypeCode === "UNPAID" ||
-          activeLeave.leaveTypeCode === "LOP" ||
-          activeLeave.isPaid === false;
-
-        if (isUnpaidLeave) {
+      const leaveInfo = leaveInfoByEmpAndDate.get(`${empIdStr}_${dStr}`);
+      if (leaveInfo) {
+        if (leaveInfo.isUnpaidLeave) {
           lossOfPayDays++;
         } else {
           paidLeaveDays++;
@@ -272,11 +230,15 @@ export async function calculatePayrollCycle({
         continue;
       }
 
-      // Check attendance on working days
       if (day.isWorkingDay) {
         const att = attendanceByEmpAndDate.get(`${empIdStr}_${dStr}`);
         if (att) {
-          if (att.checkIn || att.status === "PRESENT" || att.status === "CHECKED_IN" || att.status === "CHECKED_OUT") {
+          if (
+            att.checkIn ||
+            att.status === "PRESENT" ||
+            att.status === "CHECKED_IN" ||
+            att.status === "CHECKED_OUT"
+          ) {
             presentDays++;
           } else if (att.status === "HALF_DAY") {
             presentDays += 0.5;
@@ -288,35 +250,30 @@ export async function calculatePayrollCycle({
           } else {
             presentDays++;
           }
+        } else if (empHadAnyPunches && deductLopForUnpaidLeave) {
+          lossOfPayDays++;
         } else {
-          // If no specific punch record exists on working day:
-          // Check if system has active attendance records for this month overall.
-          // If attendance is tracked and employee is absent, count as absent if deductLopForUnpaidLeave is on.
-          // In test/demo environments where attendance is not logged, default to present.
-          const empHadAnyPunches = attendances.some((a) => String(a.employeeId) === empIdStr);
-          if (empHadAnyPunches && deductLopForUnpaidLeave) {
-            // Employee has records in this month but not on this working day -> absence
-            lossOfPayDays++;
-          } else {
-            presentDays++;
-          }
+          presentDays++;
         }
       }
     }
 
-    // Payable Days formula
     const payableDays = Math.max(0, daysInMonth - lossOfPayDays);
     const prorationRatio = daysInMonth > 0 ? payableDays / daysInMonth : 1;
 
-    // Component Breakdown
     const compComponents = effectiveRevision?.salaryComponents || {};
 
     let basic = compComponents.basicSalary ? parseFloat(compComponents.basicSalary.toString()) : 0;
-    let hra = compComponents.houseRentAllowance ? parseFloat(compComponents.houseRentAllowance.toString()) : 0;
-    let conveyance = compComponents.conveyanceAllowance ? parseFloat(compComponents.conveyanceAllowance.toString()) : 0;
-    let special = compComponents.specialAllowance ? parseFloat(compComponents.specialAllowance.toString()) : 0;
+    let hra = compComponents.houseRentAllowance
+      ? parseFloat(compComponents.houseRentAllowance.toString())
+      : 0;
+    let conveyance = compComponents.conveyanceAllowance
+      ? parseFloat(compComponents.conveyanceAllowance.toString())
+      : 0;
+    let special = compComponents.specialAllowance
+      ? parseFloat(compComponents.specialAllowance.toString())
+      : 0;
 
-    // If components are not explicitly itemized, calculate from company policy allowances or standard baseline
     if (basic === 0 && hra === 0 && special === 0) {
       const configuredAllowances = policy?.salaryComponentRules?.allowances;
       if (Array.isArray(configuredAllowances) && configuredAllowances.length > 0) {
@@ -339,7 +296,6 @@ export async function calculatePayrollCycle({
       }
     }
 
-    // Prorate components by payable days
     const proratedBasic = Math.round(basic * prorationRatio);
     const proratedHra = Math.round(hra * prorationRatio);
     const proratedConveyance = Math.round(conveyance * prorationRatio);
@@ -347,7 +303,6 @@ export async function calculatePayrollCycle({
 
     const grossEarnings = proratedBasic + proratedHra + proratedConveyance + proratedSpecial;
 
-    // Employee Deductions (e.g. EPF: 12% of basic)
     let epfDeduction = 0;
     if (compComponents.employerProvidentFund) {
       const epfConfig = parseFloat(compComponents.employerProvidentFund.toString());
@@ -359,30 +314,39 @@ export async function calculatePayrollCycle({
 
     let otherDeductions = 0;
     if (compComponents.otherDeductions) {
-      otherDeductions = Math.round(parseFloat(compComponents.otherDeductions.toString()) * prorationRatio);
+      otherDeductions = Math.round(
+        parseFloat(compComponents.otherDeductions.toString()) * prorationRatio
+      );
     }
 
     const totalDeductions = epfDeduction + otherDeductions;
-
-    // Employer Contributions (tracked separately, NOT subtracted from employee net pay)
     const employerPf = epfDeduction;
     const totalEmployerContributions = employerPf;
-
     const netPayable = Math.max(0, grossEarnings - totalDeductions);
 
-    // Payslip identifier
-    const payslipNumber = `PAY-${year}${monthStr}-${emp.employeeCode || String(emp._id).slice(-6).toUpperCase()}`;
+    const payslipNumber = `PAY-${year}${monthStr}-${
+      emp.employeeCode || String(emp._id).slice(-6).toUpperCase()
+    }`;
 
-    // Itemized breakdowns
     const earnings = [
       { name: "Basic Salary", code: "BASIC", amount: proratedBasic, isTaxable: true },
       { name: "House Rent Allowance (HRA)", code: "HRA", amount: proratedHra, isTaxable: true },
     ];
     if (proratedConveyance > 0) {
-      earnings.push({ name: "Conveyance Allowance", code: "CONVEYANCE", amount: proratedConveyance, isTaxable: false });
+      earnings.push({
+        name: "Conveyance Allowance",
+        code: "CONVEYANCE",
+        amount: proratedConveyance,
+        isTaxable: false,
+      });
     }
     if (proratedSpecial > 0) {
-      earnings.push({ name: "Special Allowance", code: "SPECIAL", amount: proratedSpecial, isTaxable: true });
+      earnings.push({
+        name: "Special Allowance",
+        code: "SPECIAL",
+        amount: proratedSpecial,
+        isTaxable: true,
+      });
     }
 
     const employeeDeductions = [];
@@ -395,13 +359,17 @@ export async function calculatePayrollCycle({
 
     const employerContributions = [];
     if (employerPf > 0) {
-      employerContributions.push({ name: "Employer Provident Fund", code: "PF_EMPLOYER", amount: employerPf });
+      employerContributions.push({
+        name: "Employer Provident Fund",
+        code: "PF_EMPLOYER",
+        amount: employerPf,
+      });
     }
 
-    cycleTotalGross += grossEarnings;
-    cycleTotalDeductions += totalDeductions;
-    cycleTotalEmployerContributions += totalEmployerContributions;
-    cycleTotalNetPay += netPayable;
+    batchGross += grossEarnings;
+    batchDeductions += totalDeductions;
+    batchEmployer += totalEmployerContributions;
+    batchNet += netPayable;
 
     employeeRecords.push({
       employeeId: emp._id,
@@ -446,6 +414,254 @@ export async function calculatePayrollCycle({
       paymentStatus: "UNPAID",
       payments: [],
     });
+  }
+
+  return {
+    employeeRecords,
+    validationIssues,
+    batchGross,
+    batchDeductions,
+    batchEmployer,
+    batchNet,
+  };
+}
+
+/**
+ * Calculates payroll for a company tenant and period.
+ *
+ * @param {Object} options
+ * @param {Object} options.models - Tenant database models
+ * @param {Object} options.company - Authenticated company context
+ * @param {number} options.periodMonth - Month number 1..12
+ * @param {number} options.periodYear - Year (e.g. 2026)
+ * @param {number} [options.employeeBatchSize] - F50-C override for ACTIVE page size
+ * @param {function} [options.onEmployeeBatch] - optional test/observability hook
+ * @returns {Promise<Object>} Calculation result with cycleSummary, employeeRecords, and validationIssues
+ */
+export async function calculatePayrollCycle({
+  models,
+  company,
+  periodMonth,
+  periodYear,
+  employeeBatchSize,
+  onEmployeeBatch,
+}) {
+  const {
+    Employee,
+    EmployeeCompensation,
+    Attendance,
+    LeaveRequest,
+    CompanyHrPolicy,
+    OfferLetter,
+  } = models;
+
+  const month = parseInt(periodMonth, 10);
+  const year = parseInt(periodYear, 10);
+
+  if (isNaN(month) || month < 1 || month > 12) {
+    throw new Error(`Invalid payroll month: ${periodMonth}`);
+  }
+  if (isNaN(year) || year < 2020 || year > 2100) {
+    throw new Error(`Invalid payroll year: ${periodYear}`);
+  }
+
+  const batchSize = resolvePayrollEmployeeBatchSize(employeeBatchSize);
+
+  // 1. Period Dates
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthStr = String(month).padStart(2, "0");
+  const periodStartDate = new Date(`${year}-${monthStr}-01T00:00:00.000Z`);
+  const periodEndDate = new Date(
+    `${year}-${monthStr}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`
+  );
+  const monthPrefix = `${year}-${monthStr}`;
+
+  // 2. Fetch Active HR Policy once — shared snapshot for every employee batch
+  let policy = null;
+  if (CompanyHrPolicy) {
+    policy = await CompanyHrPolicy.findOne({
+      effectiveFromDate: { $lte: periodEndDate },
+    })
+      .sort({ effectiveFromDate: -1 })
+      .lean();
+
+    if (!policy) {
+      policy = await CompanyHrPolicy.findOne({}).sort({ effectiveFromDate: -1 }).lean();
+    }
+  }
+
+  const currencySymbol = policy?.payrollRules?.currencySymbol || "₹";
+  const currencyCode = policy?.payrollRules?.currencyCode || "INR";
+  const deductLopForUnpaidLeave = policy?.payrollRules?.deductLopForUnpaidLeave ?? true;
+  const weekendRules = policy?.weekendRules || {
+    saturdayOff: true,
+    sundayOff: true,
+    alternateSaturdaysOff: false,
+    isPaidWeekend: true,
+  };
+  const policyHolidays = policy?.holidays || [];
+
+  const holidayDateMap = new Map();
+  for (const h of policyHolidays) {
+    if (h.date) {
+      const dStr = toDateString(h.date);
+      if (dStr.startsWith(monthPrefix)) {
+        holidayDateMap.set(dStr, h.name || "Holiday");
+      }
+    }
+  }
+
+  let totalWorkingDays = 0;
+  let totalWeekendDays = 0;
+  let totalHolidayDays = 0;
+
+  const calendarDayTypes = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dStr = `${year}-${monthStr}-${String(d).padStart(2, "0")}`;
+    const dateObj = new Date(`${dStr}T12:00:00.000Z`);
+    const dayOfWeek = dateObj.getDay();
+
+    let isWeekend = false;
+    if (dayOfWeek === 0 && weekendRules.sundayOff) {
+      isWeekend = true;
+    } else if (dayOfWeek === 6 && weekendRules.saturdayOff) {
+      isWeekend = true;
+    }
+
+    const isHoliday = holidayDateMap.has(dStr);
+
+    if (isHoliday) {
+      totalHolidayDays++;
+    } else if (isWeekend) {
+      totalWeekendDays++;
+    } else {
+      totalWorkingDays++;
+    }
+
+    calendarDayTypes.push({
+      dateStr: dStr,
+      isWeekend,
+      isHoliday,
+      isWorkingDay: !isWeekend && !isHoliday,
+    });
+  }
+
+  // Accumulated outputs (O(N) — required for F50-A/B/F write contract).
+  const employeeRecords = [];
+  const validationIssues = [];
+  let cycleTotalGross = 0;
+  let cycleTotalDeductions = 0;
+  let cycleTotalEmployerContributions = 0;
+  let cycleTotalNetPay = 0;
+  let batchIndex = 0;
+
+  // 3–4. F50-C: page ACTIVE employees; load related docs only for the current page.
+  for await (const activeEmployees of iterateActiveEmployeeBatches(Employee, batchSize)) {
+    const employeeIds = activeEmployees.map((e) => e._id);
+    const employeeEmails = activeEmployees
+      .map((e) => String(e.email || "").trim().toLowerCase())
+      .filter(Boolean);
+
+    if (typeof onEmployeeBatch === "function") {
+      onEmployeeBatch({
+        batchIndex,
+        batchSize: activeEmployees.length,
+        configuredBatchSize: batchSize,
+        employeeIds: employeeIds.map((id) => String(id)),
+      });
+    }
+    batchIndex += 1;
+
+    const [compensations, leaves, attendances, acceptedOffers] = await Promise.all([
+      EmployeeCompensation.find({ employeeId: { $in: employeeIds } })
+        .select(COMPENSATION_PAYROLL_SELECT)
+        .lean(),
+      LeaveRequest.find({
+        employeeId: { $in: employeeIds },
+        status: "APPROVED",
+        fromDate: { $lte: periodEndDate },
+        toDate: { $gte: periodStartDate },
+      })
+        .select("employeeId fromDate toDate leaveTypeCode isPaid")
+        .lean(),
+      Attendance.find({
+        employeeId: { $in: employeeIds },
+        date: {
+          $gte: `${monthPrefix}-01`,
+          $lte: `${monthPrefix}-31`,
+        },
+      })
+        .select("employeeId date checkIn status")
+        .lean(),
+      OfferLetter && employeeEmails.length > 0
+        ? OfferLetter.find({
+            "candidate.email": { $in: employeeEmails },
+            status: "ACCEPTED",
+            monthlySalary: { $gt: 0 },
+          })
+            .select("candidate.email monthlySalary")
+            .lean()
+        : Promise.resolve([]),
+    ]);
+
+    const compMap = new Map();
+    for (const c of compensations) {
+      compMap.set(String(c.employeeId), c);
+    }
+
+    const leavesByEmp = new Map();
+    for (const l of leaves) {
+      const k = String(l.employeeId);
+      if (!leavesByEmp.has(k)) leavesByEmp.set(k, []);
+      leavesByEmp.get(k).push(l);
+    }
+
+    const leaveInfoByEmpAndDate = buildLeaveInfoByEmpAndDate(leavesByEmp, calendarDayTypes);
+
+    const attendanceByEmpAndDate = new Map();
+    const employeesWithAttendance = buildEmployeesWithAttendanceSet(attendances);
+    for (const a of attendances) {
+      const empIdStr = String(a.employeeId);
+      attendanceByEmpAndDate.set(`${empIdStr}_${a.date}`, a);
+    }
+
+    const offerSalaryByEmail = buildOfferSalaryByEmailMap(acceptedOffers);
+
+    const batchResult = processEmployeeBatchRecords({
+      activeEmployees,
+      compMap,
+      leaveInfoByEmpAndDate,
+      attendanceByEmpAndDate,
+      employeesWithAttendance,
+      offerSalaryByEmail,
+      calendarDayTypes,
+      policy,
+      periodEndDate,
+      periodStartDate,
+      daysInMonth,
+      totalWorkingDays,
+      totalWeekendDays,
+      totalHolidayDays,
+      month,
+      year,
+      monthStr,
+      currencyCode,
+      currencySymbol,
+      deductLopForUnpaidLeave,
+    });
+
+    for (const rec of batchResult.employeeRecords) {
+      employeeRecords.push(rec);
+    }
+    for (const issue of batchResult.validationIssues) {
+      validationIssues.push(issue);
+    }
+    cycleTotalGross += batchResult.batchGross;
+    cycleTotalDeductions += batchResult.batchDeductions;
+    cycleTotalEmployerContributions += batchResult.batchEmployer;
+    cycleTotalNetPay += batchResult.batchNet;
+
+    // Batch-local maps/arrays go out of scope here (eligible for GC).
   }
 
   const cycleSummary = {

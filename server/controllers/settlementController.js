@@ -5,6 +5,7 @@ import {
   assertEmployeeInScope,
   mergeEmployeeIdScopeFilter,
 } from "../services/hrAccessEnforcementService.js";
+import { buildPrefixCiRegex } from "../utils/searchRegex.js";
 
 function formatCurrency(amount) {
   if (amount == null || isNaN(amount)) return "₹0.00";
@@ -250,10 +251,6 @@ export async function initiateSettlement(req, res, next) {
   }
 }
 
-function escapeRegex(value) {
-  return String(value).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-}
-
 /** List projection — fields required by AdminPayroll settlements table / filters. */
 const SETTLEMENT_LIST_SELECT =
   "employeeId status holdReason exitDetails.lastWorkingDay exitDetails.exitReason exitDetails.initiatedAt exitDetails.hrRemarks financialBreakdown.netSettlementAmount paymentDetails.paymentDate paymentDetails.paymentMethod approvedAt completedAt createdAt updatedAt";
@@ -277,7 +274,8 @@ export async function getSettlements(req, res, next) {
 
     const searchTerm = typeof search === "string" ? search.trim() : "";
     if (searchTerm) {
-      const regex = new RegExp(escapeRegex(searchTerm), "i");
+      // F58: prefix search on employee identity + exit reason.
+      const regex = buildPrefixCiRegex(searchTerm);
       const matchingEmployees = await Employee.find({
         $or: [{ fullName: regex }, { employeeCode: regex }, { email: regex }],
       })

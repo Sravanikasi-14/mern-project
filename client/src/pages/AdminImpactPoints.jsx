@@ -10,7 +10,7 @@ import {
   IconInfo,
   IconSearch,
 } from "../components/Icons";
-import Pagination, { useClientPagination } from "../components/Pagination";
+import Pagination from "../components/Pagination";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { hrPortalAllows } from "../utils/hrPortalAccess";
@@ -23,6 +23,7 @@ import { useTasksMetaQuery } from "../hooks/useEmployeeQueries";
 import { invalidateImpact } from "../lib/queryKeys";
 import "./WorkManagement.css";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 
 const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
@@ -43,6 +44,9 @@ export default function AdminImpactPoints() {
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
   const [leaderboardSearch, setLeaderboardSearch] = useState("");
+  const [appliedLeaderboardSearch, setAppliedLeaderboardSearch] = useState("");
+  const [leaderboardPage, setLeaderboardPage] = useState(1);
+  const [leaderboardLimit, setLeaderboardLimit] = useState(10);
 
   // Ledger filters
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -80,7 +84,13 @@ export default function AdminImpactPoints() {
   };
 
   const leaderboardQuery = useAdminImpactLeaderboardQuery(
-    { period: periodFilter, department: departmentFilter },
+    {
+      period: periodFilter,
+      department: departmentFilter,
+      page: leaderboardPage,
+      limit: leaderboardLimit,
+      search: appliedLeaderboardSearch,
+    },
     { enabled: activeTab === "LEADERBOARD" }
   );
   const ledgerQuery = useAdminImpactTransactionsQuery(
@@ -94,19 +104,28 @@ export default function AdminImpactPoints() {
     { enabled: activeTab === "LEDGER" }
   );
 
-  const leaderboardRaw = Array.isArray(leaderboardQuery.data) ? leaderboardQuery.data : [];
-  const leaderboard = useMemo(() => {
-    const q = leaderboardSearch.trim().toLowerCase();
-    if (!q) return leaderboardRaw;
-    return leaderboardRaw.filter((row) => {
-      const name = String(row.name || row.fullName || "").toLowerCase();
-      const code = String(row.employeeCode || "").toLowerCase();
-      const dept = String(row.department || row.job?.department || "").toLowerCase();
-      return name.includes(q) || code.includes(q) || dept.includes(q);
-    });
-  }, [leaderboardRaw, leaderboardSearch]);
-  const leaderboardLoading = leaderboardQuery.isLoading && leaderboardRaw.length === 0;
-  const leaderboardPager = useClientPagination(leaderboard, 10);
+  const leaderboard = Array.isArray(leaderboardQuery.data?.leaderboard)
+    ? leaderboardQuery.data.leaderboard
+    : [];
+  const leaderboardPagination = leaderboardQuery.data?.pagination || {
+    page: leaderboardPage,
+    limit: leaderboardLimit,
+    total: leaderboard.length,
+    totalPages: 1,
+  };
+  const leaderboardLoading = leaderboardQuery.isLoading && leaderboard.length === 0;
+  const leaderboardPager = {
+    slice: leaderboard,
+    page: leaderboardPagination.page || leaderboardPage,
+    totalPages: leaderboardPagination.totalPages || leaderboardPagination.pages || 1,
+    total: leaderboardPagination.total || 0,
+    pageSize: leaderboardPagination.limit || leaderboardLimit,
+    setPage: setLeaderboardPage,
+    setPageSize: (size) => {
+      setLeaderboardLimit(size);
+      setLeaderboardPage(1);
+    },
+  };
 
   const transactions = Array.isArray(ledgerQuery.data?.transactions)
     ? ledgerQuery.data.transactions
@@ -135,29 +154,35 @@ export default function AdminImpactPoints() {
     setLedgerPage(1);
   }, [typeFilter, sourceFilter]);
 
+  useEffect(() => {
+    setLeaderboardPage(1);
+  }, [departmentFilter, periodFilter]);
+
   const handleSearchLedgerSubmit = (e) => {
     e.preventDefault();
     setLedgerPage(1);
     setAppliedLedgerSearch(searchLedger);
   };
 
-  // Aggregate stats from leaderboard
+  const handleLeaderboardSearchSubmit = (e) => {
+    e?.preventDefault?.();
+    setLeaderboardPage(1);
+    setAppliedLeaderboardSearch(leaderboardSearch);
+  };
+
+  // F71: stats from server summary (full filtered set), not the current page.
   const stats = useMemo(() => {
-    let totalPoints = 0;
-    let totalEarned = 0;
-    let totalDeducted = 0;
-    (leaderboard || []).forEach((item) => {
-      totalPoints += item.balance || 0;
-      totalEarned += item.pointsEarned || 0;
-      totalDeducted += item.pointsDeducted || 0;
-    });
-    return {
-      totalPoints,
-      totalEarned,
-      totalDeducted,
-      participants: (leaderboard || []).length,
-    };
-  }, [leaderboard]);
+    const s = leaderboardQuery.data?.summary;
+    if (s) {
+      return {
+        totalPoints: s.circulation ?? s.totalPoints ?? 0,
+        totalEarned: s.totalEarned ?? 0,
+        totalDeducted: s.totalDeducted ?? 0,
+        participants: s.participants ?? 0,
+      };
+    }
+    return { totalPoints: 0, totalEarned: 0, totalDeducted: 0, participants: 0 };
+  }, [leaderboardQuery.data?.summary]);
 
   // Handle Recognition Submit
   const handleRecognizeSubmit = async (e) => {
@@ -239,6 +264,24 @@ export default function AdminImpactPoints() {
     setSidePanelMode("reverse");
   };
 
+  const recognizeAction = canManageImpact ? (
+    <button
+      type="button"
+      className={sidePanelMode === "recognize" ? "btn-secondary" : "btn-primary"}
+      onClick={toggleRecognizePanel}
+    >
+      {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
+    </button>
+  ) : (
+    <AccessRestrictedInline />
+  );
+
+  // Podium: top three on the first, unfiltered page of the leaderboard.
+  const topPerformers =
+    leaderboardPager.page === 1 && !appliedLeaderboardSearch
+      ? leaderboard.filter((row) => row.rank >= 1 && row.rank <= 3).slice(0, 3)
+      : [];
+
   return (
     <div className="container-wide split-page-container wm-page-container">
       {/* Header */}
@@ -254,17 +297,15 @@ export default function AdminImpactPoints() {
           />
         }
         nav={
-          canManageImpact ? (
-            <button
-              className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
-              onClick={toggleRecognizePanel}
-              style={{ whiteSpace: "nowrap" }}
-            >
-              {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
-            </button>
-          ) : (
-            <AccessRestrictedInline />
-          )
+          <SegmentedTabs
+            ariaLabel="Impact sections"
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { value: "LEADERBOARD", label: "Leaderboard" },
+              { value: "LEDGER", label: "Transactions" },
+            ]}
+          />
         }
       />
 
@@ -293,36 +334,59 @@ export default function AdminImpactPoints() {
         </div>
       )}
 
-      {/* Compact Inline Impact Statistics Strip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 8,
-          padding: "8px 16px",
-          marginBottom: 12,
-          fontSize: 13,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Circulation: <strong style={{ color: "#2563eb" }}>{stats.totalPoints} pts</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Total Earned: <strong style={{ color: "#059669" }}>+{stats.totalEarned} pts</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Deductions: <strong style={{ color: "#dc2626" }}>-{stats.totalDeducted} pts</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted, #646d67)" }}>
-          Participants: <strong style={{ color: "var(--ink)" }}>{stats.participants}</strong>
-        </span>
+      <div className="metric-card-row ip-metric-row" role="group" aria-label="Impact points summary">
+        <button
+          type="button"
+          className={`metric-card ip-metric-card ip-metric--blue${
+            activeTab === "LEADERBOARD" ? " is-active" : ""
+          }`}
+          onClick={() => setActiveTab("LEADERBOARD")}
+        >
+          <span className="metric-card-label">Circulation</span>
+          <span className="metric-card-value">{stats.totalPoints}</span>
+          <span className="metric-card-sub">Points in play · view leaderboard</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card ip-metric-card ip-metric--green${
+            activeTab === "LEDGER" && typeFilter === "EARNED" ? " is-active" : ""
+          }`}
+          onClick={() => {
+            setTypeFilter("EARNED");
+            setActiveTab("LEDGER");
+          }}
+        >
+          <span className="metric-card-label">Total earned</span>
+          <span className="metric-card-value">+{stats.totalEarned}</span>
+          <span className="metric-card-sub">Awards issued · view earnings</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card ip-metric-card ip-metric--red${
+            activeTab === "LEDGER" && typeFilter === "DEDUCTED" ? " is-active" : ""
+          }`}
+          onClick={() => {
+            setTypeFilter("DEDUCTED");
+            setActiveTab("LEDGER");
+          }}
+        >
+          <span className="metric-card-label">Deductions</span>
+          <span className="metric-card-value">-{stats.totalDeducted}</span>
+          <span className="metric-card-sub">Reversals &amp; deductions · view ledger</span>
+        </button>
+        <button
+          type="button"
+          className="metric-card ip-metric-card"
+          onClick={() => {
+            setActiveTab("LEADERBOARD");
+            setDepartmentFilter("ALL");
+            setPeriodFilter("all");
+          }}
+        >
+          <span className="metric-card-label">Participants</span>
+          <span className="metric-card-value">{stats.participants}</span>
+          <span className="metric-card-sub">People on the board</span>
+        </button>
       </div>
 
       {/* Main Responsive Grid Layout (Resizes dynamically when right side panel opens) */}
@@ -335,45 +399,31 @@ export default function AdminImpactPoints() {
         {/* Left Column: Tables and Toolbars */}
         <div className="split-page-left-col wm-left-col">
           {/* Navigation & Filters Toolbar Card */}
-          <div className="wm-toolbar-card">
-            {/* Tab Selection Row */}
-            <div className="wm-tab-strip">
-              <div className="wm-tab-group">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("LEADERBOARD")}
-                  className={`wm-tab-btn ${activeTab === "LEADERBOARD" ? "active" : ""}`}
-                >
-                  Leaderboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("LEDGER")}
-                  className={`wm-tab-btn ${activeTab === "LEDGER" ? "active" : ""}`}
-                >
-                  Transaction History
-                </button>
-              </div>
-
-              <div className="wm-tab-count">
-                {activeTab === "LEADERBOARD"
-                  ? `${leaderboard.length} ranked employee${leaderboard.length === 1 ? "" : "s"}`
-                  : `${pagination.total} transaction${pagination.total === 1 ? "" : "s"} logged`}
-              </div>
-            </div>
-
+          <div className="wm-toolbar-card wm-toolbar-card--bare">
             {activeTab === "LEADERBOARD" && (
               <ModuleToolbar
+                actions={recognizeAction}
                 searchValue={leaderboardSearch}
                 onSearchChange={(e) => setLeaderboardSearch(e.target.value)}
+                onSearchSubmit={handleLeaderboardSearchSubmit}
+                onSearchClear={() => {
+                  setLeaderboardSearch("");
+                  setAppliedLeaderboardSearch("");
+                  setLeaderboardPage(1);
+                }}
                 searchPlaceholder="Search name or employee ID..."
                 searchAriaLabel="Search leaderboard"
                 filterCount={
-                  (departmentFilter !== "ALL" ? 1 : 0) + (periodFilter !== "all" ? 1 : 0)
+                  (departmentFilter !== "ALL" ? 1 : 0) +
+                  (periodFilter !== "all" ? 1 : 0) +
+                  (appliedLeaderboardSearch ? 1 : 0)
                 }
                 onFiltersClear={() => {
                   setDepartmentFilter("ALL");
                   setPeriodFilter("all");
+                  setLeaderboardSearch("");
+                  setAppliedLeaderboardSearch("");
+                  setLeaderboardPage(1);
                 }}
                 filters={
                   <>
@@ -413,6 +463,7 @@ export default function AdminImpactPoints() {
 
             {activeTab === "LEDGER" && (
               <ModuleToolbar
+                actions={recognizeAction}
                 searchValue={searchLedger}
                 onSearchChange={(e) => setSearchLedger(e.target.value)}
                 onSearchSubmit={handleSearchLedgerSubmit}
@@ -461,6 +512,42 @@ export default function AdminImpactPoints() {
 
           {/* Table Container Card */}
           <div className="wm-table-card">
+            <div className="ip-section-head">
+              <div>
+                <h3 className="ip-section-title">
+                  {activeTab === "LEADERBOARD" ? "Leaderboard" : "Transaction ledger"}
+                </h3>
+                <p className="ip-section-sub">
+                  {activeTab === "LEADERBOARD"
+                    ? "Ranked by impact points balance"
+                    : "Every award, deduction and reversal"}
+                </p>
+              </div>
+              <span className="ip-section-count">
+                {activeTab === "LEADERBOARD"
+                  ? `${leaderboardPager.total} ranked employee${leaderboardPager.total === 1 ? "" : "s"}`
+                  : `${pagination.total} transaction${pagination.total === 1 ? "" : "s"} logged`}
+              </span>
+            </div>
+
+            {activeTab === "LEADERBOARD" && topPerformers.length > 0 && (
+              <div className="ip-podium" aria-label="Top performers">
+                {topPerformers.map((row) => (
+                  <div key={row.employeeId} className={`ip-podium-card ip-podium-${row.rank}`}>
+                    <span className="ip-podium-rank">#{row.rank}</span>
+                    <div className="ip-podium-body">
+                      <div className="ip-podium-name">{row.name || row.fullName || "Employee"}</div>
+                      <div className="ip-podium-dept">{row.department || "General"}</div>
+                    </div>
+                    <div className="ip-podium-score">
+                      {row.balance ?? row.totalPoints ?? ((row.pointsEarned || 0) - (row.pointsDeducted || 0))}
+                      <span> pts</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {activeTab === "LEADERBOARD" && (
               <div className="wm-table-container">
                 <table className="wm-table">

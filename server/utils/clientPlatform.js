@@ -116,8 +116,26 @@ export function isWebClientPlatform(platform) {
  * Defaults to WEB when session is missing or platform unset.
  * Never trusts request body or client-supplied platform headers.
  * Informational only — must not be used as device authenticity proof.
+ *
+ * F49: Prefer `options.session` / `options.req.auth.session` from authenticate
+ * so attendance routes do not re-query AuthSession. Falls back to MongoDB when
+ * no authenticated session is attached (legacy callers).
+ *
+ * @param {object} models
+ * @param {string|null|undefined} token
+ * @param {{ session?: object|null, req?: object }} [options]
  */
-export async function resolveClientPlatformFromAuthSession(models, token) {
+export async function resolveClientPlatformFromAuthSession(models, token, options = {}) {
+  const attached =
+    options?.session ||
+    options?.req?.auth?.session ||
+    null;
+
+  if (attached && attached.isActive !== false) {
+    const normalized = normalizePlatform(attached.clientPlatform);
+    return normalized || CLIENT_PLATFORMS.WEB;
+  }
+
   if (!token || !models?.AuthSession) {
     return CLIENT_PLATFORMS.WEB;
   }

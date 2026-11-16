@@ -11,8 +11,11 @@
     "dev": "nodemon server.js",
     "test": "node --import ./tests/mongoMemoryEnv.js --test --test-concurrency=1 tests/*.test.js",
     "seed:auth": "node scripts/seedAuth.js",
+    "bootstrap:platform-admin": "node scripts/bootstrapPlatformAdmin.js",
+    "reset:platform-admin-password": "node scripts/resetPlatformAdminPassword.js",
     "provision:company": "node scripts/provisionCompany.js",
     "provision:tenants": "node scripts/provisionAllTenants.js",
+    "inventory:tenant-indexes": "node scripts/inventoryTenantIndexes.js",
     "seed:offer-template-master": "node scripts/seedOfferTemplateMaster.js",
     "test:email": "node scripts/sendTestEmail.js",
     "face:models": "node scripts/downloadFaceModels.js"

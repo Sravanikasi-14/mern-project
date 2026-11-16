@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { IconDocument } from "../components/Icons";
 import DepartmentSelect from "../components/DepartmentSelect";
 import { departmentPayload } from "../components/departmentAssignment";
 import ReportingManagerSelect from "../components/ReportingManagerSelect";
 import DesignationFields from "../components/organization-workspace/DesignationFields";
 import { useSmartBack } from "../hooks/useSmartBack";
+import { invalidateEmployees } from "../lib/queryKeys";
 import api from "../services/api";
 import "./EmployeeProfileView.css";
 
@@ -18,6 +20,7 @@ function managerIdOf(emp) {
 export default function EditEmployee() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const goBack = useSmartBack(`/admin/employees/${id}`);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -338,6 +341,8 @@ export default function EditEmployee() {
         console.warn("Work arrangement update failed:", arrErr?.response?.data?.message || arrErr.message);
       }
 
+      // F56: refresh People filter-options / list / pool after dept/title/status edits.
+      invalidateEmployees(queryClient);
       setSuccessMsg("Employee updated successfully! Redirecting...");
       setIsDirty(false);
       setTimeout(() => {

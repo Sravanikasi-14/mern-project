@@ -141,8 +141,21 @@
 .emp-head__actions {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+}
+
+.emp-head__actions--top {
+  margin-right: 4px;
+}
+
+.fernly-topbar-actions .emp-head__actions--top .btn--emp-primary,
+.fernly-topbar-actions .emp-head__actions--top .btn--emp-secondary {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  white-space: nowrap;
 }
 
 /* Action Buttons — match shared primary/secondary geometry */
@@ -1073,8 +1086,6 @@
     font-size: 20px;
   }
 
-  .emp-head__actions,
-  .btn--emp-secondary,
   .emp-leave-cutoff-note {
     display: none;
   }
@@ -1083,14 +1094,21 @@
     display: none;
   }
 
-  .emp-head__actions {
-    width: 100%;
+  .fernly-topbar-actions .emp-head__actions--top {
+    gap: 6px;
   }
 
-  .btn--emp-primary {
-    flex: 1;
-    justify-content: center;
-    min-height: 44px;
+  .fernly-topbar-actions .emp-head__actions--top .btn--emp-primary,
+  .fernly-topbar-actions .emp-head__actions--top .btn--emp-secondary {
+    min-height: 34px;
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .fernly-topbar-actions .emp-head__actions--top .btn--emp-secondary span:last-child,
+  .fernly-topbar-actions .emp-head__actions--top .btn--emp-primary span:last-child {
+    display: none;
   }
 
   .emp-punch-actions {

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "../services/api";
+import { chatPollIntervalMs } from "../lib/chatPollInterval";
 
 export const chatKeys = {
   conversations: () => ["chat", "conversations"],
@@ -16,7 +17,8 @@ export function useConversationsQuery(options = {}) {
       const res = await api.get("/conversations");
       return res.data?.conversations || [];
     },
-    refetchInterval: 10_000,
+    refetchInterval: (query) => chatPollIntervalMs(10_000, query),
+    refetchIntervalInBackground: false,
     staleTime: 5_000,
     ...options,
   });
@@ -34,7 +36,10 @@ export function useChatMessagesQuery(conversationId, options = {}) {
         nextBefore: res.data?.nextBefore || null,
       };
     },
-    refetchInterval: conversationId ? 10_000 : false,
+    refetchInterval: conversationId
+      ? (query) => chatPollIntervalMs(10_000, query)
+      : false,
+    refetchIntervalInBackground: false,
     staleTime: 3_000,
     ...options,
   });
@@ -47,7 +52,8 @@ export function useChatUnreadQuery(options = {}) {
       const res = await api.get("/conversations/unread-count");
       return Number(res.data?.unreadCount || 0);
     },
-    refetchInterval: 30_000,
+    refetchInterval: (query) => chatPollIntervalMs(30_000, query),
+    refetchIntervalInBackground: false,
     staleTime: 15_000,
     ...options,
   });

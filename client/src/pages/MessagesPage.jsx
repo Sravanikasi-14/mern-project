@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ImagePlus, Info, Megaphone, MessageSquarePlus, MoreHorizontal, Paperclip, Search, Send, Users, X } from "lucide-react";
+import { ArrowLeft, ImagePlus, Info, MessageSquarePlus, MoreHorizontal, Paperclip, Search, Send, Users, X } from "lucide-react";
 import AnnouncementsPane from "../components/chat/AnnouncementsPane";
 import MessageSearch from "../components/chat/MessageSearch";
 import MessageAttachments, { formatAttachmentSize } from "../components/chat/MessageAttachments";
 import AppHeader from "../components/AppHeader";
 import AppModal from "../components/AppModal";
+import SegmentedTabs from "../components/SegmentedTabs";
 import { useAuth } from "../context/AuthContext";
 import { useChatMessagesQuery, useConversationsQuery, useGroupMembersQuery } from "../hooks/useChatQueries";
 import { qk } from "../lib/queryKeys";
@@ -47,6 +48,12 @@ function formatTime(value) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function fullDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
 function formatDay(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -56,7 +63,7 @@ function formatDay(value) {
   const diff = Math.round((startToday - startDate) / 86400000);
   if (diff === 0) return "Today";
   if (diff === 1) return "Yesterday";
-  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
 function apiMessage(error, fallback) {
@@ -568,28 +575,19 @@ export default function MessagesPage() {
     <main className="container-wide msg-page">
       <AppHeader title="Messages" subtitle="Talk with people in your company." />
       {error ? <p className="msg-banner" role="alert">{error}</p> : null}
-      <div className="msg-channels" role="tablist" aria-label="Message views">
-        {[
-          ["all", "All"],
-          ["direct", "Direct"],
-          ["groups", "Groups"],
-          ["search", "Search"],
-          ["announcements", "Announcements"],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={channel === id}
-            className={channel === id ? "is-active" : ""}
-            onClick={() => setChannel(id)}
-          >
-            {id === "announcements" ? <Megaphone size={14} aria-hidden="true" /> : null}
-            {id === "search" ? <Search size={14} aria-hidden="true" /> : null}
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        className="msg-channels-tabs"
+        ariaLabel="Message views"
+        value={channel}
+        onChange={setChannel}
+        tabs={[
+          { value: "all", label: "All" },
+          { value: "direct", label: "Direct" },
+          { value: "groups", label: "Groups" },
+          { value: "search", label: "Search" },
+          { value: "announcements", label: "Announcements" },
+        ]}
+      />
       <section className={`msg-shell${channel === "announcements" ? " is-announcements" : searchOnly ? " is-search" : showList && showThread ? "" : showList ? " is-list" : " is-thread"}`} aria-label="Messages">
         {channel === "announcements" ? <AnnouncementsPane narrow={narrow} /> : null}
         {channel === "search" && showList ? (
@@ -728,7 +726,7 @@ export default function MessagesPage() {
                     const day = formatDay(message.createdAt);
                     const previousDay = index > 0 ? formatDay(timeline[index - 1].createdAt) : "";
                     return (
-                      <div key={message.id}>
+                      <Fragment key={message.id}>
                         {day !== previousDay ? <p className="msg-day">{day}</p> : null}
                         <article id={`msg-${message.id}`} className={`msg-bubble-row${mine ? " is-mine" : ""}`}>
                           <div className={`msg-bubble${message.deleted ? " is-removed" : ""}`}>
@@ -757,7 +755,7 @@ export default function MessagesPage() {
                                 ) : null}
                               </div>
                             ) : null}
-                            {!mine && selected?.type === "GROUP" && message.senderName ? (
+                            {(message.deleted || (!mine && selected?.type === "GROUP")) && message.senderName ? (
                               <p className="msg-sender">{message.senderName}</p>
                             ) : null}
                             {message.replyTo ? (
@@ -776,13 +774,15 @@ export default function MessagesPage() {
                             {!message.deleted ? (
                               <MessageAttachments conversationId={selectedId} messageId={message.id} files={message.attachments} />
                             ) : null}
-                            <time dateTime={message.createdAt}>
+                            <time dateTime={message.createdAt} title={fullDateTime(message.createdAt)}>
+                              {message.deleted ? `${formatDay(message.createdAt)} · ` : ""}
                               {formatTime(message.createdAt)}
                               {message.editedAt && !message.deleted ? <em>Edited</em> : null}
+                              {message.deleted && message.deletedAt ? <em>Deleted {formatTime(message.deletedAt)}</em> : null}
                             </time>
                           </div>
                         </article>
-                      </div>
+                      </Fragment>
                     );
                   })}
                   {contextWindow?.hasMoreAfter ? (

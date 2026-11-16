@@ -88,7 +88,10 @@ export function resolveAttendanceVerificationConfig(policy) {
 /**
  * Public summary for employee clients (no secret Wi-Fi BSSID lists beyond masked count).
  */
-export function buildEmployeeVerificationRequirements(policy, { sessionType = "OFFICE", geofenceApplies = true } = {}) {
+export function buildEmployeeVerificationRequirements(
+  policy,
+  { sessionType = "OFFICE", geofenceApplies = true, faceCapabilityAllowed = true } = {}
+) {
   const cfg = resolveAttendanceVerificationConfig(policy);
   const officeSession = String(sessionType).toUpperCase() !== "REMOTE";
 
@@ -107,16 +110,23 @@ export function buildEmployeeVerificationRequirements(policy, { sessionType = "O
     authorizedNetworkCount: (cfg.wifiNetworks || []).filter((n) => n && n.active !== false).length,
   };
 
+  // Platform entitlement wins over HR policy: capability OFF must not present face as available.
+  const facePolicyEnabled = Boolean(cfg.face.enabled);
+  const faceEntitled = faceCapabilityAllowed !== false;
+  const faceEnabled = facePolicyEnabled && faceEntitled;
   const face = {
-    enabled: cfg.face.enabled,
-    mandatory: cfg.face.enabled ? cfg.face.mandatory : false,
+    enabled: faceEnabled,
+    mandatory: faceEnabled ? cfg.face.mandatory : false,
     label: "Face recognition",
     requireLiveness: cfg.face.requireLiveness,
+    platformCapabilityAllowed: faceEntitled,
+    policyEnabled: facePolicyEnabled,
   };
 
   const anyEnabled = gps.enabled || wifi.enabled || face.enabled;
   return {
-    verificationRequired: cfg.verificationRequired || anyEnabled,
+    // If policy required verification but only face was configured and capability is OFF, do not block punches.
+    verificationRequired: anyEnabled ? cfg.verificationRequired || anyEnabled : false,
     methods: { gps, wifi, face },
     wifiSupportedPlatforms: ["android"],
     notes: {
@@ -128,8 +138,24 @@ export function buildEmployeeVerificationRequirements(policy, { sessionType = "O
         "Approved remote / WFH sessions do not require office geofence GPS verification.",
       faceLiveness:
         "Heuristic checks are not production anti-spoofing. Mandatory face stays unavailable until a registered PAD provider (Phase 2 MiniFASNet) is implemented and ready.",
+      faceCapability:
+        facePolicyEnabled && !faceEntitled
+          ? "Face verification is disabled for this company by Platform Admin entitlement."
+          : undefined,
     },
   };
+}
+
+/** Resolve whether attendance.faceVerification is effectively entitled (fail closed). */
+export async function resolveFaceCapabilityAllowed(company) {
+  if (!company) return false;
+  try {
+    const { getEffectiveEntitlementsForCompany } = await import("./platformEntitlementService.js");
+    const { effective } = await getEffectiveEntitlementsForCompany(company);
+    return Boolean(effective?.capabilities?.["attendance.faceVerification"]?.allowed);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -325,6 +351,7 @@ export async function runAttendanceVerifications({
   models,
   employee,
   policy,
+  company = null,
   sessionType = "OFFICE",
   geofenceApplies = true,
   geofenceMeta = null,
@@ -333,13 +360,22 @@ export async function runAttendanceVerifications({
   clientPlatform = "",
   /** Reject if client sends proof booleans */
   clientClaims = null,
+  faceCapabilityAllowed = null,
 }) {
   if (clientClaims?.faceVerified === true || clientClaims?.wifiVerified === true || clientClaims?.gpsVerified === true) {
     // Ignore claims; never treat as proof. Soft-warn in audit only.
   }
 
   const cfg = resolveAttendanceVerificationConfig(policy);
-  const requirements = buildEmployeeVerificationRequirements(policy, { sessionType, geofenceApplies });
+  const faceAllowed =
+    faceCapabilityAllowed == null
+      ? await resolveFaceCapabilityAllowed(company || { _id: employee?.companyId })
+      : Boolean(faceCapabilityAllowed);
+  const requirements = buildEmployeeVerificationRequirements(policy, {
+    sessionType,
+    geofenceApplies,
+    faceCapabilityAllowed: faceAllowed,
+  });
   const results = {
     attemptedAt: new Date(),
     clientPlatform: String(clientPlatform || "").slice(0, 40),

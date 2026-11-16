@@ -67,6 +67,13 @@ export function createAnnouncementSchema() {
       editedAt: { type: Date, default: null },
       withdrawnAt: { type: Date, default: null },
       notifiedAt: { type: Date, default: null },
+      /**
+       * F51/F53 — short-lived exclusive claim while fan-out runs.
+       * Prevents concurrent publish-due workers from double-notifying the same row.
+       * Cleared when notifiedAt is set or when the claim is released after failure.
+       */
+      notifyLockUntil: { type: Date, default: null },
+      notifyLockToken: { type: String, default: "" },
     },
     { timestamps: true, collection: "announcements" }
   );

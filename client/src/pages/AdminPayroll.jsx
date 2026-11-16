@@ -23,6 +23,7 @@ import api from "../services/api";
 import AppHeader from "../components/AppHeader";
 import AppModal from "../components/AppModal";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 
 import "./AdminPayroll.css";
 
@@ -146,6 +147,8 @@ export default function AdminPayroll() {
   const [payrollDeptFilter, setPayrollDeptFilter] = useState("ALL");
   const [registerPage, setRegisterPage] = useState(1);
   const [registerPageSize, setRegisterPageSize] = useState(10);
+  const [registerSummary, setRegisterSummary] = useState(null);
+  const [registerTotal, setRegisterTotal] = useState(0);
 
   // Modals for Monthly Payroll
   const [showNewCycleModal, setShowNewCycleModal] = useState(false);
@@ -441,18 +444,37 @@ export default function AdminPayroll() {
     }
   };
 
-  const fetchCycleDetails = async (cycleId) => {
+  const fetchCycleDetails = async (cycleId, overrides = {}) => {
     if (!cycleId) return;
     setLoadingCycleDetails(true);
     try {
-      const res = await api.get(`/payroll/cycles/${cycleId}`);
+      const page = overrides.page ?? registerPage;
+      const limit = overrides.limit ?? registerPageSize;
+      const params = {
+        page,
+        limit,
+        search: overrides.search ?? payrollSearch,
+        department: overrides.department ?? payrollDeptFilter,
+        paymentStatus: overrides.paymentStatus ?? payrollStatusFilter,
+      };
+      if (!params.search?.trim()) delete params.search;
+      if (!params.department || params.department === "ALL") delete params.department;
+      if (!params.paymentStatus || params.paymentStatus === "ALL") delete params.paymentStatus;
+
+      const res = await api.get(`/payroll/cycles/${cycleId}`, { params });
       setSelectedCycle(res.data?.cycle || null);
       const fetchedPayslips = res.data?.payslips || [];
       setCyclePayslips(fetchedPayslips);
+      setRegisterSummary(res.data?.registerSummary || res.data?.cycle?.registerSummary || null);
+      setRegisterTotal(
+        res.data?.pagination?.total ??
+          res.data?.payslipTotal ??
+          fetchedPayslips.length
+      );
       // Keep popup closed until the user explicitly selects a register row.
       setSelectedBreakdownPayslip((prev) => {
         if (!prev) return null;
-        return fetchedPayslips.find((p) => p._id === prev._id) || null;
+        return fetchedPayslips.find((p) => p._id === prev._id) || prev;
       });
     } catch (err) {
       setPayrollActionError(err.response?.data?.message || "Failed to load cycle details.");
@@ -468,12 +490,21 @@ export default function AdminPayroll() {
     }
   }, [activeTab, canPayroll]);
 
-  // Fetch cycle details when selected cycle changes
+  // F61: reload register when cycle or server-side filter/page changes
   useEffect(() => {
     if (activeTab === "payroll_registers" && selectedCycleId) {
       fetchCycleDetails(selectedCycleId);
     }
-  }, [selectedCycleId, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional filter/page deps
+  }, [
+    selectedCycleId,
+    activeTab,
+    registerPage,
+    registerPageSize,
+    payrollSearch,
+    payrollStatusFilter,
+    payrollDeptFilter,
+  ]);
 
   const handleCreateNewCycle = async (e) => {
     e.preventDefault();
@@ -522,9 +553,10 @@ export default function AdminPayroll() {
     setPayrollActionSuccess("");
     try {
       const res = await api.post(`/payroll/cycles/${selectedCycleId}/calculate`);
-      setSelectedCycle(res.data?.cycle);
-      setCyclePayslips(res.data?.payslips || []);
-      setPayrollActionSuccess("Payroll draft recalculated successfully.");
+      // F50-D: mutation returns cycle summary only; reload register like finalize/pay.
+      setSelectedCycle(res.data?.cycle || null);
+      setPayrollActionSuccess(res.data?.message || "Payroll draft recalculated successfully.");
+      await fetchCycleDetails(selectedCycleId);
       fetchPayrollCycles(selectedCycleId);
     } catch (err) {
       setPayrollActionError(err.response?.data?.message || "Failed to recalculate payroll draft.");
@@ -607,98 +639,68 @@ export default function AdminPayroll() {
     }
   };
 
-  const handleExportRegisterCsv = () => {
-    if (!selectedCycle || cyclePayslips.length === 0) return;
+  const handleExportRegisterCsv = async () => {
+    if (!selectedCycleId || !selectedCycle) return;
+    try {
+      const params = {
+        search: payrollSearch,
+        department: payrollDeptFilter,
+        paymentStatus: payrollStatusFilter,
+      };
+      if (!params.search?.trim()) delete params.search;
+      if (!params.department || params.department === "ALL") delete params.department;
+      if (!params.paymentStatus || params.paymentStatus === "ALL") delete params.paymentStatus;
 
-    const headers = [
-      "Payslip Number",
-      "Employee Code",
-      "Employee Name",
-      "Department",
-      "Designation",
-      "Working Days",
-      "Present Days",
-      "Paid Leave Days",
-      "Loss of Pay Days",
-      "Payable Days",
-      "Gross Earnings (INR)",
-      "Total Deductions (INR)",
-      "Net Payable (INR)",
-      "Status",
-      "Payment Status",
-    ];
-
-    const rows = cyclePayslips.map((p) => [
-      `"${p.payslipNumber || ""}"`,
-      `"${p.employeeSnapshot?.employeeCode || ""}"`,
-      `"${p.employeeSnapshot?.fullName || ""}"`,
-      `"${p.employeeSnapshot?.department || ""}"`,
-      `"${p.employeeSnapshot?.jobTitle || ""}"`,
-      p.daysBreakdown?.workingDays ?? 0,
-      p.daysBreakdown?.presentDays ?? 0,
-      p.daysBreakdown?.paidLeaveDays ?? 0,
-      p.daysBreakdown?.lossOfPayDays ?? 0,
-      p.daysBreakdown?.payableDays ?? 0,
-      p.grossEarnings ?? 0,
-      p.totalDeductions ?? 0,
-      p.netPayable ?? 0,
-      `"${p.status || ""}"`,
-      `"${p.paymentStatus || ""}"`,
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `Payroll_Register_${selectedCycle.periodYear}_${selectedCycle.periodMonth}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setPayrollActionSuccess("Payroll register CSV exported successfully.");
+      const res = await api.get(`/payroll/cycles/${selectedCycleId}/export`, {
+        params,
+        responseType: "blob",
+      });
+      const blob = new Blob([res.data], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `Payroll_Register_${selectedCycle.periodYear}_${selectedCycle.periodMonth}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setPayrollActionSuccess("Payroll register CSV exported successfully.");
+    } catch {
+      setPayrollActionError("Unable to export payroll register CSV.");
+    }
   };
 
   const departmentsList = useMemo(() => {
+    const fromSummary = registerSummary?.departments;
+    if (Array.isArray(fromSummary) && fromSummary.length) {
+      return [...fromSummary].sort();
+    }
     const set = new Set();
     cyclePayslips.forEach((p) => {
       if (p.employeeSnapshot?.department) set.add(p.employeeSnapshot.department);
     });
     return Array.from(set).sort();
-  }, [cyclePayslips]);
+  }, [registerSummary, cyclePayslips]);
 
-  const filteredPayslips = useMemo(() => {
-    return cyclePayslips.filter((p) => {
-      if (payrollStatusFilter === "PAID" && p.paymentStatus !== "PAID" && p.status !== "PAID") return false;
-      if (payrollStatusFilter === "UNPAID" && (p.paymentStatus === "PAID" || p.status === "PAID")) return false;
-      if (payrollDeptFilter !== "ALL" && p.employeeSnapshot?.department !== payrollDeptFilter) return false;
-      if (payrollSearch.trim()) {
-        const q = payrollSearch.toLowerCase().trim();
-        const name = (p.employeeSnapshot?.fullName || "").toLowerCase();
-        const code = (p.employeeSnapshot?.employeeCode || "").toLowerCase();
-        const dept = (p.employeeSnapshot?.department || "").toLowerCase();
-        if (!name.includes(q) && !code.includes(q) && !dept.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [cyclePayslips, payrollSearch, payrollStatusFilter, payrollDeptFilter]);
+  // F61: server already filtered/paginated — current page rows are the register list.
+  const filteredPayslips = cyclePayslips;
+  const pagedPayslips = cyclePayslips;
 
   useEffect(() => {
     setRegisterPage(1);
   }, [payrollSearch, payrollStatusFilter, payrollDeptFilter, selectedCycleId]);
 
-  const registerTotalPages = Math.max(1, Math.ceil((filteredPayslips.length || 1) / registerPageSize));
-  const pagedPayslips = useMemo(() => {
-    const safePage = Math.min(registerPage, registerTotalPages);
-    const start = (safePage - 1) * registerPageSize;
-    return filteredPayslips.slice(start, start + registerPageSize);
-  }, [filteredPayslips, registerPage, registerPageSize, registerTotalPages]);
+  const registerTotalPages = Math.max(1, Math.ceil((registerTotal || 1) / registerPageSize));
 
   const activeBreakdownPayslip = useMemo(() => {
     if (!selectedBreakdownPayslip?._id) return null;
-    if (!filteredPayslips || filteredPayslips.length === 0) return selectedBreakdownPayslip;
-    return filteredPayslips.find((p) => p._id === selectedBreakdownPayslip._id) || selectedBreakdownPayslip;
-  }, [filteredPayslips, selectedBreakdownPayslip]);
+    return (
+      cyclePayslips.find((p) => p._id === selectedBreakdownPayslip._id) || selectedBreakdownPayslip
+    );
+  }, [cyclePayslips, selectedBreakdownPayslip]);
 
   const closePayslipDetail = () => {
     setSelectedBreakdownPayslip(null);
@@ -727,33 +729,24 @@ export default function AdminPayroll() {
       />
 
       {(canPayroll || canSettlements) ? (
-      <div className="module-tabs" style={{ marginBottom: 16 }}>
-        {canPayroll ? (
-          <button
-            type="button"
-            className={`module-tab ${activeTab === "payroll_registers" ? "is-active" : ""}`}
-            onClick={() => {
-              setActiveTab("payroll_registers");
+        <SegmentedTabs
+          ariaLabel="Payroll sections"
+          className="payroll-section-tabs"
+          value={activeTab}
+          onChange={(next) => {
+            setActiveTab(next);
+            if (next === "payroll_registers") {
               setSelectedSettlementId(null);
               navigate("/admin/payroll", { replace: true });
-            }}
-          >
-            Payroll Registers
-          </button>
-        ) : null}
-        {canSettlements ? (
-          <button
-            type="button"
-            className={`module-tab ${activeTab === "ff_settlements" ? "is-active" : ""}`}
-            onClick={() => {
-              setActiveTab("ff_settlements");
+            } else {
               navigate("/admin/payroll?tab=ff_settlements", { replace: true });
-            }}
-          >
-            Final Settlements
-          </button>
-        ) : null}
-      </div>
+            }
+          }}
+          tabs={[
+            ...(canPayroll ? [{ value: "payroll_registers", label: "Payroll Registers" }] : []),
+            ...(canSettlements ? [{ value: "ff_settlements", label: "Final Settlements" }] : []),
+          ]}
+        />
       ) : null}
 
       {/* TAB 1: FULL & FINAL SETTLEMENTS */}
@@ -1607,7 +1600,9 @@ export default function AdminPayroll() {
             </div>
             <div className="ap-metric-card">
               <div className="ap-metric-label">Employees in cycle</div>
-              <div className="ap-metric-value">{cyclePayslips.length}</div>
+              <div className="ap-metric-value">
+                {registerSummary?.payslipCount ?? selectedCycle?.employeeCount ?? registerTotal}
+              </div>
               <div className="ap-metric-sub">Payslips in this register</div>
             </div>
             <div className="ap-metric-card">
@@ -1617,7 +1612,10 @@ export default function AdminPayroll() {
             </div>
             <div className="ap-metric-card">
               <div className="ap-metric-label">Pending disbursals</div>
-              <div className="ap-metric-value">{cyclePayslips.filter((p) => p.paymentStatus !== "PAID" && p.status !== "PAID").length}</div>
+              <div className="ap-metric-value">
+                {registerSummary?.unpaidCount ??
+                  cyclePayslips.filter((p) => p.paymentStatus !== "PAID" && p.status !== "PAID").length}
+              </div>
               <div className="ap-metric-sub">Paid: {formatCurrency(selectedCycle?.totalPaidAmount || 0)}</div>
             </div>
           </div>
@@ -1697,7 +1695,7 @@ export default function AdminPayroll() {
                       type="button"
                       className="btn-secondary"
                       onClick={handleExportRegisterCsv}
-                      disabled={cyclePayslips.length === 0}
+                      disabled={(registerSummary?.payslipCount ?? registerTotal) === 0}
                       title="Download register as CSV spreadsheet"
                     >
                       Export CSV
@@ -1755,7 +1753,7 @@ export default function AdminPayroll() {
             <div className="ap-list-panel">
               <div className="ap-list-header">
                 <h3 className="ap-list-title">Employee Register</h3>
-                <span className="ap-list-count">{filteredPayslips.length} Employees</span>
+                <span className="ap-list-count">{registerTotal} Employees</span>
               </div>
 
               {loadingCycleDetails && cyclePayslips.length === 0 ? (
@@ -1817,7 +1815,7 @@ export default function AdminPayroll() {
                   compact
                   currentPage={Math.min(registerPage, registerTotalPages)}
                   totalPages={registerTotalPages}
-                  totalItems={filteredPayslips.length}
+                  totalItems={registerTotal}
                   pageSize={registerPageSize}
                   onPageChange={setRegisterPage}
                   onPageSizeChange={(s) => {

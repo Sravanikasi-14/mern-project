@@ -1,0 +1,12 @@
+{
+  "watch": ["."],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "tmp_pa_*.mjs",
+    "tmp_*.mjs",
+    "tmp/**",
+    "tmp_*/**",
+    "coverage/**",
+    "node_modules/**"
+  ]
+}

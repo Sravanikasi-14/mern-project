@@ -12,8 +12,9 @@ const css = readFileSync(join(root, "AdminPolicies.css"), "utf8");
 describe("HR policy subsection navigation", () => {
   it("returns dynamic subsections for each known policy card", () => {
     const attendance = getPolicySubsections("attendance_leave");
-    assert.equal(attendance.length, 8);
+    assert.equal(attendance.length, 9);
     assert.equal(attendance[0].id, "pol-shift-timings");
+    assert.ok(attendance.some((s) => s.id === "pol-attendance-verification"));
     assert.equal(attendance.at(-1).id, "pol-wfh-hybrid");
 
     const payroll = getPolicySubsections("payroll_compensation");
@@ -62,12 +63,10 @@ describe("HR policy subsection navigation", () => {
     assert.match(css, /\.policies-subnav\s*\{[^}]*top:\s*var\(--safe-top/s);
     assert.match(css, /\.policies-subnav\s*\{[\s\S]*?top:\s*var\(--safe-top,\s*0px\);/);
     assert.equal(/\/\*\s*Stick to the top of \.app-main-content/.test(css), true);
-    assert.match(css, /\.policies-subnav-track\s*\{[^}]*overflow-x:\s*auto/s);
-    assert.match(css, /\.policies-subnav-btn\.is-active/);
     assert.match(css, /\.policies-section-card\s*\{[^}]*scroll-margin-top/s);
   });
 
-  it("wires AdminPolicies to the shared subsection helper and scroll sync", () => {
+  it("wires AdminPolicies to SegmentedTabs and the shared subsection helper", () => {
     assert.match(jsx, /from "\.\/policySubsections"/);
     assert.match(jsx, /getPolicySubsections/);
     assert.match(jsx, /scrollToPolicySection/);
@@ -75,5 +74,8 @@ describe("HR policy subsection navigation", () => {
     assert.match(jsx, /POLICY_SUBNAV_STICKY_OFFSET_PX/);
     assert.match(jsx, /getPolicyScrollParent/);
     assert.match(jsx, /\.app-main-content/);
+    assert.match(jsx, /SegmentedTabs/);
+    assert.match(jsx, /policies-subnav-tabs/);
+    assert.match(jsx, /data-tab-value/);
   });
 });

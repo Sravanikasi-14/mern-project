@@ -7,11 +7,13 @@ import {
   isWebClientPlatform,
 } from "../utils/clientPlatform.js";
 import {
+  ATTENDANCE_STATUSES,
   ATTENDANCE_SESSION_STATUSES,
   ATTENDANCE_SESSION_TYPES,
   attendanceSessionsView,
 } from "../models/Attendance.js";
 import { formatWorkingHours } from "../utils/geo.js";
+import { LIVE_LOCATION_SERVER_MIN_INTERVAL_MS } from "../utils/liveLocationUploadGate.js";
 import {
   applyGeofenceDecision,
   getEmployeeWorkMode,
@@ -25,6 +27,7 @@ import {
 import {
   buildEmployeeVerificationRequirements,
   resolveAttendanceVerificationConfig,
+  resolveFaceCapabilityAllowed,
   runAttendanceVerifications,
   publicVerificationSummary,
 } from "./attendanceVerificationService.js";
@@ -378,6 +381,7 @@ export async function punchInEmployee({
   clientPlatform = "",
   clientClaims = null,
   companyId = null,
+  company = null,
 }) {
   const { Attendance } = models;
   const policy = await loadAttendancePolicy(models);
@@ -465,6 +469,7 @@ export async function punchInEmployee({
       companyId: companyId || employee.companyId || null,
     },
     policy,
+    company: company || (companyId ? { _id: companyId } : null),
     sessionType: normalizedSessionType,
     geofenceApplies,
     geofenceMeta,
@@ -550,25 +555,8 @@ export async function punchInEmployee({
     attendance.sessions?.find((s) => String(s._id) === String(sessionId)) || sessionDoc;
   const isFirstSessionOfDay = (attendance.sessions || []).length <= 1;
 
-  const customFields = employee.customFields || {};
-  const attendanceLogs = [...(customFields.attendanceLogs || [])];
-  const existingLogIndex = attendanceLogs.findIndex((log) => log.date === todayStr);
-  const logEntry = {
-    date: todayStr,
-    checkIn: (attendance.checkIn || serverNow).toISOString(),
-    checkOut: null,
-    status: "PRESENT",
-    workingHours: "In Progress",
-    checkInLocation: attendance.checkInLocation || validatedLocation,
-    sessionCount: attendance.sessions?.length || 1,
-  };
-  if (existingLogIndex >= 0) {
-    attendanceLogs[existingLogIndex] = { ...attendanceLogs[existingLogIndex], ...logEntry };
-  } else {
-    attendanceLogs.push(logEntry);
-  }
-  employee.customFields = { ...customFields, attendanceLogs };
-  employee.markModified("customFields");
+  // F55: Attendance is authoritative — do not dual-write customFields.attendanceLogs.
+  // Existing legacy logs are preserved for readers / punch-out recovery (not deleted).
 
   if (isFirstSessionOfDay) {
     if (!employee.attendance) {
@@ -580,8 +568,8 @@ export async function punchInEmployee({
     } else {
       employee.attendance.daysPresent = (employee.attendance.daysPresent || 0) + 1;
     }
+    await employee.save();
   }
-  await employee.save();
 
   // F42: bulk HR fan-out; failures must not undo a successful punch (await + log only).
   await notifyAttendanceStakeholders({
@@ -648,6 +636,7 @@ export async function punchOutEmployee({
   clientPlatform = "",
   clientClaims = null,
   companyId = null,
+  company = null,
 }) {
   const { Attendance } = models;
   const policy = await loadAttendancePolicy(models);
@@ -801,6 +790,7 @@ export async function punchOutEmployee({
       companyId: companyId || employee.companyId || null,
     },
     policy,
+    company: company || (companyId ? { _id: companyId } : null),
     sessionType: punchOutSessionType,
     geofenceApplies: geofenceAppliesOut,
     geofenceMeta,
@@ -865,19 +855,7 @@ export async function punchOutEmployee({
   const closedSession =
     (attendance.sessions || []).find((s) => String(s._id) === String(openSessionId)) || openSession;
 
-  if (existingLogIndex >= 0) {
-    attendanceLogs[existingLogIndex] = {
-      ...attendanceLogs[existingLogIndex],
-      checkOut: serverNow.toISOString(),
-      workingHours,
-      checkOutLocation: validatedLocation,
-      sessionCount: attendance.sessions.length,
-      durationMinutes: attendance.durationMinutes,
-    };
-    employee.customFields = { ...customFields, attendanceLogs };
-    employee.markModified("customFields");
-    await employee.save();
-  }
+  // F55: no dual-write to customFields.attendanceLogs on punch-out (legacy rows retained).
 
   let trackingStop = { success: true, stoppedCount: 0 };
   let trackingStopWarning = null;
@@ -958,6 +936,7 @@ export async function punchOutEmployee({
 export async function getEmployeeAttendanceStatus({
   models,
   employee,
+  company = null,
   companyTimezone = "Asia/Kolkata",
 }) {
   const { Attendance } = models;
@@ -1031,19 +1010,29 @@ export async function getEmployeeAttendanceStatus({
   const policy = await loadAttendancePolicy(models);
   const openSessionType =
     sessions.find((s) => s.id === openSessionId)?.sessionType || ATTENDANCE_SESSION_TYPES.OFFICE;
+  const faceCapabilityAllowed = await resolveFaceCapabilityAllowed(
+    company || { _id: employee.companyId }
+  );
   const verificationRequirements = buildEmployeeVerificationRequirements(policy, {
     sessionType: hasActiveSession ? openSessionType : ATTENDANCE_SESSION_TYPES.OFFICE,
     geofenceApplies: true,
+    faceCapabilityAllowed,
   });
 
-  let faceEnrollment = { enrolled: false };
-  if (models.EmployeeFaceEnrollment) {
+  let faceEnrollment = {
+    enrolled: false,
+    platformCapabilityAllowed: faceCapabilityAllowed,
+  };
+  if (faceCapabilityAllowed && models.EmployeeFaceEnrollment) {
     const { getFaceEnrollmentStatus } = await import("./faceRecognitionService.js");
-    faceEnrollment = await getFaceEnrollmentStatus({
-      FaceEnrollment: models.EmployeeFaceEnrollment,
-      companyId: employee.companyId || null,
-      employeeId: employee._id,
-    });
+    faceEnrollment = {
+      ...(await getFaceEnrollmentStatus({
+        FaceEnrollment: models.EmployeeFaceEnrollment,
+        companyId: employee.companyId || null,
+        employeeId: employee._id,
+      })),
+      platformCapabilityAllowed: true,
+    };
   }
 
   return {
@@ -1132,9 +1121,68 @@ function formatLegacyAttendanceLog(log) {
 }
 
 /**
+ * F55 — Upsert Attendance ON_LEAVE for a civil date when the employee has not punched in.
+ * Does not write Employee.customFields.attendanceLogs. Unique (employeeId, date) safe under races.
+ *
+ * @returns {{ status: string, attendance?: object|null }}
+ */
+export async function ensureOnLeaveAttendanceDay({ models, employee, dateKey }) {
+  const Attendance = models?.Attendance;
+  const day = civilDateKey(dateKey);
+  if (!Attendance || !employee?._id || !day) {
+    return { status: "skipped" };
+  }
+
+  const existing = await Attendance.findOne({ employeeId: employee._id, date: day });
+  if (existing?.checkIn) {
+    return { status: "skipped_has_punch", attendance: existing };
+  }
+  if (existing) {
+    if (existing.status === ATTENDANCE_STATUSES.ON_LEAVE) {
+      return { status: "already", attendance: existing };
+    }
+    existing.status = ATTENDANCE_STATUSES.ON_LEAVE;
+    if (!existing.workingHours) existing.workingHours = "--";
+    await existing.save();
+    return { status: "updated", attendance: existing };
+  }
+
+  try {
+    const created = await Attendance.create({
+      companyId: employee.companyId,
+      employeeId: employee._id,
+      date: day,
+      status: ATTENDANCE_STATUSES.ON_LEAVE,
+      checkIn: null,
+      checkOut: null,
+      workingHours: "--",
+      sessions: [],
+      schemaVersion: 2,
+    });
+    return { status: "created", attendance: created };
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err;
+    const raced = await Attendance.findOne({ employeeId: employee._id, date: day });
+    if (!raced) return { status: "race_missing" };
+    if (raced.checkIn) return { status: "skipped_has_punch", attendance: raced };
+    if (raced.status !== ATTENDANCE_STATUSES.ON_LEAVE) {
+      raced.status = ATTENDANCE_STATUSES.ON_LEAVE;
+      if (!raced.workingHours) raced.workingHours = "--";
+      await raced.save();
+      return { status: "updated", attendance: raced };
+    }
+    return { status: "already", attendance: raced };
+  }
+}
+
+/**
  * Retrieves paginated attendance history for an employee with date filtering.
  * Prefers Attendance collection rows and fills missing dates from legacy
  * customFields.attendanceLogs without duplicating the same civil date.
+ *
+ * F69: Always resolves a bounded civil date window (≤ MAX_ATTENDANCE_RANGE_DAYS).
+ * Legacy-merge path loads at most one Attendance date-key set for that window, then
+ * hydrates only the requested page (≤ page size). Never loads unbounded history.
  */
 export async function getEmployeeAttendanceHistory({
   models,
@@ -1143,37 +1191,46 @@ export async function getEmployeeAttendanceHistory({
   endDate,
   page = 1,
   limit = 20,
+  companyTimezone = "Asia/Kolkata",
 }) {
   const { Attendance } = models;
 
-  const startKey = civilDateKey(startDate) || (typeof startDate === "string" ? startDate : "");
-  const endKey = civilDateKey(endDate) || (typeof endDate === "string" ? endDate : "");
+  const {
+    ADMIN_ATTENDANCE_DAY_SELECT,
+    MAX_ATTENDANCE_RANGE_DAYS,
+    resolveAttendanceHistoryDateWindow,
+  } = await import("./attendanceAdminQuery.js");
 
-  const filter = { employeeId: employee._id };
-  if (startKey && endKey) {
-    filter.date = { $gte: startKey, $lte: endKey };
-  } else if (startKey) {
-    filter.date = { $gte: startKey };
-  } else if (endKey) {
-    filter.date = { $lte: endKey };
-  }
+  const todayKey = getCompanyBusinessDate(new Date(), companyTimezone);
+  const { startKey, endKey } = resolveAttendanceHistoryDateWindow(startDate, endDate, {
+    todayKey,
+    maxDays: MAX_ATTENDANCE_RANGE_DAYS,
+  });
+
+  const filter = {
+    employeeId: employee._id,
+    date: { $gte: startKey, $lte: endKey },
+  };
 
   const parsedPage = Math.max(1, parseInt(page, 10) || 1);
   const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
   const skip = (parsedPage - 1) * parsedLimit;
 
-  const customLogs = employee.customFields?.attendanceLogs || [];
-  const hasLegacyLogs = Array.isArray(customLogs) && customLogs.length > 0;
-
-  const { ADMIN_ATTENDANCE_DAY_SELECT, assertBoundedAttendanceRange } = await import(
-    "./attendanceAdminQuery.js"
-  );
-  if (startKey && endKey) {
-    assertBoundedAttendanceRange(startKey, endKey);
+  const customLogs = Array.isArray(employee.customFields?.attendanceLogs)
+    ? employee.customFields.attendanceLogs
+    : [];
+  const legacyInWindow = [];
+  for (const log of customLogs) {
+    const key = civilDateKey(log.date);
+    if (!dateInRange(key, startKey, endKey)) continue;
+    legacyInWindow.push(log);
+    // Window is ≤ MAX_ATTENDANCE_RANGE_DAYS; one entry per civil day is expected.
+    if (legacyInWindow.length >= MAX_ATTENDANCE_RANGE_DAYS) break;
   }
+  const hasLegacyInWindow = legacyInWindow.length > 0;
 
-  // Fast path: no legacy logs — paginate in Mongo instead of loading full history.
-  if (!hasLegacyLogs && Attendance) {
+  // Fast path: no legacy rows in window — Mongo skip/limit (bounded by page size).
+  if (!hasLegacyInWindow && Attendance) {
     const [total, records] = await Promise.all([
       Attendance.countDocuments(filter),
       Attendance.find(filter)
@@ -1194,38 +1251,79 @@ export async function getEmployeeAttendanceHistory({
     };
   }
 
-  const records = Attendance
-    ? await Attendance.find(filter)
-        .select(ADMIN_ATTENDANCE_DAY_SELECT)
-        .sort({ date: -1, createdAt: -1 })
-        .lean()
-    : [];
-
-  const byDate = new Map();
-  for (const record of records) {
-    const key = civilDateKey(record.date);
-    if (!key || byDate.has(key)) continue;
-    byDate.set(key, formatCollectionAttendance(record));
+  if (!Attendance) {
+    const byDate = new Map();
+    for (const log of legacyInWindow) {
+      const key = civilDateKey(log.date);
+      if (!key || byDate.has(key)) continue;
+      byDate.set(key, formatLegacyAttendanceLog(log));
+    }
+    const merged = [...byDate.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const total = merged.length;
+    return {
+      records: merged.slice(skip, skip + parsedLimit),
+      pagination: {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit) || 1,
+      },
+    };
   }
 
-  for (const log of customLogs) {
+  // Legacy merge within the bounded window:
+  // 1) Load date keys only (≤ maxDays docs / strings) — not full history.
+  // 2) Union with legacy-only dates; Attendance wins on collision.
+  // 3) Page the key list; hydrate full docs only for the page (≤ page size).
+  const attendanceDateRows = await Attendance.find(filter).select("date").sort({ date: -1 }).lean();
+
+  const dateKeys = [];
+  const seen = new Set();
+  for (const row of attendanceDateRows) {
+    const key = civilDateKey(row.date);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    dateKeys.push(key);
+  }
+  for (const log of legacyInWindow) {
     const key = civilDateKey(log.date);
-    if (!dateInRange(key, startKey, endKey)) continue;
-    if (byDate.has(key)) continue;
-    byDate.set(key, formatLegacyAttendanceLog(log));
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    dateKeys.push(key);
+  }
+  dateKeys.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+
+  const total = dateKeys.length;
+  const pageKeys = dateKeys.slice(skip, skip + parsedLimit);
+
+  const attPageRows =
+    pageKeys.length > 0
+      ? await Attendance.find({
+          employeeId: employee._id,
+          date: { $in: pageKeys },
+        })
+          .select(ADMIN_ATTENDANCE_DAY_SELECT)
+          .lean()
+      : [];
+
+  const attByDate = new Map();
+  for (const record of attPageRows) {
+    const key = civilDateKey(record.date);
+    if (!key || attByDate.has(key)) continue;
+    attByDate.set(key, formatCollectionAttendance(record));
   }
 
-  const merged = [...byDate.values()].sort((a, b) => {
-    if (a.date < b.date) return 1;
-    if (a.date > b.date) return -1;
-    return 0;
-  });
+  const legacyByDate = new Map();
+  for (const log of legacyInWindow) {
+    const key = civilDateKey(log.date);
+    if (!key || legacyByDate.has(key)) continue;
+    legacyByDate.set(key, formatLegacyAttendanceLog(log));
+  }
 
-  const total = merged.length;
-  const pageSlice = merged.slice(skip, skip + parsedLimit);
+  const records = pageKeys.map((key) => attByDate.get(key) || legacyByDate.get(key)).filter(Boolean);
 
   return {
-    records: pageSlice,
+    records,
     pagination: {
       total,
       page: parsedPage,
@@ -1311,7 +1409,9 @@ export async function startLiveTrackingSession({
 }
 
 /**
- * Updates coordinates for an active live tracking session with rate throttling.
+ * F54 — Updates coordinates for an active live tracking session.
+ * Accepted samples use a conditional atomic update so concurrent requests cannot
+ * bypass the 4s throttle; geofence monitoring runs only after an accepted write.
  */
 export async function updateLiveTrackingLocation({
   models,
@@ -1325,17 +1425,18 @@ export async function updateLiveTrackingLocation({
   const session = await LiveTrackingSession.findOne({
     employeeId: employee._id,
     status: "ACTIVE",
-  });
+  }).lean();
 
   if (!session) {
     throw new HttpError(400, "No active tracking session found. Please start a session first.");
   }
 
   const now = new Date();
-  if (now > session.expiresAt) {
-    session.status = "EXPIRED";
-    session.stoppedAt = session.expiresAt;
-    await session.save();
+  if (now > new Date(session.expiresAt)) {
+    await LiveTrackingSession.updateOne(
+      { _id: session._id, status: "ACTIVE" },
+      { $set: { status: "EXPIRED", stoppedAt: session.expiresAt } }
+    );
     throw new HttpError(400, "Live tracking session has expired. Please start a new session.");
   }
 
@@ -1358,37 +1459,81 @@ export async function updateLiveTrackingLocation({
     );
   }
 
-  // Throttle updates: sample if within 4 seconds of previous update
-  if (session.lastLocation?.receivedAt) {
-    const elapsedMs = now.getTime() - new Date(session.lastLocation.receivedAt).getTime();
-    if (elapsedMs < 4000) {
-      return {
-        success: true,
-        throttled: true,
-        message: "Update received (throttled).",
-        session: {
-          id: session._id,
-          status: "ACTIVE",
-          expiresAt: session.expiresAt,
-        },
-      };
-    }
-  }
-
+  const throttleBefore = new Date(now.getTime() - LIVE_LOCATION_SERVER_MIN_INTERVAL_MS);
   const breadcrumb = {
     ...validatedLocation,
     receivedAt: now,
   };
 
-  session.lastLocation = breadcrumb;
-  session.breadcrumbs.push(breadcrumb);
-  if (session.breadcrumbs.length > 50) {
-    session.breadcrumbs.splice(0, session.breadcrumbs.length - 50);
+  // Atomic accept: only one concurrent writer can win the throttle window.
+  const updated = await LiveTrackingSession.findOneAndUpdate(
+    {
+      _id: session._id,
+      employeeId: employee._id,
+      status: "ACTIVE",
+      expiresAt: { $gt: now },
+      $or: [
+        { lastLocation: null },
+        { "lastLocation.receivedAt": { $exists: false } },
+        { "lastLocation.receivedAt": null },
+        { "lastLocation.receivedAt": { $lte: throttleBefore } },
+      ],
+    },
+    {
+      $set: { lastLocation: breadcrumb },
+      $push: { breadcrumbs: { $each: [breadcrumb], $slice: -50 } },
+    },
+    { returnDocument: "after" }
+  );
+
+  if (!updated) {
+    const current = await LiveTrackingSession.findOne({
+      _id: session._id,
+      employeeId: employee._id,
+    }).lean();
+
+    if (!current || current.status !== "ACTIVE") {
+      throw new HttpError(400, "No active tracking session found. Please start a session first.");
+    }
+    if (now > new Date(current.expiresAt)) {
+      await LiveTrackingSession.updateOne(
+        { _id: current._id, status: "ACTIVE" },
+        { $set: { status: "EXPIRED", stoppedAt: current.expiresAt } }
+      );
+      throw new HttpError(400, "Live tracking session has expired. Please start a new session.");
+    }
+
+    const lastAt = current.lastLocation?.receivedAt
+      ? new Date(current.lastLocation.receivedAt).getTime()
+      : 0;
+    if (lastAt && now.getTime() - lastAt < LIVE_LOCATION_SERVER_MIN_INTERVAL_MS) {
+      // Throttled — do not run geofence monitoring.
+      return {
+        success: true,
+        throttled: true,
+        message: "Update received (throttled).",
+        session: {
+          id: current._id,
+          status: "ACTIVE",
+          expiresAt: current.expiresAt,
+        },
+      };
+    }
+
+    // Rare race (e.g. status flipped mid-flight): treat as throttle-safe no-op.
+    return {
+      success: true,
+      throttled: true,
+      message: "Update received (throttled).",
+      session: {
+        id: current._id,
+        status: "ACTIVE",
+        expiresAt: current.expiresAt,
+      },
+    };
   }
 
-  await session.save();
-
-  // Geofence monitoring for the open attendance session (deduped enter/exit events).
+  // Geofence monitoring only for accepted (non-throttled) samples.
   let monitor = { changed: false };
   try {
     const todayStr = getCompanyBusinessDate(now, companyTimezone);
@@ -1424,9 +1569,9 @@ export async function updateLiveTrackingLocation({
     message: "Location update recorded.",
     monitor,
     session: {
-      id: session._id,
+      id: updated._id,
       status: "ACTIVE",
-      expiresAt: session.expiresAt,
+      expiresAt: updated.expiresAt,
       lastLocation: breadcrumb,
     },
   };

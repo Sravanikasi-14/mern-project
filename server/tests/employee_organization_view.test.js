@@ -405,8 +405,10 @@ describe("GET /api/employees/organization-view", () => {
       .set("Cookie", acmeWorkerCookie);
     assert.equal(res.body.employees.some((e) => e.employeeCode === "GX-1"), false);
 
+    // mode=full exercises the complete-tenant chart without crossing DB boundaries.
     const gx = await request(app)
       .get("/api/employees/organization-view")
+      .query({ mode: "full" })
       .set("Cookie", globexHrCookie);
     assert.equal(gx.status, 200);
     assert.equal(gx.body.employees.length, 1);
@@ -423,6 +425,7 @@ describe("GET /api/employees/organization-view", () => {
 
     const hrOrg = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     assert.equal(hrOrg.status, 200);
     assert.ok(Array.isArray(hrOrg.body.employees));
@@ -449,9 +452,10 @@ describe("GET /api/employees/organization-view", () => {
   });
 
   it("handles cycles and missing managers safely for rendering", async () => {
-    // HR sees the full ACTIVE chart including cycle pairs and unassigned.
+    // Compat full chart includes cycle pairs and unassigned (default HR path is bootstrap).
     const res = await request(app)
       .get("/api/employees/organization-view")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     assert.equal(res.status, 200);
     assert.ok(res.body.meta.cycleEdgesBroken >= 1);
@@ -537,6 +541,7 @@ describe("GET /api/employees/organization-view", () => {
   it("HR organization chart remains unchanged for ACTIVE employees", async () => {
     const hrOrg = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     assert.equal(hrOrg.status, 200);
     assert.ok(hrOrg.body.hierarchyRootIds.includes(ids.ceo));
@@ -549,12 +554,32 @@ describe("GET /api/employees/organization-view", () => {
     assert.ok(hrOrg.body.employees.some((e) => e.id === ids.other));
   });
 
-  it("HR organization-view sees the complete ACTIVE hierarchy", async () => {
+  it("HR organization-view defaults to lazy bootstrap (F48 residual)", async () => {
     const res = await request(app)
       .get("/api/employees/organization-view")
       .set("Cookie", acmeHrCookie);
     assert.equal(res.status, 200);
     assert.equal(res.body.meta.viewerEmployeeId, null);
+    assert.equal(res.body.meta.mode, "bootstrap");
+    assert.equal(res.body.meta.lazy, true);
+    assert.ok(res.body.hierarchyRootIds.includes(ids.ceo));
+    assert.ok(res.body.hierarchyRootIds.includes(ids.rootMgr));
+    // Roots only — deep reports are not materialised on the default HR path.
+    assert.equal(
+      res.body.employees.some((e) => e.id === ids.worker),
+      false
+    );
+    assertNoSensitiveOrgLeak(res.body);
+  });
+
+  it("HR organization-view mode=full still returns the complete ACTIVE hierarchy", async () => {
+    const res = await request(app)
+      .get("/api/employees/organization-view")
+      .query({ mode: "full" })
+      .set("Cookie", acmeHrCookie);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.meta.viewerEmployeeId, null);
+    assert.equal(res.body.meta.mode, "full");
     const visible = new Set(res.body.employees.map((e) => e.id));
     assert.ok(visible.has(ids.ceo));
     assert.ok(visible.has(ids.manager));

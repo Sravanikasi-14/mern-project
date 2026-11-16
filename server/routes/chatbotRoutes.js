@@ -5,7 +5,11 @@ import { handleChat, handleChatStream, getChatStatus } from "../controllers/chat
 
 const router = Router();
 
-// All chat endpoints require authenticated session + HR access context (no-op when OFF / non-HR)
+/**
+ * Ask-AI assistant endpoints — intentionally NOT gated by Platform Admin module catalogue.
+ * See platformFeatureCatalog.js header (Ask-AI chatbot exclusion). Auth + session only.
+ * Do not confuse with /api/conversations (messaging), which uses the `chat` module.
+ */
 router.use(authenticate, loadHrAccessContext);
 
 router.get("/status", getChatStatus);

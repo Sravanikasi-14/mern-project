@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
 import {
   loadHrAccessContext,
+  requireEntitledModule,
   requireHrPermission,
   requireEmployeeInScope,
 } from "../middleware/hrAccessEnforcement.js";
@@ -24,9 +25,13 @@ const router = express.Router();
 // All asset routes require an authenticated tenant context
 router.use(authenticate);
 
-// Employee self-service — authenticate only; controller ownership remains authoritative
-router.get("/my-assets", getMyAssets);
-router.post("/my-assets/:id/acknowledge", acknowledgeAssetReceipt);
+// Employee self-service — module gate + controller ownership
+router.get("/my-assets", requireEntitledModule("assets"), getMyAssets);
+router.post(
+  "/my-assets/:id/acknowledge",
+  requireEntitledModule("assets"),
+  acknowledgeAssetReceipt
+);
 
 // HR Admin asset management
 router.get("/", requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN), loadHrAccessContext, requireHrPermission("assets.view"), listAssets);

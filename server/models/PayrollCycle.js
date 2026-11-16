@@ -133,6 +133,20 @@ export function createPayrollCycleSchema() {
         ref: "User",
         default: null,
       },
+      /**
+       * F50-B — exclusive recalculation lock. Absent/null/expired means unlocked.
+       * Duration must exceed the Vercel function maxDuration (60s); see
+       * PAYROLL_CALC_LOCK_MS in payrollWriteService.
+       */
+      calcLockUntil: {
+        type: Date,
+        default: null,
+      },
+      calcLockToken: {
+        type: String,
+        default: "",
+        trim: true,
+      },
       schemaVersion: {
         type: Number,
         default: 1,

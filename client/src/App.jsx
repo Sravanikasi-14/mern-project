@@ -8,9 +8,13 @@ import HrModuleGate from "./components/HrModuleGate";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SessionBoot from "./components/SessionBoot";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { PlatformAuthProvider } from "./context/PlatformAuthContext";
 import { ToastProvider } from "./components/Toast";
 import { queryClient } from "./lib/queryClient";
+import PlatformProtectedRoute from "./components/platform/PlatformProtectedRoute";
+import PlatformLayout from "./components/platform/PlatformLayout";
 import "./index.css";
+import "./components/platform/PlatformLayout.css";
 
 const AdminHome = lazy(() => import("./pages/AdminHome"));
 const AdminLeaveManagement = lazy(() => import("./pages/AdminLeaveManagement"));
@@ -43,9 +47,20 @@ const EmployeeTasks = lazy(() => import("./pages/EmployeeTasks"));
 const EmployeeImpactPoints = lazy(() => import("./pages/EmployeeImpactPoints"));
 const EmployeeSettings = lazy(() => import("./pages/EmployeeSettings"));
 const PeopleDirectory = lazy(() => import("./pages/PeopleDirectory"));
+const ColleagueProfilePage = lazy(() => import("./pages/ColleagueProfilePage"));
 const CompanyHrManagement = lazy(() => import("./pages/CompanyHrManagement"));
 const AdminReports = lazy(() => import("./pages/AdminReports"));
 const MessagesPage = lazy(() => import("./pages/MessagesPage"));
+const PlatformLogin = lazy(() => import("./pages/platform/PlatformLogin"));
+const PlatformMfaSetup = lazy(() => import("./pages/platform/PlatformMfaSetup"));
+const PlatformMfaVerify = lazy(() => import("./pages/platform/PlatformMfaVerify"));
+const PlatformOverview = lazy(() => import("./pages/platform/PlatformOverview"));
+const PlatformCompanies = lazy(() => import("./pages/platform/PlatformCompanies"));
+const PlatformCompanyDetail = lazy(() => import("./pages/platform/PlatformCompanyDetail"));
+const PlatformModules = lazy(() => import("./pages/platform/PlatformModules"));
+const PlatformPlans = lazy(() => import("./pages/platform/PlatformPlans"));
+const PlatformInsights = lazy(() => import("./pages/platform/PlatformInsights"));
+const PlatformSettingsPage = lazy(() => import("./pages/platform/PlatformSettingsPage"));
 
 const PORTAL_ROLES = ["HR_ADMIN", "COMPANY_ADMIN"];
 
@@ -94,11 +109,31 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <AuthProvider>
+    <PlatformAuthProvider>
     <ToastProvider>
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/platform/login" element={<PlatformLogin />} />
+          <Route path="/platform/mfa/setup" element={<PlatformMfaSetup />} />
+          <Route path="/platform/mfa" element={<PlatformMfaVerify />} />
+          <Route
+            path="/platform"
+            element={
+              <PlatformProtectedRoute>
+                <PlatformLayout />
+              </PlatformProtectedRoute>
+            }
+          >
+            <Route index element={<PlatformOverview />} />
+            <Route path="companies" element={<PlatformCompanies />} />
+            <Route path="companies/:companyId" element={<PlatformCompanyDetail />} />
+            <Route path="modules" element={<PlatformModules />} />
+            <Route path="plans" element={<PlatformPlans />} />
+            <Route path="insights" element={<PlatformInsights />} />
+            <Route path="settings" element={<PlatformSettingsPage />} />
+          </Route>
           <Route path="/onboard" element={<Onboarding />} />
           <Route path="/offers/review/:token" element={<CandidateOfferReview />} />
           <Route path="/candidate/onboarding/:token" element={<CandidateOnboardingPage />} />
@@ -247,6 +282,16 @@ function App() {
             }
           />
           <Route
+            path="/app/people/:id"
+            element={
+              <ProtectedRoute roles={["EMPLOYEE"]}>
+                <AppLayout>
+                  <ColleagueProfilePage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/app/settings"
             element={
               <ProtectedRoute roles={["EMPLOYEE"]}>
@@ -282,6 +327,7 @@ function App() {
         </Suspense>
       </BrowserRouter>
     </ToastProvider>
+    </PlatformAuthProvider>
     </AuthProvider>
     </QueryClientProvider>
   );

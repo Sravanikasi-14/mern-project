@@ -14,7 +14,12 @@ import {
 import { getHrIntelligenceHandler } from "../controllers/hrIntelligenceController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
-import { loadHrAccessContext, requireHrPermission, requireEmployeeInScope } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+  requireEmployeeInScope,
+} from "../middleware/hrAccessEnforcement.js";
 import { USER_ROLES } from "../models/User.js";
 
 const router = express.Router();
@@ -25,6 +30,7 @@ router.get("/dashboard", requireHrPermission("dashboard.view"), getAdminDashboar
 router.get("/attendance/overview", requireHrPermission("attendance.view"), getAdminAttendanceOverviewHandler);
 router.get(
   "/attendance/tracking-sessions",
+  requireEntitledModule("liveTracking"),
   requireHrPermission("attendance.view"),
   getAdminTrackingSessionsHandler
 );

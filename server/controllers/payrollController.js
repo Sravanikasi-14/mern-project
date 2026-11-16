@@ -1,14 +1,29 @@
 import { assertCanAccessPayslip } from "../authorization/resourceOwnership.js";
 import { HttpError } from "../utils/httpError.js";
-import { calculatePayrollCycle } from "../services/payrollCalculationService.js";
 import { generatePayslipPdfBuffer } from "../services/payslipPdfService.js";
+import {
+  createPayrollCycleAtomic,
+  finalizePayrollCycleAtomic,
+  recalculatePayrollCycleAtomic,
+} from "../services/payrollWriteService.js";
+import {
+  DEFAULT_EMPLOYEE_PAYSLIP_LIMIT,
+  MAX_EMPLOYEE_PAYSLIP_LIMIT,
+  PAYROLL_CYCLE_DETAIL_SELECT,
+  PAYROLL_CYCLE_LIST_SELECT,
+  PAYSLIP_EMPLOYEE_LIST_SELECT,
+  applyRegisterSummaryToCycle,
+  buildPayrollMutationResponse,
+  buildRegisterCsv,
+  loadCyclePayslipsForResponse,
+  loadCycleRegisterSummary,
+  resolvePayslipPagination,
+  resolveRegisterFilters,
+} from "../services/payrollResponseService.js";
 import {
   assertEmployeeInScope,
   assertHrPermission,
   assertHrCompanyWidePayrollMutation,
-  filterPayslipsByScope,
-  filterValidationIssuesByScope,
-  isEmployeeIdInScope,
   shapePayrollCycleForHrAccess,
 } from "../services/hrAccessEnforcementService.js";
 import { USER_ROLES } from "../models/User.js";
@@ -20,14 +35,13 @@ import { USER_ROLES } from "../models/User.js";
 export async function listPayrollCycles(req, res, next) {
   try {
     const { PayrollCycle } = req.auth.models;
+    // F50-D: lean list projection; no payslips. Populate only display names.
     const cycles = await PayrollCycle.find({})
-      .select(
-        "periodMonth periodYear status notes totalNetSalary totalNetPayable totalGrossEarnings totalEmployeeDeductions employeeCount createdBy finalizedBy createdAt updatedAt finalizedAt"
-      )
+      .select(PAYROLL_CYCLE_LIST_SELECT)
       .sort({ periodYear: -1, periodMonth: -1 })
       .limit(36)
-      .populate("createdBy", "name email")
-      .populate("finalizedBy", "name email")
+      .populate("createdBy", "fullName name email")
+      .populate("finalizedBy", "fullName name email")
       .lean();
 
     // CUSTOM-scoped HR: redact company-wide stored totals (list has no payslip set to recompute)
@@ -50,7 +64,6 @@ export async function listPayrollCycles(req, res, next) {
 export async function createPayrollCycle(req, res, next) {
   try {
     assertHrCompanyWidePayrollMutation(req.hrAccess);
-    const { PayrollCycle, Payslip } = req.auth.models;
     const { notes } = req.body || {};
 
     let month;
@@ -78,79 +91,26 @@ export async function createPayrollCycle(req, res, next) {
       throw new HttpError(400, "Please provide a valid payroll year.");
     }
 
-    // Check for duplicate cycle for this company
-    const existing = await PayrollCycle.findOne({ periodMonth: month, periodYear: year });
-    if (existing) {
-      throw new HttpError(409, `A payroll cycle for ${month}/${year} already exists.`);
-    }
-
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const monthStr = String(month).padStart(2, "0");
-    const periodStartDate = new Date(`${year}-${monthStr}-01T00:00:00.000Z`);
-    const periodEndDate = new Date(`${year}-${monthStr}-${String(daysInMonth).padStart(2, "0")}T23:59:59.999Z`);
-
-    // Calculate initial preview draft
-    const calculation = await calculatePayrollCycle({
+    // F50-A: calculate outside the write txn; cycle + payslips commit together.
+    const { cycle: newCycle, calculation } = await createPayrollCycleAtomic({
       models: req.auth.models,
       company: req.auth.company,
       periodMonth: month,
       periodYear: year,
-    });
-
-    const newCycle = await PayrollCycle.create({
-      periodMonth: month,
-      periodYear: year,
-      periodStartDate,
-      periodEndDate,
-      status: "CALCULATED",
-      employeeCount: calculation.cycleSummary.employeeCount,
-      totalGrossEarnings: calculation.cycleSummary.totalGrossEarnings,
-      totalEmployeeDeductions: calculation.cycleSummary.totalEmployeeDeductions,
-      totalEmployerContributions: calculation.cycleSummary.totalEmployerContributions,
-      totalNetPayable: calculation.cycleSummary.totalNetPayable,
-      totalPaidAmount: 0,
-      paymentStatus: "UNPAID",
-      payments: [],
-      validationIssues: calculation.validationIssues,
       notes: notes || "",
       createdBy: req.auth.user._id,
-      calculatedAt: new Date(),
     });
 
-    // Save draft payslips
-    if (calculation.employeeRecords.length > 0) {
-      const payslipsToInsert = calculation.employeeRecords.map((rec) => ({
-        ...rec,
-        payrollCycleId: newCycle._id,
-        status: "DRAFT",
-      }));
-      await Payslip.insertMany(payslipsToInsert);
-    }
-
-    const createdPayslips = await Payslip.find({ payrollCycleId: newCycle._id })
-      .populate("employeeId", "fullName employeeCode email avatar job")
-      .lean();
-    const scopedPayslips = filterPayslipsByScope(req.hrAccess, createdPayslips);
-    const scopedValidationIssues = filterValidationIssuesByScope(
-      req.hrAccess,
-      calculation.validationIssues
-    );
-    const cycleObj = newCycle.toObject ? newCycle.toObject() : newCycle;
-    const shapedCycle = shapePayrollCycleForHrAccess(
-      req.hrAccess,
-      { ...cycleObj, validationIssues: calculation.validationIssues },
-      scopedPayslips
-    );
-
-    res.status(201).json({
-      success: true,
-      cycle: shapedCycle,
-      data: shapedCycle,
-      payslips: scopedPayslips,
-      employeeCount: shapedCycle.employeeCount,
-      validationIssues: scopedValidationIssues,
+    // F50-D: do not re-fetch/populate payslips for the HTTP response.
+    // Clients use cycle._id then GET /cycles/:id for the register.
+    const { statusCode, body } = buildPayrollMutationResponse({
+      hrAccess: req.hrAccess,
+      cycle: newCycle,
+      validationIssues: calculation.validationIssues,
       message: `Payroll cycle for ${month}/${year} created and draft calculated.`,
+      statusCode: 201,
     });
+    res.status(statusCode).json(body);
   } catch (error) {
     next(error);
   }
@@ -159,6 +119,10 @@ export async function createPayrollCycle(req, res, next) {
 /**
  * GET /api/payroll/cycles/:cycleId
  * HR Admin views a specific cycle and its employee register.
+ *
+ * F61: prefer ?page=&limit= (AdminPayroll always sends these). Without page/limit,
+ * returns the full filtered register for backward-compatible clients/mobile.
+ * Register metrics come from an aggregate under the same scope/filters — not the page rows.
  */
 export async function getPayrollCycleDetails(req, res, next) {
   try {
@@ -166,38 +130,89 @@ export async function getPayrollCycleDetails(req, res, next) {
     const { cycleId } = req.params;
 
     const cycle = await PayrollCycle.findById(cycleId)
-      .populate("createdBy", "name email")
-      .populate("finalizedBy", "name email")
+      .select(PAYROLL_CYCLE_DETAIL_SELECT)
+      .populate("createdBy", "fullName name email")
+      .populate("finalizedBy", "fullName name email")
       .lean();
 
     if (!cycle) {
       throw new HttpError(404, "Payroll cycle not found.");
     }
 
-    let payslips = await Payslip.find({ payrollCycleId: cycleId })
-      .populate("employeeId", "fullName employeeCode email avatar job")
-      .sort({ "employeeSnapshot.fullName": 1 })
-      .lean();
+    const filters = resolveRegisterFilters(req.query);
+    const pagination = resolvePayslipPagination(req.query);
+    const registerSummary = await loadCycleRegisterSummary(
+      Payslip,
+      cycleId,
+      req.hrAccess,
+      filters
+    );
+    const {
+      payslips,
+      total: payslipTotal,
+      pagination: payslipPagination,
+    } = await loadCyclePayslipsForResponse(Payslip, cycleId, req.hrAccess, {
+      pagination,
+      filters,
+    });
 
-    payslips = filterPayslipsByScope(req.hrAccess, payslips);
-    const shapedCycle = shapePayrollCycleForHrAccess(req.hrAccess, cycle, payslips);
+    // Do not reshape CUSTOM totals from a single page — use registerSummary instead.
+    let shapedCycle = shapePayrollCycleForHrAccess(
+      req.hrAccess,
+      cycle,
+      pagination ? null : payslips
+    );
+    shapedCycle = applyRegisterSummaryToCycle(shapedCycle, registerSummary);
 
     const cycleData = {
       ...shapedCycle,
       totalDeductions: shapedCycle.totalEmployeeDeductions,
-      register: payslips.map((p) => ({
-        ...p,
-        employeeNumber: p.employeeSnapshot?.employeeCode || "",
-      })),
+      register: payslips,
       payslips,
+      payslipTotal,
+      registerSummary,
+      ...(payslipPagination ? { pagination: payslipPagination } : {}),
     };
 
     res.status(200).json({
       success: true,
       cycle: shapedCycle,
       payslips,
+      payslipTotal,
+      registerSummary,
+      ...(payslipPagination ? { pagination: payslipPagination } : {}),
       data: cycleData,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/payroll/cycles/:cycleId/export
+ * F61 — CSV export of the filtered register (same scope/filters as detail; not truncated by page).
+ */
+export async function exportPayrollCycleRegister(req, res, next) {
+  try {
+    const { PayrollCycle, Payslip } = req.auth.models;
+    const { cycleId } = req.params;
+
+    const cycle = await PayrollCycle.findById(cycleId)
+      .select("periodMonth periodYear status")
+      .lean();
+    if (!cycle) {
+      throw new HttpError(404, "Payroll cycle not found.");
+    }
+
+    const filters = resolveRegisterFilters(req.query);
+    const { payslips } = await loadCyclePayslipsForResponse(Payslip, cycleId, req.hrAccess, {
+      filters,
+    });
+    const { filename, content } = buildRegisterCsv(payslips, cycle);
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.status(200).send(content);
   } catch (error) {
     next(error);
   }
@@ -210,73 +225,23 @@ export async function getPayrollCycleDetails(req, res, next) {
 export async function recalculatePayrollCycle(req, res, next) {
   try {
     assertHrCompanyWidePayrollMutation(req.hrAccess);
-    const { PayrollCycle, Payslip } = req.auth.models;
     const { cycleId } = req.params;
 
-    const cycle = await PayrollCycle.findById(cycleId);
-    if (!cycle) {
-      throw new HttpError(404, "Payroll cycle not found.");
-    }
-
-    if (cycle.status === "FINALIZED" || cycle.status === "PAID" || cycle.status === "PARTIALLY_PAID") {
-      throw new HttpError(400, "Cannot recalculate a finalized or paid payroll cycle. Only draft cycles may be recalculated.");
-    }
-
-    const calculation = await calculatePayrollCycle({
+    // F50-A/B: lock → calculate → transactional replace; prior drafts survive abort.
+    const { cycle, calculation } = await recalculatePayrollCycleAtomic({
       models: req.auth.models,
       company: req.auth.company,
-      periodMonth: cycle.periodMonth,
-      periodYear: cycle.periodYear,
+      cycleId,
     });
 
-    // Update cycle summary
-    cycle.status = "CALCULATED";
-    cycle.employeeCount = calculation.cycleSummary.employeeCount;
-    cycle.totalGrossEarnings = calculation.cycleSummary.totalGrossEarnings;
-    cycle.totalEmployeeDeductions = calculation.cycleSummary.totalEmployeeDeductions;
-    cycle.totalEmployerContributions = calculation.cycleSummary.totalEmployerContributions;
-    cycle.totalNetPayable = calculation.cycleSummary.totalNetPayable;
-    cycle.validationIssues = calculation.validationIssues;
-    cycle.calculatedAt = new Date();
-    await cycle.save();
-
-    // Re-create draft payslips
-    await Payslip.deleteMany({ payrollCycleId: cycle._id });
-
-    if (calculation.employeeRecords.length > 0) {
-      const payslipsToInsert = calculation.employeeRecords.map((rec) => ({
-        ...rec,
-        payrollCycleId: cycle._id,
-        status: "DRAFT",
-      }));
-      await Payslip.insertMany(payslipsToInsert);
-    }
-
-    const updatedPayslips = await Payslip.find({ payrollCycleId: cycle._id })
-      .populate("employeeId", "fullName employeeCode email avatar job")
-      .sort({ "employeeSnapshot.fullName": 1 })
-      .lean();
-
-    const scopedPayslips = filterPayslipsByScope(req.hrAccess, updatedPayslips);
-    const scopedValidationIssues = filterValidationIssuesByScope(
-      req.hrAccess,
-      calculation.validationIssues
-    );
-    const cycleObj = cycle.toObject ? cycle.toObject() : cycle;
-    const shapedCycle = shapePayrollCycleForHrAccess(
-      req.hrAccess,
-      { ...cycleObj, validationIssues: calculation.validationIssues },
-      scopedPayslips
-    );
-
-    res.status(200).json({
-      success: true,
-      cycle: shapedCycle,
-      data: shapedCycle,
-      payslips: scopedPayslips,
-      validationIssues: scopedValidationIssues,
+    // F50-D: slim mutation response; clients refetch GET /cycles/:id for the register.
+    const { statusCode, body } = buildPayrollMutationResponse({
+      hrAccess: req.hrAccess,
+      cycle,
+      validationIssues: calculation.validationIssues,
       message: "Payroll draft recalculated successfully.",
     });
+    res.status(statusCode).json(body);
   } catch (error) {
     next(error);
   }
@@ -289,53 +254,15 @@ export async function recalculatePayrollCycle(req, res, next) {
 export async function finalizePayrollCycle(req, res, next) {
   try {
     assertHrCompanyWidePayrollMutation(req.hrAccess);
-    const { PayrollCycle, Payslip, AuditLog } = req.auth.models;
     const { cycleId } = req.params;
 
-    const cycle = await PayrollCycle.findById(cycleId);
-    if (!cycle) {
-      throw new HttpError(404, "Payroll cycle not found.");
-    }
-
-    if (cycle.status === "FINALIZED" || cycle.status === "PAID") {
-      throw new HttpError(400, "Payroll cycle has already been finalized.");
-    }
-
-    const now = new Date();
-    cycle.status = "FINALIZED";
-    cycle.finalizedAt = now;
-    cycle.finalizedBy = req.auth.user._id;
-    await cycle.save();
-
-    // Lock all draft payslips to FINALIZED
-    await Payslip.updateMany(
-      { payrollCycleId: cycle._id },
-      {
-        $set: {
-          status: "FINALIZED",
-          finalizedAt: now,
-          finalizedBy: req.auth.user._id,
-        },
-      }
-    );
-
-    // Record audit log
-    if (AuditLog) {
-      await AuditLog.create({
-        actorUserId: req.auth.user._id,
-        actorEmail: req.auth.user.email,
-        actorRole: req.auth.user.role,
-        action: "PAYROLL_FINALIZED",
-        targetType: "PayrollCycle",
-        targetId: cycle._id,
-        changes: {
-          periodMonth: cycle.periodMonth,
-          periodYear: cycle.periodYear,
-          employeeCount: cycle.employeeCount,
-          totalNetPayable: cycle.totalNetPayable,
-        },
-      });
-    }
+    // F50-F: cycle + payslip FINALIZED commit together; blocked while calc lock held.
+    const { cycle } = await finalizePayrollCycleAtomic({
+      models: req.auth.models,
+      cycleId,
+      finalizedBy: req.auth.user._id,
+      actor: req.auth.user,
+    });
 
     const cycleObj = cycle.toObject ? cycle.toObject() : cycle;
     // Finalize remains company-wide; response aggregates redacted for CUSTOM scope
@@ -479,18 +406,35 @@ export async function getEmployeePayslips(req, res, next) {
       throw new HttpError(404, "Employee profile not found.");
     }
 
-    // Only return FINALIZED or PAID payslips (never drafts!)
-    const payslips = await Payslip.find({
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      MAX_EMPLOYEE_PAYSLIP_LIMIT,
+      Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_EMPLOYEE_PAYSLIP_LIMIT)
+    );
+    const filter = {
       employeeId: employee._id,
       status: { $in: ["FINALIZED", "PAID"] },
-    })
+    };
+    const total = await Payslip.countDocuments(filter);
+
+    // F50 residual: bounded self-service list (default 36 ≈ 3 years monthly).
+    const payslips = await Payslip.find(filter)
+      .select(PAYSLIP_EMPLOYEE_LIST_SELECT)
       .sort({ periodYear: -1, periodMonth: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
       .lean();
 
     res.status(200).json({
       success: true,
       payslips,
       data: payslips,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil((total || 0) / limit)),
+      },
     });
   } catch (error) {
     next(error);

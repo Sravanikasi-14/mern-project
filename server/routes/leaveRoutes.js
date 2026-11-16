@@ -12,7 +12,11 @@ import {
 } from "../controllers/leaveController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import { USER_ROLES } from "../models/User.js";
 
 import { subscribeLeaveEvents } from "../services/leaveEventsService.js";
@@ -20,10 +24,21 @@ import { subscribeLeaveEvents } from "../services/leaveEventsService.js";
 const router = express.Router();
 
 // SSE live synchronization endpoint for both EMPLOYEE and HR_ADMIN (scoped when ENFORCED)
-router.get("/events", authenticate, loadHrAccessContext, subscribeLeaveEvents);
+router.get(
+  "/events",
+  authenticate,
+  requireEntitledModule("leave"),
+  loadHrAccessContext,
+  subscribeLeaveEvents
+);
 
 // Enforce authentication and HR_ADMIN authorization on all HR leave endpoints
-router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN), loadHrAccessContext);
+router.use(
+  authenticate,
+  requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN),
+  requireEntitledModule("leave"),
+  loadHrAccessContext
+);
 
 router.get("/summary", requireHrPermission("leave.view"), getLeaveSummary);
 router.get("/policy", requireHrPermission("leave.view"), getCompanyHrPolicy);

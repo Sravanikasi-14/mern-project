@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import SoftRefresh from "./SoftRefresh";
+import SegmentedTabs from "./SegmentedTabs";
+import ModuleToolbar from "./ModuleToolbar";
 import AuthedAvatar from "./AuthedAvatar";
 import { initialsFromName } from "../utils/employeeAvatar";
 import "./AttendanceLocationWorkspace.css";
@@ -123,6 +125,7 @@ export default function AttendanceLocationWorkspace({
   const [remarksById, setRemarksById] = useState({});
   const [companyTimezone, setCompanyTimezone] = useState("");
   const [focusedRowId, setFocusedRowId] = useState("");
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -214,76 +217,85 @@ export default function AttendanceLocationWorkspace({
 
   const tabs = isRemote ? REQUEST_TABS : EXCEPTION_TABS;
 
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => {
+      const name = String(row.employee?.fullName || row.employeeName || row.fullName || "").toLowerCase();
+      const code = String(row.employee?.employeeCode || row.employeeCode || "").toLowerCase();
+      const email = String(row.employee?.email || "").toLowerCase();
+      const why = String(row.whyListed || row.type || "").toLowerCase();
+      return name.includes(q) || code.includes(q) || email.includes(q) || why.includes(q);
+    });
+  }, [rows, search]);
+
   return (
     <div className={`attendance-location-workspace ${isRemote ? "is-remote" : "is-exceptions"}`}>
-      <div className="alw-explainer" role="note">
-        {isRemote ? (
-          <>
-            <strong>Remote Approvals</strong>
-            <p>
-              Hybrid employees request permission to punch in remotely for a specific work date and
-              optional time window. Only an <em>approved, unused</em> request authorizes a remote
-              session on that date. Office / WFH rules are unchanged by Location Exceptions.
-            </p>
-          </>
-        ) : (
-          <>
-            <strong>Location Exceptions</strong>
-            <p>
-              Geofence or GPS accuracy events from punch or live monitoring. Reviewing, regularizing,
-              or dismissing an exception does <em>not</em> grant remote punch-in rights — use Remote
-              Approvals for that. Punch eligibility below comes from work mode and remote approvals.
-            </p>
-          </>
-        )}
-        {companyTimezone ? (
-          <p className="alw-tz">Company timezone: {companyTimezone}</p>
-        ) : null}
-      </div>
+      <header className="alw-page-head">
+        <div>
+          <h2 className="alw-page-title">
+            {isRemote ? "Remote approvals" : "Location exceptions"}
+          </h2>
+          <p className="alw-helper" role="note">
+            {isRemote
+              ? "Hybrid remote punch-in requests. Only an approved, unused request authorizes a remote session."
+              : "Geofence and GPS events from punch or live monitoring. Closing one does not grant remote punch-in rights."}
+            {companyTimezone ? ` · ${companyTimezone}` : ""}
+          </p>
+        </div>
+        <span className="alw-count-chip" aria-live="polite">
+          {loading ? "…" : `${visibleRows.length} record${visibleRows.length === 1 ? "" : "s"}`}
+        </span>
+      </header>
 
-      <div className="alw-toolbar">
-        <div className="alw-tabs" role="tablist" aria-label={isRemote ? "Remote request status" : "Exception status"}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={status === tab.key}
-              className={status === tab.key ? "btn-primary" : "btn-secondary"}
-              onClick={() => setStatus(tab.key)}
-            >
-              {tab.label}
+      <SegmentedTabs
+        className="alw-tabs"
+        ariaLabel={isRemote ? "Remote request status" : "Exception status"}
+        tabs={tabs.map((tab) => ({ value: tab.key, label: tab.label }))}
+        value={status}
+        onChange={setStatus}
+      />
+
+      <ModuleToolbar
+        className="alw-module-toolbar"
+        searchValue={search}
+        onSearchChange={(e) => setSearch(e.target.value)}
+        searchPlaceholder="Search name, code, or email…"
+        searchAriaLabel={isRemote ? "Search remote requests" : "Search location exceptions"}
+        secondaryActions={
+          <>
+            <SoftRefresh active={fetching && !loading} />
+            <button type="button" className="btn-secondary" onClick={load} disabled={fetching}>
+              Refresh
             </button>
-          ))}
-        </div>
-        <div className="alw-toolbar-actions">
-          <SoftRefresh active={fetching && !loading} />
-          <button type="button" className="btn-secondary" onClick={load} disabled={fetching}>
-            Refresh
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error ? <div className="alert alert-error alw-error">{error}</div> : null}
 
       {loading ? (
         <div className="alw-state">Loading {isRemote ? "remote approvals" : "location exceptions"}…</div>
-      ) : rows.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <div className="empty-state alw-empty">
           <p>
-            {isRemote
-              ? "No remote-work requests in this status."
-              : "No location exceptions in this status."}
+            {rows.length === 0
+              ? isRemote
+                ? "No remote-work requests in this status."
+                : "No location exceptions in this status."
+              : "No records match your search."}
           </p>
           <p className="caption">
-            {isRemote
-              ? "Pending hybrid requests appear here when employees ask to work remotely."
-              : "Outside-radius and accuracy events appear here when geofence policy records them."}
+            {rows.length === 0
+              ? isRemote
+                ? "Pending hybrid requests appear here when employees ask to work remotely."
+                : "Outside-radius and accuracy events appear here when geofence policy records them."
+              : "Try a different name, employee code, or email."}
           </p>
         </div>
       ) : (
         <ul className="alw-cards">
-          {rows.map((row) => {
+          {visibleRows.map((row) => {
             const id = String(row._id || row.id);
             const name = row.employee?.fullName || row.employeeName || row.fullName || "Employee";
             const code = row.employee?.employeeCode || row.employeeCode || "";
@@ -301,32 +313,32 @@ export default function AttendanceLocationWorkspace({
                 className={`alw-card${focusedRowId === id ? " is-focused" : ""}`}
               >
                 <div className="alw-card-top">
-                  <div className="alw-identity">
-                    <div className="alw-identity-row">
-                      <AuthedAvatar
-                        className="alw-avatar"
-                        employee={row.employee || { avatar }}
-                        avatar={avatar}
-                        name={name}
-                        initials={initialsFromName(name, "E")}
-                        alt={name}
-                      />
-                      <div>
-                        <div className="alw-name">{name}</div>
-                        <div className="alw-meta-line">
-                          {[code, email, workMode ? `Mode: ${workMode}` : null].filter(Boolean).join(" · ")}
-                        </div>
+                  <div className="alw-identity-row">
+                    <AuthedAvatar
+                      className="alw-avatar"
+                      employee={row.employee || { avatar }}
+                      avatar={avatar}
+                      name={name}
+                      initials={initialsFromName(name, "E")}
+                      alt={name}
+                    />
+                    <div className="alw-identity-text">
+                      <div className="alw-name-row">
+                        <span className="alw-name">{name}</span>
+                        <span className={`alw-status is-${String(row.status || status).toLowerCase()}`}>
+                          {row.status || status}
+                        </span>
+                      </div>
+                      <div className="alw-meta-line">
+                        {[code, email, workMode ? `Mode: ${workMode}` : null].filter(Boolean).join(" · ")}
                       </div>
                     </div>
                   </div>
-                  <div className={`alw-elig is-${eligibility.tone}`} title={eligibility.code || undefined}>
-                    <span className="alw-elig-label">{eligibility.label}</span>
-                    {eligibility.detail ? <span className="alw-elig-detail">{eligibility.detail}</span> : null}
-                    {eligibility.remotePunchAllowed ? (
-                      <span className="alw-elig-flag is-yes">Remote punch: allowed</span>
-                    ) : (
-                      <span className="alw-elig-flag is-no">Remote punch: not allowed</span>
-                    )}
+                  <div
+                    className={`alw-elig-chip is-${eligibility.tone}`}
+                    title={[eligibility.detail, eligibility.code].filter(Boolean).join(" — ") || undefined}
+                  >
+                    {eligibility.remotePunchAllowed ? "Remote punch allowed" : eligibility.label}
                   </div>
                 </div>
 
@@ -336,14 +348,6 @@ export default function AttendanceLocationWorkspace({
                       <div>
                         <div className="alw-label">Why listed</div>
                         <div>{row.whyListed || "Remote-work request"}</div>
-                      </div>
-                      <div>
-                        <div className="alw-label">Status</div>
-                        <div>
-                          <span className={`alw-status is-${String(row.status || status).toLowerCase()}`}>
-                            {row.status || status}
-                          </span>
-                        </div>
                       </div>
                       <div>
                         <div className="alw-label">Work date / duration</div>
@@ -385,16 +389,7 @@ export default function AttendanceLocationWorkspace({
                       <div>
                         <div className="alw-label">Why listed</div>
                         <div>{row.whyListed || TYPE_LABEL[row.type] || row.type || "Location exception"}</div>
-                        <div className="caption">{row.message || ""}</div>
-                      </div>
-                      <div>
-                        <div className="alw-label">Status</div>
-                        <div>
-                          <span className={`alw-status is-${String(row.status || status).toLowerCase()}`}>
-                            {row.status || status}
-                          </span>
-                          <span className="caption"> · {row.sessionType || "Session"}</span>
-                        </div>
+                        {row.message ? <div className="caption">{row.message}</div> : null}
                         <div className="caption">{TYPE_LABEL[row.type] || row.type}</div>
                       </div>
                       <div>
@@ -408,7 +403,7 @@ export default function AttendanceLocationWorkspace({
                       <div>
                         <div className="alw-label">Employee location</div>
                         <div>{coords || "Not recorded"}</div>
-                        <div className="caption">{row.location?.address || ""}</div>
+                        {row.location?.address ? <div className="caption">{row.location.address}</div> : null}
                         {row.location?.accuracy != null ? (
                           <div className="caption">Accuracy ±{Math.round(Number(row.location.accuracy))}m</div>
                         ) : null}
@@ -430,7 +425,7 @@ export default function AttendanceLocationWorkspace({
                       </div>
                       {(row.reviewedAt || row.reviewedByName || row.reviewRemarks) && (
                         <div>
-                          <div className="alw-label">Review</div>
+                          <div className="alw-label">Reviewed</div>
                           <div>
                             {row.reviewedByName ? `By ${row.reviewedByName}` : "Reviewed"}
                             {row.reviewedAt ? ` · ${formatWhen(row.reviewedAt)}` : ""}

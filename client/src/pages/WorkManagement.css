@@ -52,6 +52,20 @@
   width: 100%;
 }
 
+.wm-kpi-grid.metric-card-row {
+  margin: 0 0 14px;
+}
+
+button.wm-kpi-card.metric-card {
+  min-height: 96px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+button.wm-kpi-card.metric-card:hover {
+  box-shadow: var(--shadow);
+}
+
 @media (max-width: 1024px) {
   .wm-kpi-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -993,8 +1007,8 @@
 
 /* Kanban Board with Native Drag & Drop
    Layout contract:
-   - .wm-kanban-board = ONLY the 4 workflow columns (flex row, never wrap)
-   - .wm-kanban-completed = separate full-width band BELOW the board (never a 5th column)
+   - .wm-kanban-board = workflow columns including Completed today (horizontal row)
+   - .wm-kanban-completed = legacy; Completed today is a board column
 */
 .wm-kanban-layout {
   display: flex;
@@ -1195,6 +1209,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .wm-task-card:hover {
@@ -1339,6 +1356,9 @@
   justify-content: space-between;
   gap: 6px;
   margin-top: 2px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .wm-card-btn-action {
@@ -1353,6 +1373,8 @@
   color: #334155;
   transition: all 0.15s ease;
   display: inline-flex;
+  flex: 0 0 auto;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
   gap: 4px;
@@ -1903,3 +1925,302 @@
   gap: 8px;
 }
 
+
+/* ==========================================================================
+   Work Management (HR) — interactive metric cards, toolbar, consistent board
+   ========================================================================== */
+.wm-metric-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+@media (max-width: 1024px) {
+  .wm-metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .wm-metric-row { grid-template-columns: 1fr; }
+}
+
+button.wm-metric-card.metric-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 96px;
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+}
+
+button.wm-metric-card.metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--hair);
+}
+
+button.wm-metric-card.accent-slate::before { background: #64748b; }
+button.wm-metric-card.accent-amber::before { background: #d97706; }
+button.wm-metric-card.accent-blue::before { background: var(--g-600); }
+button.wm-metric-card.accent-emerald::before { background: var(--g-700); }
+
+button.wm-metric-card.metric-card:hover { box-shadow: var(--shadow); }
+button.wm-metric-card.metric-card:active { transform: translateY(0); box-shadow: var(--shadow-sm); }
+button.wm-metric-card.metric-card:focus-visible {
+  outline: 2px solid var(--g-600);
+  outline-offset: 2px;
+}
+
+.wm-metric-card .wm-value-amber { color: #b45309; }
+.wm-metric-card .wm-value-green { color: var(--g-800, #155a37); }
+
+/* Toolbar (ModuleToolbar pattern) */
+.wm-module-toolbar .module-tabs.wm-view-tabs {
+  flex: 0 0 auto;
+}
+
+.wm-project-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--mt-h, 40px);
+  padding: 0 12px;
+  border-radius: var(--mt-radius, 12px);
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-950, #0d3a23);
+  font-size: 12px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.wm-project-chip button {
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Board: five equal-width columns on one row, consistent card sizing */
+.wm-kanban-board > .wm-kanban-col {
+  flex: 1 0 232px;
+  width: auto;
+  max-width: none;
+  min-width: 232px;
+}
+
+.wm-kanban-board > .wm-kanban-col .wm-task-card {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Quick status select + Details must both stay inside the card */
+.wm-card-actions-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.wm-card-actions-bar .wm-status-select-fallback {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.wm-card-actions-bar .wm-card-btn-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Impact Points (HR) — metric cards, bare toolbar, section head, podium
+   ========================================================================== */
+.wm-toolbar-card.wm-toolbar-card--bare {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin-bottom: 0;
+}
+
+.wm-toolbar-card.wm-toolbar-card--bare > .module-toolbar {
+  padding: 0;
+  margin-bottom: 14px;
+}
+
+.wm-project-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.wm-project-chip {
+  appearance: none;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--card, #fdfdfc);
+  color: var(--muted, #646d67);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wm-project-chip.is-active {
+  border-color: rgba(39, 134, 90, 0.4);
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+.ip-metric-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .ip-metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .ip-metric-row { grid-template-columns: 1fr; }
+}
+
+button.ip-metric-card.metric-card {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+button.ip-metric-card.metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--hair);
+}
+
+button.ip-metric--blue::before { background: #2563eb; }
+button.ip-metric--green::before { background: var(--g-600); }
+button.ip-metric--red::before { background: #dc2626; }
+
+button.ip-metric--blue .metric-card-value { color: #1d4ed8; }
+button.ip-metric--green .metric-card-value { color: var(--g-800, #155a37); }
+button.ip-metric--red .metric-card-value { color: #b91c1c; }
+
+button.ip-metric-card.metric-card:focus-visible {
+  outline: 2px solid var(--g-600);
+  outline-offset: 2px;
+}
+
+.ip-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.ip-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.ip-section-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted, #646d67);
+}
+
+.ip-section-count {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ip-podium {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--panel, #f5f6f5);
+}
+
+.ip-podium-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, #fff);
+  box-shadow: var(--shadow-sm);
+}
+
+.ip-podium-1 { border-color: color-mix(in srgb, #d4a017 45%, var(--hair)); }
+.ip-podium-2 { border-color: color-mix(in srgb, #94a3b8 55%, var(--hair)); }
+.ip-podium-3 { border-color: color-mix(in srgb, #b4743c 45%, var(--hair)); }
+
+.ip-podium-rank {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 800;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-900, #0d3a23);
+}
+
+.ip-podium-1 .ip-podium-rank { background: #fef3c7; color: #92400e; }
+.ip-podium-2 .ip-podium-rank { background: #e2e8f0; color: #334155; }
+.ip-podium-3 .ip-podium-rank { background: #fde4cf; color: #7c4a1d; }
+
+.ip-podium-body { flex: 1 1 auto; min-width: 0; }
+
+.ip-podium-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ip-podium-dept {
+  font-size: 11.5px;
+  color: var(--muted, #646d67);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ip-podium-score {
+  flex: 0 0 auto;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--g-800, #155a37);
+  font-variant-numeric: tabular-nums;
+}
+
+.ip-podium-score span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #646d67);
+}

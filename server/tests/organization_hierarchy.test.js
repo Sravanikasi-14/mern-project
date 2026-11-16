@@ -194,6 +194,7 @@ describe("Organization hierarchy API", () => {
   it("returns multi-level hierarchy with light fields and counts", async () => {
     const res = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.success, true);
@@ -239,9 +240,11 @@ describe("Organization hierarchy API", () => {
   it("isolates companies", async () => {
     const acmeRes = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     const globexRes = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", globexHrCookie);
 
     assert.equal(acmeRes.status, 200);
@@ -267,6 +270,7 @@ describe("Organization hierarchy API", () => {
 
     const res = await request(app)
       .get("/api/employees/organization")
+      .query({ mode: "full" })
       .set("Cookie", acmeHrCookie);
     const byId = Object.fromEntries(res.body.employees.map((e) => [e.id, e]));
     assert.equal(byId[String(ic._id)].reportingManagerId, String(ceo._id));

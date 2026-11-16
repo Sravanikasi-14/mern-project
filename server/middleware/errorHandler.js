@@ -38,6 +38,7 @@ export function errorHandler(err, _req, res, _next) {
   const passthrough503 = new Set([
     "CONVERSION_NOT_CONFIGURED",
     "STORAGE_NOT_CONFIGURED",
+    "PLATFORM_MAINTENANCE",
   ]);
 
   // Distinguish service unavailable (503) from unexpected server errors (500)

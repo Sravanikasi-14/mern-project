@@ -68,6 +68,7 @@ export default function AdminAssets() {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [conditionFilter, setConditionFilter] = useState("ALL");
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -78,17 +79,33 @@ export default function AdminAssets() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  // Reset to page 1 during render (not in an effect) so a filter change issues ONE
+  // request instead of fetching the stale page first and then refetching page 1.
+  const filterKey = `${debouncedSearch}|${categoryFilter}|${statusFilter}|${conditionFilter}|${attentionOnly ? "1" : "0"}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey);
     setPage(1);
-  }, [debouncedSearch, categoryFilter, statusFilter, conditionFilter]);
+  }
+
+  const applyStatusFilter = (next) => {
+    setAttentionOnly(false);
+    setStatusFilter(next);
+  };
+
+  const applyConditionFilter = (next) => {
+    setAttentionOnly(false);
+    setConditionFilter(next);
+  };
 
   const assetsQuery = useAdminAssetsQuery({
     page,
     limit: pageSize,
-    status: statusFilter !== "ALL" ? statusFilter : "",
+    status: !attentionOnly && statusFilter !== "ALL" ? statusFilter : "",
     search: debouncedSearch,
     category: categoryFilter !== "ALL" ? categoryFilter : "",
-    condition: conditionFilter !== "ALL" ? conditionFilter : "",
+    condition: !attentionOnly && conditionFilter !== "ALL" ? conditionFilter : "",
+    attention: attentionOnly,
   });
 
   const assets = assetsQuery.data?.assets || [];
@@ -175,18 +192,44 @@ export default function AdminAssets() {
   });
 
   const fetchEmployees = async () => {
+    if (loadingEmployees) return;
     try {
       setLoadingEmployees(true);
       setEmployeeFetchError("");
-      const res = await api.get("/employees", {
-        params: { status: "ACTIVE", limit: 200 },
-      });
-      const list =
-        res.data?.employees ||
-        res.data?.data ||
-        (Array.isArray(res.data) ? res.data : []);
-      // Filter only active employees
-      setEmployees(list.filter((e) => e.status === "ACTIVE"));
+      // Prefer slim directory cards over full People list (faster, fewer fields).
+      let list = [];
+      try {
+        // Directory caps page size at 50; fetch remaining pages in parallel so the
+        // assignee list is never silently truncated for larger companies.
+        const first = await api.get("/employees/directory", {
+          params: { page: 1, limit: 50 },
+        });
+        list = Array.isArray(first.data?.data) ? [...first.data.data] : [];
+        const totalPages = Math.min(Number(first.data?.pagination?.totalPages) || 1, 20);
+        if (totalPages > 1) {
+          const rest = await Promise.all(
+            Array.from({ length: totalPages - 1 }, (_, i) =>
+              api.get("/employees/directory", { params: { page: i + 2, limit: 50 } })
+            )
+          );
+          rest.forEach((r) => {
+            if (Array.isArray(r.data?.data)) list.push(...r.data.data);
+          });
+        }
+      } catch {
+        const res = await api.get("/employees", {
+          params: { status: "ACTIVE", limit: 100, page: 1 },
+        });
+        list =
+          res.data?.employees ||
+          res.data?.data ||
+          (Array.isArray(res.data) ? res.data : []);
+      }
+      setEmployees(
+        (Array.isArray(list) ? list : []).filter(
+          (e) => !e.status || e.status === "ACTIVE"
+        )
+      );
     } catch (err) {
       setEmployeeFetchError(
         err.response?.data?.message || "Failed to load active employees."
@@ -403,36 +446,56 @@ export default function AdminAssets() {
         </div>
       )}
 
-      {/* Compact Inline Asset Statistics Strip */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 20,
-          background: "var(--card)",
-          border: "1px solid var(--hair)",
-          borderRadius: 8,
-          padding: "8px 16px",
-          marginBottom: 12,
-          fontSize: 13,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "var(--text-muted)" }}>
-          Total Inventory: <strong style={{ color: "var(--text)" }}>{summary.total}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted)" }}>
-          Available: <strong style={{ color: "var(--g-700)" }}>{summary.available}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted)" }}>
-          Assigned: <strong style={{ color: "var(--g-800)" }}>{summary.assigned}</strong>
-        </span>
-        <span style={{ color: "#d4d4d8" }}>•</span>
-        <span style={{ color: "var(--text-muted)" }}>
-          Needs Attention: <strong style={{ color: summary.requiringAttention > 0 ? "#b91c1c" : "var(--text)" }}>{summary.requiringAttention}</strong>
-        </span>
+      <div className="metric-card-row" role="group" aria-label="Asset inventory summary">
+        <button
+          type="button"
+          className={`metric-card${!attentionOnly && statusFilter === "ALL" ? " is-active" : ""}`}
+          onClick={() => {
+            setAttentionOnly(false);
+            setStatusFilter("ALL");
+            setConditionFilter("ALL");
+          }}
+        >
+          <span className="metric-card-label">Total Inventory</span>
+          <span className="metric-card-value">{summary.total}</span>
+          <span className="metric-card-sub">All tracked assets</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card${!attentionOnly && statusFilter === "AVAILABLE" ? " is-active" : ""}`}
+          onClick={() => applyStatusFilter("AVAILABLE")}
+        >
+          <span className="metric-card-label">Available</span>
+          <span className="metric-card-value">{summary.available}</span>
+          <span className="metric-card-sub">Ready to assign</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card${!attentionOnly && statusFilter === "ASSIGNED" ? " is-active" : ""}`}
+          onClick={() => applyStatusFilter("ASSIGNED")}
+        >
+          <span className="metric-card-label">Assigned</span>
+          <span className="metric-card-value">{summary.assigned}</span>
+          <span className="metric-card-sub">Currently in use</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card${attentionOnly ? " is-active" : ""}`}
+          onClick={() => {
+            setAttentionOnly(true);
+            setStatusFilter("ALL");
+            setConditionFilter("ALL");
+          }}
+        >
+          <span className="metric-card-label">Needs Attention</span>
+          <span
+            className="metric-card-value"
+            style={{ color: summary.requiringAttention > 0 ? "#b91c1c" : undefined }}
+          >
+            {summary.requiringAttention}
+          </span>
+          <span className="metric-card-sub">Maintenance, lost, or poor condition</span>
+        </button>
       </div>
 
       {/* Main Asset Workspace */}
@@ -464,12 +527,14 @@ export default function AdminAssets() {
           filterCount={
             (categoryFilter !== "ALL" ? 1 : 0) +
             (statusFilter !== "ALL" ? 1 : 0) +
-            (conditionFilter !== "ALL" ? 1 : 0)
+            (conditionFilter !== "ALL" ? 1 : 0) +
+            (attentionOnly ? 1 : 0)
           }
           onFiltersClear={() => {
             setCategoryFilter("ALL");
             setStatusFilter("ALL");
             setConditionFilter("ALL");
+            setAttentionOnly(false);
           }}
           filters={
             <>
@@ -491,8 +556,8 @@ export default function AdminAssets() {
                 Status
                 <select
                   className="filter-select"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  value={attentionOnly ? "ALL" : statusFilter}
+                  onChange={(e) => applyStatusFilter(e.target.value)}
                 >
                   {STATUSES.map((s) => (
                     <option key={s.value} value={s.value}>
@@ -505,8 +570,8 @@ export default function AdminAssets() {
                 Condition
                 <select
                   className="filter-select"
-                  value={conditionFilter}
-                  onChange={(e) => setConditionFilter(e.target.value)}
+                  value={attentionOnly ? "ALL" : conditionFilter}
+                  onChange={(e) => applyConditionFilter(e.target.value)}
                 >
                   {CONDITIONS.map((cd) => (
                     <option key={cd.value} value={cd.value}>
@@ -563,11 +628,11 @@ export default function AdminAssets() {
                       No assets found
                     </div>
                     <p style={{ margin: "0 0 12px" }}>
-                      {search || categoryFilter !== "ALL" || statusFilter !== "ALL"
+                      {search || categoryFilter !== "ALL" || statusFilter !== "ALL" || attentionOnly
                         ? "Try adjusting your search query or filter criteria."
                         : "Get started by adding your organization's physical hardware and devices."}
                     </p>
-                    {(search || categoryFilter !== "ALL" || statusFilter !== "ALL") && (
+                    {(search || categoryFilter !== "ALL" || statusFilter !== "ALL" || attentionOnly) && (
                       <button
                         type="button"
                         className="btn-secondary"
@@ -578,6 +643,7 @@ export default function AdminAssets() {
                           setCategoryFilter("ALL");
                           setStatusFilter("ALL");
                           setConditionFilter("ALL");
+                          setAttentionOnly(false);
                         }}
                       >
                         Reset filters

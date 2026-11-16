@@ -194,6 +194,22 @@ export function AuthProvider({ children }) {
 
     window.addEventListener("pageshow", handlePageShow);
 
+    let entitlementsRefreshTimer = null;
+    const handleEntitlementsStale = () => {
+      if (entitlementsRefreshTimer) return;
+      entitlementsRefreshTimer = window.setTimeout(() => {
+        entitlementsRefreshTimer = null;
+        restoreSession({ silent: true });
+      }, 250);
+    };
+    window.addEventListener("hrms:entitlements-stale", handleEntitlementsStale);
+
+    const handleSessionExpired = () => {
+      clearStoredSession();
+      setSessionError(null);
+    };
+    window.addEventListener("hrms:session-expired", handleSessionExpired);
+
     let resumeListener;
     let cancelled = false;
     if (isNativeApp()) {
@@ -210,7 +226,10 @@ export function AuthProvider({ children }) {
 
     return () => {
       cancelled = true;
+      if (entitlementsRefreshTimer) window.clearTimeout(entitlementsRefreshTimer);
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("hrms:entitlements-stale", handleEntitlementsStale);
+      window.removeEventListener("hrms:session-expired", handleSessionExpired);
       resumeListener?.remove();
     };
   }, []);

@@ -13,6 +13,7 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
 import {
   loadHrAccessContext,
+  requireEntitledModule,
   requireHrPermission,
   requireEmployeeInScope,
 } from "../middleware/hrAccessEnforcement.js";
@@ -24,6 +25,7 @@ router.get(
   "/my-settlement",
   authenticate,
   requireRole(USER_ROLES.EMPLOYEE),
+  requireEntitledModule("settlements"),
   getMySettlement
 );
 

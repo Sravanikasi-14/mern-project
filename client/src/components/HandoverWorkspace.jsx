@@ -1,10 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
+import SegmentedTabs from "./SegmentedTabs";
 import {
   HANDOVER_DETAIL_MODES,
   resolveHandoverDetailPresentation,
 } from "../utils/handoverDetailPresentation";
+
+const EMPLOYEE_HANDOVER_SECTIONS = [
+  {
+    value: "outgoing",
+    label: "Handed over",
+    emptyTitle: "No handovers started",
+    emptyDesc: "When you start coverage for a leave request, it will show up here.",
+  },
+  {
+    value: "incoming",
+    label: "Assigned to me",
+    emptyTitle: "Nothing assigned to you",
+    emptyDesc: "Coverage responsibilities assigned to you will appear in this section.",
+  },
+  {
+    value: "managing",
+    label: "To coordinate",
+    emptyTitle: "Nothing to coordinate",
+    emptyDesc: "Handovers that need your coordination will appear here.",
+  },
+];
 
 /** Employee-facing status labels — no internal lifecycle jargon. */
 const HANDOVER_STATUS_LABELS = {
@@ -72,6 +94,7 @@ export default function HandoverWorkspace({
   const [noteDrafts, setNoteDrafts] = useState({});
   const [responseDrafts, setResponseDrafts] = useState({});
   const [focusedId, setFocusedId] = useState("");
+  const [employeeSection, setEmployeeSection] = useState("outgoing");
 
   const loadMine = useCallback(async () => {
     setLoading(true);
@@ -110,13 +133,24 @@ export default function HandoverWorkspace({
   useEffect(() => {
     const target = String(focusHandoverId || "").trim();
     if (!target || !data) return;
-    const pools = [...(data.outgoing || []), ...(data.incoming || []), ...(data.managing || [])];
-    const hit = pools.find(
-      (h) =>
-        String(h._id) === target ||
-        String(h.leaveRequestId || h.leaveId || "") === target
-    );
+    const sectionOrder = ["outgoing", "incoming", "managing"];
+    let hit = null;
+    let hitSection = "";
+    for (const key of sectionOrder) {
+      const pool = data[key] || [];
+      const found = pool.find(
+        (h) =>
+          String(h._id) === target ||
+          String(h.leaveRequestId || h.leaveId || "") === target
+      );
+      if (found) {
+        hit = found;
+        hitSection = key;
+        break;
+      }
+    }
     if (hit?._id) {
+      if (hitSection) setEmployeeSection(hitSection);
       setFocusedId(String(hit._id));
       requestAnimationFrame(() => {
         const el = document.getElementById(`handover-card-${hit._id}`);
@@ -315,96 +349,227 @@ export default function HandoverWorkspace({
   const incoming = data?.incoming || [];
   const managing = data?.managing || [];
 
+  const isEmployeePage = mode === "employee";
+
+  const sectionRecords = {
+    outgoing,
+    incoming,
+    managing,
+  };
+
+  const employeeTabs = EMPLOYEE_HANDOVER_SECTIONS.map((section) => ({
+    value: section.value,
+    label: `${section.label} (${sectionRecords[section.value].length})`,
+  }));
+
+  const activeSectionMeta =
+    EMPLOYEE_HANDOVER_SECTIONS.find((s) => s.value === employeeSection) ||
+    EMPLOYEE_HANDOVER_SECTIONS[0];
+  const activeRecords = sectionRecords[activeSectionMeta.value] || [];
+
+  const renderEmployeeSectionCards = () => {
+    if (activeRecords.length === 0) {
+      return (
+        <div className="lm-empty-state lm-handover-empty">
+          <p className="lm-empty-title">{activeSectionMeta.emptyTitle}</p>
+          <p className="lm-impact-muted">{activeSectionMeta.emptyDesc}</p>
+        </div>
+      );
+    }
+
+    if (employeeSection === "outgoing") {
+      return activeRecords.map((h) => (
+        <HandoverCard
+          key={h._id}
+          handover={h}
+          focused={focusedId === String(h._id)}
+          noteDrafts={noteDrafts}
+          setNoteDrafts={setNoteDrafts}
+          responseDrafts={responseDrafts}
+          setResponseDrafts={setResponseDrafts}
+          busy={busy}
+          onSaveItem={saveItemNotes}
+          onSubmit={submit}
+          onCoordinate={coordinate}
+          onDecide={decide}
+          canManage
+        />
+      ));
+    }
+
+    if (employeeSection === "incoming") {
+      return activeRecords.map((h) => (
+        <HandoverCard
+          key={`in-${h._id}`}
+          handover={h}
+          focused={focusedId === String(h._id)}
+          noteDrafts={noteDrafts}
+          setNoteDrafts={setNoteDrafts}
+          responseDrafts={responseDrafts}
+          setResponseDrafts={setResponseDrafts}
+          busy={busy}
+          onSaveItem={saveItemNotes}
+          onSubmit={submit}
+          onCoordinate={coordinate}
+          onDecide={decide}
+          canManage={false}
+          asCoverer
+        />
+      ));
+    }
+
+    return activeRecords.map((h) => (
+      <HandoverCard
+        key={`mgr-${h._id}`}
+        handover={h}
+        focused={focusedId === String(h._id)}
+        noteDrafts={noteDrafts}
+        setNoteDrafts={setNoteDrafts}
+        responseDrafts={responseDrafts}
+        setResponseDrafts={setResponseDrafts}
+        busy={busy}
+        onSaveItem={saveItemNotes}
+        onSelectBackup={selectItemBackup}
+        onSubmit={submit}
+        onCoordinate={coordinate}
+        onDecide={decide}
+        canManage
+        asCoordinator
+        arrangements={arrangements}
+      />
+    ));
+  };
+
   return (
-    <section className="lm-review-section" aria-label="Work handovers">
-      <h4 className="lm-impact-heading">Work handovers</h4>
-      <p className="lm-impact-lede">
-        Track responsibilities you have handed over and those coordinated for you to cover.
-        Coverage does not change leave approval.
-      </p>
+    <section
+      className={`lm-review-section${isEmployeePage ? " lm-handover-board" : ""}`}
+      aria-label="Work handovers"
+    >
+      {!isEmployeePage ? (
+        <>
+          <h4 className="lm-impact-heading">Work handovers</h4>
+          <p className="lm-impact-lede">
+            Track responsibilities you have handed over and those coordinated for you to cover.
+            Coverage does not change leave approval.
+          </p>
+        </>
+      ) : null}
       {error && (
         <div className="error" style={{ marginBottom: 8 }}>
           {error}
         </div>
       )}
-      {outgoing.length === 0 && incoming.length === 0 && managing.length === 0 && (
-        <p className="lm-info-chip">
-          No coverage arrangements yet. Start one from a leave request when continuity planning is
-          needed.
-        </p>
-      )}
 
-      {outgoing.length > 0 && (
-        <div className="lm-handover-group">
-          <h5 className="lm-review-subhead">Responsibilities I&apos;ve handed over</h5>
-          {outgoing.map((h) => (
-            <HandoverCard
-              key={h._id}
-              handover={h}
-              focused={focusedId === String(h._id)}
-              noteDrafts={noteDrafts}
-              setNoteDrafts={setNoteDrafts}
-              responseDrafts={responseDrafts}
-              setResponseDrafts={setResponseDrafts}
-              busy={busy}
-              onSaveItem={saveItemNotes}
-              onSubmit={submit}
-              onCoordinate={coordinate}
-              onDecide={decide}
-              canManage
-            />
-          ))}
-        </div>
-      )}
+      {isEmployeePage ? (
+        <>
+          <SegmentedTabs
+            ariaLabel="Handover sections"
+            value={employeeSection}
+            onChange={setEmployeeSection}
+            tabs={employeeTabs}
+            className="lm-handover-section-tabs"
+          />
+          <div className="lm-handover-group lm-handover-group--tabbed">
+            <div className="lm-handover-group-head">
+              <h5 className="lm-review-subhead">{activeSectionMeta.label}</h5>
+              <span className="lm-handover-count">{activeRecords.length}</span>
+            </div>
+            {renderEmployeeSectionCards()}
+          </div>
+        </>
+      ) : (
+        <>
+          {outgoing.length === 0 && incoming.length === 0 && managing.length === 0 && (
+            <div className="lm-empty-state lm-handover-empty">
+              <p className="lm-empty-title">No coverage arrangements yet</p>
+              <p className="lm-impact-muted">
+                Start one from a leave request when continuity planning is needed.
+              </p>
+            </div>
+          )}
 
-      {incoming.length > 0 && (
-        <div className="lm-handover-group">
-          <h5 className="lm-review-subhead">Responsibilities assigned to me</h5>
-          {incoming.map((h) => (
-            <HandoverCard
-              key={`in-${h._id}`}
-              handover={h}
-              focused={focusedId === String(h._id)}
-              noteDrafts={noteDrafts}
-              setNoteDrafts={setNoteDrafts}
-              responseDrafts={responseDrafts}
-              setResponseDrafts={setResponseDrafts}
-              busy={busy}
-              onSaveItem={saveItemNotes}
-              onSubmit={submit}
-              onCoordinate={coordinate}
-              onDecide={decide}
-              canManage={false}
-              asCoverer
-            />
-          ))}
-        </div>
-      )}
+          {outgoing.length > 0 && (
+            <div className="lm-handover-group">
+              <div className="lm-handover-group-head">
+                <h5 className="lm-review-subhead">Responsibilities I&apos;ve handed over</h5>
+                <span className="lm-handover-count">{outgoing.length}</span>
+              </div>
+              {outgoing.map((h) => (
+                <HandoverCard
+                  key={h._id}
+                  handover={h}
+                  focused={focusedId === String(h._id)}
+                  noteDrafts={noteDrafts}
+                  setNoteDrafts={setNoteDrafts}
+                  responseDrafts={responseDrafts}
+                  setResponseDrafts={setResponseDrafts}
+                  busy={busy}
+                  onSaveItem={saveItemNotes}
+                  onSubmit={submit}
+                  onCoordinate={coordinate}
+                  onDecide={decide}
+                  canManage
+                />
+              ))}
+            </div>
+          )}
 
-      {managing.length > 0 && (
-        <div className="lm-handover-group">
-          <h5 className="lm-review-subhead">Coverage to coordinate</h5>
-          {managing.map((h) => (
-            <HandoverCard
-              key={`mgr-${h._id}`}
-              handover={h}
-              focused={focusedId === String(h._id)}
-              noteDrafts={noteDrafts}
-              setNoteDrafts={setNoteDrafts}
-              responseDrafts={responseDrafts}
-              setResponseDrafts={setResponseDrafts}
-              busy={busy}
-              onSaveItem={saveItemNotes}
-              onSelectBackup={selectItemBackup}
-              onSubmit={submit}
-              onCoordinate={coordinate}
-              onDecide={decide}
-              canManage
-              asCoordinator
-              arrangements={arrangements}
-            />
-          ))}
-        </div>
+          {incoming.length > 0 && (
+            <div className="lm-handover-group">
+              <div className="lm-handover-group-head">
+                <h5 className="lm-review-subhead">Responsibilities assigned to me</h5>
+                <span className="lm-handover-count">{incoming.length}</span>
+              </div>
+              {incoming.map((h) => (
+                <HandoverCard
+                  key={`in-${h._id}`}
+                  handover={h}
+                  focused={focusedId === String(h._id)}
+                  noteDrafts={noteDrafts}
+                  setNoteDrafts={setNoteDrafts}
+                  responseDrafts={responseDrafts}
+                  setResponseDrafts={setResponseDrafts}
+                  busy={busy}
+                  onSaveItem={saveItemNotes}
+                  onSubmit={submit}
+                  onCoordinate={coordinate}
+                  onDecide={decide}
+                  canManage={false}
+                  asCoverer
+                />
+              ))}
+            </div>
+          )}
+
+          {managing.length > 0 && (
+            <div className="lm-handover-group">
+              <div className="lm-handover-group-head">
+                <h5 className="lm-review-subhead">Coverage to coordinate</h5>
+                <span className="lm-handover-count">{managing.length}</span>
+              </div>
+              {managing.map((h) => (
+                <HandoverCard
+                  key={`mgr-${h._id}`}
+                  handover={h}
+                  focused={focusedId === String(h._id)}
+                  noteDrafts={noteDrafts}
+                  setNoteDrafts={setNoteDrafts}
+                  responseDrafts={responseDrafts}
+                  setResponseDrafts={setResponseDrafts}
+                  busy={busy}
+                  onSaveItem={saveItemNotes}
+                  onSelectBackup={selectItemBackup}
+                  onSubmit={submit}
+                  onCoordinate={coordinate}
+                  onDecide={decide}
+                  canManage
+                  asCoordinator
+                  arrangements={arrangements}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

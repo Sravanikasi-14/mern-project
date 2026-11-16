@@ -22,6 +22,21 @@ export const EMPLOYEE_IMPORT_TEMPLATE_HEADERS = [
   "reportingManagerCode",
 ];
 
+/** Hard cap on rows accepted in one import payload (preview + commit). */
+export const EMPLOYEE_IMPORT_MAX_ROWS = 500;
+
+/**
+ * F52 — Default provisions per commit request.
+ * On Vercel, keep well under the 60s invocation budget; local/dev may use a larger chunk.
+ */
+export function resolveEmployeeImportCommitChunk(limitOverride) {
+  const onVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const fallback = onVercel ? 40 : 100;
+  const parsed = Number.parseInt(limitOverride, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, onVercel ? 75 : 200);
+}
+
 /**
  * Downloadable CSV template for bulk employee import.
  */
@@ -63,8 +78,8 @@ export async function previewEmployeeImport(req, res, next) {
     if (!rows || rows.length === 0) {
       throw new HttpError(400, "Import rows are required.");
     }
-    if (rows.length > 500) {
-      throw new HttpError(400, "Import is limited to 500 rows per batch.");
+    if (rows.length > EMPLOYEE_IMPORT_MAX_ROWS) {
+      throw new HttpError(400, `Import is limited to ${EMPLOYEE_IMPORT_MAX_ROWS} rows per batch.`);
     }
 
     const seenEmails = new Set();
@@ -154,8 +169,37 @@ export async function commitEmployeeImport(req, res, next) {
     if (!rows || rows.length === 0) {
       throw new HttpError(400, "Import rows are required.");
     }
-    if (rows.length > 500) {
-      throw new HttpError(400, "Import is limited to 500 rows per batch.");
+    if (rows.length > EMPLOYEE_IMPORT_MAX_ROWS) {
+      throw new HttpError(400, `Import is limited to ${EMPLOYEE_IMPORT_MAX_ROWS} rows per batch.`);
+    }
+
+    // F52 — optional offset/limit chunking. Omitting both preserves legacy "commit all rows".
+    const explicitChunk =
+      req.body?.offset != null ||
+      req.body?.limit != null ||
+      req.body?.offset === 0 ||
+      req.body?.limit === 0;
+    const offset = Math.max(0, Number.parseInt(req.body?.offset, 10) || 0);
+    const chunkSize = explicitChunk
+      ? resolveEmployeeImportCommitChunk(req.body?.limit)
+      : rows.length;
+    if (offset >= rows.length) {
+      return res.status(200).json({
+        message: "No remaining rows to import.",
+        summary: {
+          totalRows: rows.length,
+          validRows: 0,
+          invalidRows: 0,
+          createdCount: 0,
+          failedCount: 0,
+          offset,
+          nextOffset: offset,
+          chunkSize,
+          hasMore: false,
+        },
+        created: [],
+        failed: [],
+      });
     }
 
     const clientBaseUrl =
@@ -171,6 +215,8 @@ export async function commitEmployeeImport(req, res, next) {
       ipAddress: req.ip || "",
     };
 
+    // Validate the full payload so cross-row email/code uniqueness matches preview semantics,
+    // then provision only the current offset window.
     const seenEmails = new Set();
     const seenCodes = new Set();
     const validated = [];
@@ -191,7 +237,7 @@ export async function commitEmployeeImport(req, res, next) {
     }
 
     const invalidRows = validated.filter((r) => !r.valid);
-    if (!importValidOnly && invalidRows.length > 0) {
+    if (!importValidOnly && invalidRows.length > 0 && offset === 0) {
       return res.status(400).json({
         message: "Import contains invalid rows. Correct them or set importValidOnly=true.",
         code: "IMPORT_HAS_INVALID_ROWS",
@@ -201,6 +247,10 @@ export async function commitEmployeeImport(req, res, next) {
           invalidRows: invalidRows.length,
           createdCount: 0,
           failedCount: invalidRows.length,
+          offset: 0,
+          nextOffset: 0,
+          chunkSize,
+          hasMore: false,
         },
         created: [],
         failed: invalidRows.map((r) => ({
@@ -215,10 +265,12 @@ export async function commitEmployeeImport(req, res, next) {
       });
     }
 
+    const end = Math.min(validated.length, offset + chunkSize);
+    const slice = validated.slice(offset, end);
     const created = [];
     const failed = [];
 
-    for (const row of validated) {
+    for (const row of slice) {
       if (!row.valid) {
         failed.push({
           rowIndex: row.rowIndex,
@@ -262,17 +314,32 @@ export async function commitEmployeeImport(req, res, next) {
       }
     }
 
-    res.status(created.length > 0 ? 201 : 400).json({
+    const nextOffset = end;
+    const hasMore = end < validated.length;
+    const chunkCreated = created.length;
+    // Preserve legacy single-shot semantics: first chunk with zero creates → 400.
+    const httpStatus =
+      chunkCreated > 0 ? 201 : !hasMore && offset === 0 ? 400 : 200;
+
+    res.status(httpStatus).json({
       message:
-        created.length > 0
-          ? `Imported ${created.length} employee(s). Share activation links individually.`
-          : "No employees were imported.",
+        chunkCreated > 0
+          ? hasMore
+            ? `Imported ${chunkCreated} employee(s) in this chunk. Continue for remaining rows.`
+            : `Imported ${chunkCreated} employee(s). Share activation links individually.`
+          : hasMore
+            ? "Chunk processed with no creates; continue for remaining rows."
+            : "No employees were imported.",
       summary: {
         totalRows: validated.length,
         validRows: validated.filter((r) => r.valid).length,
         invalidRows: invalidRows.length,
-        createdCount: created.length,
+        createdCount: chunkCreated,
         failedCount: failed.length,
+        offset,
+        nextOffset,
+        chunkSize,
+        hasMore,
       },
       created,
       failed,

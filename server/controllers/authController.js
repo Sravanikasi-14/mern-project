@@ -20,12 +20,14 @@ import {
   acceptHrAdminInvitation,
   verifyHrAdminInvitationToken,
 } from "../services/hrAdminManagementService.js";
+import { assertSubscriptionAllowsAccess } from "../utils/subscriptionAccess.js";
+import { isPlatformMaintenanceEnabled } from "../services/platformSettingsService.js";
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function publicCompany(company) {
+function publicCompany(company, entitlements = null) {
   const branding = company.branding || {};
   return {
     _id: company._id,
@@ -49,7 +51,26 @@ function publicCompany(company) {
       timezone: company.config?.timezone || "Asia/Kolkata",
       currencyCode: company.config?.currencyCode || "INR",
     },
+    subscription: {
+      plan: company.subscription?.plan || "TRIAL",
+    },
+    /** Platform entitlements snapshot (modules/capabilities booleans). */
+    entitlements: entitlements || null,
   };
+}
+
+async function publicCompanyWithEntitlements(company) {
+  try {
+    const {
+      getEffectiveEntitlementsForCompany,
+      entitlementsPublicSnapshot,
+    } = await import("../services/platformEntitlementService.js");
+    const { effective } = await getEffectiveEntitlementsForCompany(company);
+    return publicCompany(company, entitlementsPublicSnapshot(effective));
+  } catch {
+    // Fail closed for module access: empty entitlements (all false) if resolution fails.
+    return publicCompany(company, { plan: company.subscription?.plan || "TRIAL", modules: {}, capabilities: {} });
+  }
 }
 
 export async function login(req, res, next) {
@@ -84,6 +105,13 @@ export async function login(req, res, next) {
         "This company workspace is suspended or inactive. Please contact support.",
         { code: "COMPANY_SUSPENDED" }
       );
+    }
+
+    assertSubscriptionAllowsAccess(company);
+
+    const maintenance = await isPlatformMaintenanceEnabled();
+    if (maintenance.enabled) {
+      throw new HttpError(503, maintenance.message, { code: "PLATFORM_MAINTENANCE" });
     }
 
     let models;
@@ -163,7 +191,7 @@ export async function login(req, res, next) {
       token,
       ...(refreshToken ? { refreshToken } : {}),
       user: serializeUser(user),
-      company: publicCompany(company),
+      company: await publicCompanyWithEntitlements(company),
     });
   } catch (error) {
     next(error);
@@ -199,6 +227,19 @@ export async function refreshSession(req, res, next) {
       throw new HttpError(401, "Your session has expired. Please sign in again.", { code: "SESSION_EXPIRED" });
     }
 
+    try {
+      assertSubscriptionAllowsAccess(company);
+    } catch {
+      throw new HttpError(401, "Your session has expired. Please sign in again.", {
+        code: "SESSION_EXPIRED",
+      });
+    }
+
+    const maintenance = await isPlatformMaintenanceEnabled();
+    if (maintenance.enabled) {
+      throw new HttpError(503, maintenance.message, { code: "PLATFORM_MAINTENANCE" });
+    }
+
     const models = await getCompanyModels(company);
     const session = await models.AuthSession.findOne({
       refreshTokenHash: hashRefreshToken(refreshToken),
@@ -229,7 +270,7 @@ export async function refreshSession(req, res, next) {
     res.json({
       token,
       user: serializeUser(user),
-      company: publicCompany(company),
+      company: await publicCompanyWithEntitlements(company),
     });
   } catch (error) {
     next(error);
@@ -300,13 +341,16 @@ export async function logout(req, res) {
   });
 }
 
-export async function me(req, res) {
-  // Baseline contract: user + company only.
-  // A1–A6 authorization summary (effectiveAuthorizationService) removed from this path.
-  res.json({
-    user: serializeUser(req.auth.user),
-    company: publicCompany(req.auth.company),
-  });
+export async function me(req, res, next) {
+  try {
+    // Baseline contract: user + company (+ platform entitlements snapshot).
+    res.json({
+      user: serializeUser(req.auth.user),
+      company: await publicCompanyWithEntitlements(req.auth.company),
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function updateProfile(req, res, next) {
@@ -956,15 +1000,27 @@ export async function setupInitialAdmin(req, res, next) {
       );
     }
 
-    // Security check: If the provisioned company has a designated primary contact email, verify match
-    if (company.primaryContact?.email) {
-      const primaryEmail = normalizeEmail(company.primaryContact.email);
-      if (primaryEmail && primaryEmail !== normalizedEmail) {
-        throw new HttpError(
-          403,
-          "Only the designated primary contact email for this company can set up the initial HR Admin account."
-        );
-      }
+    // Require designated primary contact — closes empty-email takeover of setup-initial-admin.
+    const primaryEmail = normalizeEmail(company.primaryContact?.email || "");
+    if (!primaryEmail) {
+      throw new HttpError(
+        403,
+        "Initial admin setup is locked until a primary contact email is configured for this company.",
+        { code: "PRIMARY_CONTACT_REQUIRED" }
+      );
+    }
+    if (primaryEmail !== normalizedEmail) {
+      throw new HttpError(
+        403,
+        "Only the designated primary contact email for this company can set up the initial HR Admin account.",
+        { code: "PRIMARY_CONTACT_MISMATCH" }
+      );
+    }
+
+    assertSubscriptionAllowsAccess(company);
+    const maintenance = await isPlatformMaintenanceEnabled();
+    if (maintenance.enabled) {
+      throw new HttpError(503, maintenance.message, { code: "PLATFORM_MAINTENANCE" });
     }
 
     // Ensure email is not already taken by an existing user in this company

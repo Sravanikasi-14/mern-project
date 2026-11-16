@@ -38,6 +38,9 @@ for (const name of [
   "ca-dept-links",
   "ca-designations",
   "ca-org-batch6",
+  "f50-payroll-write",
+  "f50-payroll-resp",
+  "payroll-e2e",
 ]) {
   fs.mkdirSync(path.join(base, name), { recursive: true });
 }

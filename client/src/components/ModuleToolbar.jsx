@@ -64,11 +64,6 @@ export default function ModuleToolbar({
       </div>
 
       <div className={`module-toolbar-end${hasEnd ? "" : " is-empty"}`}>
-        {secondaryActions ? (
-          <div className="module-toolbar-actions module-toolbar-actions--secondary">
-            {secondaryActions}
-          </div>
-        ) : null}
         {filters ? (
           <ModuleFilters
             filterCount={filterCount}
@@ -79,6 +74,11 @@ export default function ModuleToolbar({
           >
             {filters}
           </ModuleFilters>
+        ) : null}
+        {secondaryActions ? (
+          <div className="module-toolbar-actions module-toolbar-actions--secondary">
+            {secondaryActions}
+          </div>
         ) : null}
       </div>
     </div>

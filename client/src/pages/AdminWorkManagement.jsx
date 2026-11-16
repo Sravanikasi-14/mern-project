@@ -16,6 +16,7 @@ import {
 } from "../components/Icons";
 import AppModal from "../components/AppModal";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { hrPortalAllows } from "../utils/hrPortalAccess";
@@ -64,6 +65,7 @@ export default function AdminWorkManagement() {
   const [priorityFilter, setPriorityFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [selectedProject, setSelectedProject] = useState("ALL");
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [pageLimit, setPageLimit] = useState(50);
 
@@ -487,9 +489,35 @@ export default function AdminWorkManagement() {
 
   // Filter tasks by selected project if active
   const displayedTasks = useMemo(() => {
-    if (selectedProject === "ALL") return tasks;
-    return tasks.filter((t) => (t.projectName?.trim() || "Core Platform") === selectedProject);
-  }, [tasks, selectedProject]);
+    let list = tasks;
+    if (selectedProject !== "ALL") {
+      list = list.filter((t) => (t.projectName?.trim() || "Core Platform") === selectedProject);
+    }
+    if (overdueOnly) {
+      const now = new Date();
+      list = list.filter((t) => t.deadline && t.status !== "APPROVED" && new Date(t.deadline) < now);
+    }
+    return list;
+  }, [tasks, selectedProject, overdueOnly]);
+
+  const focusKpi = (kind) => {
+    setPage(1);
+    if (kind === "review") {
+      setActiveTab(TASK_TABS.REVIEW_QUEUE);
+      setOverdueOnly(false);
+      return;
+    }
+    setActiveTab(TASK_TABS.ALL);
+    setOverdueOnly(kind === "overdue");
+    if (kind === "completed") {
+      setViewMode(VIEW_MODES.KANBAN);
+      setTimeout(() => {
+        document
+          .getElementById("wm-completed-today")
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }, 60);
+    }
+  };
 
   const weeklyTimeline = useMemo(() => {
     return buildWeekStrip(new Date(), timeZone, 1).map((day) => ({
@@ -498,8 +526,7 @@ export default function AdminWorkManagement() {
     }));
   }, [tasks, timeZone]);
 
-  // Primary workflow columns stay on one horizontal board.
-  // Completed today is rendered as a full-width section below (not a 5th grid column).
+  // All workflow columns stay on one horizontal board, including Completed today.
   const kanbanColumns = [
     {
       id: "UNASSIGNED",
@@ -525,14 +552,13 @@ export default function AdminWorkManagement() {
       dotClass: "col-submitted",
       tasks: displayedTasks.filter((t) => t.status === "SUBMITTED" || t.status === "CHANGES_REQUESTED"),
     },
+    {
+      id: "APPROVED",
+      title: "Completed today",
+      dotClass: "col-approved",
+      tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
+    },
   ];
-
-  const completedTodayColumn = {
-    id: "APPROVED",
-    title: "Completed today",
-    dotClass: "col-approved",
-    tasks: displayedTasks.filter((t) => isCompletedToday(t, timeZone)),
-  };
 
   // Helper for deadline urgency
   const getDeadlineInfo = (deadlineDate, status) => {
@@ -559,51 +585,31 @@ export default function AdminWorkManagement() {
 
   return (
     <div className="container-wide split-page-container wm-page-container">
-      {/* Compact Top Header */}
       <AppHeader
         title="Work Management"
         hideLogout={true}
         actions={<SoftRefresh active={Boolean(tasksQuery.isFetching && queryTasks.length > 0)} />}
         nav={
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div className="wm-view-switcher" role="tablist" aria-label="Task view">
-              <button
-                type="button"
-                className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
-                onClick={() => setViewMode(VIEW_MODES.KANBAN)}
-              >
-                Board
-              </button>
-              <button
-                type="button"
-                className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
-                onClick={() => setViewMode(VIEW_MODES.LIST)}
-              >
-                List
-              </button>
-            </div>
-            {canEditPeople ? (
-              <button
-                type="button"
-                className="wm-btn-primary"
-                onClick={() => {
-                  setSelectedTask(null);
-                  setCreateError("");
-                  setSidePanelMode("create");
-                }}
-                style={{ whiteSpace: "nowrap" }}
-              >
-                <IconPlus size={16} />
-                Create Task
-              </button>
-            ) : (
-              <AccessRestrictedInline />
-            )}
-          </div>
+          <SegmentedTabs
+            ariaLabel="Task scope"
+            value={activeTab}
+            onChange={(next) => {
+              setActiveTab(next);
+              setPage(1);
+            }}
+            tabs={[
+              { value: TASK_TABS.ALL, label: "All Tasks" },
+              {
+                value: TASK_TABS.REVIEW_QUEUE,
+                label: "Review Queue",
+                badge: metrics.reviewQueueCount > 0 ? metrics.reviewQueueCount : null,
+              },
+              ...(meta.isManager ? [{ value: TASK_TABS.TEAM, label: "My Team" }] : []),
+            ]}
+          />
         }
       />
 
-      {/* Floating Non-intrusive Toast (Never pushes down summary cards) */}
       {(error || successMsg) && (
         <div className="wm-toast-container">
           {error && (
@@ -627,124 +633,107 @@ export default function AdminWorkManagement() {
         </div>
       )}
 
-      {/* Work impact signals from live task scope (not decorative placeholders) */}
-      <div className="wm-kpi-grid" aria-label="Work impact summary">
-        <div className="wm-kpi-card accent-slate">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label">Active work</span>
-          </div>
-          <div className="wm-kpi-value">{metrics.activeTasks}</div>
-          <div className="wm-kpi-subtext">Assigned / in progress / in review</div>
-        </div>
-        <div className="wm-kpi-card accent-amber">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#d97706" }}>Overdue</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#d97706" }}>{metrics.overdueTasks}</div>
-          <div className="wm-kpi-subtext">Past deadline, still open</div>
-        </div>
-        <div className="wm-kpi-card accent-blue">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#2563eb" }}>Review queue</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#2563eb" }}>{metrics.reviewQueueCount}</div>
-          <div className="wm-kpi-subtext">Awaiting verification</div>
-        </div>
-        <div className="wm-kpi-card accent-emerald">
-          <div className="wm-kpi-header">
-            <span className="wm-kpi-label" style={{ color: "#059669" }}>Completed today</span>
-          </div>
-          <div className="wm-kpi-value" style={{ color: "#059669" }}>{metrics.completedTasks}</div>
-          <div className="wm-kpi-subtext">Approved in company timezone today</div>
-        </div>
+      <div className="metric-card-row wm-metric-row" role="group" aria-label="Work impact summary">
+        <button
+          type="button"
+          className={`metric-card wm-metric-card accent-slate${activeTab === TASK_TABS.ALL && !overdueOnly ? " is-active" : ""}`}
+          onClick={() => focusKpi("active")}
+        >
+          <span className="metric-card-label">Active work</span>
+          <span className="metric-card-value">{metrics.activeTasks}</span>
+          <span className="metric-card-sub">Assigned / in progress / in review</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card wm-metric-card accent-amber${overdueOnly ? " is-active" : ""}`}
+          onClick={() => focusKpi("overdue")}
+        >
+          <span className="metric-card-label">Overdue</span>
+          <span className="metric-card-value wm-value-amber">{metrics.overdueTasks}</span>
+          <span className="metric-card-sub">Past deadline, still open</span>
+        </button>
+        <button
+          type="button"
+          className={`metric-card wm-metric-card accent-blue${activeTab === TASK_TABS.REVIEW_QUEUE ? " is-active" : ""}`}
+          onClick={() => focusKpi("review")}
+        >
+          <span className="metric-card-label">Review queue</span>
+          <span className="metric-card-value">{metrics.reviewQueueCount}</span>
+          <span className="metric-card-sub">Awaiting verification</span>
+        </button>
+        <button
+          type="button"
+          className="metric-card wm-metric-card accent-emerald"
+          onClick={() => focusKpi("completed")}
+        >
+          <span className="metric-card-label">Completed today</span>
+          <span className="metric-card-value wm-value-green">{metrics.completedTasks}</span>
+          <span className="metric-card-sub">Approved in company timezone today</span>
+        </button>
       </div>
 
-      {/* Unified 2-Region Grid Layout */}
       <div className="wm-unified-grid">
-        {/* Main Workspace (Left ~75%) */}
         <div className="wm-main-col">
-          <div className="wm-tab-strip" style={{ marginBottom: 10 }}>
-            <div className="wm-tab-group">
-              <button
-                type="button"
-                onClick={() => setActiveTab(TASK_TABS.ALL)}
-                className={`wm-tab-btn ${activeTab === TASK_TABS.ALL ? "active" : ""}`}
-              >
-                All Tasks
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab(TASK_TABS.REVIEW_QUEUE)}
-                className={`wm-tab-btn ${activeTab === TASK_TABS.REVIEW_QUEUE ? "active" : ""}`}
-              >
-                <span>Review Queue</span>
-                {metrics.reviewQueueCount > 0 && (
-                  <span
-                    style={{
-                      padding: "1px 5px",
-                      borderRadius: 10,
-                      fontSize: 10.5,
-                      background: "#fef3c7",
-                      color: "#92400e",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {metrics.reviewQueueCount}
-                  </span>
-                )}
-              </button>
-              {meta.isManager && (
+          <ModuleToolbar
+            className="wm-module-toolbar"
+            leading={
+              <SegmentedTabs
+                ariaLabel="Task view"
+                className="wm-view-tabs"
+                value={viewMode}
+                onChange={setViewMode}
+                tabs={[
+                  { value: VIEW_MODES.KANBAN, label: "Board" },
+                  { value: VIEW_MODES.LIST, label: "List" },
+                ]}
+              />
+            }
+            actions={
+              canEditPeople ? (
                 <button
                   type="button"
-                  onClick={() => setActiveTab(TASK_TABS.TEAM)}
-                  className={`wm-tab-btn ${activeTab === TASK_TABS.TEAM ? "active" : ""}`}
-                >
-                  My Team
-                </button>
-              )}
-            </div>
-            {selectedProject !== "ALL" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ fontSize: 11.5, color: "#64748b" }}>Project:</span>
-                <span
-                  style={{
-                    background: "#e3f2e9",
-                    color: "#0d3a23",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "2px 7px",
-                    borderRadius: 5,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
+                  className="btn-primary"
+                  onClick={() => {
+                    setSelectedTask(null);
+                    setCreateError("");
+                    setSidePanelMode("create");
                   }}
                 >
-                  {selectedProject}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProject("ALL")}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "#0d3a23" }}
-                    aria-label="Clear project filter"
-                  >
-                    <IconClose size={11} />
-                  </button>
-                </span>
-              </div>
-            )}
-          </div>
-
-          <ModuleToolbar
+                  <IconPlus size={16} />
+                  Create Task
+                </button>
+              ) : (
+                <AccessRestrictedInline />
+              )
+            }
             searchValue={search}
             onSearchChange={(e) => setSearch(e.target.value)}
             onSearchSubmit={handleSearchSubmit}
             searchPlaceholder="Search tasks..."
             searchAriaLabel="Search tasks"
+            secondaryActions={
+              selectedProject !== "ALL" ? (
+                <span className="wm-project-chip">
+                  Project: <strong>{selectedProject}</strong>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProject("ALL")}
+                    aria-label="Clear project filter"
+                  >
+                    <IconClose size={11} />
+                  </button>
+                </span>
+              ) : null
+            }
             filterCount={
-              (priorityFilter !== "ALL" ? 1 : 0) + (departmentFilter !== "ALL" ? 1 : 0)
+              (priorityFilter !== "ALL" ? 1 : 0) +
+              (departmentFilter !== "ALL" ? 1 : 0) +
+              (overdueOnly ? 1 : 0)
             }
             onFiltersClear={() => {
               setPriorityFilter("ALL");
               setDepartmentFilter("ALL");
+              setOverdueOnly(false);
             }}
             filters={
               <>
@@ -775,6 +764,17 @@ export default function AdminWorkManagement() {
                         {d}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label className="module-toolbar-filter-field">
+                  Deadline
+                  <select
+                    className="filter-select"
+                    value={overdueOnly ? "OVERDUE" : "ALL"}
+                    onChange={(e) => setOverdueOnly(e.target.value === "OVERDUE")}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="OVERDUE">Overdue only</option>
                   </select>
                 </label>
               </>
@@ -841,6 +841,7 @@ export default function AdminWorkManagement() {
                 return (
                   <div
                     key={col.id}
+                    id={col.id === "APPROVED" ? "wm-completed-today" : undefined}
                     className={`wm-kanban-col ${isOver ? "is-drop-target" : ""}`}
                     onDragOver={(e) => handleDragOver(e, col.id)}
                     onDragLeave={handleDragLeave}
@@ -977,78 +978,6 @@ export default function AdminWorkManagement() {
                 );
               })}
             </div>
-
-            {/* Completed today — full-width section below the workflow columns */}
-            {(() => {
-              const col = completedTodayColumn;
-              const isOver = dragOverCol === col.id;
-              return (
-                <div
-                  className={`wm-kanban-completed ${isOver ? "is-drop-target" : ""}`}
-                  onDragOver={(e) => handleDragOver(e, col.id)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, col.id)}
-                  aria-label="Completed today"
-                >
-                  <div className="wm-kanban-col-header">
-                    <div className="wm-kanban-col-title">
-                      <span className={`wm-kanban-col-dot ${col.dotClass}`} />
-                      <span>{col.title}</span>
-                    </div>
-                    <span className="wm-kanban-count-pill">{col.tasks.length}</span>
-                  </div>
-                  <div className="wm-kanban-completed-cards">
-                    {loading ? (
-                      <div style={{ padding: 14, textAlign: "center", color: "#94a3b8", fontSize: 11.5 }}>
-                        Loading...
-                      </div>
-                    ) : col.tasks.length === 0 ? (
-                      <div className="wm-kanban-completed-empty">None today</div>
-                    ) : (
-                      col.tasks.map((task) => {
-                        const isDragging = draggedTaskId === task._id;
-                        const deadlineInfo = getDeadlineInfo(task.deadline, task.status);
-                        return (
-                          <div
-                            key={task._id}
-                            className={`wm-task-card wm-task-card--completed ${isDragging ? "is-dragging" : ""}`}
-                            draggable={true}
-                            onDragStart={(e) => handleDragStart(e, task)}
-                            onDragEnd={handleDragEnd}
-                            onClick={() => selectTaskDetails(task)}
-                            title={`${task.title} (${task.assigneeSnapshot?.fullName || "Unassigned"})`}
-                          >
-                            <h5 className="wm-task-card-title">{task.title}</h5>
-                            <div className="wm-task-card-footer">
-                              <div className="wm-task-assignee">
-                                <AuthedAvatar
-                                  className="wm-task-avatar"
-                                  employee={task.assigneeSnapshot}
-                                  avatar={task.assigneeSnapshot?.avatar}
-                                  name={task.assigneeSnapshot?.fullName}
-                                  initials={initialsFromName(task.assigneeSnapshot?.fullName, "U")}
-                                  alt={task.assigneeSnapshot?.fullName || "Unassigned"}
-                                />
-                                <span className="wm-task-assignee-name">
-                                  {task.assigneeSnapshot?.fullName?.split(" ")[0] || "Unassigned"}
-                                </span>
-                              </div>
-                              <div
-                                className={`wm-task-due ${
-                                  deadlineInfo.isOverdue ? "overdue" : deadlineInfo.isSoon ? "soon" : ""
-                                }`}
-                              >
-                                {deadlineInfo.text}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
             </div>
           ) : (
             /* Table View Mode */

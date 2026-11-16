@@ -282,6 +282,14 @@ export async function linkPortalOperatorEmployee({
     }
 
     const previousEmployeeId = user.employeeId || null;
+    const { reserveEmployeeSeat, releaseEmployeeSeat } = await import("./platformSeatService.js");
+    let seatReserved = false;
+    if (company?._id) {
+      const knownEmployeeCount = await Employee.countDocuments({});
+      await reserveEmployeeSeat(company._id, { knownEmployeeCount });
+      seatReserved = true;
+    }
+
     const draft = new Employee({
       userId: user._id,
       employeeCode,
@@ -304,6 +312,9 @@ export async function linkPortalOperatorEmployee({
       await user.save(session ? { session } : undefined);
       userSaved = true;
     } catch (error) {
+      if (seatReserved) {
+        await releaseEmployeeSeat(company._id);
+      }
       if (createdDoc?._id) {
         const cleanup = Employee.deleteOne({ _id: createdDoc._id });
         if (session) cleanup.session(session);

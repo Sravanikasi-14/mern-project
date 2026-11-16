@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { isStrictObjectId } from "./reportingManagerService.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -400,6 +401,94 @@ export async function resolveEmployeeRelationship({
     viewerUp,
     targetUp,
   });
+}
+
+/**
+ * F47 — Collect employee IDs that are hierarchy-visible to a viewer without
+ * loading the full ACTIVE workforce as relationship targets.
+ *
+ * Mirrors isHierarchyVisibleRelationship semantics:
+ * SELF, ancestors (managers), peers (same reportingManagerId), and
+ * direct/indirect reports within MAX_RELATIONSHIP_WALK.
+ *
+ * Descendant BFS follows reportingManagerId through inactive intermediate
+ * nodes (matching upward walks) but only adds ACTIVE employees to the set.
+ *
+ * @returns {Promise<Set<string>>}
+ */
+export async function collectHierarchyVisibleEmployeeIds({
+  Employee,
+  viewerEmployeeId,
+}) {
+  if (!isStrictObjectId(viewerEmployeeId)) {
+    throw new HttpError(400, "Invalid employee reference.", {
+      code: "INVALID_EMPLOYEE_ID",
+    });
+  }
+
+  const viewerId = String(viewerEmployeeId);
+  const viewer = await Employee.findById(viewerId).select(CHAIN_SELECT).lean();
+  if (!viewer) {
+    throw new HttpError(404, "Employee not found", {
+      code: "EMPLOYEE_NOT_FOUND",
+    });
+  }
+
+  /** @type {Set<string>} */
+  const visible = new Set([viewerId]);
+
+  const { ancestors } = await walkManagerAncestors(Employee, viewerId);
+  for (const ancestorId of ancestors) {
+    visible.add(String(ancestorId));
+  }
+
+  // Peers: same proven reportingManagerId (classifyRelationshipFromWalks PEER rule).
+  const viewerManagerId = toIdString(viewer.job?.reportingManagerId);
+  if (viewerManagerId && isStrictObjectId(viewerManagerId)) {
+    const peers = await Employee.find({
+      status: EMPLOYEE_STATUSES.ACTIVE,
+      "job.reportingManagerId": new mongoose.Types.ObjectId(viewerManagerId),
+      _id: { $ne: new mongoose.Types.ObjectId(viewerId) },
+    })
+      .select("_id")
+      .lean();
+    for (const peer of peers) {
+      visible.add(String(peer._id));
+    }
+  }
+
+  // Descendants: BFS down reportingManagerId edges, bounded by walk depth.
+  // Include inactive nodes in the frontier so ACTIVE reports under an inactive
+  // middle manager remain discoverable (same as target upward walks).
+  let frontier = [viewerId];
+  const seenInDescent = new Set([viewerId]);
+
+  for (let depth = 0; depth < MAX_RELATIONSHIP_WALK && frontier.length > 0; depth += 1) {
+    const frontierOids = frontier
+      .filter((id) => isStrictObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+    if (!frontierOids.length) break;
+
+    const children = await Employee.find({
+      "job.reportingManagerId": { $in: frontierOids },
+    })
+      .select("_id status")
+      .lean();
+
+    const nextFrontier = [];
+    for (const child of children) {
+      const childId = String(child._id);
+      if (seenInDescent.has(childId)) continue; // cycle / revisit
+      seenInDescent.add(childId);
+      nextFrontier.push(childId);
+      if (child.status === EMPLOYEE_STATUSES.ACTIVE) {
+        visible.add(childId);
+      }
+    }
+    frontier = nextFrontier;
+  }
+
+  return visible;
 }
 
 /**

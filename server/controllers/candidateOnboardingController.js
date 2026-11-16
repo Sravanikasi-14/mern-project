@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import mongoose from "mongoose";
 import { findCompanyById, getCompanyModels } from "../config/db.js";
 import { HttpError } from "../utils/httpError.js";
@@ -10,7 +9,7 @@ import {
   ONBOARDING_SECTION_KEYS,
 } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
-import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
+import { saveDocumentFile, loadDocumentBuffer } from "../services/documentStorage.js";
 import { verifyCandidateOnboardingToken } from "../utils/onboardingToken.js";
 import {
   SECTION_KEY_LIST,
@@ -407,7 +406,9 @@ export async function saveOnboardingDraft(req, res, next) {
 export async function uploadOnboardingDocument(req, res, next) {
   try {
     const { token } = req.params;
-    const { company, user } = await resolveAndVerifyCandidateOnboarding(token, { lean: false });
+    const { company, models, user } = await resolveAndVerifyCandidateOnboarding(token, {
+      lean: false,
+    });
 
     const { documentType, title, fileName, fileData, mimeType } = req.body || {};
 
@@ -423,13 +424,15 @@ export async function uploadOnboardingDocument(req, res, next) {
     assertSectionsEditable(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
     invalidateEditedSections(user.onboarding, [ONBOARDING_SECTION_KEYS.DOCUMENTS]);
 
-    // Save document to tenant isolated storage using candidate user namespace
+    // F57: durable GridFS when tenant models are available.
     const saved = await saveDocumentFile({
       databaseName: company.databaseName,
       employeeId: `onboarding_${user._id}`,
       fileName,
       fileData,
       mimeType,
+      connection: models.User.db,
+      ownerType: "onboarding",
     });
 
     const docRecord = {
@@ -501,7 +504,9 @@ export async function deleteOnboardingDocument(req, res, next) {
 export async function downloadOnboardingDocument(req, res, next) {
   try {
     const { token, docId } = req.params;
-    const { company, user } = await resolveAndVerifyCandidateOnboarding(token, { lean: true });
+    const { company, models, user } = await resolveAndVerifyCandidateOnboarding(token, {
+      lean: true,
+    });
 
     const doc = user.onboarding.documents?.find(
       (d) =>
@@ -513,19 +518,23 @@ export async function downloadOnboardingDocument(req, res, next) {
       throw new HttpError(404, "Document not found.");
     }
 
-    const filePath = getDocumentAbsolutePath({
+    const loaded = await loadDocumentBuffer({
       databaseName: company.databaseName,
       employeeId: `onboarding_${user._id}`,
       storageKey: doc.storageKey,
+      connection: models.User.db,
     });
 
-    if (!filePath || !fs.existsSync(filePath)) {
+    if (!loaded?.buffer) {
       throw new HttpError(404, "Document file not found on server.");
     }
 
     res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.fileName)}"`);
-    fs.createReadStream(filePath).pipe(res);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(doc.fileName)}"`
+    );
+    return res.status(200).send(loaded.buffer);
   } catch (error) {
     next(error);
   }

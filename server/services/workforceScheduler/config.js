@@ -90,6 +90,16 @@ export function schedulerBudgetMs() {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 50_000;
 }
 
+/**
+ * F53 — Per-tenant wall-clock cap within a multi-tenant wave (ms).
+ * Prevents one slow company from consuming the entire fleet budget.
+ * Truncated tenants keep lastRunAt unchanged so the next wave resumes them.
+ */
+export function perCompanyBudgetMs() {
+  const n = Number(process.env.WORKFORCE_SCHEDULER_PER_COMPANY_BUDGET_MS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 15_000;
+}
+
 /** Optional hard cap on companies processed per invocation (0 = no cap beyond budget). */
 export function maxCompaniesPerInvocation() {
   const n = Number(process.env.WORKFORCE_SCHEDULER_MAX_COMPANIES);

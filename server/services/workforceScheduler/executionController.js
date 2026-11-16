@@ -7,6 +7,7 @@ import {
   lockTtlMs,
   maxActiveTasks,
   maxCompaniesPerInvocation,
+  perCompanyBudgetMs,
   schedulerBudgetMs,
   schedulerEnabled,
   schedulerMode,
@@ -435,9 +436,14 @@ export async function runSchedulerForAllCompanies(options = {}) {
 
       const companyStarted = Date.now();
       try {
+        // F53: cap each tenant so one slow company cannot consume the whole fleet budget.
+        const perCompanyMs = Number.isFinite(options.perCompanyBudgetMs)
+          ? Number(options.perCompanyBudgetMs)
+          : perCompanyBudgetMs();
+        const companyDeadline = Math.min(deadline, Date.now() + Math.max(0, perCompanyMs));
         // Per-company scope: retain while scheduling, release on success/failure/return.
         const outcome = await runWithTenantConnectionScope(() =>
-          runCompanyScheduler(company, { ...options, deadline })
+          runCompanyScheduler(company, { ...options, deadline: companyDeadline })
         );
         return {
           ...outcome,

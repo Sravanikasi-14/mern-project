@@ -27,10 +27,11 @@ import {
   removeMessage,
 } from "../controllers/conversationController.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { requireEntitledModule } from "../middleware/hrAccessEnforcement.js";
 
 const router = Router();
 
-router.use(authenticate);
+router.use(authenticate, requireEntitledModule("chat"));
 
 router.get("/directory", getDirectory);
 router.get("/search", getMessageSearch);

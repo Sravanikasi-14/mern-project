@@ -36,7 +36,7 @@ import {
 } from "../utils/employeeAttendanceInsights";
 import { useSmartBack } from "../hooks/useSmartBack";
 import { useQueryClient } from "@tanstack/react-query";
-import { invalidateProfile } from "../lib/queryKeys";
+import { invalidateEmployees, invalidateProfile } from "../lib/queryKeys";
 import api from "../services/api";
 import useAuthedImage from "../hooks/useAuthedImage";
 import "./EmployeeProfileView.css";
@@ -558,6 +558,8 @@ export default function EmployeeProfile({ mode = "hr", defaultTab = "overview" }
         await api.patch(`/employees/${routeId}`, payload);
         const refreshed = await api.get(`/employees/${routeId}`);
         if (refreshed.data) setEmployee(refreshed.data);
+        // F56: status / department / title / project edits must refresh filter-options.
+        invalidateEmployees(queryClient);
         setEditSuccess("Employee profile updated successfully.");
       }
 

@@ -2141,8 +2141,80 @@
   padding-top: 4px;
 }
 
+.lm-handover-board {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lm-handover-section-tabs {
+  margin: 0;
+  max-width: 100%;
+}
+
+.lm-handover-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 12px);
+  background: var(--card, #fdfdfc);
+  box-shadow: var(--shadow);
+}
+
+.lm-handover-group--tabbed {
+  min-height: 0;
+}
+
+.lm-handover-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lm-handover-group-head .lm-review-subhead {
+  margin: 0;
+}
+
+.lm-handover-count {
+  flex: 0 0 auto;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.lm-handover-empty {
+  margin: 0;
+}
+
+.lm-handover-empty .lm-empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink, #131a15);
+}
+
 .lm-handover-card {
-  margin-top: 4px;
+  margin-top: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: 12px;
+  background: var(--panel, #f5f6f5);
+}
+
+.lm-handover-card.lm-handover-selected {
+  border-color: rgba(39, 134, 90, 0.45);
+  box-shadow: 0 0 0 2px rgba(39, 134, 90, 0.12);
 }
 
 .lm-handover-stage {
@@ -2165,6 +2237,135 @@
 .lm-handover-item .filter-select {
   width: 100%;
   margin-top: 4px;
+}
+
+/* Employee Leave — handovers page shell */
+.el-handovers-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.el-handovers-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.el-handovers-title {
+  margin: 0;
+  font-size: var(--fs-section, 16px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink, #131a15);
+}
+
+.el-handovers-lede {
+  margin: 6px 0 0;
+  max-width: 52ch;
+  color: var(--muted, #646d67);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.el-handovers-workspace {
+  min-width: 0;
+}
+
+/* Employee Leave — apply / detail modals */
+.el-leave-apply-modal .app-modal-body,
+.el-leave-detail-modal .app-modal-body {
+  padding-top: 8px;
+}
+
+.el-leave-apply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.el-leave-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.el-leave-label {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ink, #131a15);
+}
+
+.el-leave-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--hair, #e3e7e4);
+  background: var(--card, #fdfdfc);
+  color: var(--ink, #131a15);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.el-leave-textarea:focus {
+  outline: none;
+  border-color: rgba(39, 134, 90, 0.55);
+  box-shadow: 0 0 0 3px rgba(39, 134, 90, 0.12);
+}
+
+.el-leave-apply-error {
+  margin: 0 0 12px;
+}
+
+.el-leave-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  margin: 0;
+}
+
+.el-leave-detail > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.el-leave-detail-span {
+  grid-column: 1 / -1;
+}
+
+.el-leave-detail dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted, #646d67);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.el-leave-detail dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink, #131a15);
+  line-height: 1.4;
+}
+
+.colleague-profile-modal .app-modal-body {
+  padding-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .el-leave-detail {
+    grid-template-columns: 1fr;
+  }
 }
 
 .lm-details-modal .app-modal-body {
@@ -2480,4 +2681,70 @@
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Admin Leave — interactive overview metric cards + Absences sub-tab
+   -------------------------------------------------------------------------- */
+.lm-metric-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .lm-metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .lm-metric-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lm-metric-card:focus-visible {
+  outline: 2px solid var(--g-600, #27865a);
+  outline-offset: 2px;
+}
+
+.lm-metric-card:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+.lm-metric-card.is-attention .metric-card-value {
+  color: var(--amber, #b06d0a);
+}
+
+.lm-absences-section {
+  width: 100%;
+  max-width: none;
+  margin: 0 0 14px;
+}
+
+.lm-absences-card {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.lm-absences-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lm-absences-month {
+  min-width: 120px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #131a15);
+}
+
+.lm-absences-count {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-800, #155a37);
 }

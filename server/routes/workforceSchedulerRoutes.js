@@ -1,6 +1,10 @@
 import express from "express";
 import { authenticate } from "../middleware/authenticate.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import {
   runWorkforceSchedulerCron,
   runWorkforceSchedulerForCompany,
@@ -18,6 +22,7 @@ router.post(
   "/company/run",
   authenticate,
   loadHrAccessContext,
+  requireEntitledModule("work"),
   requireHrPermission("people.edit"),
   runWorkforceSchedulerForCompany
 );
@@ -27,6 +32,7 @@ router.post(
   "/tasks/:id/approve",
   authenticate,
   loadHrAccessContext,
+  requireEntitledModule("work"),
   requireHrPermission("people.edit"),
   approveWorkforceSchedulerAssignment
 );

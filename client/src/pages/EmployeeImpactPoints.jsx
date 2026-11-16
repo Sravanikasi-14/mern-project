@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import MobileExpandable from "../components/mobile/MobileExpandable";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import {
@@ -37,11 +38,27 @@ export default function EmployeeImpactPoints() {
   // Leaderboard state
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("all");
+  const [leaderboardPage, setLeaderboardPage] = useState(1);
+  const [leaderboardLimit, setLeaderboardLimit] = useState(10);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sidePanelMode, setSidePanelMode] = useState("none"); // 'none' | 'recognize'
+  const [recognizeForm, setRecognizeForm] = useState({
+    recipientId: "",
+    points: 10,
+    reason: "",
+  });
+  const [recognizing, setRecognizing] = useState(false);
+  const [recognizeError, setRecognizeError] = useState("");
 
   const metaQuery = useTasksMetaQuery();
   const impactQuery = useImpactMeQuery();
   const leaderboardQuery = useImpactLeaderboardQuery(
-    { period: periodFilter, department: departmentFilter },
+    {
+      period: periodFilter,
+      department: departmentFilter,
+      page: leaderboardPage,
+      limit: leaderboardLimit,
+    },
     { enabled: activeTab === "LEADERBOARD" }
   );
 
@@ -54,8 +71,16 @@ export default function EmployeeImpactPoints() {
   };
   const myPoints = impactQuery.data ?? null;
   const loading = impactQuery.isLoading && !impactQuery.data;
-  const leaderboard = leaderboardQuery.data || [];
-  const leaderboardLoading = leaderboardQuery.isLoading && !leaderboardQuery.data;
+  const leaderboard = Array.isArray(leaderboardQuery.data?.leaderboard)
+    ? leaderboardQuery.data.leaderboard
+    : [];
+  const leaderboardPagination = leaderboardQuery.data?.pagination || {
+    page: leaderboardPage,
+    limit: leaderboardLimit,
+    total: leaderboard.length,
+    totalPages: 1,
+  };
+  const leaderboardLoading = leaderboardQuery.isLoading && leaderboard.length === 0;
   const queryError =
     impactQuery.error?.response?.data?.message ||
     (impactQuery.error ? "Failed to load impact points profile" : "") ||
@@ -63,18 +88,69 @@ export default function EmployeeImpactPoints() {
     (leaderboardQuery.error ? "Failed to load leaderboard" : "");
   const error = actionError || queryError;
 
-  const leaderboardPager = useClientPagination(leaderboard, 10);
-  const historyPager = useClientPagination(myPoints?.recentTransactions || myPoints?.history || [], 10);
+  const leaderboardPager = {
+    slice: leaderboard,
+    page: leaderboardPagination.page || leaderboardPage,
+    totalPages: leaderboardPagination.totalPages || leaderboardPagination.pages || 1,
+    total: leaderboardPagination.total || 0,
+    pageSize: leaderboardPagination.limit || leaderboardLimit,
+    setPage: setLeaderboardPage,
+    setPageSize: (size) => {
+      setLeaderboardLimit(size);
+      setLeaderboardPage(1);
+    },
+  };
+  const recentTransactions = myPoints?.recentTransactions || myPoints?.history || [];
 
-  // Recognition state (for managers with direct reports)
-  const [sidePanelMode, setSidePanelMode] = useState("none"); // 'none' | 'recognize'
-  const [recognizeForm, setRecognizeForm] = useState({
-    recipientId: "",
-    points: 10,
-    reason: "",
-  });
-  const [recognizing, setRecognizing] = useState(false);
-  const [recognizeError, setRecognizeError] = useState("");
+  const filteredHistory = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return recentTransactions;
+    return recentTransactions.filter((tx) => {
+      const haystack = [
+        tx?.reason,
+        tx?.source,
+        tx?.eventType,
+        tx?.actor?.name,
+        tx?.actorSnapshot?.fullName,
+        tx?.actorSnapshot?.email,
+        String(tx?.points ?? ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [recentTransactions, searchQuery]);
+
+  const filteredLeaderboard = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return leaderboard;
+    return leaderboard.filter((row) => {
+      const haystack = [
+        row?.employee?.fullName,
+        row?.employee?.name,
+        row?.name,
+        row?.fullName,
+        row?.department,
+        row?.employee?.department,
+        String(row?.points ?? row?.netPoints ?? row?.totalPoints ?? ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [leaderboard, searchQuery]);
+
+  const historyPager = useClientPagination(filteredHistory, 10);
+
+  useEffect(() => {
+    setLeaderboardPage(1);
+  }, [departmentFilter, periodFilter]);
+
+  useEffect(() => {
+    setSearchQuery("");
+  }, [activeTab]);
 
   // Handle Recognition Submit
   const handleRecognizeSubmit = async (e) => {
@@ -114,7 +190,24 @@ export default function EmployeeImpactPoints() {
   const departmentRank = myPoints?.departmentRank ?? myPoints?.rankInDepartment;
   const pointsEarned = myPoints?.pointsEarned ?? myPoints?.totalEarned ?? 0;
   const pointsDeducted = myPoints?.pointsDeducted ?? myPoints?.totalDeducted ?? 0;
-  const recentTransactions = myPoints?.recentTransactions || myPoints?.history || [];
+
+  const toggleRecognizePanel = () => {
+    setRecognizeError("");
+    setSidePanelMode((prev) => (prev === "recognize" ? "none" : "recognize"));
+  };
+
+  const recognizeAction = meta.isManager ? (
+    <button
+      type="button"
+      className={sidePanelMode === "recognize" ? "btn-secondary" : "btn-primary"}
+      onClick={toggleRecognizePanel}
+    >
+      {sidePanelMode === "recognize" ? "Cancel" : "Recognise"}
+    </button>
+  ) : null;
+
+  const leaderboardFilterCount =
+    (departmentFilter !== "ALL" ? 1 : 0) + (periodFilter !== "all" ? 1 : 0);
 
   return (
     <div className="container-wide split-page-container wm-page-container">
@@ -131,15 +224,15 @@ export default function EmployeeImpactPoints() {
           />
         }
         nav={
-          meta.isManager ? (
-            <button
-              className={sidePanelMode === "recognize" ? "wm-btn-secondary" : "wm-btn-primary"}
-              onClick={() => setSidePanelMode(sidePanelMode === "recognize" ? "none" : "recognize")}
-              style={{ whiteSpace: "nowrap" }}
-            >
-              {sidePanelMode === "recognize" ? "Cancel" : "Recognize"}
-            </button>
-          ) : null
+          <SegmentedTabs
+            ariaLabel="Impact sections"
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { value: "MY_HISTORY", label: "Activity" },
+              { value: "LEADERBOARD", label: "Leaderboard" },
+            ]}
+          />
         }
       />
 
@@ -203,42 +296,31 @@ export default function EmployeeImpactPoints() {
       >
         {/* Left Column: Activity Ledger or Leaderboard */}
         <div className="split-page-left-col wm-left-col">
-          {/* Navigation & Filters Toolbar Card */}
-          <div className="wm-toolbar-card">
-            <div className="wm-tab-strip">
-              <div className="wm-tab-group">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("MY_HISTORY")}
-                  className={`wm-tab-btn ${activeTab === "MY_HISTORY" ? "active" : ""}`}
-                >
-                  Activity
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("LEADERBOARD")}
-                  className={`wm-tab-btn ${activeTab === "LEADERBOARD" ? "active" : ""}`}
-                >
-                  Leaderboard
-                </button>
-              </div>
-
-              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
-                {activeTab === "MY_HISTORY"
-                  ? `${recentTransactions.length} activity item${recentTransactions.length === 1 ? "" : "s"}`
-                  : `${leaderboard.length} ranked employee${leaderboard.length === 1 ? "" : "s"}`}
-              </div>
-            </div>
-
-            {activeTab === "LEADERBOARD" ? (
-              <ModuleToolbar
-                className="wm-module-toolbar"
-                filterCount={(departmentFilter !== "ALL" ? 1 : 0) + (periodFilter !== "all" ? 1 : 0)}
-                onFiltersClear={() => {
-                  setDepartmentFilter("ALL");
-                  setPeriodFilter("all");
-                }}
-                filters={
+          {/* Toolbar: Search (left) | Filters | Recognise — Payslips pattern */}
+          <div className="wm-toolbar-card wm-toolbar-card--bare">
+            <ModuleToolbar
+              className="wm-module-toolbar"
+              searchValue={searchQuery}
+              onSearchChange={(e) => setSearchQuery(e.target.value)}
+              onSearchClear={() => setSearchQuery("")}
+              searchPlaceholder={
+                activeTab === "LEADERBOARD"
+                  ? "Search by name or department…"
+                  : "Search activity, reason, or awarder…"
+              }
+              searchAriaLabel="Search impact points"
+              secondaryActions={recognizeAction}
+              filterCount={activeTab === "LEADERBOARD" ? leaderboardFilterCount : 0}
+              onFiltersClear={
+                activeTab === "LEADERBOARD"
+                  ? () => {
+                      setDepartmentFilter("ALL");
+                      setPeriodFilter("all");
+                    }
+                  : undefined
+              }
+              filters={
+                activeTab === "LEADERBOARD" ? (
                   <>
                     <label className="module-toolbar-filter-field">
                       Department
@@ -255,26 +337,24 @@ export default function EmployeeImpactPoints() {
                         ))}
                       </select>
                     </label>
-                    <div className="module-toolbar-filter-field">
+                    <label className="module-toolbar-filter-field">
                       Timeframe
-                      <div className="module-toolbar-pill-group" role="group" aria-label="Timeframe">
+                      <select
+                        className="filter-select"
+                        value={periodFilter}
+                        onChange={(e) => setPeriodFilter(e.target.value)}
+                      >
                         {PERIOD_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            className={`btn-secondary btn-sm${periodFilter === opt.value ? " is-active" : ""}`}
-                            onClick={() => setPeriodFilter(opt.value)}
-                            aria-pressed={periodFilter === opt.value}
-                          >
+                          <option key={opt.value} value={opt.value}>
                             {opt.label}
-                          </button>
+                          </option>
                         ))}
-                      </div>
-                    </div>
+                      </select>
+                    </label>
                   </>
-                }
-              />
-            ) : null}
+                ) : null
+              }
+            />
           </div>
 
           {/* Table Container */}
@@ -295,15 +375,21 @@ export default function EmployeeImpactPoints() {
                   <tbody>
                     {loading ? (
                       <TableSkeletonRows cols={5} rows={4} />
-                    ) : recentTransactions.length === 0 ? (
+                    ) : filteredHistory.length === 0 ? (
                       <tr>
                         <td colSpan={5}>
                           <div className="wm-empty-state">
                             <div className="wm-empty-icon">
                               <IconInfo size={22} />
                             </div>
-                            <div className="wm-empty-title">No activity yet</div>
-                            <p className="wm-empty-desc">Points appear here after approved work or recognition.</p>
+                            <div className="wm-empty-title">
+                              {searchQuery.trim() ? "No matching activity" : "No activity yet"}
+                            </div>
+                            <p className="wm-empty-desc">
+                              {searchQuery.trim()
+                                ? "Try a different search term or clear the search."
+                                : "Points appear here after approved work or recognition."}
+                            </p>
                           </div>
                         </td>
                       </tr>
@@ -379,22 +465,28 @@ export default function EmployeeImpactPoints() {
                   <tbody>
                     {leaderboardLoading ? (
                       <TableSkeletonRows cols={5} rows={5} />
-                    ) : leaderboard.length === 0 ? (
+                    ) : filteredLeaderboard.length === 0 ? (
                       <tr>
                         <td colSpan={5}>
                           <div className="wm-empty-state">
                             <div className="wm-empty-icon">
                               <IconInfo size={22} />
                             </div>
-                            <div className="wm-empty-title">No Leaderboard Entries Found</div>
+                            <div className="wm-empty-title">
+                              {searchQuery.trim()
+                                ? "No matching leaderboard entries"
+                                : "No Leaderboard Entries Found"}
+                            </div>
                             <p className="wm-empty-desc">
-                              Activity will appear once points have been awarded.
+                              {searchQuery.trim()
+                                ? "Try a different search term or clear the search."
+                                : "Activity will appear once points have been awarded."}
                             </p>
                           </div>
                         </td>
                       </tr>
                     ) : (
-                      leaderboardPager.slice.map((row) => {
+                      filteredLeaderboard.map((row) => {
                         const isMe = Boolean(
                           myPoints &&
                             (String(row.employeeId) === String(myPoints.employeeId) ||

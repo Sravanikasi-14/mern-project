@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import mongoose from "mongoose";
 import { HttpError } from "../utils/httpError.js";
 import {
@@ -12,7 +11,7 @@ import { OFFER_LETTER_STATUSES } from "../models/OfferLetter.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { TOKEN_TYPES } from "../models/AuthToken.js";
 import { emailService } from "../services/emailService.js";
-import { getDocumentAbsolutePath } from "../services/documentStorage.js";
+import { loadDocumentBuffer } from "../services/documentStorage.js";
 import {
   signCandidateOnboardingToken,
   signEmployeeActivationToken,
@@ -357,19 +356,23 @@ export async function downloadSubmissionDocument(req, res, next) {
       throw new HttpError(404, "Document not found.");
     }
 
-    const filePath = getDocumentAbsolutePath({
+    const loaded = await loadDocumentBuffer({
       databaseName: req.auth.company.databaseName,
       employeeId: `onboarding_${candidateUser._id}`,
       storageKey: doc.storageKey,
+      connection: User.db,
     });
 
-    if (!filePath || !fs.existsSync(filePath)) {
+    if (!loaded?.buffer) {
       throw new HttpError(404, "Document file not found on server.");
     }
 
     res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(doc.fileName)}"`);
-    fs.createReadStream(filePath).pipe(res);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(doc.fileName)}"`
+    );
+    return res.status(200).send(loaded.buffer);
   } catch (error) {
     next(error);
   }

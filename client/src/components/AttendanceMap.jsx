@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { IconMapPin } from "./Icons";
@@ -76,6 +76,8 @@ export default function AttendanceMap({
   tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
   height = 420,
+  hideEmptyOverlay = false,
+  countLabel = "employees",
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -85,12 +87,17 @@ export default function AttendanceMap({
   const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   // Filter employees with valid coordinates (either live tracking or punch location)
-  const locatableEmployees = employees.filter((emp) => {
-    const hasLive = emp.isTrackingActive && emp.liveTracking?.lastLocation?.latitude !== undefined;
-    const hasPunchIn = emp.checkInLocation?.latitude !== undefined;
-    const hasPunchOut = emp.checkOutLocation?.latitude !== undefined;
-    return hasLive || hasPunchIn || hasPunchOut;
-  });
+  // Memoized so unrelated re-renders (popup click, tile error) don't clear markers and re-fit the view.
+  const locatableEmployees = useMemo(
+    () =>
+      employees.filter((emp) => {
+        const hasLive = emp.isTrackingActive && emp.liveTracking?.lastLocation?.latitude !== undefined;
+        const hasPunchIn = emp.checkInLocation?.latitude !== undefined;
+        const hasPunchOut = emp.checkOutLocation?.latitude !== undefined;
+        return hasLive || hasPunchIn || hasPunchOut;
+      }),
+    [employees]
+  );
 
   // Initialize Map
   useEffect(() => {
@@ -180,7 +187,7 @@ export default function AttendanceMap({
           ${
             emp.checkInTime
               ? `<div style="font-size: 12px; margin-bottom: 4px;">
-                  <strong style="color: #3f3f46;">Punch In:</strong> ${new Date(emp.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <strong style="color: #3f3f46;">${emp.sessionId ? "Session start:" : "Punch In:"}</strong> ${new Date(emp.checkInTime).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                   ${coordSource.accuracy ? `<span style="color: #71717a;">(±${Math.round(coordSource.accuracy)}m)</span>` : ""}
                 </div>`
               : ""
@@ -189,7 +196,7 @@ export default function AttendanceMap({
           ${
             emp.checkOutTime
               ? `<div style="font-size: 12px; margin-bottom: 4px;">
-                  <strong style="color: #3f3f46;">Punch Out:</strong> ${new Date(emp.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <strong style="color: #3f3f46;">${emp.sessionId ? "Session end:" : "Punch Out:"}</strong> ${new Date(emp.checkOutTime).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </div>`
               : ""
           }
@@ -257,7 +264,7 @@ export default function AttendanceMap({
         </div>
       )}
 
-      {locatableEmployees.length === 0 && (
+      {locatableEmployees.length === 0 && !hideEmptyOverlay && (
         <div
           style={{
             position: "absolute",
@@ -336,7 +343,7 @@ export default function AttendanceMap({
               [{filterLabel}]
             </span>
           )}
-          Showing {locatableEmployees.length} of {employees.length} employees on map
+          Showing {locatableEmployees.length} of {employees.length} {countLabel} on map
         </div>
       </div>
     </div>

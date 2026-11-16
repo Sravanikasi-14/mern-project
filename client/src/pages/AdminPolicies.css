@@ -77,9 +77,9 @@
   border: 1px solid #e4e4e7;
 }
 
-/* Card overview — primary focus under heading */
+/* Card overview — restored 3-column alignment, no intro panel */
 .policies-overview {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .policies-card-grid {
@@ -104,6 +104,16 @@
   color: inherit;
   width: 100%;
   min-height: 120px;
+}
+
+.policies-overview-card-group {
+  display: block;
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--g-700, #1f6b48);
 }
 
 .policies-overview-card:hover {
@@ -222,68 +232,15 @@
   position: sticky;
   top: var(--safe-top, 0px);
   z-index: 25;
-  margin: 0 -26px;
-  padding: 10px 26px 12px;
-  background: color-mix(in srgb, var(--card, #ffffff) 92%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--hair, #e6ede8);
+  margin: 0 0 8px;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 0;
   box-sizing: border-box;
 }
 
-.policies-subnav-track {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 2px 2px 6px;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x proximity;
-}
-
-.policies-subnav-track::-webkit-scrollbar {
-  height: 4px;
-}
-
-.policies-subnav-track::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--g-600, #27865a) 35%, #d5e0d9);
-  border-radius: 999px;
-}
-
-.policies-subnav-btn {
-  flex: 0 0 auto;
-  border: 1px solid var(--hair, #e6ede8);
-  background: var(--card, #ffffff);
-  color: var(--muted, #646d67);
-  border-radius: 999px;
-  padding: 6px 12px;
-  min-height: 32px;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  white-space: nowrap;
-  scroll-snap-align: start;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.policies-subnav-btn:hover {
-  border-color: rgba(39, 134, 90, 0.45);
-  color: var(--g-800, #155a37);
-}
-
-.policies-subnav-btn.is-active {
-  background: var(--g-100, #e3f2e9);
-  border-color: rgba(39, 134, 90, 0.45);
-  color: var(--g-950, #0d3a23);
-  box-shadow: inset 0 0 0 1px rgba(39, 134, 90, 0.12);
-}
-
-.policies-subnav-btn:focus-visible {
-  outline: none;
-  box-shadow: var(--focus, 0 0 0 3px var(--card), 0 0 0 5px var(--g-600));
-}
+/* Policies uses shared SegmentedTabs — no page-specific track/btn chrome. */
 
 /* Consolidated policy editor surface */
 .policies-content-workspace {
@@ -605,14 +562,52 @@
 
   .policies-subnav {
     top: var(--safe-top, 0px);
-    margin: 0 -16px;
-    padding: 8px 16px 10px;
-  }
-
-  .policies-subnav-btn {
-    padding: 5px 10px;
-    font-size: 12px;
-    min-height: 30px;
+    margin: 0 0 8px;
+    padding: 0;
   }
 }
+/* ==========================================================================
+   Declutter + hierarchy: SegmentedTabs sub-nav, quieter helper text
+   ========================================================================== */
 
+/* Keep SegmentedTabs defaults (Leave/Messages) — only constrain width here. */
+.policies-subnav-tabs.module-tabs {
+  margin: 0 0 14px;
+  max-width: 100%;
+}
+
+/* Section title > field label > helper text */
+.policies-card-title {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--ink, #131a15);
+}
+
+.policies-field-hint {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted, #646d67);
+  opacity: 0.9;
+}
+
+.policies-overview-card-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.policies-card-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+}
+
+.policies-section-card + .policies-section-card {
+  padding-top: 20px;
+}
+
+.policies-content-workspace {
+  gap: 24px;
+}

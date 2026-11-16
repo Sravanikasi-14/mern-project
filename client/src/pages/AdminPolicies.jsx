@@ -10,6 +10,7 @@ import {
 } from "../components/Icons";
 import Pagination, { useClientPagination } from "../components/Pagination";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { hrPortalAllows } from "../utils/hrPortalAccess";
@@ -116,8 +117,9 @@ const STANDARD_DOCUMENT_TYPES = [
 const POLICY_CARDS = [
   {
     id: "attendance_leave",
+    group: "time_people",
     title: "Attendance & Leave",
-    description: "Office hours, leave balances, holidays, weekends and punch location rules in one policy.",
+    description: "Hours, leave, holidays and punch rules.",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
@@ -126,42 +128,10 @@ const POLICY_CARDS = [
     ),
   },
   {
-    id: "payroll_compensation",
-    title: "Payroll & Compensation",
-    description: "Pay cycles, salary components, deductions and statutory tax baselines.",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="1" x2="12" y2="23" />
-        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-      </svg>
-    ),
-  },
-  {
-    id: "workplace_compliance",
-    title: "Workplace & Compliance",
-    description: "Mandatory documents, upload limits and onboarding compliance requirements.",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-      </svg>
-    ),
-  },
-  {
-    id: "company_conduct",
-    title: "Company & Conduct",
-    description: "Company handbook rules and Impact Points recognition guidelines.",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-      </svg>
-    ),
-  },
-  {
     id: "employment_recruitment",
+    group: "time_people",
     title: "Employment & Recruitment",
-    description: "Probation, notice periods, offer validity and candidate signing rules.",
+    description: "Probation, notice and offer rules.",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -172,15 +142,71 @@ const POLICY_CARDS = [
     ),
   },
   {
+    id: "payroll_compensation",
+    group: "pay_compliance",
+    title: "Payroll & Compensation",
+    description: "Pay cycles, salary components and tax.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="1" x2="12" y2="23" />
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+  },
+  {
+    id: "workplace_compliance",
+    group: "pay_compliance",
+    title: "Workplace & Compliance",
+    description: "Required documents and upload limits.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    ),
+  },
+  {
+    id: "company_conduct",
+    group: "conduct_history",
+    title: "Company & Conduct",
+    description: "Handbook rules and Impact Points.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    ),
+  },
+  {
     id: "revision_history",
+    group: "conduct_history",
     title: "Revision History",
-    description: "Review scheduled and historical policy revisions without changing live rules.",
+    description: "Scheduled and past revisions.",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 8v4l3 3" />
         <circle cx="12" cy="12" r="10" />
       </svg>
     ),
+  },
+];
+
+/** Overview grouping only — does not change card ids or save handlers. */
+const POLICY_OVERVIEW_GROUPS = [
+  {
+    id: "time_people",
+    title: "Attendance & workforce",
+    description: "Timekeeping, leave, and employment lifecycle rules.",
+  },
+  {
+    id: "pay_compliance",
+    title: "Payroll & compliance",
+    description: "Compensation cycles and required workplace documents.",
+  },
+  {
+    id: "conduct_history",
+    title: "Conduct & revisions",
+    description: "Company handbook policies and policy revision history.",
   },
 ];
 
@@ -732,6 +758,11 @@ export default function AdminPolicies() {
     [activePolicyCard]
   );
 
+  const policySubsectionTabs = useMemo(
+    () => policySubsections.map((section) => ({ value: section.id, label: section.label })),
+    [policySubsections]
+  );
+
   useEffect(() => {
     if (!activePolicyCard) {
       setActivePolicySection("");
@@ -771,16 +802,17 @@ export default function AdminPolicies() {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    // Horizontal-only centering for the active chip (never vertical scrollIntoView on sticky nav).
+    // Horizontal-only centering for the active chip (SegmentedTabs strip).
     const safeId = String(sectionId).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const track = policySubnavRef.current?.querySelector(".policies-subnav-track");
+    const track = policySubnavRef.current?.querySelector(".policies-subnav-tabs");
     const btn = policySubnavRef.current?.querySelector(
-      `[data-policy-section="${safeId}"]`
+      `.module-tab[data-tab-value="${safeId}"]`
     );
+    // Instant horizontal alignment — smooth scroll fights SegmentedTabs' sliding indicator.
     if (track && btn) {
       const btnCenter = btn.offsetLeft + btn.offsetWidth / 2;
       const nextLeft = Math.max(0, btnCenter - track.clientWidth / 2);
-      track.scrollTo({ left: nextLeft, behavior: "smooth" });
+      track.scrollTo({ left: nextLeft, behavior: "auto" });
     }
 
     window.setTimeout(() => {
@@ -788,53 +820,44 @@ export default function AdminPolicies() {
     }, 900);
   }, [getPolicyScrollParent, getPolicySubnavClearance]);
 
-  // Keep active subsection in sync when the user scrolls the real policy scroller.
+  // Keep active subsection in sync when the user scrolls — do not force-center the
+  // tab strip on every spy tick (that fights SegmentedTabs' sliding indicator).
   useEffect(() => {
     if (!activePolicyCard || policySubsections.length === 0) return undefined;
 
     const scroller = getPolicyScrollParent();
+    let raf = 0;
 
     const syncActiveFromScroll = () => {
       if (scrollingFromSubnavClickRef.current) return;
-      const scrollerRect = scroller.getBoundingClientRect?.() || { top: 0 };
-      const marker = scrollerRect.top + getPolicySubnavClearance() + 2;
-      let current = policySubsections[0].id;
-      for (let i = 0; i < policySubsections.length; i += 1) {
-        const section = policySubsections[i];
-        const el = document.getElementById(section.id);
-        if (!el) continue;
-        const top = el.getBoundingClientRect().top;
-        const next = policySubsections[i + 1]
-          ? document.getElementById(policySubsections[i + 1].id)
-          : null;
-        const bottom = next ? next.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
-        if (top <= marker + 12 && bottom > marker) {
-          current = section.id;
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const scrollerRect = scroller.getBoundingClientRect?.() || { top: 0 };
+        const marker = scrollerRect.top + getPolicySubnavClearance() + 2;
+        let current = policySubsections[0].id;
+        for (let i = 0; i < policySubsections.length; i += 1) {
+          const section = policySubsections[i];
+          const el = document.getElementById(section.id);
+          if (!el) continue;
+          const top = el.getBoundingClientRect().top;
+          const next = policySubsections[i + 1]
+            ? document.getElementById(policySubsections[i + 1].id)
+            : null;
+          const bottom = next ? next.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
+          if (top <= marker + 12 && bottom > marker) {
+            current = section.id;
+          }
         }
-      }
-      setActivePolicySection((prev) => (prev === current ? prev : current));
-      const safeCurrent = String(current).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      const activeBtn = policySubnavRef.current?.querySelector(
-        `[data-policy-section="${safeCurrent}"]`
-      );
-      const track = policySubnavRef.current?.querySelector(".policies-subnav-track");
-      if (activeBtn && track) {
-        const btnRect = activeBtn.getBoundingClientRect();
-        const trackRect = track.getBoundingClientRect();
-        if (btnRect.left < trackRect.left + 8 || btnRect.right > trackRect.right - 8) {
-          const btnCenter = activeBtn.offsetLeft + activeBtn.offsetWidth / 2;
-          track.scrollTo({
-            left: Math.max(0, btnCenter - track.clientWidth / 2),
-            behavior: "smooth",
-          });
-        }
-      }
+        setActivePolicySection((prev) => (prev === current ? prev : current));
+      });
     };
 
     syncActiveFromScroll();
     scroller.addEventListener("scroll", syncActiveFromScroll, { passive: true });
     window.addEventListener("resize", syncActiveFromScroll);
     return () => {
+      if (raf) window.cancelAnimationFrame(raf);
       scroller.removeEventListener("scroll", syncActiveFromScroll);
       window.removeEventListener("resize", syncActiveFromScroll);
     };
@@ -1742,23 +1765,26 @@ export default function AdminPolicies() {
       {!activePolicyCard ? (
         <div className="policies-overview">
           <div className="policies-card-grid" role="list">
-            {POLICY_CARDS.map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                className="policies-overview-card"
-                role="listitem"
-                onClick={() => setActivePolicyCard(card.id)}
-              >
-                <div className="policies-overview-card-icon" aria-hidden="true">
-                  {card.icon}
-                </div>
-                <div className="policies-overview-card-body">
-                  <h3 className="policies-overview-card-title">{card.title}</h3>
-                  <p className="policies-overview-card-desc">{card.description}</p>
-                </div>
-              </button>
-            ))}
+            {POLICY_OVERVIEW_GROUPS.flatMap((group) =>
+              POLICY_CARDS.filter((card) => card.group === group.id).map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className="policies-overview-card"
+                  role="listitem"
+                  onClick={() => setActivePolicyCard(card.id)}
+                >
+                  <div className="policies-overview-card-icon" aria-hidden="true">
+                    {card.icon}
+                  </div>
+                  <div className="policies-overview-card-body">
+                    <span className="policies-overview-card-group">{group.title}</span>
+                    <h3 className="policies-overview-card-title">{card.title}</h3>
+                    <p className="policies-overview-card-desc">{card.description}</p>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
       ) : (
@@ -1784,7 +1810,10 @@ export default function AdminPolicies() {
                   {POLICY_CARDS.find((c) => c.id === activePolicyCard)?.title}
                 </h2>
                 <p className="policies-editor-subtitle">
-                  {POLICY_CARDS.find((c) => c.id === activePolicyCard)?.description}
+                  {(POLICY_CARDS.find((c) => c.id === activePolicyCard)?.description || "")
+                    .split(/(?<=[.!?])\s+/)
+                    .slice(0, 1)
+                    .join(" ")}
                 </p>
               </div>
             </div>
@@ -1796,21 +1825,13 @@ export default function AdminPolicies() {
               className="policies-subnav"
               aria-label="Policy subsections"
             >
-              <div className="policies-subnav-track" role="tablist" aria-orientation="horizontal">
-                {policySubsections.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={activePolicySection === section.id}
-                    data-policy-section={section.id}
-                    className={`policies-subnav-btn${activePolicySection === section.id ? " is-active" : ""}`}
-                    onClick={() => scrollToPolicySection(section.id)}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                className="policies-subnav-tabs"
+                ariaLabel="Policy subsections"
+                tabs={policySubsectionTabs}
+                value={activePolicySection}
+                onChange={scrollToPolicySection}
+              />
             </nav>
           ) : null}
 
@@ -2009,7 +2030,7 @@ export default function AdminPolicies() {
                       Choose Standard Shift Template
                     </label>
                     <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
-                      Quick-apply standard industry schedules or configure custom shift hours below.
+                      Apply a standard schedule or set custom hours.
                     </p>
                   </div>
                   <select
@@ -2112,7 +2133,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Enable Overtime Tracking & Compensation</span>
                     <span className="policies-checkbox-desc">
-                      Authorize employees to accrue compensated hours beyond standard shifts when approved.
+                      Approved extra hours are compensated.
                     </span>
                   </div>
                 </label>
@@ -2402,7 +2423,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Allow Leave Encashment on Unused Earned Leaves</span>
                     <span className="policies-checkbox-desc">
-                      Employees can convert unutilized leaves into financial compensation upon review or exit.
+                      Convert unused leave to pay on review or exit.
                     </span>
                   </div>
                 </label>
@@ -2694,7 +2715,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Require Geolocation Coordinates on Punch-In / Punch-Out</span>
                     <span className="policies-checkbox-desc">
-                      Enforces browser GPS capture during attendance logging via our interactive map.
+                      Require GPS capture when punching.
                     </span>
                   </div>
                 </label>
@@ -2711,7 +2732,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Enable Live Tracking Sessions for Field Staff</span>
                     <span className="policies-checkbox-desc">
-                      Permits authorized employees to broadcast breadcrumb GPS trails during active shift sessions.
+                      Share GPS trail during active shifts.
                     </span>
                   </div>
                 </label>
@@ -2728,7 +2749,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Enforce Office Geofence Perimeter</span>
                     <span className="policies-checkbox-desc">
-                      Punches must originate within the defined perimeter around corporate headquarters.
+                      Punch must be inside the office perimeter.
                     </span>
                   </div>
                 </label>
@@ -2890,7 +2911,7 @@ export default function AdminPolicies() {
                     <option value="OFF">Allow without GPS only if geofence is off</option>
                   </select>
                   <span className="policies-field-hint">
-                    Office/remote geofence always requires coordinates. WARN/OFF never bypass an enforced geofence.
+                    Geofence always requires coordinates; WARN/OFF never bypass it.
                   </span>
                 </div>
                 <div className="policies-field-group">
@@ -2932,8 +2953,7 @@ export default function AdminPolicies() {
                   <div>
                     <h3 className="policies-card-title">Attendance Verification</h3>
                     <p className="policies-field-hint" style={{ marginTop: 4 }}>
-                      Enable GPS, Wi-Fi, and face recognition. Mandatory methods must all pass before punch-in/out is accepted.
-                      Defaults keep existing companies unrestricted until you enable methods.
+                      Enable GPS, Wi-Fi and face checks. Mandatory methods must all pass to punch.
                     </p>
                   </div>
                 </div>
@@ -3207,7 +3227,7 @@ export default function AdminPolicies() {
                   <div>
                     <h3 className="policies-card-title">WFH &amp; Hybrid work arrangements</h3>
                     <p className="policies-field-hint" style={{ marginTop: 4 }}>
-                      Independent of office geofence. Hybrid remote sessions still require HR approval when enabled below.
+                      Independent of office geofence. Hybrid remote still needs HR approval when enabled.
                     </p>
                   </div>
                 </div>
@@ -3883,7 +3903,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Require Formal Confirmation Review</span>
                     <span className="policies-checkbox-desc">
-                      HR administrator must approve permanent employment status following probation.
+                      HR approves permanent status after probation.
                     </span>
                   </div>
                 </label>
@@ -3903,7 +3923,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Mandatory Notice Serving (No Automatic Buyout)</span>
                     <span className="policies-checkbox-desc">
-                      Exiting employees must serve active notice duration unless waived by executive management.
+                      Notice period must be served unless waived.
                     </span>
                   </div>
                 </label>
@@ -3989,7 +4009,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Mandatory Candidate Digital Signature</span>
                     <span className="policies-checkbox-desc">
-                      Candidates must digitally sign and accept terms on the portal before onboarding unlocks.
+                      Candidates sign terms on the portal before onboarding unlocks.
                     </span>
                   </div>
                 </label>
@@ -4142,7 +4162,7 @@ export default function AdminPolicies() {
                   Company-Specific Custom Document Types
                 </h4>
                 <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "#64748b" }}>
-                  Add organization-specific document requirements (e.g. DRIVER_LICENSE, CLIENT_NDA, SECURITY_CLEARANCE).
+                  Add custom document requirements (e.g. CLIENT_NDA).
                 </p>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 14 }}>
@@ -4296,7 +4316,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Mandatory Emergency Contact Information</span>
                     <span className="policies-checkbox-desc">
-                      Requires employees to provide verified emergency contact details in their profile.
+                      Employees must add verified emergency contacts.
                     </span>
                   </div>
                 </label>
@@ -4316,7 +4336,7 @@ export default function AdminPolicies() {
                   <div className="policies-checkbox-text">
                     <span className="policies-checkbox-title">Remote / Work-From-Home Arrangements Permitted</span>
                     <span className="policies-checkbox-desc">
-                      Enables designated remote check-in modes subject to department manager sign-off.
+                      Allow remote check-in with manager sign-off.
                     </span>
                   </div>
                 </label>
@@ -4387,7 +4407,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Points awarded when an authorized reviewer approves a task submission (default: 10).
+                    Points on approved task submission (default: 10).
                   </span>
                 </div>
 
@@ -4409,7 +4429,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Bonus awarded when approved task evidence was submitted before the deadline (default: 5).
+                    Bonus for on-time approved evidence (default: 5).
                   </span>
                 </div>
 
@@ -4431,7 +4451,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Bonus awarded when an approved task has HIGH or URGENT priority (default: 20).
+                    Bonus for HIGH/URGENT priority tasks (default: 20).
                   </span>
                 </div>
 
@@ -4453,7 +4473,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Default points suggested when a reporting manager recognizes a team member (default: 10).
+                    Default points for manager recognition (default: 10).
                   </span>
                 </div>
 
@@ -4475,7 +4495,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Maximum cumulative points a manager may distribute in a single calendar month (default: 100).
+                    Monthly cap on manager-distributed points (default: 100).
                   </span>
                 </div>
 
@@ -4497,7 +4517,7 @@ export default function AdminPolicies() {
                     }
                   />
                   <span className="policies-field-hint">
-                    Configured deduction for verified unexcused missed deadlines (default: 0 disabled).
+                    Deduction for verified missed deadlines (default: 0 = off).
                   </span>
                 </div>
               </div>
@@ -5090,7 +5110,7 @@ export default function AdminPolicies() {
             {newRevisionError && <div className="error" style={{ marginBottom: 14, fontSize: 13 }}>{newRevisionError}</div>}
 
             <p style={{ margin: "0 0 16px", fontSize: 13, color: "#52525b", lineHeight: 1.5 }}>
-              Creates a new policy version cloned from your current configuration. Historical policy versions remain safe and intact, and this version will automatically take effect on the selected date.
+              Clones the current configuration as a new version. Past versions stay intact; it takes effect on the selected date.
             </p>
 
             <div style={{ display: "grid", gap: 14 }}>

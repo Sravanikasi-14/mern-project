@@ -116,33 +116,25 @@ function readFiltersFromParams(params) {
   };
 }
 
-function buildFilterOptionsFromPool(rows) {
-  const departments = new Set();
-  const titles = new Set();
-  const projects = new Set();
-  const employmentTypes = new Set();
-  const workLocations = new Set();
+const EMPTY_FILTER_OPTIONS = {
+  departments: [],
+  titles: [],
+  projects: [],
+  employmentTypes: [],
+  workLocations: [],
+};
 
-  rows.forEach((emp) => {
-    const dept = emp.job?.department || emp.department;
-    if (dept) departments.add(String(dept).trim());
-    const title = emp.job?.jobTitle || emp.jobTitle;
-    if (title) titles.add(String(title).trim());
-    const project = emp.job?.project?.projectName || emp.job?.projectName;
-    if (project) projects.add(String(project).trim());
-    const empType = emp.job?.employmentType;
-    if (empType) employmentTypes.add(String(empType).trim());
-    const loc = emp.job?.workLocation;
-    if (loc) workLocations.add(String(loc).trim());
-  });
-
-  const collator = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+/** F56 — Map /employees/filter-options payload into mobile filter sheet lists. */
+function mapFilterOptionsResponse(data) {
+  const departments = Array.isArray(data?.departments)
+    ? data.departments.map((d) => (typeof d === "string" ? d : d?.name)).filter(Boolean)
+    : [];
   return {
-    departments: Array.from(departments).filter(Boolean).sort(collator),
-    titles: Array.from(titles).filter(Boolean).sort(collator),
-    projects: Array.from(projects).filter(Boolean).sort(collator),
-    employmentTypes: Array.from(employmentTypes).filter(Boolean).sort(collator),
-    workLocations: Array.from(workLocations).filter(Boolean).sort(collator),
+    departments,
+    titles: Array.isArray(data?.jobTitles) ? data.jobTitles : [],
+    projects: Array.isArray(data?.projects) ? data.projects : [],
+    employmentTypes: Array.isArray(data?.employmentTypes) ? data.employmentTypes : [],
+    workLocations: Array.isArray(data?.workLocations) ? data.workLocations : [],
   };
 }
 
@@ -186,13 +178,7 @@ export default function HrPeoplePage() {
   const [hire, setHire] = useState(emptyHire);
   const [saving, setSaving] = useState(false);
   const [counts, setCounts] = useState({ ALL: 0, ACTIVE: 0, INACTIVE: 0 });
-  const [poolOptions, setPoolOptions] = useState({
-    departments: [],
-    titles: [],
-    projects: [],
-    employmentTypes: [],
-    workLocations: [],
-  });
+  const [filterOptions, setFilterOptions] = useState(EMPTY_FILTER_OPTIONS);
   const skipPageResetRef = useRef(true);
   const listRequestIdRef = useRef(0);
 
@@ -220,21 +206,38 @@ export default function HrPeoplePage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Lean filter-option pool — load once; do not refetch on search/filter changes.
+  const loadFilterOptions = useCallback(async () => {
+    try {
+      const res = await api.get("/employees/filter-options", {
+        params: { status: "ALL" },
+      });
+      setFilterOptions(mapFilterOptionsResponse(res.data));
+    } catch {
+      /* keep prior option lists; typed filters still work */
+    }
+  }, []);
+
+  // F56 — complete distinct options (not capped at 300).
+  // Refetch on mount and whenever edit flow marked options stale.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get("/employees", {
-          params: {
-            limit: 300,
-            includeCompensation: false,
-            sortBy: "fullName",
-            sortOrder: "asc",
-          },
+        let stale = false;
+        try {
+          stale = sessionStorage.getItem("hrms:employees-filter-options-stale") === "1";
+          if (stale) sessionStorage.removeItem("hrms:employees-filter-options-stale");
+        } catch {
+          /* ignore */
+        }
+        const res = await api.get("/employees/filter-options", {
+          params: { status: "ALL" },
         });
         if (cancelled) return;
-        setPoolOptions(buildFilterOptionsFromPool(res.data?.employees || []));
+        setFilterOptions(mapFilterOptionsResponse(res.data));
+        if (stale) {
+          /* options refreshed after edit/status change */
+        }
       } catch {
         /* keep empty option lists; typed filters still work */
       }
@@ -242,7 +245,7 @@ export default function HrPeoplePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [location.key]);
 
   const load = useCallback(async () => {
     const requestId = ++listRequestIdRef.current;
@@ -464,7 +467,12 @@ export default function HrPeoplePage() {
       toast.push("Person added. Invitation generated.");
       setAddOpen(false);
       setHire(emptyHire);
-      await load();
+      try {
+        sessionStorage.removeItem("hrms:employees-filter-options-stale");
+      } catch {
+        /* ignore */
+      }
+      await Promise.all([load(), loadFilterOptions()]);
     } catch (err) {
       setError(err.response?.data?.message || "Could not add this person.");
     } finally {
@@ -690,6 +698,7 @@ export default function HrPeoplePage() {
         onImported={() => {
           toast.push("Employees imported.");
           load();
+          loadFilterOptions();
         }}
       />
 
@@ -730,7 +739,7 @@ export default function HrPeoplePage() {
               placeholder="Any department"
             />
             <datalist id="people-dept-options">
-              {poolOptions.departments.map((d) => (
+              {filterOptions.departments.map((d) => (
                 <option key={d} value={d} />
               ))}
             </datalist>
@@ -744,7 +753,7 @@ export default function HrPeoplePage() {
               placeholder="Any designation"
             />
             <datalist id="people-title-options">
-              {poolOptions.titles.map((t) => (
+              {filterOptions.titles.map((t) => (
                 <option key={t} value={t} />
               ))}
             </datalist>
@@ -758,7 +767,7 @@ export default function HrPeoplePage() {
               placeholder="Any project"
             />
             <datalist id="people-project-options">
-              {poolOptions.projects.map((p) => (
+              {filterOptions.projects.map((p) => (
                 <option key={p} value={p} />
               ))}
             </datalist>
@@ -777,10 +786,10 @@ export default function HrPeoplePage() {
             >
               <option value="">All types</option>
               {draft.employmentType &&
-              !poolOptions.employmentTypes.includes(draft.employmentType) ? (
+              !filterOptions.employmentTypes.includes(draft.employmentType) ? (
                 <option value={draft.employmentType}>{draft.employmentType}</option>
               ) : null}
-              {poolOptions.employmentTypes.map((type) => (
+              {filterOptions.employmentTypes.map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>
@@ -794,10 +803,10 @@ export default function HrPeoplePage() {
               onChange={(e) => setDraft((prev) => ({ ...prev, workLocation: e.target.value }))}
             >
               <option value="">All locations</option>
-              {draft.workLocation && !poolOptions.workLocations.includes(draft.workLocation) ? (
+              {draft.workLocation && !filterOptions.workLocations.includes(draft.workLocation) ? (
                 <option value={draft.workLocation}>{draft.workLocation}</option>
               ) : null}
-              {poolOptions.workLocations.map((loc) => (
+              {filterOptions.workLocations.map((loc) => (
                 <option key={loc} value={loc}>
                   {loc}
                 </option>

@@ -8,9 +8,13 @@ import {
   getEmployeeDashboard,
   getEmployeeSummary,
   getEmployees,
+  getEmployeeFilterOptions,
+  getEmployeeProjectsOverview,
   getEmployeeDirectory,
+  getPeopleSearch,
   getMyProfile,
   getVisibleEmployeeProfile,
+  getPeopleDiscoveryProfile,
   resendInvitation,
   streamEmployeeAvatar,
   streamMyEmployeeAvatar,
@@ -25,6 +29,8 @@ import {
 } from "../controllers/employeeImportController.js";
 import {
   getOrganizationHierarchy,
+  getOrganizationChildren,
+  getOrganizationSearch,
   getEmployeeOrganizationView,
   getOrganizationExplorerDepartments,
   getOrganizationExplorerDepartmentEmployees,
@@ -63,6 +69,8 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
 import {
   loadHrAccessContext,
+  requireEntitledCapability,
+  requireEntitledModule,
   requireHrPermission,
   requireEmployeeInScope,
 } from "../middleware/hrAccessEnforcement.js";
@@ -76,38 +84,82 @@ router.get("/me/dashboard", authenticate, getEmployeeDashboard);
 router.get("/me/avatar", authenticate, streamMyEmployeeAvatar);
 
 // Attendance — authenticate only; controller/service retain geofence and punch guards
-router.post("/me/attendance/punch-in", authenticate, punchIn);
-router.post("/me/attendance/punch-out", authenticate, punchOut);
-router.post("/me/attendance/check-in", authenticate, handleCheckIn);
-router.post("/me/attendance/check-out", authenticate, handleCheckOut);
-router.get("/me/attendance/status", authenticate, getAttendanceStatus);
-router.get("/me/attendance/history", authenticate, getAttendanceHistory);
+router.post("/me/attendance/punch-in", authenticate, requireEntitledModule("attendance"), punchIn);
+router.post("/me/attendance/punch-out", authenticate, requireEntitledModule("attendance"), punchOut);
+router.post("/me/attendance/check-in", authenticate, requireEntitledModule("attendance"), handleCheckIn);
+router.post("/me/attendance/check-out", authenticate, requireEntitledModule("attendance"), handleCheckOut);
+router.get("/me/attendance/status", authenticate, requireEntitledModule("attendance"), getAttendanceStatus);
+router.get("/me/attendance/history", authenticate, requireEntitledModule("attendance"), getAttendanceHistory);
 router.post(
   "/me/attendance/verification-challenge",
   authenticate,
+  requireEntitledModule("attendance"),
   issuePunchVerificationChallenge
 );
 
 // Face biometric enrollment (self-service)
-router.get("/me/face-enrollment", authenticate, getMyFaceEnrollment);
-router.post("/me/face-enrollment", authenticate, enrollMyFace);
-router.delete("/me/face-enrollment", authenticate, revokeMyFace);
-router.post("/me/attendance/remote-requests", authenticate, postRemoteWorkRequest);
-router.get("/me/attendance/remote-requests", authenticate, getMyRemoteWorkRequests);
-router.post("/me/attendance/remote-requests/:id/cancel", authenticate, cancelMyRemoteWorkRequest);
+router.get(
+  "/me/face-enrollment",
+  authenticate,
+  requireEntitledModule("attendance"),
+  requireEntitledCapability("attendance.faceVerification"),
+  getMyFaceEnrollment
+);
+router.post(
+  "/me/face-enrollment",
+  authenticate,
+  requireEntitledModule("attendance"),
+  requireEntitledCapability("attendance.faceVerification"),
+  enrollMyFace
+);
+router.delete(
+  "/me/face-enrollment",
+  authenticate,
+  requireEntitledModule("attendance"),
+  requireEntitledCapability("attendance.faceVerification"),
+  revokeMyFace
+);
+router.post(
+  "/me/attendance/remote-requests",
+  authenticate,
+  requireEntitledModule("attendance"),
+  postRemoteWorkRequest
+);
+router.get(
+  "/me/attendance/remote-requests",
+  authenticate,
+  requireEntitledModule("attendance"),
+  getMyRemoteWorkRequests
+);
+router.post(
+  "/me/attendance/remote-requests/:id/cancel",
+  authenticate,
+  requireEntitledModule("attendance"),
+  cancelMyRemoteWorkRequest
+);
 
 // Live tracking — authenticate only; privacy/lifecycle enforced in service layer
-router.post("/me/tracking/start", authenticate, startTracking);
-router.post("/me/tracking/update", authenticate, updateTrackingLocation);
-router.post("/me/tracking/stop", authenticate, stopTracking);
-router.get("/me/tracking/status", authenticate, getTrackingStatusHandler);
+router.post("/me/tracking/start", authenticate, requireEntitledModule("liveTracking"), startTracking);
+router.post("/me/tracking/update", authenticate, requireEntitledModule("liveTracking"), updateTrackingLocation);
+router.post("/me/tracking/stop", authenticate, requireEntitledModule("liveTracking"), stopTracking);
+router.get("/me/tracking/status", authenticate, requireEntitledModule("liveTracking"), getTrackingStatusHandler);
 
-router.post("/me/leave-requests", authenticate, applyLeave);
+router.post("/me/leave-requests", authenticate, requireEntitledModule("leave"), applyLeave);
 // Payslip download — controller ownership (assertCanAccessPayslip) remains authoritative
-router.get("/me/payslips/:payslipId/download", authenticate, downloadPayslip);
+router.get(
+  "/me/payslips/:payslipId/download",
+  authenticate,
+  requireEntitledModule("payroll"),
+  downloadPayslip
+);
 router.patch("/me", authenticate, updateMyProfile);
-router.post("/me/documents", authenticate, uploadEmployeeDocument);
-router.get("/me/documents/:docId/download", authenticate, downloadDocument);
+router.post("/me/documents", authenticate, requireEntitledModule("people"), uploadEmployeeDocument);
+router.get(
+  "/me/documents/:docId/download",
+  authenticate,
+  requireEntitledModule("people"),
+  downloadDocument
+);
 
 // Directory / org views — employees keep basic directory; HR_ADMIN gated when ENFORCED
 router.get(
@@ -116,6 +168,16 @@ router.get(
   loadHrAccessContext,
   requireHrPermission("people.view"),
   getEmployeeDirectory
+);
+// Global header people search (HR + Employee portals).
+// Authenticated company users may search; HR_ADMIN still needs people.view when enforced.
+// Field-level redaction is enforced in buildPeopleSearch / serializePeopleSearchHit.
+router.get(
+  "/people-search",
+  authenticate,
+  loadHrAccessContext,
+  requireHrPermission("people.view"),
+  getPeopleSearch
 );
 router.get(
   "/organization-view",
@@ -203,21 +265,37 @@ router.get(
   requireHrPermission("people.view"),
   getVisibleEmployeeProfile
 );
+// Global Search colleague detail — hierarchy fields when authorized; BASIC card otherwise.
+router.get(
+  "/:id/people-profile",
+  authenticate,
+  loadHrAccessContext,
+  requireHrPermission("people.view"),
+  getPeopleDiscoveryProfile
+);
 
 // Employee photo — self, or HR portal operator with people.view (+ scope when enforced)
-router.get("/:id/avatar", authenticate, loadHrAccessContext, streamEmployeeAvatar);
+router.get(
+  "/:id/avatar",
+  authenticate,
+  loadHrAccessContext,
+  requireEntitledModule("people"),
+  streamEmployeeAvatar
+);
 
-// Document download/upload — controller ownership + CA4-C HR scope/permission remain authoritative
+// Document download/upload — people module required; controller ownership + CA4-C remain authoritative
 router.get(
   "/:id/documents/:docId/download",
   authenticate,
   loadHrAccessContext,
+  requireEntitledModule("people"),
   downloadDocument
 );
 router.post(
   "/:id/documents",
   authenticate,
   loadHrAccessContext,
+  requireEntitledModule("people"),
   uploadEmployeeDocument
 );
 
@@ -225,7 +303,27 @@ router.post(
 router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN), loadHrAccessContext);
 
 router.get("/summary", requireHrPermission("people.view"), getEmployeeSummary);
+router.get(
+  "/filter-options",
+  requireHrPermission("people.view"),
+  getEmployeeFilterOptions
+);
+router.get(
+  "/projects-overview",
+  requireHrPermission("people.view"),
+  getEmployeeProjectsOverview
+);
 router.get("/organization", requireHrPermission("organization.view"), getOrganizationHierarchy);
+router.get(
+  "/organization/children",
+  requireHrPermission("organization.view"),
+  getOrganizationChildren
+);
+router.get(
+  "/organization/search",
+  requireHrPermission("organization.view"),
+  getOrganizationSearch
+);
 router.get("/import/template", requireHrPermission("people.import"), downloadImportTemplate);
 router.post("/import/preview", requireHrPermission("people.import"), previewEmployeeImport);
 router.post("/import", requireHrPermission("people.import"), commitEmployeeImport);

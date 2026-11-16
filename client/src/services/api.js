@@ -104,6 +104,17 @@ api.interceptors.response.use(
       delete error.response.data.stack;
       delete error.response.data.stackTrace;
       delete error.response.data.trace;
+      const code = error.response.data.code;
+      // Platform entitlement denials: refresh /auth/me so nav + route gates drop stale "enabled" snapshots.
+      if (
+        typeof window !== "undefined" &&
+        !isAuthMe &&
+        (code === "PLATFORM_MODULE_DISABLED" || code === "PLATFORM_FEATURE_DISABLED")
+      ) {
+        window.dispatchEvent(
+          new CustomEvent("hrms:entitlements-stale", { detail: { code } })
+        );
+      }
     }
     return Promise.reject(error);
   }

@@ -32,6 +32,7 @@ import {
 import "./LeaveManagement.css";
 import MobileFilterBar from "../components/mobile/MobileFilterBar";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import AppModal from "../components/AppModal";
 import AuthedAvatar from "../components/AuthedAvatar";
 import LeaveReviewPanel from "../components/LeaveReviewPanel";
@@ -80,6 +81,7 @@ export default function AdminLeaveManagement() {
     if (initialLeaveTab === "requests" || initialLeaveTab === "records" || initialLeaveTab === "leave") {
       return "leave";
     }
+    if (initialLeaveTab === "absences") return "absences";
     return "overview";
   });
 
@@ -490,7 +492,7 @@ export default function AdminLeaveManagement() {
   };
 
   useEffect(() => {
-    if (leaveSection !== "overview") return undefined;
+    if (leaveSection !== "overview" && leaveSection !== "absences") return undefined;
     let cancelled = false;
     const loadSchedule = async () => {
       try {
@@ -542,9 +544,59 @@ export default function AdminLeaveManagement() {
       calendarEvents
         .filter((request) => (request.toDate || request.endDate) >= todayStr)
         .sort((a, b) => String(a.fromDate).localeCompare(String(b.fromDate)))
-        .slice(0, 6),
+        .slice(0, 50),
     [calendarEvents, todayStr]
   );
+
+  const selectLeaveSection = (next) => {
+    setLeaveSection(next);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set("tab", next);
+        return params;
+      },
+      { replace: true }
+    );
+    setPage(1);
+  };
+
+  const openLeaveWorkspaceWithStatus = (status) => {
+    setStatusFilter(status);
+    selectLeaveSection("leave");
+  };
+
+  const summaryCards = [
+    {
+      key: "PENDING",
+      label: "Pending approvals",
+      value: summary.pending,
+      sub: "Awaiting review",
+      accent: summary.pending > 0,
+      onClick: () => openLeaveWorkspaceWithStatus("PENDING"),
+    },
+    {
+      key: "APPROVED",
+      label: "Approved",
+      value: summary.approved,
+      sub: "View approved requests",
+      onClick: () => openLeaveWorkspaceWithStatus("APPROVED"),
+    },
+    {
+      key: "REJECTED",
+      label: "Rejected",
+      value: summary.rejected,
+      sub: "View rejected requests",
+      onClick: () => openLeaveWorkspaceWithStatus("REJECTED"),
+    },
+    {
+      key: "TODAY",
+      label: "On leave today",
+      value: summary.onLeaveToday || 0,
+      sub: "See upcoming absences",
+      onClick: () => selectLeaveSection("absences"),
+    },
+  ];
 
   return (
     <div className="lm-container">
@@ -552,44 +604,16 @@ export default function AdminLeaveManagement() {
         title="Leave Management"
         actions={<SoftRefresh active={Boolean(leaveQuery.isFetching && requests.length > 0)} />}
         nav={
-          <div className="module-tabs" role="tablist" aria-label="Leave sections">
-            <button
-              type="button"
-              className={`module-tab ${leaveSection === "overview" ? "is-active" : ""}`}
-              onClick={() => {
-                setLeaveSection("overview");
-                setSearchParams(
-                  (prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.set("tab", "overview");
-                    return next;
-                  },
-                  { replace: true }
-                );
-                setPage(1);
-              }}
-            >
-              Overview
-            </button>
-            <button
-              type="button"
-              className={`module-tab ${leaveSection === "leave" ? "is-active" : ""}`}
-              onClick={() => {
-                setLeaveSection("leave");
-                setSearchParams(
-                  (prev) => {
-                    const next = new URLSearchParams(prev);
-                    next.set("tab", "leave");
-                    return next;
-                  },
-                  { replace: true }
-                );
-                setPage(1);
-              }}
-            >
-              Leave workspace
-            </button>
-          </div>
+          <SegmentedTabs
+            ariaLabel="Leave sections"
+            value={leaveSection}
+            onChange={selectLeaveSection}
+            tabs={[
+              { value: "overview", label: "Overview" },
+              { value: "leave", label: "Leave workspace" },
+              { value: "absences", label: "Absences" },
+            ]}
+          />
         }
       />
       {!canApproveLeave ? <AccessRestrictedInline /> : null}
@@ -599,55 +623,24 @@ export default function AdminLeaveManagement() {
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
       {leaveSection === "overview" && (
-        <div className="lm-summary-row">
-          <button
-            type="button"
-            className="lm-sum-card"
-            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
-            onClick={() => {
-              setLeaveSection("leave");
-              setStatusFilter("PENDING");
-              setPage(1);
-            }}
-          >
-            <div className="lm-sum-card-title">Pending approvals</div>
-            <div className="lm-sum-card-num" style={{ color: summary.pending > 0 ? "var(--amber, #b06d0a)" : "inherit" }}>{summary.pending}</div>
-          </button>
-          <button
-            type="button"
-            className="lm-sum-card"
-            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
-            onClick={() => {
-              setLeaveSection("leave");
-              setStatusFilter("APPROVED");
-              setPage(1);
-            }}
-          >
-            <div className="lm-sum-card-title">Approved</div>
-            <div className="lm-sum-card-num">{summary.approved}</div>
-          </button>
-          <button
-            type="button"
-            className="lm-sum-card"
-            style={{ cursor: "pointer", textAlign: "left", border: "none", width: "100%" }}
-            onClick={() => {
-              setLeaveSection("leave");
-              setStatusFilter("REJECTED");
-              setPage(1);
-            }}
-          >
-            <div className="lm-sum-card-title">Rejected</div>
-            <div className="lm-sum-card-num">{summary.rejected}</div>
-          </button>
-          <div className="lm-sum-card">
-            <div className="lm-sum-card-title">On leave today</div>
-            <div className="lm-sum-card-num">{summary.onLeaveToday || 0}</div>
-          </div>
+        <div className="metric-card-row lm-metric-row" role="group" aria-label="Leave summary">
+          {summaryCards.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              className={`metric-card lm-metric-card${card.accent ? " is-attention" : ""}`}
+              onClick={card.onClick}
+            >
+              <span className="metric-card-label">{card.label}</span>
+              <span className="metric-card-value">{card.value}</span>
+              <span className="metric-card-sub">{card.sub}</span>
+            </button>
+          ))}
         </div>
       )}
 
       {leaveSection === "overview" && (
-      <section className="lm-calendar-section lm-calendar-with-side" aria-label="Monthly Leave Schedule">
+      <section className="lm-calendar-section" aria-label="Monthly Leave Schedule">
         <MonthCalendar
           year={calMonth.year}
           month={calMonth.month}
@@ -656,13 +649,38 @@ export default function AdminLeaveManagement() {
           heading={`Approved Leave Schedule — ${monthTitle(calMonth.year, calMonth.month)}`}
           onMonthChange={setCalMonth}
         />
+      </section>
+      )}
 
-        <div className="lm-side-card">
+      {leaveSection === "absences" && (
+      <section className="lm-absences-section" aria-label="Upcoming team absences">
+        <div className="lm-side-card lm-absences-card">
           <div className="lm-side-title-row">
             <h3 className="lm-side-title">Upcoming Team Absences</h3>
-            <span style={{ fontSize: "12px", color: "var(--g-800)", fontWeight: "600" }}>
-              {upcomingAbsences.length} upcoming
-            </span>
+            <div className="lm-absences-controls">
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() =>
+                  setCalMonth((m) => (m.month === 1 ? { year: m.year - 1, month: 12 } : { year: m.year, month: m.month - 1 }))
+                }
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <span className="lm-absences-month">{monthTitle(calMonth.year, calMonth.month)}</span>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() =>
+                  setCalMonth((m) => (m.month === 12 ? { year: m.year + 1, month: 1 } : { year: m.year, month: m.month + 1 }))
+                }
+                aria-label="Next month"
+              >
+                ›
+              </button>
+              <span className="lm-absences-count">{upcomingAbsences.length} upcoming</span>
+            </div>
           </div>
 
           <div className="lm-team-leave-list">

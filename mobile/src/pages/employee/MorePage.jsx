@@ -7,6 +7,7 @@ import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
 import { useChatUnreadQuery } from "../../hooks/useChatQueries";
 import api from "../../services/api";
+import { moreItemVisible, platformModuleAllowed } from "../../utils/hrPortalAccess";
 
 const FEATURES = [
   { id: "tasks", label: "My Tasks", path: "/app/tasks", icon: "tasks", color: "#e3f2e9", ink: "#155a37" },
@@ -24,7 +25,9 @@ const FEATURES = [
 
 export default function EmployeeMorePage() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user, company } = useAuth();
+  const visibleFeatures = FEATURES.filter((item) => moreItemVisible(user, company, item));
+  const assetsEntitled = platformModuleAllowed(company, "assets");
   const openNotify = useNotify();
   const [assetCount, setAssetCount] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -38,7 +41,7 @@ export default function EmployeeMorePage() {
     let active = true;
     (async () => {
       const [assetsRes, notesRes] = await Promise.all([
-        api.get("/assets/my-assets").catch(() => null),
+        assetsEntitled ? api.get("/assets/my-assets").catch(() => null) : Promise.resolve(null),
         api.get("/notifications").catch(() => null),
       ]);
       if (!active) return;
@@ -50,7 +53,7 @@ export default function EmployeeMorePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [assetsEntitled]);
 
   const handleLogout = async () => {
     try {
@@ -76,7 +79,7 @@ export default function EmployeeMorePage() {
       <PageHeader title="More" />
 
       <div className="mo-grid">
-        {FEATURES.map((item) => (
+        {visibleFeatures.map((item) => (
           <button
             key={item.id}
             type="button"

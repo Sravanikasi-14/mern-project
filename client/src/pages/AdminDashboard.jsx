@@ -304,104 +304,119 @@ export default function AdminDashboard() {
 
   return (
     <div className="board-container admin-dashboard-page">
-      <AppHeader
-        title={`${getGreeting()}, ${user?.name || "Admin"}`}
-        subtitle={getCompanyBrandName({
-          ...(company || {}),
-          companyName: meta.companyName || company?.companyName,
-        })}
-        actions={<SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />}
-        nav={
-          <div className="board__actions" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {meta.departments && meta.departments.length > 0 ? (
-              <div className="dash-filter-pill">
-                <span>Dept:</span>
-                <select
-                  className="dash-filter-select"
-                  value={selectedDept}
-                  onChange={(e) => setSelectedDept(e.target.value)}
-                  aria-label="Filter by department"
-                >
-                  <option value="ALL">All Departments</option>
-                  {meta.departments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            <div className="month-picker-pill" role="group" aria-label="Select month">
-              <button
-                type="button"
-                className="month-nav-arrow"
-                onClick={handlePrevMonth}
-                title="Previous Month"
-                aria-label="Previous Month"
-              >
-                <IconArrowLeft size={20} />
-              </button>
-              <span className="month-nav-label">
-                {monthNames[selectedMonth - 1]?.slice(0, 3)} {selectedYear}
-              </span>
-              <button
-                type="button"
-                className="month-nav-arrow"
-                onClick={handleNextMonth}
-                title="Next Month"
-                aria-label="Next Month"
-              >
-                <IconArrowRight size={20} />
-              </button>
-            </div>
+      <AppHeader hidePageIdentity />
 
-            {canPeople ? (
-              <Link to="/admin" className="btn--primary-fern">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span>Add Employee</span>
-              </Link>
-            ) : null}
+      {/*
+        Identity under global search:
+        Row 1 — left greeting | centre month | right actions
+        Row 2 — All Departments, left under greeting
+      */}
+      <div
+        className={`dash-identity${
+          meta.departments && meta.departments.length > 0 ? " has-dept" : ""
+        }`}
+      >
+        <div className="dash-identity-main">
+          <div className="page-identity-heading">
+            <h1 className="page-identity-title">{`${getGreeting()}, ${user?.name || "Admin"}`}</h1>
+            <p className="page-identity-subtitle">
+              {getCompanyBrandName({
+                ...(company || {}),
+                companyName: meta.companyName || company?.companyName,
+              })}
+            </p>
+          </div>
+        </div>
 
+        <div className="dash-identity-center" aria-label="Select month">
+          <div className="month-picker-pill" role="group" aria-label="Select month">
             <button
               type="button"
-              className="btn--ghost-sync"
-              onClick={() => dashboardQuery.refetch()}
-              title="Sync live dashboard metrics"
-              disabled={dashboardQuery.isFetching}
-              aria-label="Refresh dashboard"
+              className="month-nav-arrow"
+              onClick={handlePrevMonth}
+              title="Previous Month"
+              aria-label="Previous Month"
             >
+              <IconArrowLeft size={20} />
+            </button>
+            <span className="month-nav-label">
+              {monthNames[selectedMonth - 1]} {selectedYear}
+            </span>
+            <button
+              type="button"
+              className="month-nav-arrow"
+              onClick={handleNextMonth}
+              title="Next Month"
+              aria-label="Next Month"
+            >
+              <IconArrowRight size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="dash-identity-actions">
+          <SoftRefresh active={Boolean(dashboardQuery.isFetching && data)} />
+          {canPeople ? (
+            <Link to="/admin" className="btn--primary-fern">
               <svg
                 viewBox="0 0 24 24"
                 width="20"
                 height="20"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.2"
+                strokeWidth="2.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className={dashboardQuery.isFetching ? "spin-icon" : ""}
               >
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-            </button>
-          </div>
-        }
-      />
+              <span>Add Employee</span>
+            </Link>
+          ) : null}
 
+          <button
+            type="button"
+            className="btn--ghost-sync"
+            onClick={() => dashboardQuery.refetch()}
+            title="Sync live dashboard metrics"
+            disabled={dashboardQuery.isFetching}
+            aria-label="Refresh dashboard"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={dashboardQuery.isFetching ? "spin-icon" : ""}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        </div>
+
+        {meta.departments && meta.departments.length > 0 ? (
+          <select
+            className="dash-filter-select dash-identity-dept"
+            value={selectedDept}
+            onChange={(e) => setSelectedDept(e.target.value)}
+            aria-label="Filter by department"
+          >
+            <option value="ALL">All Departments</option>
+            {meta.departments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
       {/* ====================================================================
           2. Asymmetric Bento Grid
           ==================================================================== */}
@@ -478,360 +493,326 @@ export default function AdminDashboard() {
           </p>
         </MetricCard>
 
-        {/* ====================================================================
-            ROW 2: ASYMMETRIC 8 / 4 SPLIT
-            - Left (Span 8): Attendance & Work Hours Analytics (Capsule Bar Chart)
-            - Right (Span 4): Pending HR Actions List
-            ==================================================================== */}
-        <MobileExpandable title="Insights and reports">
-        <div className="dash-stack dash-stack--primary">
-        <section className="card analytics-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Attendance Trends</h2>
-            </div>
-
-            <div className="analytics-toolbar">
-              <div className="seg-control" role="tablist" aria-label="Select date range">
-                <button
-                  type="button"
-                  className={`seg-btn ${attendanceRange === "TODAY" ? "is-active" : ""}`}
-                  onClick={() => setAttendanceRange("TODAY")}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  className={`seg-btn ${attendanceRange === "7D" ? "is-active" : ""}`}
-                  onClick={() => setAttendanceRange("7D")}
-                >
-                  7 Days
-                </button>
-                <button
-                  type="button"
-                  className={`seg-btn ${attendanceRange === "30D" ? "is-active" : ""}`}
-                  onClick={() => setAttendanceRange("30D")}
-                >
-                  30 Days
-                </button>
+        {/* Row: Attendance Trends (8) + Action Center (4) — equal card heights */}
+        <div className="dash-pair-row dash-pair-row--trends">
+          <MobileExpandable title="Insights and reports">
+            <section className="card analytics-card">
+              <div className="card__head">
+                <div>
+                  <h2 className="card__title">Attendance Trends</h2>
+                </div>
+                <div className="analytics-toolbar">
+                  <div className="seg-control" role="tablist" aria-label="Select date range">
+                    <button
+                      type="button"
+                      className={`seg-btn ${attendanceRange === "TODAY" ? "is-active" : ""}`}
+                      onClick={() => setAttendanceRange("TODAY")}
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      className={`seg-btn ${attendanceRange === "7D" ? "is-active" : ""}`}
+                      onClick={() => setAttendanceRange("7D")}
+                    >
+                      7 Days
+                    </button>
+                    <button
+                      type="button"
+                      className={`seg-btn ${attendanceRange === "30D" ? "is-active" : ""}`}
+                      onClick={() => setAttendanceRange("30D")}
+                    >
+                      30 Days
+                    </button>
+                  </div>
+                  {canAttendance ? (
+                    <Link to="/admin/live-tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
+                      <span className="pulse-dot" />
+                      <span>Live Tracking</span>
+                    </Link>
+                  ) : null}
+                  {canAttendance ? (
+                    <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance">
+                      <span>Attendance Hub</span>
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  ) : null}
+                </div>
               </div>
 
-              {canAttendance ? (
-              <Link to="/admin/live-tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
-                <span className="pulse-dot" />
-                <span>Live Tracking</span>
-              </Link>
-              ) : null}
-              {canAttendance ? (
-              <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance">
-                <span>Attendance Hub</span>
-                <span aria-hidden="true">→</span>
-              </Link>
-              ) : null}
-            </div>
-          </div>
+              <div className="card-scroll-body dash-card-body">
+              <div
+                className={`capsule-bars-container ${
+                  attendanceRange === "30D"
+                    ? "capsule-bars-container--month"
+                    : attendanceRange === "TODAY"
+                      ? "capsule-bars-container--today"
+                      : ""
+                }`}
+                role="img"
+                aria-label="Attendance trend capsule bars"
+              >
+                {attendanceRestricted ? (
+                  <p className="activity-empty">Attendance counts are unavailable for this access level.</p>
+                ) : weeklyBars.length === 0 || !hasAttendanceTrendData ? (
+                  <p className="activity-empty">
+                    No attendance records for this range yet. Punch-ins will appear here once employees check in.
+                  </p>
+                ) : (
+                  weeklyBars.map((bar, idx) => {
+                    const isPeak = bar.pct >= 90 && !bar.isWeekend && !bar.isHoliday;
+                    const isLight = bar.pct < 70 && !bar.isWeekend && !bar.isHoliday;
+                    const barClass = bar.isWeekend || bar.isHoliday
+                      ? "bar--weekend"
+                      : isPeak
+                        ? "bar--peak"
+                        : isLight
+                          ? "bar--light"
+                          : "bar--mid";
 
-          {/* Capsule bar chart — real attendance counts for the selected range */}
-          <div
-            className={`capsule-bars-container ${
-              attendanceRange === "30D"
-                ? "capsule-bars-container--month"
-                : attendanceRange === "TODAY"
-                  ? "capsule-bars-container--today"
-                  : ""
-            }`}
-            role="img"
-            aria-label="Attendance trend capsule bars"
-          >
-            {attendanceRestricted ? (
-              <p className="activity-empty">Attendance counts are unavailable for this access level.</p>
-            ) : weeklyBars.length === 0 || !hasAttendanceTrendData ? (
-              <p className="activity-empty">
-                No attendance records for this range yet. Punch-ins will appear here once employees check in.
-              </p>
-            ) : (
-              weeklyBars.map((bar, idx) => {
-                const isPeak = bar.pct >= 90 && !bar.isWeekend && !bar.isHoliday;
-                const isLight = bar.pct < 70 && !bar.isWeekend && !bar.isHoliday;
-                const barClass = bar.isWeekend || bar.isHoliday
-                  ? "bar--weekend"
-                  : isPeak
-                    ? "bar--peak"
-                    : isLight
-                      ? "bar--light"
-                      : "bar--mid";
-
-                return (
-                  <div
-                    key={`${bar.date || bar.dayLetter}-${idx}`}
-                    className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
-                    onMouseEnter={() => setHoveredDay(bar)}
-                    onMouseLeave={() => setHoveredDay(null)}
-                  >
-                    <div className="capsule-bar-track">
-                      <button
-                        type="button"
-                        className={`capsule-bar ${barClass}`}
-                        style={{ "--h": bar.heightVal }}
-                        aria-label={`${bar.date || "Day"}: ${bar.present} present, ${bar.absent} absent, ${bar.late} late (${bar.pct}%)`}
+                    return (
+                      <div
+                        key={`${bar.date || bar.dayLetter}-${idx}`}
+                        className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
+                        onMouseEnter={() => setHoveredDay(bar)}
+                        onMouseLeave={() => setHoveredDay(null)}
                       >
-                        <span className="bar-fill" />
-                      </button>
-                    </div>
-                    <span className="bar-day-label">
-                      {attendanceRange === "30D" ? (bar.date || "").slice(8) : bar.dayLetter}
-                    </span>
+                        <div className="capsule-bar-track">
+                          <button
+                            type="button"
+                            className={`capsule-bar ${barClass}`}
+                            style={{ "--h": bar.heightVal }}
+                            aria-label={`${bar.date || "Day"}: ${bar.present} present, ${bar.absent} absent, ${bar.late} late (${bar.pct}%)`}
+                          >
+                            <span className="bar-fill" />
+                          </button>
+                        </div>
+                        <span className="bar-day-label">
+                          {attendanceRange === "30D" ? (bar.date || "").slice(8) : bar.dayLetter}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="attendance-breakdown-row">
+                <div className="attendance-legend-group">
+                  <span className="legend-item">
+                    <span className="legend-dot dot-present" />
+                    <span>Present: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0))}</b></span>
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-dot dot-late" />
+                    <span>Late: <b>{summary.todayLate == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0))}</b></span>
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-dot dot-absent" />
+                    <span>Absent: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0))}</b></span>
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-dot dot-leave" />
+                    <span>On Leave: <b>{summary.onLeave == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0))}</b></span>
+                  </span>
+                </div>
+                <div className="shift-status-pill">
+                  <span className="pulse-dot" />
+                  <span>{hoveredDay ? hoveredDay.date : `Starts ${meta.officeStartTime || "09:30 AM"}`}</span>
+                </div>
+              </div>
+              </div>
+            </section>
+          </MobileExpandable>
+
+          <section className="card pending-actions-card">
+            <div className="card__head">
+              <div>
+                <h2 className="card__title"><span className="m-title-full">Action Center</span><span className="m-title-short">Needs you</span></h2>
+              </div>
+              <span className="pending-count-chip">{totalPendingActions} pending</span>
+              {canLeave ? <Link to="/admin/leave" className="m-view-all">View all</Link> : null}
+            </div>
+            <div className="card-scroll-body dash-card-body pending-task-list">
+              {canLeave ? (
+                <Link to="/admin/leave?status=PENDING" className="pending-task-item" title="Approve pending leaves">
+                  <div className="task-icon-circle icon-leave">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
                   </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Breakdown Indicators and Shift Status */}
-          <div className="attendance-breakdown-row">
-            <div className="attendance-legend-group">
-              <span className="legend-item">
-                <span className="legend-dot dot-present" />
-                <span>Present: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0))}</b></span>
-              </span>
-              <span className="legend-item">
-                <span className="legend-dot dot-late" />
-                <span>Late: <b>{summary.todayLate == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0))}</b></span>
-              </span>
-              <span className="legend-item">
-                <span className="legend-dot dot-absent" />
-                <span>Absent: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0))}</b></span>
-              </span>
-              <span className="legend-item">
-                <span className="legend-dot dot-leave" />
-                <span>On Leave: <b>{summary.onLeave == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0))}</b></span>
-              </span>
-            </div>
-
-            <div className="shift-status-pill">
-              <span className="pulse-dot" />
-              <span>{hoveredDay ? hoveredDay.date : `Starts ${meta.officeStartTime || "09:30 AM"}`}</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="card recruitment-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Offer Letters</h2>
-            </div>
-            <div className="analytics-toolbar">
-              <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% accepted</span>
+                  <div className="task-details">
+                    <p className="task-title">Leave Approvals ({pendingLeaves.length})</p>
+                    <p className="task-desc">
+                      {pendingLeaves.length > 0 ? `${pendingLeaves.length} waiting` : "None pending"}
+                    </p>
+                  </div>
+                  <span className={`task-action-pill ${pendingLeaves.length > 0 ? "is-urgent" : ""}`}>Review</span>
+                </Link>
+              ) : null}
               {canHiring ? (
-              <Link to="/admin/hiring" className="card-shortcut-link">
-                <span>View</span>
-                <span aria-hidden="true">→</span>
-              </Link>
+                <Link to="/admin/hiring?stage=OFFERS" className="pending-task-item" title="Review candidate offers">
+                  <div className="task-icon-circle icon-offer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                  </div>
+                  <div className="task-details">
+                    <p className="task-title">Candidate Offers ({pendingOffersCount})</p>
+                    <p className="task-desc">{pendingOffersCount > 0 ? `${pendingOffersCount} awaiting response` : "None waiting"}</p>
+                  </div>
+                  <span className="task-action-pill">Track</span>
+                </Link>
+              ) : null}
+              {canHiring ? (
+                <Link to="/admin/hiring?stage=HR_REVIEW" className="pending-task-item" title="Onboarding checks">
+                  <div className="task-icon-circle icon-onboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  </div>
+                  <div className="task-details">
+                    <p className="task-title">Onboarding</p>
+                    <p className="task-desc">Profile and credential checks</p>
+                  </div>
+                  <span className="task-action-pill">Verify</span>
+                </Link>
+              ) : null}
+              {canPayroll ? (
+                <Link to="/admin/payroll" className="pending-task-item" title="Monthly payroll register">
+                  <div className="task-icon-circle icon-payroll">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="7" cy="15" r="1.5"/></svg>
+                  </div>
+                  <div className="task-details">
+                    <p className="task-title">Payroll ({payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")})</p>
+                    <p className="task-desc">{payrollRestricted ? "Payroll amounts are unavailable for this access level." : (payrollCycle.pendingAction || "Open this month’s register")}</p>
+                  </div>
+                  <span className="task-action-pill">Process</span>
+                </Link>
               ) : null}
             </div>
-          </div>
-
-          <div className="funnel-process-row">
-            <MetricCard linked={canHiring} to="/admin/hiring" className="funnel-stage-tile">
-              <div className="stage-top">
-                <span className="stage-dot dot-dark" />
-                <span className="stage-name">Offers Generated</span>
-              </div>
-              <span className="stage-number">{funnel.offersGenerated || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
-              </div>
-            </MetricCard>
-
-            <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
-              <div className="stage-top">
-                <span className="stage-dot dot-amber" />
-                <span className="stage-name">Pending Review</span>
-              </div>
-              <span className="stage-number">{funnel.pending || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
-              </div>
-            </MetricCard>
-
-            <MetricCard linked={canHiring} to="/admin/hiring?stage=ONBOARDING" className="funnel-stage-tile">
-              <div className="stage-top">
-                <span className="stage-dot dot-green" />
-                <span className="stage-name">Accepted</span>
-              </div>
-              <span className="stage-number">{funnel.accepted || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
-              </div>
-            </MetricCard>
-
-            <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
-              <div className="stage-top">
-                <span className="stage-dot dot-rose" />
-                <span className="stage-name">Declined</span>
-              </div>
-              <span className="stage-number">{funnel.declined || 0}</span>
-              <div className="stage-meter">
-                <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
-              </div>
-            </MetricCard>
-          </div>
-        </section>
-
-        <section className="card dash-workforce-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Workforce Allocation</h2>
-            </div>
-            {canPeople ? (
-            <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
-              <span>Directory</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            ) : null}
-          </div>
-          <WorkforceAllocation
-            hideTitle
-            compact
-            loading={loading}
-            total={totalEmployees}
-            departments={Array.isArray(data?.workforce?.departments) ? data.workforce.departments : []}
-          />
-        </section>
+          </section>
         </div>
-        </MobileExpandable>
 
-        <div className="dash-stack dash-stack--secondary">
-        <section className="card pending-actions-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title"><span className="m-title-full">Action Center</span><span className="m-title-short">Needs you</span></h2>
+        {/* Row: Offer Letters (8) + Payroll (4) — equal card heights */}
+        <div className="dash-pair-row dash-pair-row--recruit">
+          <section className="card recruitment-card">
+            <div className="card__head">
+              <div>
+                <h2 className="card__title">Offer Letters</h2>
+              </div>
+              <div className="analytics-toolbar">
+                <span className="funnel-rate-badge">{funnel.acceptanceRate || 0}% accepted</span>
+                {canHiring ? (
+                  <Link to="/admin/hiring" className="card-shortcut-link">
+                    <span>View</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
+              </div>
             </div>
-            <span className="pending-count-chip">{totalPendingActions} pending</span>
-            {canLeave ? <Link to="/admin/leave" className="m-view-all">View all</Link> : null}
-          </div>
-
-          <div className="pending-task-list">
-            {/* 1. Leave Approval */}
-            {canLeave ? (
-            <Link to="/admin/leave?status=PENDING" className="pending-task-item" title="Approve pending leaves">
-              <div className="task-icon-circle icon-leave">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
-              </div>
-              <div className="task-details">
-                <p className="task-title">Leave Approvals ({pendingLeaves.length})</p>
-                <p className="task-desc">
-                  {pendingLeaves.length > 0 ? `${pendingLeaves.length} waiting` : "None pending"}
-                </p>
-              </div>
-              <span className={`task-action-pill ${pendingLeaves.length > 0 ? "is-urgent" : ""}`}>Review</span>
-            </Link>
-            ) : null}
-
-            {/* 2. Offer Letters */}
-            {canHiring ? (
-            <Link to="/admin/hiring?stage=OFFERS" className="pending-task-item" title="Review candidate offers">
-              <div className="task-icon-circle icon-offer">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-              </div>
-              <div className="task-details">
-                <p className="task-title">Candidate Offers ({pendingOffersCount})</p>
-                <p className="task-desc">{pendingOffersCount > 0 ? `${pendingOffersCount} awaiting response` : "None waiting"}</p>
-              </div>
-              <span className="task-action-pill">Track</span>
-            </Link>
-            ) : null}
-
-            {canHiring ? (
-            <Link to="/admin/hiring?stage=HR_REVIEW" className="pending-task-item" title="Onboarding checks">
-              <div className="task-icon-circle icon-onboard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              </div>
-              <div className="task-details">
-                <p className="task-title">Onboarding</p>
-                <p className="task-desc">Profile and credential checks</p>
-              </div>
-              <span className="task-action-pill">Verify</span>
-            </Link>
-            ) : null}
-
-            {canPayroll ? (
-            <Link to="/admin/payroll" className="pending-task-item" title="Monthly payroll register">
-              <div className="task-icon-circle icon-payroll">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="7" cy="15" r="1.5"/></svg>
-              </div>
-              <div className="task-details">
-                <p className="task-title">Payroll ({payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")})</p>
-                <p className="task-desc">{payrollRestricted ? "Payroll amounts are unavailable for this access level." : (payrollCycle.pendingAction || "Open this month’s register")}</p>
-              </div>
-              <span className="task-action-pill">Process</span>
-            </Link>
-            ) : null}
-          </div>
-        </section>
-
-        <MobileExpandable title="Payroll history">
-        <section className="card payroll-card">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Payroll</h2>
-              <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear}</p>
-            </div>
-            {canPayroll ? (
-            <Link to="/admin/payroll" className="card-shortcut-link">
-              <span>Open</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            ) : null}
-          </div>
-
-          <div className="payroll-cycle-box">
-            <div>
-              <span className="payroll-net-amount">
-                {payrollRestricted
-                  ? "Restricted"
-                  : formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll, currencySym)}
-              </span>
-              <p className="payroll-sub-info">
-                {payrollRestricted
-                  ? "Payroll amounts are hidden for this access level."
-                  : `${payrollCycle.employeeCount || 0} of ${totalEmployees} active employees in register`}
-              </p>
-            </div>
-            <span className={`payroll-status-pill status-${payrollRestricted ? "draft" : (payrollCycle.status || "draft").toLowerCase()}`}>
-              {payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")}
-            </span>
-          </div>
-
-          {hasSalaryHistory ? (
-            <div className="expense-mini-bars" role="img" aria-label="Processed payroll totals by month">
-              {payrollHistoryBars.map((exp, idx) => {
-                const val = Number(exp.amount || 0);
-                const heightPct = Math.max(12, Math.min(100, Math.round((val / maxExpense) * 100)));
-                return (
-                  <div
-                    key={`${exp.month}-${idx}`}
-                    className="expense-bar-col"
-                    title={`${exp.month}: ${formatShortCurrency(val, currencySym)}`}
-                    aria-label={`${exp.month} ${formatShortCurrency(val, currencySym)}`}
-                  >
-                    <div className="expense-bar-fill" style={{ height: `${heightPct}%` }} />
-                    <span className="expense-bar-month">{exp.month}</span>
+            <div className="card-scroll-body dash-card-body">
+              <div className="funnel-process-row">
+                <MetricCard linked={canHiring} to="/admin/hiring" className="funnel-stage-tile">
+                  <div className="stage-top">
+                    <span className="stage-dot dot-dark" />
+                    <span className="stage-name">Offers Generated</span>
                   </div>
-                );
-              })}
+                  <span className="stage-number">{funnel.offersGenerated || 0}</span>
+                  <div className="stage-meter">
+                    <div className="stage-fill fill-dark" style={{ width: `${funnel.offersGenerated > 0 ? 100 : 0}%` }} />
+                  </div>
+                </MetricCard>
+                <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
+                  <div className="stage-top">
+                    <span className="stage-dot dot-amber" />
+                    <span className="stage-name">Pending Review</span>
+                  </div>
+                  <span className="stage-number">{funnel.pending || 0}</span>
+                  <div className="stage-meter">
+                    <div className="stage-fill fill-amber" style={{ width: `${funnel.pendingPct || 0}%` }} />
+                  </div>
+                </MetricCard>
+                <MetricCard linked={canHiring} to="/admin/hiring?stage=ONBOARDING" className="funnel-stage-tile">
+                  <div className="stage-top">
+                    <span className="stage-dot dot-green" />
+                    <span className="stage-name">Accepted</span>
+                  </div>
+                  <span className="stage-number">{funnel.accepted || 0}</span>
+                  <div className="stage-meter">
+                    <div className="stage-fill fill-green" style={{ width: `${funnel.acceptedPct || 0}%` }} />
+                  </div>
+                </MetricCard>
+                <MetricCard linked={canHiring} to="/admin/hiring?stage=OFFERS" className="funnel-stage-tile">
+                  <div className="stage-top">
+                    <span className="stage-dot dot-rose" />
+                    <span className="stage-name">Declined</span>
+                  </div>
+                  <span className="stage-number">{funnel.declined || 0}</span>
+                  <div className="stage-meter">
+                    <div className="stage-fill fill-rose" style={{ width: `${funnel.declinedPct || 0}%` }} />
+                  </div>
+                </MetricCard>
+              </div>
             </div>
-          ) : (
-            <p className="payroll-history-empty">
-              {payrollRestricted
-                ? "Payroll amounts are unavailable for this access level."
-                : `No processed payroll history for ${selectedYear}.`}
-            </p>
-          )}
-        </section>
-        </MobileExpandable>
+          </section>
+
+          <MobileExpandable title="Payroll history">
+            <section className={`card payroll-card${payrollRestricted ? " is-restricted" : ""}`}>
+              <div className="card__head">
+                <div>
+                  <h2 className="card__title">Payroll</h2>
+                  <p className="card__sub">{monthNames[selectedMonth - 1]} {selectedYear}</p>
+                </div>
+                {canPayroll ? (
+                  <Link to="/admin/payroll" className="card-shortcut-link">
+                    <span>Open</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
+              </div>
+              <div className="card-scroll-body dash-card-body payroll-card-body">
+                <div className="payroll-cycle-box">
+                  <div>
+                    <span className="payroll-net-amount">
+                      {payrollRestricted
+                        ? "Restricted"
+                        : formatFullINR(payrollCycle.totalNetSalary || summary.monthlyPayroll, currencySym)}
+                    </span>
+                    <p className="payroll-sub-info">
+                      {payrollRestricted
+                        ? "Payroll amounts are hidden for this access level."
+                        : `${payrollCycle.employeeCount || 0} of ${totalEmployees} active employees in register`}
+                    </p>
+                  </div>
+                  <span className={`payroll-status-pill status-${payrollRestricted ? "draft" : (payrollCycle.status || "draft").toLowerCase()}`}>
+                    {payrollRestricted ? "Restricted" : (payrollCycle.statusLabel || "Draft")}
+                  </span>
+                </div>
+                {hasSalaryHistory ? (
+                  <div className="expense-mini-bars" role="img" aria-label="Processed payroll totals by month">
+                    {payrollHistoryBars.map((exp, idx) => {
+                      const val = Number(exp.amount || 0);
+                      const heightPct = Math.max(12, Math.min(100, Math.round((val / maxExpense) * 100)));
+                      return (
+                        <div
+                          key={`${exp.month}-${idx}`}
+                          className="expense-bar-col"
+                          title={`${exp.month}: ${formatShortCurrency(val, currencySym)}`}
+                          aria-label={`${exp.month} ${formatShortCurrency(val, currencySym)}`}
+                        >
+                          <div className="expense-bar-fill" style={{ height: `${heightPct}%` }} />
+                          <span className="expense-bar-month">{exp.month}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="payroll-history-empty">
+                    {payrollRestricted
+                      ? "Payroll amounts are unavailable for this access level."
+                      : `No processed payroll history for ${selectedYear}.`}
+                  </p>
+                )}
+              </div>
+            </section>
+          </MobileExpandable>
         </div>
 
+        {/* Row: Operational Insights — full content width, 4 metrics in one row */}
         <section className="card insight-metrics-card" aria-label="Additional HR insights">
           <div className="card__head">
             <div>
@@ -889,98 +870,118 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        <MobileExpandable title="Recent activity and holidays">
-        <section className="card team-activity-card">
+        {/* Row: Departments — full width, even card distribution */}
+        <section className="dash-workforce-card" aria-label="Workforce by department">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Recent Activity</h2>
+              <h2 className="card__title">Departments</h2>
+              <p className="card__sub">Headcount by department</p>
             </div>
             {canPeople ? (
-            <Link to="/admin" className="card-shortcut-link">
-              <span>Directory</span>
-              <span aria-hidden="true">→</span>
-            </Link>
+              <Link to="/admin" className="card-shortcut-link" title="Open employees directory">
+                <span>Directory</span>
+                <span aria-hidden="true">→</span>
+              </Link>
             ) : null}
           </div>
-
-          <div className="activity-list">
-            {leaveRestricted ? (
-              <p className="activity-empty">
-                Leave activity is unavailable for this access level.
-              </p>
-            ) : recentLeaves.length === 0 ? (
-              <p className="activity-empty">
-                No recent activity recorded for this period.
-              </p>
-            ) : (
-              recentLeaves.slice(0, 4).map((l, idx) => {
-                const colorPair = PASTEL_AVATAR_COLORS[idx % PASTEL_AVATAR_COLORS.length];
-                const name = l.employeeName || "TM";
-                const initials = initialsFromName(name, "TM");
-
-                const isDone = l.status === "APPROVED";
-                const isProg = l.status === "PENDING";
-                const pillClass = isDone ? "pill--done" : isProg ? "pill--prog" : "pill--pend";
-                const pillLabel = isDone ? "Approved" : isProg ? "Pending" : "Declined";
-
-                return (
-                  <div key={l.id || idx} className="activity-item">
-                    <AuthedAvatar
-                      className="activity-avatar"
-                      style={{ background: colorPair.bg, color: colorPair.text }}
-                      avatar={l.avatar}
-                      employee={{ _id: l.employeeId, avatar: l.avatar }}
-                      name={name}
-                      initials={initials}
-                      alt={name}
-                    />
-                    <div className="activity-body">
-                      <span className="activity-name">{l.employeeName}</span>
-                      <span className="activity-task">
-                        {l.department} · {l.leaveType} ({l.daysCount} {l.daysCount === 1 ? "day" : "days"})
-                      </span>
-                    </div>
-                    <span className={`pill ${pillClass}`}>{pillLabel}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <WorkforceAllocation
+            hideTitle
+            layout="sections"
+            loading={loading}
+            total={totalEmployees}
+            departments={Array.isArray(data?.workforce?.departments) ? data.workforce.departments : []}
+          />
         </section>
 
-        {/* ====================================================================
-            Holidays footer strip
-            ==================================================================== */}
-        <section className="card holidays-strip-card">
-          <div className="card__head" style={{ marginBottom: 8 }}>
-            <h3 className="card__title" style={{ fontSize: "15px" }}>Holidays</h3>
-            {canPolicies ? (
-            <Link to="/admin/policies" className="card-shortcut-link">
-              <span>Policy Calendar</span>
-              <span aria-hidden="true">→</span>
-            </Link>
-            ) : null}
-          </div>
-
-          <div className="holidays-strip-row" role="list" aria-label="Upcoming holidays list">
-            {upcomingHolidays.length === 0 ? (
-              <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
-                None remaining this month.
-              </span>
-            ) : (
-              upcomingHolidays.map((h, idx) => (
-                <div key={`${h.name}-${idx}`} className="holiday-chip" role="listitem">
-                  <span className="holiday-chip-date">{formatDisplayDate(h.date)}</span>
-                  <div>
-                    <span className="holiday-chip-name">{h.name}</span>
-                    <span className="holiday-chip-type"> · {h.isPaid ? "Paid Holiday" : "Observance"}</span>
-                  </div>
+        {/* Row: Recent Activity + Holidays */}
+        <div className="dash-pair-row dash-pair-row--footer">
+          <MobileExpandable title="Recent activity and holidays">
+            <section className="card team-activity-card">
+              <div className="card__head">
+                <div>
+                  <h2 className="card__title">Recent Activity</h2>
                 </div>
-              ))
-            )}
-          </div>
-        </section>
-        </MobileExpandable>
+                {canPeople ? (
+                  <Link to="/admin" className="card-shortcut-link">
+                    <span>Directory</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
+              </div>
+              <div className="card-scroll-body dash-card-body activity-list">
+                {leaveRestricted ? (
+                  <p className="activity-empty">
+                    Leave activity is unavailable for this access level.
+                  </p>
+                ) : recentLeaves.length === 0 ? (
+                  <p className="activity-empty">
+                    No recent activity recorded for this period.
+                  </p>
+                ) : (
+                  recentLeaves.slice(0, 4).map((l, idx) => {
+                    const colorPair = PASTEL_AVATAR_COLORS[idx % PASTEL_AVATAR_COLORS.length];
+                    const name = l.employeeName || "TM";
+                    const initials = initialsFromName(name, "TM");
+                    const isDone = l.status === "APPROVED";
+                    const isProg = l.status === "PENDING";
+                    const pillClass = isDone ? "pill--done" : isProg ? "pill--prog" : "pill--pend";
+                    const pillLabel = isDone ? "Approved" : isProg ? "Pending" : "Declined";
+
+                    return (
+                      <div key={l.id || idx} className="activity-item">
+                        <AuthedAvatar
+                          className="activity-avatar"
+                          style={{ background: colorPair.bg, color: colorPair.text }}
+                          avatar={l.avatar}
+                          employee={{ _id: l.employeeId, avatar: l.avatar }}
+                          name={name}
+                          initials={initials}
+                          alt={name}
+                        />
+                        <div className="activity-body">
+                          <span className="activity-name">{l.employeeName}</span>
+                          <span className="activity-task">
+                            {l.department} · {l.leaveType} ({l.daysCount} {l.daysCount === 1 ? "day" : "days"})
+                          </span>
+                        </div>
+                        <span className={`pill ${pillClass}`}>{pillLabel}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            <section className="card holidays-strip-card">
+              <div className="card__head">
+                <h3 className="card__title" style={{ fontSize: "15px" }}>Holidays</h3>
+                {canPolicies ? (
+                  <Link to="/admin/policies" className="card-shortcut-link">
+                    <span>Policy Calendar</span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
+              </div>
+              <div className="card-scroll-body dash-card-body holidays-strip-row" role="list" aria-label="Upcoming holidays list">
+                {upcomingHolidays.length === 0 ? (
+                  <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
+                    None remaining this month.
+                  </span>
+                ) : (
+                  upcomingHolidays.map((h, idx) => (
+                    <div key={`${h.name}-${idx}`} className="holiday-chip" role="listitem">
+                      <span className="holiday-chip-date">{formatDisplayDate(h.date)}</span>
+                      <div>
+                        <span className="holiday-chip-name">{h.name}</span>
+                        <span className="holiday-chip-type"> · {h.isPaid ? "Paid Holiday" : "Observance"}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </MobileExpandable>
+        </div>
       </div>
     </div>
   );

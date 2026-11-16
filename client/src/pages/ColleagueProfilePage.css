@@ -1,0 +1,23 @@
+.colleague-profile-page {
+  max-width: 720px;
+}
+
+.colleague-profile-card {
+  background: var(--card, #fdfdfc);
+  border: 1px solid var(--hair, #e3e7e4);
+  border-radius: var(--r-md, 12px);
+  box-shadow: var(--shadow);
+  padding: 20px 22px;
+  min-width: 0;
+}
+
+.pd-profile-note {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel, #f5f6f5);
+  border: 1px solid var(--hair, #e3e7e4);
+  color: var(--muted, #646d67);
+  font-size: 13px;
+  line-height: 1.4;
+}

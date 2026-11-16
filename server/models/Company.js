@@ -31,10 +31,41 @@ const companySchema = new mongoose.Schema(
       default: COMPANY_STATUSES.TRIAL,
     },
     subscription: {
+      /** Legacy / display code — kept in sync with PlatformPlan.code when assigned. */
       plan: { type: String, default: "TRIAL" },
+      /** Reference to centrally managed PlatformPlan. */
+      planId: { type: mongoose.Schema.Types.ObjectId, ref: "PlatformPlan", default: null },
       maxEmployeeSeats: { type: Number, default: 10 },
+      /**
+       * Reserved/used employee seats (central counter for concurrent-safe enforcement).
+       * Never decreased by plan downgrade; new provisioning blocked when seatUsage >= maxEmployeeSeats.
+       */
+      seatUsage: { type: Number, default: 0, min: 0 },
       startDate: { type: Date, default: null },
       endDate: { type: Date, default: null },
+      trialEndsAt: { type: Date, default: null },
+      renewalDate: { type: Date, default: null },
+      /**
+       * Subscription lifecycle (independent of company ACTIVE/SUSPENDED).
+       * SUSPENDED subscription does not delete tenant data.
+       */
+      status: {
+        type: String,
+        enum: ["TRIAL", "ACTIVE", "SUSPENDED", "EXPIRED", "CANCELLED"],
+        default: "TRIAL",
+      },
+      billingStatus: {
+        type: String,
+        enum: ["NONE", "CURRENT", "PAST_DUE", "MANUAL", "SUSPENDED"],
+        default: "NONE",
+      },
+      billingCycle: {
+        type: String,
+        enum: ["NONE", "MONTHLY", "YEARLY"],
+        default: "NONE",
+      },
+      amount: { type: Number, default: 0 },
+      currency: { type: String, default: "INR" },
       history: { type: [mongoose.Schema.Types.Mixed], default: [] },
     },
     branding: {
@@ -53,6 +84,15 @@ const companySchema = new mongoose.Schema(
       timezone: { type: String, default: "Asia/Kolkata" },
       currencyCode: { type: String, default: "INR" },
       enabledModules: { type: [String], default: [] },
+      /**
+       * Platform Admin Batch 2 — company feature overrides.
+       * Missing key = inherit global. Explicit false cannot enable a globally disabled module.
+       * Shape: { modules: { [moduleKey]: boolean }, capabilities: { [capabilityKey]: boolean } }
+       */
+      featureAccess: {
+        modules: { type: mongoose.Schema.Types.Mixed, default: {} },
+        capabilities: { type: mongoose.Schema.Types.Mixed, default: {} },
+      },
       /**
        * Organization Explorer (employee org chart views).
        * Missing values resolve to defaults at read time — no migration required.
@@ -179,6 +219,38 @@ const companySchema = new mongoose.Schema(
     },
     customFields: { type: mongoose.Schema.Types.Mixed, default: {} },
     schemaVersion: { type: Number, default: 1 },
+    /**
+     * F43 — stamped only after tenant index provision verifies all required indexes
+     * for TENANT_INDEX_SCHEMA_VERSION (see tenantIndexInventory.js).
+     */
+    tenantIndexSchemaVersion: { type: Number, default: null },
+    tenantIndexProvisionedAt: { type: Date, default: null },
+    /**
+     * Platform Admin Batch 1 — operational provisioning status (safe messages only).
+     * Does not store tenant HR data.
+     */
+    platformProvisioning: {
+      lastAttemptAt: { type: Date, default: null },
+      lastStatus: {
+        type: String,
+        enum: ["PENDING", "SUCCESS", "FAILED", "UNKNOWN"],
+        default: "UNKNOWN",
+      },
+      lastMessage: { type: String, default: "" },
+      fullyProvisioned: { type: Boolean, default: false },
+    },
+    /** Compact lifecycle trail for Platform Admin company detail (also audited centrally). */
+    lifecycleHistory: {
+      type: [
+        {
+          action: { type: String, required: true },
+          at: { type: Date, default: Date.now },
+          byPlatformAdminId: { type: mongoose.Schema.Types.ObjectId, default: null },
+          note: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -201,6 +273,28 @@ companySchema.set("toJSON", {
     }
     return ret;
   },
+});
+
+/**
+ * F49 — Invalidate auth company metadata cache when company rows change
+ * (status, databaseName, config, etc.). Lazy-import avoids circular deps with db.js.
+ */
+function invalidateCompanyAuthCache(companyId) {
+  if (companyId == null) return;
+  import("../utils/companyMetadataCache.js")
+    .then((mod) => mod.invalidateCompanyMetadataCache(companyId))
+    .catch(() => {});
+}
+
+companySchema.post("save", function companyCacheInvalidateOnSave(doc) {
+  invalidateCompanyAuthCache(doc?._id);
+});
+
+companySchema.post(["findOneAndUpdate", "updateOne", "deleteOne"], function companyCacheInvalidateOnQuery() {
+  const filter = typeof this.getFilter === "function" ? this.getFilter() : null;
+  if (filter?._id) {
+    invalidateCompanyAuthCache(filter._id);
+  }
 });
 
 export default mongoose.models.Company ||

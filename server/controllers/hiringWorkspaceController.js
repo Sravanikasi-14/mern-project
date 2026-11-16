@@ -12,6 +12,7 @@ import {
   allRequiredSectionsApproved,
   serializeSectionReviews,
 } from "../services/onboardingSectionService.js";
+import { buildPrefixCiRegex } from "../utils/searchRegex.js";
 
 /**
  * Unified Hiring & Onboarding workspace API.
@@ -40,10 +41,6 @@ const FILTERABLE_STAGES = new Set(Object.values(HIRING_STAGES));
 
 export const HIRING_DEFAULT_LIMIT = 20;
 export const HIRING_MAX_LIMIT = 100;
-
-function escapeRegex(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-}
 
 /**
  * Single source of truth for stage derivation (JS side). The Mongo `$switch` below must mirror it.
@@ -573,7 +570,8 @@ function buildHiringRowMatch({ stage, search }) {
     rowMatch.stage = stage;
   }
   if (search) {
-    const regex = new RegExp(escapeRegex(search), "i");
+    // F58: prefix-anchored free-text search (not substring).
+    const regex = buildPrefixCiRegex(search);
     rowMatch.$or = [
       { "candidate.fullName": regex },
       { "candidate.email": regex },

@@ -25,6 +25,7 @@ import {
 } from "../hooks/useEmployeeQueries";
 import { invalidateAttendance } from "../lib/queryKeys";
 import { acquireCurrentLocation, watchLiveLocation } from "../utils/geolocation";
+import { createLiveLocationUploadGate } from "../utils/liveLocationUploadGate";
 import AttendanceVerificationPanel, {
   FaceEnrollmentCapture,
   VERIFICATION_STATUS,
@@ -72,6 +73,7 @@ export default function EmployeeAttendance() {
   const [trackingSession, setTrackingSession] = useState(null);
   const [trackingError, setTrackingError] = useState("");
   const unwatchRef = useRef(null);
+  const locationUploadGateRef = useRef(null);
 
   // History range: defaults to the current month; month arrows and the picker both drive it.
   const [historyRange, setHistoryRange] = useState(() => {
@@ -474,10 +476,15 @@ export default function EmployeeAttendance() {
           unwatchRef.current();
         }
 
+        // F54: first fix immediate; then ~15s or ~75m movement (jitter ignored).
+        locationUploadGateRef.current = createLiveLocationUploadGate();
         unwatchRef.current = watchLiveLocation(
           async (newLoc) => {
+            const gate = locationUploadGateRef.current;
+            if (!gate?.shouldUpload(newLoc)) return;
             try {
               await api.post("/employees/me/tracking/update", { location: newLoc });
+              gate.markSent(newLoc);
               setTrackingSession((prev) => (prev ? { ...prev, lastLocation: newLoc } : null));
             } catch (err) {
               const msg = String(err.response?.data?.message || "");
@@ -510,6 +517,8 @@ export default function EmployeeAttendance() {
         unwatchRef.current();
         unwatchRef.current = null;
       }
+      locationUploadGateRef.current?.reset();
+      locationUploadGateRef.current = null;
       setIsLiveTracking(false);
       setTrackingSession(null);
       if (!silent) {

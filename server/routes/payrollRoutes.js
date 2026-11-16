@@ -1,12 +1,17 @@
 import express from "express";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import { USER_ROLES } from "../models/User.js";
 import {
   listPayrollCycles,
   createPayrollCycle,
   getPayrollCycleDetails,
+  exportPayrollCycleRegister,
   recalculatePayrollCycle,
   finalizePayrollCycle,
   recordCyclePayment,
@@ -19,10 +24,14 @@ const router = express.Router();
 // All payroll routes require authenticated tenant context
 router.use(authenticate);
 
-// Employee self-service — authenticate only; assertCanAccessPayslip remains authoritative
-router.get("/employee/payslips", getEmployeePayslips);
-router.get("/employee/payslips/:payslipId/download", downloadPayslipPdf);
-router.get("/payslips/:payslipId/download", downloadPayslipPdf);
+// Employee self-service — platform payroll entitlement + assertCanAccessPayslip
+router.get("/employee/payslips", requireEntitledModule("payroll"), getEmployeePayslips);
+router.get(
+  "/employee/payslips/:payslipId/download",
+  requireEntitledModule("payroll"),
+  downloadPayslipPdf
+);
+router.get("/payslips/:payslipId/download", requireEntitledModule("payroll"), downloadPayslipPdf);
 
 // HR Admin payroll administration
 router.get(
@@ -45,6 +54,13 @@ router.get(
   loadHrAccessContext,
   requireHrPermission("payroll.view"),
   getPayrollCycleDetails
+);
+router.get(
+  "/cycles/:cycleId/export",
+  requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN),
+  loadHrAccessContext,
+  requireHrPermission("payroll.view"),
+  exportPayrollCycleRegister
 );
 router.post(
   "/cycles/:cycleId/calculate",

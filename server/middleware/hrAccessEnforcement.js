@@ -3,6 +3,7 @@ import {
   assertHrPermission,
   assertEmployeeInScope,
 } from "../services/hrAccessEnforcementService.js";
+import { assertHrPermissionEntitled } from "../services/platformEntitlementService.js";
 import { USER_ROLES } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 
@@ -58,6 +59,10 @@ export async function loadHrAccessContext(req, res, next) {
 export function requireHrPermission(permissionKey) {
   return async (req, res, next) => {
     try {
+      // Platform entitlements apply to Company Admin and HR Admin alike.
+      if (req.auth?.company) {
+        await assertHrPermissionEntitled(req.auth.company, permissionKey);
+      }
       if (!req.hrAccess) {
         req.hrAccess = await resolveHrAccessContext({
           user: req.auth.user,
@@ -68,12 +73,42 @@ export function requireHrPermission(permissionKey) {
       assertHrPermission(req.hrAccess, permissionKey);
       return next();
     } catch (err) {
-      if (err.status === 403 && req.auth?.user?.role === USER_ROLES.HR_ADMIN) {
+      if (
+        err.status === 403 &&
+        req.auth?.user?.role === USER_ROLES.HR_ADMIN &&
+        err.code !== "PLATFORM_MODULE_DISABLED" &&
+        err.code !== "PLATFORM_FEATURE_DISABLED"
+      ) {
         await auditHrAccessDenied(req, {
           code: err.code || "HR_PERMISSION_DENIED",
           permission: permissionKey,
         });
       }
+      return next(err);
+    }
+  };
+}
+
+/** Gate a route by platform module key (for routes without an HR permission key). */
+export function requireEntitledModule(moduleKey) {
+  return async (req, res, next) => {
+    try {
+      const { assertModuleEntitled } = await import("../services/platformEntitlementService.js");
+      await assertModuleEntitled(req.auth.company, moduleKey);
+      return next();
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+
+export function requireEntitledCapability(capabilityKey) {
+  return async (req, res, next) => {
+    try {
+      const { assertCapabilityEntitled } = await import("../services/platformEntitlementService.js");
+      await assertCapabilityEntitled(req.auth.company, capabilityKey);
+      return next();
+    } catch (err) {
       return next(err);
     }
   };

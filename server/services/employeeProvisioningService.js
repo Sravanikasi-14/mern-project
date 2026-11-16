@@ -394,6 +394,50 @@ export async function provisionEmployeeAccount(companyContext, employeeData, opt
     generateCodeIfMissing = false,
     session = null,
     skipAudit = false,
+    skipSeatReservation = false,
+  } = options;
+
+  const { reserveEmployeeSeat, releaseEmployeeSeat } = await import("./platformSeatService.js");
+  let seatReserved = false;
+  if (!skipSeatReservation && company?._id) {
+    const knownEmployeeCount = await models.Employee.countDocuments({});
+    await reserveEmployeeSeat(company._id, { knownEmployeeCount });
+    seatReserved = true;
+  }
+
+  try {
+    return await provisionEmployeeAccountInner(companyContext, employeeData, {
+      source,
+      existingUserId,
+      generateCodeIfMissing,
+      session,
+      skipAudit,
+    });
+  } catch (err) {
+    if (seatReserved) {
+      await releaseEmployeeSeat(company._id);
+    }
+    throw err;
+  }
+}
+
+async function provisionEmployeeAccountInner(companyContext, employeeData, options = {}) {
+  const {
+    models,
+    company,
+    actorUserId = null,
+    actorEmail = "",
+    actorRole = USER_ROLES.HR_ADMIN,
+    clientBaseUrl,
+    ipAddress = "",
+  } = companyContext;
+
+  const {
+    source = PROVISIONING_SOURCES.MANUAL,
+    existingUserId = null,
+    generateCodeIfMissing = false,
+    session = null,
+    skipAudit = false,
   } = options;
 
   const { Employee, User, EmployeeCompensation, OfferLetter, AuditLog, Department } = models;

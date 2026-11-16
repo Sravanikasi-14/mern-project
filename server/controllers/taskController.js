@@ -535,6 +535,8 @@ export async function uploadTaskAttachment(req, res, next) {
       fileName,
       fileData,
       mimeType,
+      connection: req.auth.models?.Task?.db || req.auth.models?.Employee?.db || null,
+      ownerType: "task",
     });
 
     const fileUrl = `/api/tasks/attachments/${saved.storageKey}`;

@@ -234,10 +234,20 @@ export async function createEmployeeFromOnboarding({
   employeePayload.job.departmentId = departmentAssignment.departmentId;
 
   const result = { employee: null, compensation: null, employeeCode };
+  const { reserveEmployeeSeat, releaseEmployeeSeat } = await import("./platformSeatService.js");
+  let seatReserved = false;
+  if (company?._id) {
+    const knownEmployeeCount = await Employee.countDocuments({});
+    await reserveEmployeeSeat(company._id, { knownEmployeeCount });
+    seatReserved = true;
+  }
 
   try {
     await insertEmployeeAndCompensation({ models, offerLetter, employeePayload, actorUserId, sessionOpt, result });
   } catch (err) {
+    if (seatReserved) {
+      await releaseEmployeeSeat(company._id);
+    }
     // Without a transaction session, undo partial writes here.
     if (!sessionOpt.session) {
       await rollbackCreatedEmployee(models, result);

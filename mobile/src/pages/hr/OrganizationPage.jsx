@@ -15,6 +15,36 @@ import DepartmentsPanel from "../organization/DepartmentsPanel";
 import DesignationsPanel from "../organization/DesignationsPanel";
 import api from "../../services/api";
 
+const ORG_STATUS = "ACTIVE";
+
+function mergeOrgNodes(prevById, nodes, { parentId = null } = {}) {
+  const next = new Map(prevById);
+  const ids = [];
+  for (const node of nodes || []) {
+    if (!node?.id) continue;
+    const id = String(node.id);
+    ids.push(id);
+    const existing = next.get(id) || {};
+    next.set(id, {
+      ...existing,
+      ...node,
+      id,
+      childIds: Array.isArray(node.childIds)
+        ? node.childIds
+        : Array.isArray(existing.childIds)
+          ? existing.childIds
+          : [],
+    });
+  }
+  if (parentId) {
+    const parent = next.get(String(parentId));
+    if (parent) {
+      next.set(String(parentId), { ...parent, childIds: ids, childrenLoaded: true });
+    }
+  }
+  return next;
+}
+
 function initials(name = "") {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
@@ -107,18 +137,24 @@ function Branch({
   matchIds,
   onToggle,
   onSelect,
+  pathIds,
 }) {
   const emp = byId.get(id);
   if (!emp) return null;
+  const path = pathIds instanceof Set ? pathIds : new Set();
+  if (path.has(id)) return null;
+  const nextPath = new Set(path);
+  nextPath.add(id);
   const expanded = expandedIds.has(id);
-  const children = emp.childIds || [];
+  const children = (emp.childIds || []).filter((childId) => !nextPath.has(childId));
+  const hasChildren = (emp.directReportCount || 0) > 0 || children.length > 0;
   return (
     <div>
       <MobileNode
         emp={emp}
         depth={depth}
         expanded={expanded}
-        hasChildren={children.length > 0}
+        hasChildren={hasChildren}
         selected={selectedId === id}
         match={matchIds.has(id)}
         onToggle={onToggle}
@@ -136,6 +172,7 @@ function Branch({
               matchIds={matchIds}
               onToggle={onToggle}
               onSelect={onSelect}
+              pathIds={nextPath}
             />
           ))
         : null}
@@ -157,23 +194,40 @@ export default function HrOrganizationPage({ backFallback = "/admin/more", title
   const canViewStructure = hrPortalAllows(user, company, "organization.view");
   const [tab, setTab] = useState("hierarchy");
   const [data, setData] = useState(null);
+  const [byId, setById] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [serverSearchResults, setServerSearchResults] = useState([]);
+  const [matchIds, setMatchIds] = useState(() => new Set());
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const searchWrapRef = useRef(null);
   const pendingScrollId = useRef(null);
+  const childrenLoadedRef = useRef(new Set());
+  const searchTimerRef = useRef(null);
+
+  const ensureChildrenLoaded = useCallback(async (managerId) => {
+    const key = String(managerId);
+    if (childrenLoadedRef.current.has(key)) return;
+    const res = await api.get("/employees/organization/children", {
+      params: { managerId: key, status: ORG_STATUS },
+    });
+    childrenLoadedRef.current.add(key);
+    setById((prev) => mergeOrgNodes(prev, res.data?.employees || [], { parentId: key }));
+  }, []);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const res = await api.get("/employees/organization", { params: { status: "ACTIVE" } });
+      childrenLoadedRef.current = new Set();
+      const res = await api.get("/employees/organization", { params: { status: ORG_STATUS } });
       setData(res.data);
+      setById(mergeOrgNodes(new Map(), res.data?.employees || []));
       setExpandedIds((prev) => {
         if (prev.size && silent) return prev;
         return new Set(res.data.hierarchyRootIds || []);
@@ -189,51 +243,51 @@ export default function HrOrganizationPage({ backFallback = "/admin/more", title
     load();
   }, [load]);
 
-  const byId = useMemo(() => {
-    const map = new Map();
-    for (const emp of data?.employees || []) map.set(emp.id, emp);
-    return map;
-  }, [data]);
-
-  const query = search.trim().toLowerCase();
-
-  const matchIds = useMemo(() => {
-    const set = new Set();
-    if (!query) return set;
-    for (const emp of data?.employees || []) {
-      if (matchesQuery(emp, query, byId)) set.add(emp.id);
+  useEffect(() => {
+    const q = search.trim();
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    if (!q) {
+      setServerSearchResults([]);
+      setMatchIds(new Set());
+      return undefined;
     }
-    return set;
-  }, [data, query, byId]);
-
-  const searchResults = useMemo(() => {
-    if (!query) return [];
-    return (data?.employees || [])
-      .filter((emp) => matchIds.has(emp.id))
-      .slice()
-      .sort((a, b) => (a.fullName || "").localeCompare(b.fullName || "", undefined, { sensitivity: "base" }));
-  }, [data, matchIds, query]);
+    searchTimerRef.current = window.setTimeout(async () => {
+      try {
+        const res = await api.get("/employees/organization/search", {
+          params: { q, status: ORG_STATUS },
+        });
+        const payload = res.data || {};
+        setById((prev) => mergeOrgNodes(prev, payload.employees || []));
+        const matches = new Set((payload.matchIds || []).map(String));
+        setMatchIds(matches);
+        setServerSearchResults(
+          (payload.employees || []).filter((e) => matches.has(String(e.id)))
+        );
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of payload.ancestorIds || []) next.add(String(id));
+          return next;
+        });
+      } catch {
+        setServerSearchResults([]);
+        setMatchIds(new Set());
+      }
+    }, 280);
+    return () => {
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    };
+  }, [search]);
 
   useEffect(() => {
-    if (!query || !data) return;
-    setExpandedIds((prev) => {
-      let next = new Set(prev);
-      for (const id of matchIds) {
-        next = expandAncestors(byId, id, next);
-      }
-      if (next.size === prev.size) {
-        let same = true;
-        for (const x of next) {
-          if (!prev.has(x)) {
-            same = false;
-            break;
-          }
-        }
-        if (same) return prev;
-      }
-      return next;
-    });
-  }, [query, matchIds, data, byId]);
+    for (const id of expandedIds) {
+      const emp = byId.get(id);
+      if (!emp || !(emp.directReportCount > 0)) continue;
+      if (childrenLoadedRef.current.has(id)) continue;
+      ensureChildrenLoaded(id).catch(() => {});
+    }
+  }, [expandedIds, byId, ensureChildrenLoaded]);
+
+  const searchResults = serverSearchResults;
 
   useEffect(() => {
     if (!resultsOpen) return undefined;
@@ -269,12 +323,17 @@ export default function HrOrganizationPage({ backFallback = "/admin/more", title
   const selectedManagerName = selected ? managerNameOf(selected, byId) : null;
 
   const toggle = (id) => {
+    const key = String(id);
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+    const emp = byId.get(key);
+    if (emp && (emp.directReportCount || 0) > 0 && !childrenLoadedRef.current.has(key)) {
+      ensureChildrenLoaded(key).catch(() => {});
+    }
   };
 
   const openEmployee = useCallback(

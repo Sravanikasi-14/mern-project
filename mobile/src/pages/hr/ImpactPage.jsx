@@ -26,7 +26,9 @@ export default function HrImpactPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [period, setPeriod] = useState("all");
+  const [summary, setSummary] = useState(null);
   const [awardOpen, setAwardOpen] = useState(false);
   const [form, setForm] = useState({ recipientId: "", points: "10", reason: "" });
   const [formError, setFormError] = useState("");
@@ -35,18 +37,25 @@ export default function HrImpactPage() {
   const [reverseReason, setReverseReason] = useState("");
   const [reverseError, setReverseError] = useState("");
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
-      const params = {};
+      const params = { page: 1, limit: 100 };
       if (period !== "all") params.period = period;
+      if (debouncedSearch) params.search = debouncedSearch;
       const [boardRes, peopleRes, txRes] = await Promise.all([
         api.get("/impact-points/leaderboard", { params }),
         api.get("/employees", { params: { page: 1, limit: 100, status: "ACTIVE" } }).catch(() => null),
         api.get("/impact-points/transactions", { params: { limit: 30 } }).catch(() => null),
       ]);
       setBoard(boardRes.data?.leaderboard || boardRes.data?.data?.leaderboard || []);
+      setSummary(boardRes.data?.summary || boardRes.data?.data?.summary || null);
       setPeople(peopleRes?.data?.employees || []);
       const txs =
         txRes?.data?.transactions ||
@@ -59,26 +68,21 @@ export default function HrImpactPage() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, debouncedSearch]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const filteredBoard = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return board;
-    return board.filter((row) =>
-      `${row.fullName || row.name || ""} ${row.department || ""} ${row.jobTitle || ""}`
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [board, search]);
+  // F71: search applied server-side; board is already the filtered page.
+  const filteredBoard = board;
 
-  const totalPoints = useMemo(
-    () => board.reduce((sum, row) => sum + Number(row.points ?? row.balance ?? 0), 0),
-    [board]
-  );
+  const totalPoints = useMemo(() => {
+    if (summary && Number.isFinite(Number(summary.circulation ?? summary.totalPoints))) {
+      return Number(summary.circulation ?? summary.totalPoints);
+    }
+    return board.reduce((sum, row) => sum + Number(row.points ?? row.balance ?? 0), 0);
+  }, [summary, board]);
 
   const submitReverse = async (event) => {
     event.preventDefault();

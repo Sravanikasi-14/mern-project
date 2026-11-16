@@ -28,6 +28,14 @@ const PAGE_MAX = 50;
 const PREVIEW_LENGTH = 160;
 const READ_PAGE_MAX = 40;
 const SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
+/** F53 — exclusive notify claim TTL (ms). Expired locks may be stolen by a later worker. */
+const ANNOUNCEMENT_NOTIFY_LOCK_MS = 120_000;
+/** F53 — soft wall-clock budget for one multi-tenant publish-due invocation. */
+const DEFAULT_ANNOUNCEMENT_PUBLISH_BUDGET_MS = 50_000;
+/** F53 — per-tenant cap within a multi-tenant publish-due invocation. */
+export const DEFAULT_ANNOUNCEMENT_PER_COMPANY_BUDGET_MS = 15_000;
+/** F51 — portal audience cursor page size (users per batch). */
+export const PORTAL_AUDIENCE_PAGE_SIZE = 200;
 
 /**
  * Audience is the current set of active portal users.
@@ -138,11 +146,28 @@ function toDto(announcement, { names = new Map(), isRead = null, publisherName =
   };
 }
 
-async function loadPortalAudience(models) {
-  const users = await models.User.find({
+/**
+ * F51 — Resolve one page of portal audience entries (active users + linked employees).
+ * Callers should iterate with afterId rather than loading the full portal into memory.
+ */
+export async function loadPortalAudiencePage(
+  models,
+  { afterId = null, limit = PORTAL_AUDIENCE_PAGE_SIZE } = {}
+) {
+  const pageSize = Math.min(
+    Math.max(1, Number(limit) || PORTAL_AUDIENCE_PAGE_SIZE),
+    PORTAL_AUDIENCE_PAGE_SIZE
+  );
+  const filter = {
     isActive: true,
     role: { $in: PORTAL_ROLES },
-  })
+  };
+  if (afterId) {
+    filter._id = { $gt: afterId };
+  }
+  const users = await models.User.find(filter)
+    .sort({ _id: 1 })
+    .limit(pageSize)
     .select("fullName email role employeeId isActive preferences.emailNotifications")
     .lean();
   const employeeIds = users.map((user) => user.employeeId).filter(Boolean);
@@ -152,13 +177,32 @@ async function loadPortalAudience(models) {
         .lean()
     : [];
   const employeeById = new Map(employees.map((row) => [String(row._id), row]));
-  return users
+  const entries = users
     .map((user) => {
       const employee = user.employeeId ? employeeById.get(String(user.employeeId)) : null;
       if (employee && employee.status === EMPLOYEE_STATUSES.INACTIVE) return null;
       return { user, employee };
     })
     .filter(Boolean);
+  const nextAfterId = users.length ? users[users.length - 1]._id : null;
+  return {
+    entries,
+    nextAfterId,
+    hasMore: users.length === pageSize,
+  };
+}
+
+/** @deprecated Prefer loadPortalAudiencePage + cursor; kept for narrow list/read helpers. */
+async function loadPortalAudience(models) {
+  const all = [];
+  let afterId = null;
+  for (;;) {
+    const page = await loadPortalAudiencePage(models, { afterId });
+    all.push(...page.entries);
+    if (!page.hasMore) break;
+    afterId = page.nextAfterId;
+  }
+  return all;
 }
 
 function inAudience(entry, announcement) {
@@ -169,8 +213,17 @@ function inAudience(entry, announcement) {
 }
 
 async function audienceFor(models, announcement) {
-  const people = await loadPortalAudience(models);
-  return people.filter((entry) => inAudience(entry, announcement));
+  const people = [];
+  let afterId = null;
+  for (;;) {
+    const page = await loadPortalAudiencePage(models, { afterId });
+    for (const entry of page.entries) {
+      if (inAudience(entry, announcement)) people.push(entry);
+    }
+    if (!page.hasMore) break;
+    afterId = page.nextAfterId;
+  }
+  return people;
 }
 
 function viewerDepartmentId(entry) {
@@ -194,42 +247,202 @@ function recipientCanSee(announcement, entry, now = new Date()) {
   return inAudience(entry, announcement);
 }
 
-async function notifyAudience(models, announcement) {
-  if (!models.Notification) return;
-  const audience = await audienceFor(models, announcement);
-  for (const entry of audience) {
+/**
+ * F53 — Build personal announcement notification docs (same payload rules as legacy create loop).
+ * Skips users who opted out of emailNotifications (preserved legacy behavior).
+ */
+export function buildAnnouncementNotificationDocs(announcement, audienceEntries) {
+  const announcementId = String(announcement._id);
+  const title = announcement.title;
+  const message = previewOf(announcement.body) || "A new announcement was published.";
+  const docs = [];
+  for (const entry of audienceEntries || []) {
     if (entry.user?.preferences?.emailNotifications === false) continue;
-    const link = entry.user.role === USER_ROLES.EMPLOYEE
-      ? `/app/messages?view=announcements&a=${announcement._id}`
-      : `/admin/messages?view=announcements&a=${announcement._id}`;
-    const existing = await models.Notification.findOne({
+    const link =
+      entry.user.role === USER_ROLES.EMPLOYEE
+        ? `/app/messages?view=announcements&a=${announcementId}`
+        : `/admin/messages?view=announcements&a=${announcementId}`;
+    docs.push({
       userId: entry.user._id,
+      role: null,
+      title,
+      message,
       type: NOTIFICATION_TYPES.ANNOUNCEMENT,
-      "metadata.announcementId": String(announcement._id),
-      "metadata.event": "published",
-    }).select("_id");
-    if (existing) continue;
-    try {
-      await models.Notification.create({
-        userId: entry.user._id,
-        role: null,
-        title: announcement.title,
-        message: previewOf(announcement.body) || "A new announcement was published.",
-        type: NOTIFICATION_TYPES.ANNOUNCEMENT,
-        link,
-        isRead: false,
-        metadata: { announcementId: String(announcement._id), event: "published" },
-      });
-    } catch (error) {
-      if (error?.code === 11000) continue;
+      link,
+      isRead: false,
+      metadata: { announcementId, event: "published" },
+    });
+  }
+  return docs;
+}
+
+/**
+ * F53 — Persist announcement notifications with one bulk write (F42-style `ordered: false`).
+ * Returns how many documents were inserted (including partial success).
+ */
+export async function insertAnnouncementNotificationDocs(models, docs) {
+  if (!models?.Notification || !Array.isArray(docs) || docs.length === 0) {
+    return 0;
+  }
+  try {
+    const inserted = await models.Notification.insertMany(docs, { ordered: false });
+    return Array.isArray(inserted) ? inserted.length : docs.length;
+  } catch (err) {
+    const partial =
+      (Array.isArray(err?.insertedDocs) && err.insertedDocs.length) ||
+      Number(err?.result?.result?.nInserted) ||
+      Number(err?.result?.nInserted) ||
+      0;
+    const onlyDupes =
+      err?.code === 11000 ||
+      (Array.isArray(err?.writeErrors) &&
+        err.writeErrors.length > 0 &&
+        err.writeErrors.every((e) => e.code === 11000));
+    if (partial > 0) {
       if (process.env.NODE_ENV !== "test") {
-        console.warn("[announcements] notification was not saved:", error.message);
+        console.warn(
+          `[announcements] partial insertMany ${partial}/${docs.length}:`,
+          err?.message || err
+        );
       }
+      return partial;
     }
+    if (onlyDupes) return 0;
+    throw err;
   }
 }
 
-export async function publishDueAnnouncements(models, now = new Date()) {
+/**
+ * F53 — Fan-out with 1 existing-recipient query + insertMany (not N× findOne+create).
+ * @returns {{ delivered: number, complete: boolean, candidateCount: number, queryCount: number, writeCount: number }}
+ */
+export async function notifyAudience(models, announcement) {
+  if (!models.Notification) {
+    return { delivered: 0, complete: true, candidateCount: 0, queryCount: 0, writeCount: 0 };
+  }
+
+  // F51: page portal audience + insertMany per page (no full-audience materialization).
+  const announcementId = String(announcement._id);
+  let delivered = 0;
+  let candidateCount = 0;
+  let queryCount = 0;
+  let writeCount = 0;
+  let afterId = null;
+
+  for (;;) {
+    const page = await loadPortalAudiencePage(models, { afterId });
+    queryCount += 1;
+    const audience = page.entries.filter((entry) => inAudience(entry, announcement));
+    const candidates = buildAnnouncementNotificationDocs(announcement, audience);
+    candidateCount += candidates.length;
+
+    if (candidates.length > 0) {
+      queryCount += 1;
+      const existing = await models.Notification.find({
+        type: NOTIFICATION_TYPES.ANNOUNCEMENT,
+        "metadata.announcementId": announcementId,
+        "metadata.event": "published",
+        userId: { $in: candidates.map((doc) => doc.userId) },
+      })
+        .select("userId")
+        .lean();
+      const have = new Set(existing.map((row) => String(row.userId)));
+      const docs = candidates.filter((doc) => !have.has(String(doc.userId)));
+      if (docs.length > 0) {
+        writeCount += 1;
+        delivered += await insertAnnouncementNotificationDocs(models, docs);
+      }
+    }
+
+    if (!page.hasMore) break;
+    afterId = page.nextAfterId;
+  }
+
+  queryCount += 1;
+  const covered = await models.Notification.countDocuments({
+    type: NOTIFICATION_TYPES.ANNOUNCEMENT,
+    "metadata.announcementId": announcementId,
+    "metadata.event": "published",
+  });
+  const complete = covered >= candidateCount;
+  return {
+    delivered,
+    complete,
+    candidateCount,
+    queryCount,
+    writeCount,
+  };
+}
+
+async function claimAnnouncementNotify(models, announcementId, now = new Date()) {
+  const token = crypto.randomBytes(16).toString("hex");
+  const lockUntil = new Date(now.getTime() + ANNOUNCEMENT_NOTIFY_LOCK_MS);
+  const claimed = await models.Announcement.findOneAndUpdate(
+    {
+      _id: announcementId,
+      status: ANNOUNCEMENT_STATUSES.PUBLISHED,
+      notifiedAt: null,
+      $or: [
+        { notifyLockUntil: null },
+        { notifyLockUntil: { $exists: false } },
+        { notifyLockUntil: { $lte: now } },
+      ],
+    },
+    { $set: { notifyLockUntil: lockUntil, notifyLockToken: token } },
+    { returnDocument: "after" }
+  );
+  return claimed ? { claimed: true, token, announcement: claimed } : { claimed: false, token: null, announcement: null };
+}
+
+async function releaseAnnouncementNotifyClaim(models, announcementId, token) {
+  await models.Announcement.updateOne(
+    { _id: announcementId, notifyLockToken: token, notifiedAt: null },
+    { $set: { notifyLockUntil: null, notifyLockToken: "" } }
+  );
+}
+
+async function markAnnouncementNotified(models, announcementId, token) {
+  const result = await models.Announcement.updateOne(
+    { _id: announcementId, notifyLockToken: token, notifiedAt: null },
+    {
+      $set: { notifiedAt: new Date(), notifyLockUntil: null, notifyLockToken: "" },
+    }
+  );
+  return result.modifiedCount > 0;
+}
+
+/**
+ * Notify + mark notifiedAt only when fan-out is complete.
+ * On failure or incomplete coverage, release the claim so a later run can retry (deduped).
+ */
+async function notifyAudienceAndMark(models, announcement) {
+  const claim = await claimAnnouncementNotify(models, announcement._id);
+  if (!claim.claimed) {
+    return { skipped: true, reason: "lock_held_or_notified" };
+  }
+  try {
+    const result = await notifyAudience(models, claim.announcement);
+    if (result.complete) {
+      await markAnnouncementNotified(models, announcement._id, claim.token);
+      return { ...result, skipped: false, marked: true };
+    }
+    await releaseAnnouncementNotifyClaim(models, announcement._id, claim.token);
+    return { ...result, skipped: false, marked: false };
+  } catch (error) {
+    await releaseAnnouncementNotifyClaim(models, announcement._id, claim.token);
+    throw error;
+  }
+}
+
+/**
+ * Publish due announcements for one tenant.
+ * @param {object} [options]
+ * @param {number} [options.deadline] — wall-clock ms epoch; stop starting new items when exceeded.
+ * Incomplete notify work keeps notifiedAt=null for retry (never marked complete early).
+ * @returns {Promise<number>} count of newly status-flipped SCHEDULED→PUBLISHED rows
+ */
+export async function publishDueAnnouncements(models, now = new Date(), options = {}) {
+  const deadline = Number.isFinite(options.deadline) ? Number(options.deadline) : null;
   const due = await models.Announcement.find({
     $or: [
       { status: ANNOUNCEMENT_STATUSES.SCHEDULED, scheduledAt: { $lte: now } },
@@ -239,6 +452,10 @@ export async function publishDueAnnouncements(models, now = new Date()) {
 
   let published = 0;
   for (const row of due) {
+    if (deadline != null && Date.now() >= deadline) {
+      // Do not flip more SCHEDULED rows or start fan-out; remaining stay due for next run.
+      break;
+    }
     let current = row;
     if (row.status === ANNOUNCEMENT_STATUSES.SCHEDULED) {
       current = await models.Announcement.findOneAndUpdate(
@@ -259,25 +476,113 @@ export async function publishDueAnnouncements(models, now = new Date()) {
       current = await models.Announcement.findById(row._id);
     }
     if (!current || current.notifiedAt || current.status !== ANNOUNCEMENT_STATUSES.PUBLISHED) continue;
-    await notifyAudience(models, current);
-    await models.Announcement.updateOne(
-      { _id: current._id, notifiedAt: null },
-      { $set: { notifiedAt: new Date() } }
-    );
+    if (deadline != null && Date.now() >= deadline) break;
+    try {
+      await notifyAudienceAndMark(models, current);
+    } catch (error) {
+      if (process.env.NODE_ENV !== "test") {
+        console.warn(
+          `[announcements] notify failed for ${String(current._id)}:`,
+          error?.message || error
+        );
+      }
+      // Leave published; notifiedAt stays null for a later retry. Do not roll back status.
+    }
   }
   return published;
 }
 
-export async function publishDueForAllCompanies(now = new Date()) {
-  const companies = await Company.find({ status: COMPANY_STATUSES.ACTIVE }).select("databaseName status companyName");
-  let published = 0;
-  for (const company of companies) {
-    published += await runWithTenantConnectionScope(async () => {
-      const models = await getCompanyModels(company);
-      return publishDueAnnouncements(models, now);
-    });
+/** Rotate company list so afterCompanyId's successor is first (fair continuation). */
+export function rotateCompaniesAfterId(companies, afterCompanyId) {
+  if (!afterCompanyId || !Array.isArray(companies) || companies.length === 0) {
+    return companies || [];
   }
-  return { companies: companies.length, published };
+  const idx = companies.findIndex((c) => String(c._id) === String(afterCompanyId));
+  if (idx < 0) return companies;
+  return companies.slice(idx + 1).concat(companies.slice(0, idx + 1));
+}
+
+/**
+ * F51 — Cross-tenant due publish. One tenant failure must not stop others.
+ * F53 — Fleet wall-clock budget + per-tenant cap + rotate-after cursor so slow
+ * early tenants cannot starve the rest of the fleet forever.
+ */
+export async function publishDueForAllCompanies(now = new Date(), options = {}) {
+  const companiesRaw = await Company.find({ status: COMPANY_STATUSES.ACTIVE })
+    .select("_id slug databaseName status companyName")
+    .sort({ _id: 1 })
+    .lean();
+
+  const budgetMs = Number.isFinite(options.budgetMs)
+    ? Number(options.budgetMs)
+    : Number.parseInt(process.env.ANNOUNCEMENT_PUBLISH_BUDGET_MS || "", 10) ||
+      DEFAULT_ANNOUNCEMENT_PUBLISH_BUDGET_MS;
+  const perCompanyMs = Number.isFinite(options.perCompanyBudgetMs)
+    ? Number(options.perCompanyBudgetMs)
+    : Number.parseInt(process.env.ANNOUNCEMENT_PER_COMPANY_BUDGET_MS || "", 10) ||
+      DEFAULT_ANNOUNCEMENT_PER_COMPANY_BUDGET_MS;
+  const deadline = Date.now() + Math.max(0, budgetMs);
+
+  const companies = rotateCompaniesAfterId(companiesRaw, options.afterCompanyId);
+
+  let published = 0;
+  const results = [];
+  let lastCompletedCompanyId = null;
+  const publishForCompany =
+    typeof options.publishForCompany === "function"
+      ? options.publishForCompany
+      : async (company, publishOptions = {}) =>
+          runWithTenantConnectionScope(async () => {
+            const models = await getCompanyModels(company);
+            return publishDueAnnouncements(models, now, publishOptions);
+          });
+
+  for (const company of companies) {
+    if (Date.now() >= deadline) {
+      results.push({
+        companyId: String(company._id),
+        companySlug: company.slug || "",
+        skipped: true,
+        reason: "budget_exhausted",
+        published: 0,
+        pending: true,
+      });
+      continue;
+    }
+
+    const companyDeadline = Math.min(deadline, Date.now() + Math.max(0, perCompanyMs));
+    try {
+      const count = await publishForCompany(company, { deadline: companyDeadline });
+      published += Number(count) || 0;
+      lastCompletedCompanyId = String(company._id);
+      results.push({
+        companyId: String(company._id),
+        companySlug: company.slug || "",
+        published: Number(count) || 0,
+      });
+    } catch (error) {
+      results.push({
+        companyId: String(company._id),
+        companySlug: company.slug || "",
+        published: 0,
+        error: error?.message || String(error),
+      });
+      if (process.env.NODE_ENV !== "test") {
+        console.warn(
+          `[announcements] publish-due failed for ${company.slug || company.databaseName}:`,
+          error?.message || error
+        );
+      }
+    }
+  }
+
+  return {
+    companies: companiesRaw.length,
+    published,
+    results,
+    afterCompanyId: lastCompletedCompanyId,
+    truncated: results.some((r) => r.reason === "budget_exhausted" || r.pending),
+  };
 }
 
 export function cronAuthorized(req) {
@@ -499,8 +804,13 @@ export async function createAnnouncement(req) {
     publishedAt,
   });
   if (status === ANNOUNCEMENT_STATUSES.PUBLISHED) {
-    await notifyAudience(models, created);
-    await models.Announcement.updateOne({ _id: created._id }, { $set: { notifiedAt: new Date() } });
+    try {
+      await notifyAudienceAndMark(models, created);
+    } catch (error) {
+      if (process.env.NODE_ENV !== "test") {
+        console.warn("[announcements] notify after create failed:", error?.message || error);
+      }
+    }
   }
   return getAnnouncement(req, created._id);
 }
@@ -542,8 +852,13 @@ export async function updateAnnouncement(req, id) {
   await req.auth.models.Announcement.updateOne({ _id: announcement._id }, { $set: changes });
   const fresh = await req.auth.models.Announcement.findById(announcement._id);
   if (fresh.status === ANNOUNCEMENT_STATUSES.PUBLISHED && !fresh.notifiedAt) {
-    await notifyAudience(req.auth.models, fresh);
-    await req.auth.models.Announcement.updateOne({ _id: fresh._id }, { $set: { notifiedAt: new Date() } });
+    try {
+      await notifyAudienceAndMark(req.auth.models, fresh);
+    } catch (error) {
+      if (process.env.NODE_ENV !== "test") {
+        console.warn("[announcements] notify after update failed:", error?.message || error);
+      }
+    }
   }
   return getAnnouncement(req, announcement._id);
 }
@@ -571,8 +886,13 @@ export async function publishAnnouncement(req, id) {
   announcement.publishedAt = new Date();
   announcement.scheduledAt = null;
   await announcement.save();
-  await notifyAudience(models, announcement);
-  await models.Announcement.updateOne({ _id: announcement._id }, { $set: { notifiedAt: new Date() } });
+  try {
+    await notifyAudienceAndMark(models, announcement);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("[announcements] notify after publish failed:", error?.message || error);
+    }
+  }
   return getAnnouncement(req, id);
 }
 

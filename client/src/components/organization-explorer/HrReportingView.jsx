@@ -20,7 +20,15 @@ import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { hrPortalAllows } from "../../utils/hrPortalAccess";
 import { AccessRestrictedInline } from "../AccessRestrictedNotice";
+import {
+  fetchOrgBootstrap,
+  fetchOrgChildren,
+  fetchOrgSearch,
+  mergeOrgNodes,
+} from "./hrOrgLazyApi";
 import "../../pages/Organization.css";
+
+const ORG_STATUS = "ALL";
 
 const emptyFilters = {
   department: "",
@@ -216,15 +224,22 @@ function OrgChartBranch({
   selectedId,
   matchIds,
   flashId,
+  pathIds,
 }) {
   const emp = byId.get(id);
   if (!emp) return null;
   if (filtering && !visibleIds.has(id)) return null;
 
+  const path = pathIds instanceof Set ? pathIds : new Set();
+  if (path.has(id)) return null; // cycle / revisit guard for lazy trees
+  const nextPath = new Set(path);
+  nextPath.add(id);
+
   const expanded = expandedIds.has(id);
-  const childIds = (emp.childIds || []).filter((childId) =>
-    filtering ? visibleIds.has(childId) : true
-  );
+  const childIds = (emp.childIds || []).filter((childId) => {
+    if (nextPath.has(childId)) return false;
+    return filtering ? visibleIds.has(childId) : true;
+  });
   const isMatch = matchIds.has(id);
   const isContext = filtering && !isMatch;
 
@@ -255,6 +270,7 @@ function OrgChartBranch({
               selectedId={selectedId}
               matchIds={matchIds}
               flashId={flashId}
+              pathIds={nextPath}
             />
           ))}
         </ul>
@@ -263,15 +279,19 @@ function OrgChartBranch({
   );
 }
 
-/** HR Reporting view — uses GET /employees/organization and preserves manager tools. */
+/** HR Reporting view — F48 lazy bootstrap + children + search; preserves manager tools. */
 export default function HrReportingView() {
   const { user, company } = useAuth();
   const canEditPeople = hrPortalAllows(user, company, "people.edit");
   const [data, setData] = useState(null);
+  const [byId, setById] = useState(() => new Map());
+  const [unassignedIds, setUnassignedIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [serverSearchResults, setServerSearchResults] = useState([]);
+  const [serverSearchMatchIds, setServerSearchMatchIds] = useState(() => new Set());
   const [filters, setFilters] = useState(emptyFilters);
   const [draft, setDraft] = useState(emptyFilters);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -289,17 +309,46 @@ export default function HrReportingView() {
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const pendingScrollId = useRef(null);
+  const childrenLoadedRef = useRef(new Set());
+  const searchTimerRef = useRef(null);
+
+  const mergeNodes = useCallback((nodes, parentId = null) => {
+    setById((prev) => mergeOrgNodes(prev, nodes, { parentId }));
+  }, []);
+
+  const ensureChildrenLoaded = useCallback(
+    async (managerId) => {
+      const key = managerId == null ? "none" : String(managerId);
+      if (childrenLoadedRef.current.has(key)) return;
+      const payload = await fetchOrgChildren({ managerId: key, status: ORG_STATUS });
+      childrenLoadedRef.current.add(key);
+      mergeNodes(payload.employees || [], managerId == null || key === "none" ? null : key);
+      if (key === "none") {
+        setUnassignedIds((payload.employees || []).map((e) => String(e.id)));
+      }
+    },
+    [mergeNodes]
+  );
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const res = await api.get("/employees/organization", { params: { status: "ALL" } });
-      setData(res.data);
+      childrenLoadedRef.current = new Set();
+      const bootstrap = await fetchOrgBootstrap({ status: ORG_STATUS });
+      setData(bootstrap);
+      const rootMap = mergeOrgNodes(new Map(), bootstrap.employees || []);
+      setById(rootMap);
+      setUnassignedIds([]);
       setExpandedIds((prev) => {
         if (prev.size > 0 && silent) return prev;
-        return new Set(res.data.hierarchyRootIds || []);
+        return new Set(bootstrap.hierarchyRootIds || []);
       });
+      // Prefetch unassigned pool for the side panel (bounded server page).
+      const unassignedPayload = await fetchOrgChildren({ managerId: "none", status: ORG_STATUS });
+      childrenLoadedRef.current.add("none");
+      setById((prev) => mergeOrgNodes(prev, unassignedPayload.employees || []));
+      setUnassignedIds((unassignedPayload.employees || []).map((e) => String(e.id)));
     } catch (err) {
       setError(err.response?.data?.message || "Failed to load organization chart.");
     } finally {
@@ -311,34 +360,58 @@ export default function HrReportingView() {
     load();
   }, [load]);
 
-  const byId = useMemo(() => {
-    const map = new Map();
-    for (const emp of data?.employees || []) map.set(emp.id, emp);
-    return map;
-  }, [data]);
+  // Debounced server search (F48) — does not require a full in-memory tree.
+  useEffect(() => {
+    const q = search.trim();
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    if (!q) {
+      setServerSearchResults([]);
+      setServerSearchMatchIds(new Set());
+      return undefined;
+    }
+    searchTimerRef.current = window.setTimeout(async () => {
+      try {
+        const payload = await fetchOrgSearch({ q, status: ORG_STATUS });
+        mergeNodes(payload.employees || []);
+        const matchSet = new Set((payload.matchIds || []).map(String));
+        setServerSearchMatchIds(matchSet);
+        setServerSearchResults(
+          (payload.employees || []).filter((e) => matchSet.has(String(e.id)))
+        );
+        setExpandedIds((prev) => {
+          let next = new Set(prev);
+          for (const id of payload.ancestorIds || []) next.add(String(id));
+          for (const id of matchSet) next = expandAncestors(byId, id, next);
+          return next;
+        });
+      } catch {
+        setServerSearchResults([]);
+        setServerSearchMatchIds(new Set());
+      }
+    }, 280);
+    return () => {
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+    };
+  }, [search, mergeNodes, byId]);
 
   const filterOptions = useMemo(() => {
-    const departments = new Set();
-    const titles = new Set();
-    const employmentTypes = new Set();
-    const workLocations = new Set();
-    for (const emp of data?.employees || []) {
-      if (emp.department) departments.add(emp.department);
-      if (emp.jobTitle) titles.add(emp.jobTitle);
-      if (emp.employmentType) employmentTypes.add(emp.employmentType);
-      if (emp.workLocation) workLocations.add(emp.workLocation);
-    }
-    const collator = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+    const fo = data?.filterOptions || {};
     return {
-      departments: Array.from(departments).sort(collator),
-      titles: Array.from(titles).sort(collator),
-      employmentTypes: Array.from(employmentTypes).sort(collator),
-      workLocations: Array.from(workLocations).sort(collator),
+      departments: Array.isArray(fo.departments) ? fo.departments : [],
+      titles: Array.isArray(fo.titles)
+        ? fo.titles
+        : Array.isArray(fo.jobTitles)
+          ? fo.jobTitles
+          : [],
+      employmentTypes: Array.isArray(fo.employmentTypes) ? fo.employmentTypes : [],
+      workLocations: Array.isArray(fo.workLocations) ? fo.workLocations : [],
     };
   }, [data]);
 
   const filtering = countActiveFilters(filters) > 0;
   const filterCount = countActiveFilters(filters);
+
+  const allLoadedEmployees = useMemo(() => [...byId.values()], [byId]);
 
   const matchIds = useMemo(() => {
     const set = new Set();
@@ -349,11 +422,11 @@ export default function HrReportingView() {
       managerSubtree = collectDescendants(root, byId);
       managerSubtree.add(root);
     }
-    for (const emp of data?.employees || []) {
+    for (const emp of allLoadedEmployees) {
       if (employeeMatchesFilters(emp, filters, managerSubtree)) set.add(emp.id);
     }
     return set;
-  }, [data, filters, filtering, byId]);
+  }, [allLoadedEmployees, filters, filtering, byId]);
 
   const visibleIds = useMemo(() => {
     if (!filtering) return new Set();
@@ -364,41 +437,23 @@ export default function HrReportingView() {
     return next;
   }, [filtering, matchIds, byId]);
 
-  const query = search.trim().toLowerCase();
-
-  const searchMatchIds = useMemo(() => {
-    const set = new Set();
-    if (!query) return set;
-    for (const emp of data?.employees || []) {
-      if (matchesSearchQuery(emp, query)) set.add(emp.id);
-    }
-    return set;
-  }, [data, query]);
-
-  const searchResults = useMemo(() => {
-    if (!query) return [];
-    return (data?.employees || [])
-      .filter((emp) => searchMatchIds.has(emp.id))
-      .slice()
-      .sort((a, b) =>
-        (a.fullName || "").localeCompare(b.fullName || "", undefined, { sensitivity: "base" })
-      );
-  }, [data, searchMatchIds, query]);
+  const searchMatchIds = serverSearchMatchIds;
+  const searchResults = serverSearchResults;
 
   const chartHighlightIds = filtering ? matchIds : searchMatchIds;
 
   const stats = useMemo(() => {
-    const employees = data?.employees || [];
-    const active = employees.filter((e) => String(e.status || "").toUpperCase() === "ACTIVE").length;
-    const unassigned = (data?.unassignedIds || []).length;
+    const unassigned = Number(data?.meta?.unassigned ?? unassignedIds.length);
     const cycleEdgesBroken = Number(data?.meta?.cycleEdgesBroken || 0);
+    const total = Number(data?.meta?.total || 0);
+    const active = Number(data?.meta?.active ?? total);
     return {
-      total: data?.meta?.total ?? employees.length,
+      total,
       active,
       unassigned,
       cycleEdgesBroken,
     };
-  }, [data]);
+  }, [data, unassignedIds]);
 
   const visibleRootIds = useMemo(() => {
     const roots = data?.hierarchyRootIds || [];
@@ -407,10 +462,10 @@ export default function HrReportingView() {
   }, [data, filtering, visibleIds]);
 
   const visibleUnassignedIds = useMemo(() => {
-    const ids = data?.unassignedIds || [];
+    const ids = unassignedIds || [];
     if (!filtering) return ids;
     return ids.filter((id) => matchIds.has(id));
-  }, [data, filtering, matchIds]);
+  }, [unassignedIds, filtering, matchIds]);
 
   const shownUnassignedIds = useMemo(() => {
     const q = unassignedQuery.trim().toLowerCase();
@@ -426,6 +481,22 @@ export default function HrReportingView() {
     });
   }, [visibleUnassignedIds, unassignedQuery, byId]);
 
+  // When filtering by a manager, ensure that manager's direct reports are loaded.
+  useEffect(() => {
+    if (!filtering || !filters.reportingManagerId || filters.reportingManagerId === "none") return;
+    ensureChildrenLoaded(filters.reportingManagerId).catch(() => {});
+  }, [filtering, filters.reportingManagerId, ensureChildrenLoaded]);
+
+  // Load children for any expanded node that has reports (search path / expand-all).
+  useEffect(() => {
+    for (const id of expandedIds) {
+      const emp = byId.get(id);
+      if (!emp || !(emp.directReportCount > 0)) continue;
+      if (childrenLoadedRef.current.has(id)) continue;
+      ensureChildrenLoaded(id).catch(() => {});
+    }
+  }, [expandedIds, byId, ensureChildrenLoaded]);
+
   // Auto-expand ancestors for filter matches and search matches.
   useEffect(() => {
     if (!data) return;
@@ -435,7 +506,6 @@ export default function HrReportingView() {
       let next = new Set(prev);
       for (const id of targets) {
         next = expandAncestors(byId, id, next);
-        // Also expand the match itself if it has children and is a manager filter root.
         if (filtering && filters.reportingManagerId && id === String(filters.reportingManagerId)) {
           next.add(id);
         }
@@ -501,17 +571,25 @@ export default function HrReportingView() {
   const selectedManagerName = selected ? managerNameOf(selected, byId) : null;
 
   const toggle = (id) => {
+    const key = String(id);
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) {
+        next.delete(key);
+        return next;
+      }
+      next.add(key);
       return next;
     });
+    const emp = byId.get(key);
+    if (emp && (emp.directReportCount || 0) > 0 && !childrenLoadedRef.current.has(key)) {
+      ensureChildrenLoaded(key).catch(() => {});
+    }
   };
 
   const expandAll = () => {
     const next = new Set();
-    for (const emp of data?.employees || []) {
+    for (const emp of byId.values()) {
       if ((emp.directReportCount || 0) > 0) next.add(emp.id);
     }
     setExpandedIds(next);
@@ -523,19 +601,20 @@ export default function HrReportingView() {
 
   const openEmployee = useCallback(
     (id, { fromSearch = false } = {}) => {
+      const key = String(id);
       setExpandedIds((prev) => {
-        let next = expandAncestors(byId, id, prev);
-        next.add(id);
+        let next = expandAncestors(byId, key, prev);
+        next.add(key);
         return next;
       });
-      setSelectedId(id);
+      setSelectedId(key);
       setDetailOpen(true);
       setManagerError("");
       setManagerSuccess("");
       setResultsOpen(false);
-      pendingScrollId.current = id;
-      if (fromSearch) setFlashId(id);
-      else setFlashId(id);
+      pendingScrollId.current = key;
+      setFlashId(key);
+      void fromSearch;
     },
     [byId]
   );

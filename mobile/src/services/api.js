@@ -103,6 +103,21 @@ api.interceptors.response.use(
     if (status === 401 && !isAuthBootstrap && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("hrms:session-expired"));
     }
+
+    if (
+      status === 403 &&
+      !isAuthBootstrap &&
+      typeof window !== "undefined" &&
+      error.response?.data &&
+      typeof error.response.data === "object"
+    ) {
+      const code = error.response.data.code;
+      if (code === "PLATFORM_MODULE_DISABLED" || code === "PLATFORM_FEATURE_DISABLED") {
+        window.dispatchEvent(
+          new CustomEvent("hrms:entitlements-stale", { detail: { code } })
+        );
+      }
+    }
     return Promise.reject(error);
   }
 );

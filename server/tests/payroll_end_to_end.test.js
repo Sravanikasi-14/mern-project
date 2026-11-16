@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { after, before, describe, it } from "node:test";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { connectCentralDB, disconnectAll, getCompanyModels } from "../config/db.js";
@@ -19,6 +20,7 @@ process.env.CLIENT_URL = "http://localhost:5173";
 process.env.BCRYPT_ROUNDS = "4";
 process.env.AUTH_COOKIE_NAME = "hrms_auth";
 
+/** F50-A/F require multi-doc transactions (replica set). */
 let mongo;
 let app;
 let acmeCompany;
@@ -39,7 +41,12 @@ function cookieFrom(response) {
 }
 
 before(async () => {
-  mongo = await MongoMemoryServer.create();
+  const dbPath = `D:/tmp/hrms-mongo/payroll-e2e/${Date.now()}`;
+  fs.mkdirSync(dbPath, { recursive: true });
+  mongo = await MongoMemoryReplSet.create({
+    replSet: { count: 1 },
+    instanceOpts: [{ dbPath }],
+  });
   process.env.MONGO_URI = mongo.getUri();
   await connectCentralDB();
   app = createApp();

@@ -9,8 +9,10 @@ import { IconClose, IconCheck } from "../components/Icons";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import api from "../services/api";
 import ColumnChooser from "../components/ColumnChooser";
-import { useEmployeesSummaryQuery,
-  useEmployeesPoolQuery,
+import {
+  useEmployeesSummaryQuery,
+  useEmployeeProjectsOverviewQuery,
+  useEmployeeFilterOptionsQuery,
   useEmployeesQuery,
 } from "../hooks/useAdminQueries";
 import { useColumnPreferences } from "../hooks/useColumnPreferences";
@@ -327,7 +329,8 @@ export default function AdminHome() {
   }, [search]);
 
   const summaryQuery = useEmployeesSummaryQuery();
-  const poolQuery = useEmployeesPoolQuery();
+  const projectsOverviewQuery = useEmployeeProjectsOverviewQuery({ status: "ACTIVE" });
+  const filterOptionsQuery = useEmployeeFilterOptionsQuery({ status: "ALL" });
   const employeesQuery = useEmployeesQuery({
     page: currentPage,
     limit: pageSize,
@@ -348,7 +351,13 @@ export default function AdminHome() {
   });
 
   const summary = summaryQuery.data?.summary || summaryQuery.data || null;
-  const allEmployeesPool = poolQuery.data || [];
+  const filterOptions = filterOptionsQuery.data || {
+    departments: [],
+    jobTitles: [],
+    projects: [],
+    employmentTypes: [],
+    workLocations: [],
+  };
   const employees = employeesQuery.data?.employees || [];
   const pagination = employeesQuery.data?.pagination || {
     page: currentPage,
@@ -357,7 +366,9 @@ export default function AdminHome() {
     totalPages: 1,
   };
   const loading = employeesQuery.isLoading && employees.length === 0;
-  const loadingPool = poolQuery.isLoading && allEmployeesPool.length === 0;
+  const loadingPool =
+    projectsOverviewQuery.isLoading &&
+    !(projectsOverviewQuery.data?.projectList?.length > 0);
   const listFetching = employeesQuery.isFetching && employees.length > 0;
 
   useEffect(() => {
@@ -370,102 +381,23 @@ export default function AdminHome() {
     }
   }, [employeesQuery.error, employeesQuery.isSuccess]);
 
-  // Derive projects structure from all employees pool
+  // F56: projects / depts / leads from server aggregate (not the capped 300 pool).
   const projectsData = useMemo(() => {
-    const map = new Map();
-    const deptMap = new Map();
-    const leadsMap = new Map();
-
-    allEmployeesPool.forEach((emp) => {
-      // Aggregate departments
-      const dept = emp.job?.department || "Operations";
-      deptMap.set(dept, (deptMap.get(dept) || 0) + 1);
-
-      // Check if project lead / manager
-      const role = (emp.job?.jobTitle || "").toLowerCase();
-      if (
-        role.includes("lead") ||
-        role.includes("manager") ||
-        role.includes("head") ||
-        role.includes("director") ||
-        role.includes("principal")
-      ) {
-        if (!leadsMap.has(emp._id)) {
-          leadsMap.set(emp._id, emp);
-        }
-      }
-
-      // Aggregate projects
-      const projName = emp.job?.project?.projectName?.trim();
-      const projKey = projName || "General Operations & Bench";
-      const projType = emp.job?.project?.projectType || (projName ? "MANDATE" : "BENCH");
-
-      if (!map.has(projKey)) {
-        map.set(projKey, {
-          name: projKey,
-          isBench: !projName,
-          projectType: projType,
-          location: emp.job?.workLocation || emp.city || "Bangalore HQ",
-          members: [],
-          lead: null,
-          departments: new Set(),
-        });
-      }
-
-      const pObj = map.get(projKey);
-      pObj.members.push(emp);
-      if (emp.job?.department) pObj.departments.add(emp.job.department);
-      if (!pObj.lead && (role.includes("lead") || role.includes("manager") || role.includes("head"))) {
-        pObj.lead = emp;
-      }
-    });
-
-    // If a project doesn't have an explicit lead, pick its most senior or first member
-    map.forEach((pObj) => {
-      if (!pObj.lead && pObj.members.length > 0) {
-        pObj.lead = pObj.members[0];
-      }
-    });
-
-    const projectList = Array.from(map.values()).sort(
-      (a, b) => b.members.length - a.members.length
-    );
-
-    const deptList = Array.from(deptMap.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-
-    const leadsList = Array.from(leadsMap.values()).slice(0, 4);
-
-    const designationSet = new Set();
-    const employmentTypeSet = new Set();
-    const workLocationSet = new Set();
-    allEmployeesPool.forEach((emp) => {
-      const title = emp.job?.jobTitle?.trim();
-      if (title) designationSet.add(title);
-      const empType = emp.job?.employmentType?.trim();
-      if (empType) employmentTypeSet.add(empType);
-      const loc = emp.job?.workLocation?.trim();
-      if (loc) workLocationSet.add(loc);
-    });
-    const designationList = Array.from(designationSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" })
-    );
-    const employmentTypeList = Array.from(employmentTypeSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" })
-    );
-    const workLocationList = Array.from(workLocationSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" })
-    );
+    const data = projectsOverviewQuery.data;
     return {
-      projectList,
-      deptList,
-      leadsList,
-      designationList,
-      employmentTypeList,
-      workLocationList,
+      projectList: Array.isArray(data?.projectList) ? data.projectList : [],
+      deptList: Array.isArray(data?.deptList) ? data.deptList : [],
+      leadsList: Array.isArray(data?.leadsList) ? data.leadsList : [],
     };
-  }, [allEmployeesPool]);
+  }, [projectsOverviewQuery.data]);
+
+  const designationList = filterOptions.jobTitles || [];
+  const employmentTypeList = filterOptions.employmentTypes || [];
+  const workLocationList = filterOptions.workLocations || [];
+  const departmentFilterList = Array.isArray(filterOptions.departments)
+    ? filterOptions.departments
+    : [];
+  const projectFilterNames = filterOptions.projects || [];
 
   const peopleFilterCount =
     (statusFilter !== "ALL" ? 1 : 0) +
@@ -733,14 +665,47 @@ export default function AdminHome() {
     setImportBusy(true);
     setImportError("");
     try {
-      const res = await api.post("/employees/import", {
-        rows: importRows,
-        importValidOnly: true,
-      });
-      setImportResult(res.data);
+      // F52: commit in server-sized chunks so Vercel stays under the 60s limit.
+      let offset = 0;
+      let hasMore = true;
+      const created = [];
+      const failed = [];
+      let lastSummary = null;
+      let lastMessage = "";
+
+      while (hasMore) {
+        const res = await api.post("/employees/import", {
+          rows: importRows,
+          importValidOnly: true,
+          offset,
+          limit: 40,
+        });
+        created.push(...(res.data?.created || []));
+        failed.push(...(res.data?.failed || []));
+        lastSummary = res.data?.summary || null;
+        lastMessage = res.data?.message || lastMessage;
+        hasMore = Boolean(res.data?.summary?.hasMore);
+        offset = Number(res.data?.summary?.nextOffset) || offset + 40;
+      }
+
+      const aggregated = {
+        message:
+          created.length > 0
+            ? `Imported ${created.length} employee(s). Share activation links individually.`
+            : lastMessage || "No employees were imported.",
+        summary: {
+          ...(lastSummary || {}),
+          createdCount: created.length,
+          failedCount: failed.length,
+          hasMore: false,
+        },
+        created,
+        failed,
+      };
+      setImportResult(aggregated);
       setImportPreview(null);
       invalidateEmployees(queryClient);
-      setSuccessMsg(res.data?.message || "Import completed.");
+      setSuccessMsg(aggregated.message);
     } catch (err) {
       if (err.response?.data?.failed || err.response?.data?.summary) {
         setImportResult(err.response.data);
@@ -798,10 +763,14 @@ export default function AdminHome() {
   }, [selectedProject, projectsData.projectList]);
 
   // Total workforce & staffing calculations
-  const totalEmployeesCount = summary?.totalEmployees || allEmployeesPool.length || 0;
-  const activeEmployeesCount = summary?.activeEmployees || allEmployeesPool.filter((e) => e.status === "ACTIVE").length || 0;
-  const assignedEmployeesCount = summary?.assignedEmployees || allEmployeesPool.filter((e) => e.job?.project?.projectName).length || 0;
-  const activeProjectsCount = projectsData.projectList.filter((p) => !p.isBench).length;
+  const totalEmployeesCount =
+    summary?.totalEmployees || projectsOverviewQuery.data?.meta?.employeeCount || 0;
+  const activeEmployeesCount =
+    summary?.activeEmployees || projectsOverviewQuery.data?.meta?.employeeCount || 0;
+  const assignedEmployeesCount = summary?.assignedEmployees || 0;
+  const activeProjectsCount =
+    projectsOverviewQuery.data?.meta?.activeProjectCount ??
+    projectsData.projectList.filter((p) => !p.isBench).length;
   const staffingRate = totalEmployeesCount > 0 ? Math.round((assignedEmployeesCount / totalEmployeesCount) * 100) : 0;
 
   return (
@@ -928,11 +897,11 @@ export default function AdminHome() {
                         key={proj.name}
                         className="pm-project-row"
                         onClick={() => handleSelectProject(proj.isBench ? "ALL" : proj.name)}
-                        title={`View ${proj.members.length} team members on ${proj.name}`}
+                        title={`View ${proj.memberCount || 0} team members on ${proj.name}`}
                       >
                         {/* Circular Badge on Left (Reference 1 style) */}
                         <div className={`pm-project-badge-circle ${badgeClass}`}>
-                          <span className="pm-circle-main">{proj.members.length}</span>
+                          <span className="pm-circle-main">{proj.memberCount || 0}</span>
                           <span className="pm-circle-sub">staff</span>
                         </div>
 
@@ -959,12 +928,14 @@ export default function AdminHome() {
                             <span>{proj.location}</span>
                             <span className="pm-meta-dot">•</span>
                             <span>
-                              {proj.lead ? `Lead: ${proj.lead.fullName}` : `${proj.members.length} Assigned`}
+                              {proj.lead
+                                ? `Lead: ${proj.lead.fullName}`
+                                : `${proj.memberCount || 0} Assigned`}
                             </span>
-                            {proj.departments.size > 0 && (
+                            {Array.isArray(proj.departments) && proj.departments.length > 0 && (
                               <>
                                 <span className="pm-meta-dot">•</span>
-                                <span>{Array.from(proj.departments).slice(0, 2).join(", ")}</span>
+                                <span>{proj.departments.slice(0, 2).join(", ")}</span>
                               </>
                             )}
                           </div>
@@ -1090,7 +1061,7 @@ export default function AdminHome() {
                 >
                   All <strong>{totalEmployeesCount}</strong>
                 </button>
-                {projectsData.deptList.map((dept) => (
+                {departmentFilterList.map((dept) => (
                   <button
                     key={dept.name}
                     type="button"
@@ -1140,11 +1111,10 @@ export default function AdminHome() {
                 className="filter-select"
               >
                 <option value="">All designations</option>
-                {jobTitleFilter &&
-                !projectsData.designationList.includes(jobTitleFilter) ? (
+                {jobTitleFilter && !designationList.includes(jobTitleFilter) ? (
                   <option value={jobTitleFilter}>{jobTitleFilter}</option>
                 ) : null}
-                {projectsData.designationList.map((title) => (
+                {designationList.map((title) => (
                   <option key={title} value={title}>
                     {title}
                   </option>
@@ -1175,10 +1145,10 @@ export default function AdminHome() {
               >
                 <option value="">All types</option>
                 {employmentTypeFilter &&
-                !projectsData.employmentTypeList.includes(employmentTypeFilter) ? (
+                !employmentTypeList.includes(employmentTypeFilter) ? (
                   <option value={employmentTypeFilter}>{employmentTypeFilter}</option>
                 ) : null}
-                {projectsData.employmentTypeList.map((type) => (
+                {employmentTypeList.map((type) => (
                   <option key={type} value={type}>
                     {type}
                   </option>
@@ -1196,11 +1166,10 @@ export default function AdminHome() {
                 className="filter-select"
               >
                 <option value="">All locations</option>
-                {workLocationFilter &&
-                !projectsData.workLocationList.includes(workLocationFilter) ? (
+                {workLocationFilter && !workLocationList.includes(workLocationFilter) ? (
                   <option value={workLocationFilter}>{workLocationFilter}</option>
                 ) : null}
-                {projectsData.workLocationList.map((loc) => (
+                {workLocationList.map((loc) => (
                   <option key={loc} value={loc}>
                     {loc}
                   </option>
@@ -1280,9 +1249,14 @@ export default function AdminHome() {
                 className="filter-select"
               >
                 <option value="ALL">All projects</option>
-                {projectsData.projectList.map((proj) => (
-                  <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
-                    {proj.name}
+                {selectedProject &&
+                selectedProject !== "ALL" &&
+                !projectFilterNames.includes(selectedProject) ? (
+                  <option value={selectedProject}>{selectedProject}</option>
+                ) : null}
+                {projectFilterNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
                   </option>
                 ))}
               </select>
@@ -1365,11 +1339,10 @@ export default function AdminHome() {
                     }}
                   >
                     <option value="">All designations</option>
-                    {jobTitleFilter &&
-                    !projectsData.designationList.includes(jobTitleFilter) ? (
+                    {jobTitleFilter && !designationList.includes(jobTitleFilter) ? (
                       <option value={jobTitleFilter}>{jobTitleFilter}</option>
                     ) : null}
-                    {projectsData.designationList.map((title) => (
+                    {designationList.map((title) => (
                       <option key={title} value={title}>
                         {title}
                       </option>
@@ -1400,10 +1373,10 @@ export default function AdminHome() {
                   >
                     <option value="">All types</option>
                     {employmentTypeFilter &&
-                    !projectsData.employmentTypeList.includes(employmentTypeFilter) ? (
+                    !employmentTypeList.includes(employmentTypeFilter) ? (
                       <option value={employmentTypeFilter}>{employmentTypeFilter}</option>
                     ) : null}
-                    {projectsData.employmentTypeList.map((type) => (
+                    {employmentTypeList.map((type) => (
                       <option key={type} value={type}>
                         {type}
                       </option>
@@ -1421,11 +1394,10 @@ export default function AdminHome() {
                     }}
                   >
                     <option value="">All locations</option>
-                    {workLocationFilter &&
-                    !projectsData.workLocationList.includes(workLocationFilter) ? (
+                    {workLocationFilter && !workLocationList.includes(workLocationFilter) ? (
                       <option value={workLocationFilter}>{workLocationFilter}</option>
                     ) : null}
-                    {projectsData.workLocationList.map((loc) => (
+                    {workLocationList.map((loc) => (
                       <option key={loc} value={loc}>
                         {loc}
                       </option>
@@ -1519,9 +1491,14 @@ export default function AdminHome() {
                     onChange={(e) => applyProjectFilter(e.target.value)}
                   >
                     <option value="ALL">All projects</option>
-                    {projectsData.projectList.map((proj) => (
-                      <option key={proj.name} value={proj.isBench ? "ALL" : proj.name}>
-                        {proj.name}
+                    {selectedProject &&
+                    selectedProject !== "ALL" &&
+                    !projectFilterNames.includes(selectedProject) ? (
+                      <option value={selectedProject}>{selectedProject}</option>
+                    ) : null}
+                    {projectFilterNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
                       </option>
                     ))}
                   </select>
@@ -1708,7 +1685,8 @@ export default function AdminHome() {
                 className="btn-sm-retry"
                 onClick={() => {
                   summaryQuery.refetch();
-                  poolQuery.refetch();
+                  projectsOverviewQuery.refetch();
+                  filterOptionsQuery.refetch();
                   employeesQuery.refetch();
                 }}
               >

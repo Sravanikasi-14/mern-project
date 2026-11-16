@@ -7,6 +7,7 @@ import DateRangePicker from "../components/DateRangePicker";
 import EmployeeAttendanceDrawer from "../components/EmployeeAttendanceDrawer";
 import AttendanceLocationWorkspace from "../components/AttendanceLocationWorkspace";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import Pagination from "../components/Pagination";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import { IconClipboardList } from "../components/Icons";
@@ -421,19 +422,13 @@ export default function AdminAttendanceOverview() {
         }
       />
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        {WORKSPACES.map((w) => (
-          <button
-            key={w.key}
-            type="button"
-            className={workspace === w.key ? "btn-primary" : "btn-secondary"}
-            onClick={() => setWorkspace(w.key)}
-            style={{ padding: "7px 14px", fontSize: 13 }}
-          >
-            {w.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        className="att-workspace-tabs"
+        ariaLabel="Attendance workspaces"
+        tabs={WORKSPACES.map((w) => ({ value: w.key, label: w.label }))}
+        value={workspace}
+        onChange={setWorkspace}
+      />
 
       {workspace === "remote" ? (
         <AttendanceLocationWorkspace
@@ -597,34 +592,13 @@ export default function AdminAttendanceOverview() {
 
 
       {!isRangeMode && (
-      <div
-        style={{
-          background: "var(--card, #ffffff)",
-          border: "1px solid var(--hair, #e6ede8)",
-          borderRadius: 10,
-          padding: "16px 18px",
-          boxShadow: "0 1px 3px rgba(19, 26, 21, 0.04)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 14,
-            flexWrap: "wrap",
-            gap: 10,
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
-            Employee Attendance Records ({filteredEmployees.length})
-          </h3>
-        </div>
+      <section className="att-records-card" aria-label="Employee attendance records">
+        <h3 className="att-records-title">
+          Employee Attendance Records ({filteredEmployees.length})
+        </h3>
 
-        {/* Table Content */}
+        {/* Table Content — heading and table share this single container */}
         {loading && overviewData.employees.length === 0 ? (
-          <div className="data-table-container">
             <table className="data-table">
               <thead>
                 <tr>
@@ -642,7 +616,6 @@ export default function AdminAttendanceOverview() {
                 <TableSkeletonRows rows={6} cols={8} />
               </tbody>
             </table>
-          </div>
         ) : filteredEmployees.length === 0 ? (
           <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13.5 }}>
             <div
@@ -724,8 +697,7 @@ export default function AdminAttendanceOverview() {
               );
             })}
           </div>
-          <div className="att-desktop-table data-table-container">
-            <table className="data-table">
+            <table className="data-table att-desktop-table">
               <thead>
                 <tr>
                   <th>Employee</th>
@@ -861,7 +833,6 @@ export default function AdminAttendanceOverview() {
                 })}
               </tbody>
             </table>
-          </div>
           </>
         )}
 
@@ -878,7 +849,7 @@ export default function AdminAttendanceOverview() {
           }}
           itemLabel="employees"
         />
-      </div>
+      </section>
       )}
 
       {isRangeMode && (

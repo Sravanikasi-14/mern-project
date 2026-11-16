@@ -1,6 +1,7 @@
 import { HttpError } from "../utils/httpError.js";
 import { USER_ROLES, isHrPortalOperator } from "../models/User.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
+import { HR_SCOPE_MODES } from "../constants/hrAccessCatalog.js";
 import {
   getAuthenticatedEmployee,
   awardManagerRecognitionService,
@@ -74,30 +75,54 @@ export async function getEmployeePointsSummary(req, res, next) {
  */
 export async function getLeaderboard(req, res, next) {
   try {
-    const { department = "ALL", period, startDate, endDate, limit = 50 } = req.query;
+    const {
+      department = "ALL",
+      period,
+      startDate,
+      endDate,
+      limit = 50,
+      page = 1,
+      search = "",
+    } = req.query;
 
-    let leaderboard = await getLeaderboardService({
+    // F71: apply CUSTOM HR scope before skip/limit (not post-filter after $limit).
+    let employeeIds = null;
+    if (req.auth.user.role === USER_ROLES.HR_ADMIN && req.hrAccess?.enforced) {
+      if (!req.hrAccess.configured) {
+        employeeIds = [];
+      } else if (
+        req.hrAccess.scopeMode === HR_SCOPE_MODES.CUSTOM &&
+        req.hrAccess.allowedEmployeeIdSet
+      ) {
+        employeeIds = [...req.hrAccess.allowedEmployeeIdSet];
+      }
+    }
+
+    const result = await getLeaderboardService({
       models: req.auth.models,
       department,
       period,
       startDate,
       endDate,
       limit,
+      page,
+      search,
+      employeeIds,
     });
 
-    if (req.auth.user.role === USER_ROLES.HR_ADMIN && req.hrAccess) {
-      const { isEmployeeIdInScope } = await import("../services/hrAccessEnforcementService.js");
-      leaderboard = leaderboard.filter((row) =>
-        isEmployeeIdInScope(req.hrAccess, row.employeeId || row._id || row.id)
-      );
-    }
+    // Backward compatible: older callers expecting a bare array still get `leaderboard`.
+    const leaderboard = result.leaderboard || result;
+    const pagination = result.pagination || null;
+    const summary = result.summary || null;
 
     res.status(200).json({
       success: true,
       department: department || "ALL",
-      count: leaderboard.length,
+      count: pagination?.total ?? leaderboard.length,
       leaderboard,
-      data: { leaderboard },
+      pagination,
+      summary,
+      data: { leaderboard, pagination, summary },
     });
   } catch (error) {
     next(error);

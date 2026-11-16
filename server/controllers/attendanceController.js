@@ -107,7 +107,10 @@ function extractClientClaims(req) {
  */
 async function resolvePunchClientPlatform(req) {
   const token = extractRequestAuthToken(req) || req.cookies?.[getAuthCookieName()];
-  return resolveClientPlatformFromAuthSession(req.auth.models, token);
+  return resolveClientPlatformFromAuthSession(req.auth.models, token, {
+    session: req.auth?.session,
+    req,
+  });
 }
 
 /**
@@ -141,6 +144,7 @@ export async function punchIn(req, res, next) {
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
+      company: req.auth.company,
     });
 
     res.status(200).json(result);
@@ -175,6 +179,7 @@ export async function punchOut(req, res, next) {
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
+      company: req.auth.company,
     });
 
     res.status(200).json(result);
@@ -208,6 +213,7 @@ export async function handleCheckIn(req, res, next) {
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
+      company: req.auth.company,
     });
 
     res.status(200).json(result);
@@ -237,6 +243,7 @@ export async function handleCheckOut(req, res, next) {
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
+      company: req.auth.company,
     });
 
     res.status(200).json(result);
@@ -256,6 +263,7 @@ export async function getStatus(req, res, next) {
     const status = await getEmployeeAttendanceStatus({
       models: req.auth.models,
       employee,
+      company: req.auth.company,
       companyTimezone,
     });
 
@@ -283,6 +291,7 @@ export async function getHistory(req, res, next) {
       endDate,
       page,
       limit,
+      companyTimezone: req.auth.company?.config?.timezone || "Asia/Kolkata",
     });
 
     res.status(200).json({
@@ -306,7 +315,8 @@ export async function startTracking(req, res, next) {
     const token = extractRequestAuthToken(req, getAuthCookieName());
     const clientPlatform = await resolveClientPlatformFromAuthSession(
       req.auth.models,
-      token
+      token,
+      { session: req.auth?.session, req }
     );
 
     const result = await startLiveTrackingSession({
@@ -488,6 +498,7 @@ export async function getAdminEmployeeAttendanceHistoryHandler(req, res, next) {
       endDate,
       page,
       limit: limit || 100,
+      companyTimezone: req.auth.company?.config?.timezone || "Asia/Kolkata",
     });
 
     res.status(200).json({

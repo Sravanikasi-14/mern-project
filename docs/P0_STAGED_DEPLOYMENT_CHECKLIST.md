@@ -178,21 +178,25 @@ Use Preview env vars that point at a **staging Atlas** cluster / `CENTRAL_DB_NAM
 
 ---
 
-## 4. `provisionAllTenants` — exact procedure
+## 4. `provisionAllTenants` — exact procedure (F43/F44)
 
 **Script:** `server/scripts/provisionAllTenants.js`  
-**npm alias:** `npm run provision:tenants` (from `server/`)
+**npm alias:** `npm run provision:tenants` (from `server/`)  
+**Inventory (read-only):** `npm run inventory:tenant-indexes` → `server/scripts/inventoryTenantIndexes.js`
 
-Creates/repairs tenant collections and runs additive `Model.createIndexes()` (AuthSession, Notification, NotificationReadState, LiveTrackingSession, etc.). Idempotent. Skips DB names equal to `CENTRAL_DB_NAME`.
+Creates/repairs tenant collections and runs additive `Model.createIndexes()` for the full required set (`TENANT_INDEX_SCHEMA_VERSION` = 3: every `getCompanyModels()` tenant model with schema indexes, including F44 + RemoteWorkRequest/LocationException/Announcement*/ChatFile/Designation). Idempotent. Skips DB names equal to `CENTRAL_DB_NAME`.  
+Stamps `Company.tenantIndexSchemaVersion` **only** when inventory verifies, offer `employeeId` index ensure returns `status:"ok"`, and `indexFailures` is empty. Does **not** call `OfferLetter.syncIndexes()`, drop indexes, or re-enable Vercel auto-provision. OfferLetter.employeeId unique partial remains via `ensureOfferLetterEmployeeIdIndex` (not a schema.index entry).
 
 ### Staging (example)
 
 ```bash
 cd server
 # Load STAGING Atlas URI + CENTRAL_DB_NAME only (not production) via .env or shell export
+npm run inventory:tenant-indexes
 npm run provision:tenants
-# equivalent:
-node scripts/provisionAllTenants.js
+npm run inventory:tenant-indexes
+# optional single company:
+# npm run inventory:tenant-indexes -- --company=acme
 ```
 
 ### Single company (new tenant bootstrap — different script)
@@ -201,7 +205,7 @@ node scripts/provisionAllTenants.js
 
 ### Production
 
-Same commands only after staging success, backup confirmation, and change window. **Not executed in this audit.**
+Same commands only after staging success, backup confirmation, and change window. **Not executed in this implementation batch.**
 
 ---
 

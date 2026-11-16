@@ -10,6 +10,7 @@ import useLocationPermission from "../../hooks/useLocationPermission";
 import { useAuth } from "../../app/AuthContext";
 import api from "../../services/api";
 import { watchPosition, clearWatch } from "../../services/location";
+import { createLiveLocationUploadGate } from "../../utils/liveLocationUploadGate";
 import { readWifiEvidence } from "../../services/wifiEvidence";
 import { captureFaceImageBase64 } from "../../services/faceCapture";
 import {
@@ -130,6 +131,7 @@ export default function EmployeeAttendancePage() {
   const [tracking, setTracking] = useState(false);
   const [trackingError, setTrackingError] = useState("");
   const watchId = useRef(null);
+  const locationUploadGateRef = useRef(null);
   const tipRef = useRef(null);
   const now = new Date();
   const [month, setMonth] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
@@ -162,10 +164,15 @@ export default function EmployeeAttendancePage() {
 
   const attachTrackingWatch = () => {
     if (watchId.current != null) clearWatch(watchId.current);
+    // F54: first fix immediate; then ~15s or ~75m movement (jitter ignored).
+    locationUploadGateRef.current = createLiveLocationUploadGate();
     watchId.current = watchPosition(
       async (loc) => {
+        const gate = locationUploadGateRef.current;
+        if (!gate?.shouldUpload(loc)) return;
         try {
           await api.post("/employees/me/tracking/update", { location: loc });
+          gate.markSent(loc);
         } catch (err) {
           const msg = String(err.response?.data?.message || "");
           const status = err.response?.status;
@@ -179,6 +186,8 @@ export default function EmployeeAttendancePage() {
               clearWatch(watchId.current);
               watchId.current = null;
             }
+            locationUploadGateRef.current?.reset();
+            locationUploadGateRef.current = null;
             setTracking(false);
             api.post("/employees/me/tracking/stop").catch(() => {});
             invalidateAttendance(queryClient);
@@ -192,6 +201,8 @@ export default function EmployeeAttendancePage() {
           clearWatch(watchId.current);
           watchId.current = null;
         }
+        locationUploadGateRef.current?.reset();
+        locationUploadGateRef.current = null;
         setTracking(false);
         api.post("/employees/me/tracking/stop").catch(() => {});
         invalidateAttendance(queryClient);
@@ -218,6 +229,8 @@ export default function EmployeeAttendancePage() {
       clearWatch(watchId.current);
       watchId.current = null;
     }
+    locationUploadGateRef.current?.reset();
+    locationUploadGateRef.current = null;
     setTracking(false);
   };
 
@@ -325,7 +338,9 @@ export default function EmployeeAttendancePage() {
       }
 
       let faceImageBase64 = null;
-      if (methods.face?.enabled) {
+      const faceEnabled =
+        Boolean(methods.face?.enabled) && methods.face?.platformCapabilityAllowed !== false;
+      if (faceEnabled) {
         if (!faceEnrollment?.enrolled) {
           setActionError("Enroll your face in the app before punching. Face verification is required.");
           return;
@@ -333,7 +348,7 @@ export default function EmployeeAttendancePage() {
         try {
           faceImageBase64 = await captureFaceImageBase64();
         } catch (err) {
-          if (methods.face.mandatory) {
+          if (methods.face?.mandatory) {
             setActionError(err.message || "Face capture is required for punch.");
             return;
           }

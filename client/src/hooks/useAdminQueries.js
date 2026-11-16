@@ -71,15 +71,68 @@ export function useEmployeesSummaryQuery(options = {}) {
   });
 }
 
+/**
+ * @deprecated F56 — Prefer useEmployeeProjectsOverviewQuery for AdminHome cards
+ * and useEmployeeFilterOptionsQuery for filters. Kept for rare callers that still
+ * need a small employee sample.
+ */
 export function useEmployeesPoolQuery(options = {}) {
   return useQuery({
     queryKey: qk.employeesPool(),
     queryFn: async () => {
-      // Lean pool for project/dept cards — skip per-row compensation hydration.
       const res = await api.get("/employees", {
         params: { limit: 300, includeCompensation: false, sortBy: "fullName", sortOrder: "asc" },
       });
       return res.data?.employees || [];
+    },
+    staleTime: STALE.employees,
+    ...options,
+  });
+}
+
+/** F56 — Server projects / department / leads overview (uncapped, aggregated). */
+export function useEmployeeProjectsOverviewQuery(params = {}, options = {}) {
+  const status = params.status || "ACTIVE";
+  return useQuery({
+    queryKey: qk.employeesProjectsOverview({ status }),
+    queryFn: async () => {
+      const res = await api.get("/employees/projects-overview", {
+        params: { status },
+      });
+      return {
+        status: res.data?.status || status,
+        projectList: Array.isArray(res.data?.projectList) ? res.data.projectList : [],
+        deptList: Array.isArray(res.data?.deptList) ? res.data.deptList : [],
+        leadsList: Array.isArray(res.data?.leadsList) ? res.data.leadsList : [],
+        meta: res.data?.meta || {
+          employeeCount: 0,
+          projectCount: 0,
+          activeProjectCount: 0,
+        },
+      };
+    },
+    staleTime: STALE.employees,
+    ...options,
+  });
+}
+
+/** F56 — Complete distinct People filter options (not capped at 300). */
+export function useEmployeeFilterOptionsQuery(params = {}, options = {}) {
+  const status = params.status || "ALL";
+  return useQuery({
+    queryKey: qk.employeesFilterOptions({ status }),
+    queryFn: async () => {
+      const res = await api.get("/employees/filter-options", {
+        params: { status },
+      });
+      return {
+        status: res.data?.status || status,
+        departments: Array.isArray(res.data?.departments) ? res.data.departments : [],
+        jobTitles: Array.isArray(res.data?.jobTitles) ? res.data.jobTitles : [],
+        projects: Array.isArray(res.data?.projects) ? res.data.projects : [],
+        employmentTypes: Array.isArray(res.data?.employmentTypes) ? res.data.employmentTypes : [],
+        workLocations: Array.isArray(res.data?.workLocations) ? res.data.workLocations : [],
+      };
     },
     staleTime: STALE.employees,
     ...options,
@@ -312,20 +365,31 @@ export function useAdminImpactLeaderboardQuery(params = {}, options = {}) {
   const normalized = {
     period: params.period || "all",
     department: params.department || "ALL",
+    page: params.page || 1,
+    limit: params.limit || 10,
+    search: params.search || "",
   };
   return useQuery({
     queryKey: qk.adminImpactLeaderboard(normalized),
     queryFn: async () => {
-      const request = {};
+      const request = {
+        page: normalized.page,
+        limit: normalized.limit,
+      };
       if (normalized.department !== "ALL") request.department = normalized.department;
       if (normalized.period !== "all") request.period = normalized.period;
+      if (normalized.search.trim()) request.search = normalized.search.trim();
       const res = await api.get("/impact-points/leaderboard", { params: request });
-      return (
+      const leaderboard =
         res.data?.leaderboard ||
         res.data?.data?.leaderboard ||
         (Array.isArray(res.data?.data) ? res.data.data : []) ||
-        []
-      );
+        [];
+      return {
+        leaderboard,
+        pagination: res.data?.pagination || res.data?.data?.pagination || null,
+        summary: res.data?.summary || res.data?.data?.summary || null,
+      };
     },
     staleTime: STALE.impact,
     ...options,
@@ -374,6 +438,7 @@ export function useAdminAssetsQuery(params = {}, options = {}) {
     search: params.search || "",
     category: params.category || "",
     condition: params.condition || "",
+    attention: params.attention ? "1" : "",
   };
   return useQuery({
     queryKey: qk.adminAssets(normalized),
@@ -382,14 +447,21 @@ export function useAdminAssetsQuery(params = {}, options = {}) {
         page: normalized.page,
         limit: normalized.limit,
       };
-      if (normalized.status) request.status = normalized.status;
+      if (normalized.attention) {
+        request.attention = "1";
+      } else {
+        if (normalized.status) request.status = normalized.status;
+        if (normalized.condition) request.condition = normalized.condition;
+      }
       if (normalized.search.trim()) request.search = normalized.search.trim();
       if (normalized.category) request.category = normalized.category;
-      if (normalized.condition) request.condition = normalized.condition;
       const res = await api.get("/assets", { params: request });
       return res.data;
     },
     staleTime: STALE.assets,
+    // Keep the previous page/filter result on screen while the next one loads so the
+    // table and metric cards don't blank out to skeleton/zeros on every filter click.
+    placeholderData: (previousData) => previousData,
     ...options,
   });
 }

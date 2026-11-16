@@ -154,6 +154,12 @@ export default function HrPersonEditPage() {
         payload.monthlySalary = parseFloat(form.monthlySalary);
       }
       await api.patch(`/employees/${id}`, payload);
+      // F56: People list remounts filter-options; flag forces refresh if page stayed warm.
+      try {
+        sessionStorage.setItem("hrms:employees-filter-options-stale", "1");
+      } catch {
+        /* ignore storage failures */
+      }
       toast.push("Profile saved.");
       navigate(`/admin/employees/${id}`, { replace: true });
     } catch (err) {

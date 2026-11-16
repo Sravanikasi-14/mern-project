@@ -519,7 +519,13 @@ export async function updateCompanySettings(req, res, next) {
           signatoryTitle: refreshed.letterhead?.signatoryTitle || "",
           ...serializeCompanySignature(refreshed.letterhead),
         },
-        subscription: refreshed.subscription,
+        subscription: {
+          plan: refreshed.subscription?.plan || "TRIAL",
+          status: refreshed.subscription?.status || "TRIAL",
+          maxEmployeeSeats: refreshed.subscription?.maxEmployeeSeats ?? null,
+          billingCycle: refreshed.subscription?.billingCycle || "NONE",
+          currency: refreshed.subscription?.currency || "INR",
+        },
       },
     });
   } catch (error) {

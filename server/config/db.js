@@ -38,6 +38,15 @@ import { getLocationExceptionModel } from "../models/LocationException.js";
 import { getEmployeeFaceEnrollmentModel } from "../models/EmployeeFaceEnrollment.js";
 import { getAttendanceVerificationChallengeModel } from "../models/AttendanceVerificationChallenge.js";
 import { HttpError } from "../utils/httpError.js";
+import {
+  clearCompanyMetadataCache,
+  getCachedCompanyMetadata,
+  invalidateCompanyMetadataCache,
+  setCachedCompanyMetadata,
+} from "../utils/companyMetadataCache.js";
+
+/** Lean projection for auth/tenant resolution (excludes binary logo blob). */
+const COMPANY_AUTH_SELECT = "-branding.logoData";
 
 /**
  * Per-process tenant connection cache (F35).
@@ -537,13 +546,36 @@ export async function findCompanyBySlug(slug) {
   return Company.findOne({ slug });
 }
 
+/**
+ * F49 — Company lookup with short-lived in-process metadata cache.
+ * Used by authenticate for status + tenant databaseName resolution.
+ * Returns a lean plain object (logoData excluded).
+ */
 export async function findCompanyById(companyId) {
-  return Company.findById(companyId);
+  if (companyId == null || companyId === "") return null;
+
+  const cached = getCachedCompanyMetadata(companyId);
+  if (cached) return cached;
+
+  const doc = await Company.findById(companyId).select(COMPANY_AUTH_SELECT).lean();
+  if (!doc) return null;
+
+  setCachedCompanyMetadata(companyId, doc);
+  return doc;
 }
+
+export {
+  invalidateCompanyMetadataCache,
+  clearCompanyMetadataCache,
+  getCachedCompanyMetadata,
+  setCachedCompanyMetadata,
+} from "../utils/companyMetadataCache.js";
+export { getCompanyMetadataCacheStats } from "../utils/companyMetadataCache.js";
 
 export async function disconnectAll() {
   centralConnectionPromise = null;
   provisionedTenantDbs.clear();
+  clearCompanyMetadataCache();
 
   const entries = [...tenantConnections.values()];
   tenantConnections.clear();

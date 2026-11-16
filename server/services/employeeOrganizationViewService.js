@@ -1,11 +1,19 @@
+import mongoose from "mongoose";
 import { EMPLOYEE_STATUSES } from "../models/Employee.js";
-import { USER_ROLES } from "../models/User.js";
+import { USER_ROLES, isHrPortalOperator } from "../models/User.js";
+import { HttpError } from "../utils/httpError.js";
+import { assertNoSensitiveLeak } from "./employeeVisibilityService.js";
 import {
-  assertNoSensitiveLeak,
-  resolveVisibleEmployeeAccess,
-} from "./employeeVisibilityService.js";
-import { walkManagerAncestors } from "./employeeRelationshipService.js";
-import { buildOrganizationHierarchy } from "./organizationHierarchyService.js";
+  collectHierarchyVisibleEmployeeIds,
+  resolveViewerEmployee,
+} from "./employeeRelationshipService.js";
+import {
+  ORG_SELECT,
+  buildOrganizationBootstrap,
+  buildOrganizationHierarchy,
+  buildOrganizationHierarchyFromDocs,
+} from "./organizationHierarchyService.js";
+import { isStrictObjectId } from "./reportingManagerService.js";
 
 /**
  * Approved chart-node fields for employee-facing organization view.
@@ -104,8 +112,6 @@ export function filterOrganizationViewPayload(payload, visibleIds) {
     childrenByManagerId[node.treeManagerId].push(node.id);
   }
 
-  // Match buildOrganizationHierarchy index rules on the filtered set only.
-  // Use pruned childIds / directReportCount so invisible reports cannot inflate roots.
   const hierarchyRootIds = employees
     .filter((e) => !e.treeManagerId && e.directReportCount > 0)
     .map((e) => e.id);
@@ -133,57 +139,85 @@ export function filterOrganizationViewPayload(payload, visibleIds) {
 
 /**
  * Active-employee organisation view for authenticated company users.
- * Non-HR viewers receive hierarchy-visible colleagues in BOTH directions:
- * ancestor chain (managers above), peers, and descendants (reports below).
- * HR_ADMIN receives the full ACTIVE chart (People Management unchanged via
- * GET /employees/organization).
+ * F48 Phase A: EMPLOYEE path loads only hierarchy-visible IDs (F47 collector),
+ * then builds the tree from that subset — never a full-company fetch first.
+ * F48 residual: HR defaults to lazy bootstrap (roots only). Pass mode=full|legacy
+ * for the complete ACTIVE chart (compat / tests). HR UI should use
+ * /employees/organization[+children|search] instead of this endpoint.
  */
 export async function buildEmployeeOrganizationView(Employee, user, options = {}) {
-  const hierarchy = await buildOrganizationHierarchy(Employee, {
-    status: EMPLOYEE_STATUSES.ACTIVE,
-    hrAccess: options.hrAccess || null,
-  });
-  let payload = projectOrganizationViewNodes(hierarchy);
+  if (isHrPortalOperator(user?.role) || user?.role === USER_ROLES.HR_ADMIN) {
+    const modeRaw = typeof options.mode === "string" ? options.mode.trim().toLowerCase() : "";
+    const legacyFull = modeRaw === "full" || modeRaw === "legacy";
 
-  if (user?.role !== USER_ROLES.HR_ADMIN) {
-    const targets = (hierarchy.employees || []).map((node) => ({
-      _id: node.id,
-      job: { reportingManagerId: node.reportingManagerId || null },
-    }));
-    const access = await resolveVisibleEmployeeAccess({
-      Employee,
-      user,
-      employees: targets,
-    });
-
-    const visibleIds = new Set(access.visibleIds);
-    const hierarchyIdSet = new Set((hierarchy.employees || []).map((node) => String(node.id)));
-    const viewerId = access.viewer?._id ? String(access.viewer._id) : null;
-
-    // Explicitly keep the viewer's reporting ancestor chain so the chart can
-    // render from the highest visible ancestor down to self + descendants.
-    // Only ACTIVE company-scoped hierarchy members are added (no inactive /
-    // cross-tenant IDs, no unrelated branches).
-    if (viewerId) {
-      visibleIds.add(viewerId);
-      const { ancestors } = await walkManagerAncestors(Employee, viewerId);
-      for (const ancestorId of ancestors) {
-        const id = String(ancestorId);
-        if (hierarchyIdSet.has(id)) visibleIds.add(id);
-      }
+    if (legacyFull) {
+      const hierarchy = await buildOrganizationHierarchy(Employee, {
+        status: EMPLOYEE_STATUSES.ACTIVE,
+        hrAccess: options.hrAccess || null,
+      });
+      const payload = projectOrganizationViewNodes(hierarchy);
+      payload.meta = {
+        ...payload.meta,
+        viewerEmployeeId: null,
+        mode: "full",
+        lazy: false,
+      };
+      assertNoSensitiveLeak(payload);
+      return payload;
     }
 
-    payload = filterOrganizationViewPayload(payload, visibleIds);
+    const bootstrap = await buildOrganizationBootstrap(Employee, {
+      status: EMPLOYEE_STATUSES.ACTIVE,
+      hrAccess: options.hrAccess || null,
+    });
+    const payload = projectOrganizationViewNodes(bootstrap);
     payload.meta = {
       ...payload.meta,
-      viewerEmployeeId: viewerId,
-    };
-  } else {
-    payload.meta = {
-      ...payload.meta,
+      // Prefer company-wide totals from bootstrap (not just roots in payload.employees).
+      total: bootstrap.meta?.total ?? payload.meta.total,
+      withManager: bootstrap.meta?.withManager ?? payload.meta.withManager,
+      withoutManager: bootstrap.meta?.withoutManager ?? payload.meta.withoutManager,
+      hierarchyRoots: bootstrap.meta?.hierarchyRoots ?? payload.meta.hierarchyRoots,
+      unassigned: bootstrap.meta?.unassigned ?? payload.meta.unassigned,
       viewerEmployeeId: null,
+      mode: "bootstrap",
+      lazy: true,
     };
+    assertNoSensitiveLeak(payload);
+    return payload;
   }
+
+  const viewer = await resolveViewerEmployee(Employee, user);
+  if (!viewer) {
+    throw new HttpError(403, "No employee profile is linked to this account.", {
+      code: "VIEWER_EMPLOYEE_MISSING",
+    });
+  }
+
+  const visibleIds = await collectHierarchyVisibleEmployeeIds({
+    Employee,
+    viewerEmployeeId: viewer._id,
+  });
+  const visibleOids = [...visibleIds]
+    .filter((id) => isStrictObjectId(id))
+    .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+  const docs = await Employee.find({
+    status: EMPLOYEE_STATUSES.ACTIVE,
+    _id: { $in: visibleOids },
+  })
+    .select(ORG_SELECT)
+    .sort({ fullName: 1 })
+    .lean();
+
+  const hierarchy = buildOrganizationHierarchyFromDocs(docs, {
+    statusFilterLabel: EMPLOYEE_STATUSES.ACTIVE,
+  });
+  const payload = projectOrganizationViewNodes(hierarchy);
+  payload.meta = {
+    ...payload.meta,
+    viewerEmployeeId: String(viewer._id),
+  };
 
   assertNoSensitiveLeak(payload);
   return payload;

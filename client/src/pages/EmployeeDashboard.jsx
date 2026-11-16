@@ -11,7 +11,6 @@ import {
   IconLogOut,
   IconMapPin,
   IconMonitor,
-  IconRefresh,
   IconSettings,
   IconUser,
 } from "../components/EmployeeIcon";
@@ -421,47 +420,9 @@ export default function EmployeeDashboard() {
       <AppHeader
         title={`${getGreeting()}, ${employeeName}`}
         hideLogout
-        actions={<SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />}
-        nav={
+        actions={
           <>
-            <div className="emp-head__meta">
-              <span className="emp-badge-pill emp-badge-pill--green">
-                {employee?.department || "General"}
-              </span>
-              <span className="emp-badge-pill">
-                {employee?.jobTitle || "Team Member"}
-              </span>
-              {employee?.employeeCode ? (
-                <span className="emp-badge-pill">ID: {employee.employeeCode}</span>
-              ) : null}
-              <span
-                className="emp-badge-pill"
-                style={{
-                  background:
-                    todayStatus === "CHECKED_IN"
-                      ? "var(--g-100)"
-                      : todayStatus === "CHECKED_OUT"
-                        ? "var(--amber-bg)"
-                        : "var(--panel)",
-                  color:
-                    todayStatus === "CHECKED_IN"
-                      ? "var(--g-800)"
-                      : todayStatus === "CHECKED_OUT"
-                        ? "var(--amber)"
-                        : "var(--muted)",
-                  fontWeight: 600,
-                }}
-              >
-                {todayStatus === "CHECKED_IN"
-                  ? "Shift active"
-                  : todayStatus === "CHECKED_OUT"
-                    ? "Shift completed"
-                    : todayStatus === "ON_LEAVE"
-                      ? "On leave"
-                      : "Not clocked in"}
-              </span>
-            </div>
-            <div className="emp-head__actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="emp-head__actions emp-head__actions--top">
               <button type="button" className="btn--emp-primary" onClick={handleOpenLeaveModal}>
                 <IconCalendarPlus size={16} />
                 <span>Apply for Leave</span>
@@ -470,18 +431,48 @@ export default function EmployeeDashboard() {
                 <IconUser size={16} />
                 <span>My Profile</span>
               </Link>
-              <button
-                type="button"
-                className="btn--ghost-sync"
-                onClick={() => dashboardQuery.refetch()}
-                title="Refresh dashboard metrics"
-                disabled={dashboardQuery.isFetching}
-                aria-label="Refresh dashboard"
-              >
-                <IconRefresh size={16} className={dashboardQuery.isFetching ? "spin-icon" : ""} />
-              </button>
             </div>
+            <SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />
           </>
+        }
+        nav={
+          <div className="emp-head__meta">
+            <span className="emp-badge-pill emp-badge-pill--green">
+              {employee?.department || "General"}
+            </span>
+            <span className="emp-badge-pill">
+              {employee?.jobTitle || "Team Member"}
+            </span>
+            {employee?.employeeCode ? (
+              <span className="emp-badge-pill">ID: {employee.employeeCode}</span>
+            ) : null}
+            <span
+              className="emp-badge-pill"
+              style={{
+                background:
+                  todayStatus === "CHECKED_IN"
+                    ? "var(--g-100)"
+                    : todayStatus === "CHECKED_OUT"
+                      ? "var(--amber-bg)"
+                      : "var(--panel)",
+                color:
+                  todayStatus === "CHECKED_IN"
+                    ? "var(--g-800)"
+                    : todayStatus === "CHECKED_OUT"
+                      ? "var(--amber)"
+                      : "var(--muted)",
+                fontWeight: 600,
+              }}
+            >
+              {todayStatus === "CHECKED_IN"
+                ? "Shift active"
+                : todayStatus === "CHECKED_OUT"
+                  ? "Shift completed"
+                  : todayStatus === "ON_LEAVE"
+                    ? "On leave"
+                    : "Not clocked in"}
+            </span>
+          </div>
         }
       />
 
@@ -660,13 +651,6 @@ export default function EmployeeDashboard() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn--emp-primary m-inline-apply emp-leave-apply"
-                  onClick={handleOpenLeaveModal}
-                >
-                  Apply for leave
-                </button>
                 <div className="emp-leave-cutoff-note" style={{ marginTop: 10 }}>
                   <span>
                     Same-day cutoff: <b>{leaveEligibility.cutoffTime}</b> ({leaveEligibility.timezone}). Earliest: <b>{leaveEligibility.earliestEligibleDate}</b>.

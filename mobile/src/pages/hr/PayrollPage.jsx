@@ -21,6 +21,10 @@ import { useNotify } from "../../app/notifyContext";
 import { useToast } from "../../components/Toast";
 import api from "../../services/api";
 import {
+  hrPortalAllows,
+  platformModuleAllowed,
+} from "../../utils/hrPortalAccess";
+import {
   MONTHS,
   cycleLabel,
   extractPayslips,
@@ -39,12 +43,15 @@ function cycleMatchesPeriod(cycle, month, year) {
 }
 
 export default function HrPayrollPage() {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   const notify = useNotify();
   const toast = useToast();
   const navigate = useNavigate();
   const goBack = useSmartBack("/admin/more");
   const now = new Date();
+  const settlementsEntitled =
+    platformModuleAllowed(company, "settlements") &&
+    hrPortalAllows(user, company, "settlements.view");
 
   const [cycles, setCycles] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -58,6 +65,12 @@ export default function HrPayrollPage() {
     }
     return "payslips";
   });
+
+  useEffect(() => {
+    if (!settlementsEntitled && tab === "settlements") {
+      setTab("payslips");
+    }
+  }, [settlementsEntitled, tab]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
@@ -307,14 +320,16 @@ export default function HrPayrollPage() {
           <Wallet size={16} strokeWidth={2} aria-hidden="true" />
           Payroll Runs
         </button>
-        <button
-          type="button"
-          className={tab === "settlements" ? "is-active" : ""}
-          onClick={() => setTab("settlements")}
-        >
-          <Handshake size={16} strokeWidth={2} aria-hidden="true" />
-          F&amp;F
-        </button>
+        {settlementsEntitled ? (
+          <button
+            type="button"
+            className={tab === "settlements" ? "is-active" : ""}
+            onClick={() => setTab("settlements")}
+          >
+            <Handshake size={16} strokeWidth={2} aria-hidden="true" />
+            F&amp;F
+          </button>
+        ) : null}
       </div>
 
       {tab !== "settlements" ? (
@@ -346,7 +361,7 @@ export default function HrPayrollPage() {
         </>
       ) : null}
 
-      {tab === "settlements" ? (
+      {tab === "settlements" && settlementsEntitled ? (
         <SettlementsPanel initialSettlementId={searchParams.get("settlementId") || ""} />
       ) : tab === "payslips" ? (
         <>

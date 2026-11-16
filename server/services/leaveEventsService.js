@@ -7,6 +7,7 @@ import {
   isEmployeeIdInScope,
 } from "./hrAccessEnforcementService.js";
 import { HttpError } from "../utils/httpError.js";
+import { attachSseLifecycle } from "../utils/sseLifecycle.js";
 
 class LeaveEventEmitter extends EventEmitter {}
 
@@ -72,15 +73,15 @@ export async function subscribeLeaveEvents(req, res, next) {
       return;
     }
 
-    const heartbeat = setInterval(() => {
-      try {
-        res.write(": heartbeat\n\n");
-      } catch {
-        clearInterval(heartbeat);
-      }
-    }, 25000);
+    // F64: heartbeat + bounded lifetime (RECONNECT before Vercel maxDuration).
+    let listener = null;
+    attachSseLifecycle(req, res, {
+      onCleanup: () => {
+        if (listener) leaveEvents.off("leave_update", listener);
+      },
+    });
 
-    const listener = async (event) => {
+    listener = async (event) => {
       try {
         if (String(event.companyId) !== companyId) {
           return;
@@ -124,11 +125,6 @@ export async function subscribeLeaveEvents(req, res, next) {
     };
 
     leaveEvents.on("leave_update", listener);
-
-    req.on("close", () => {
-      clearInterval(heartbeat);
-      leaveEvents.off("leave_update", listener);
-    });
   } catch (err) {
     if (err instanceof HttpError || err.status) {
       return next(err);

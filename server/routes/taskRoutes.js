@@ -1,6 +1,10 @@
 import express from "express";
 import { authenticate } from "../middleware/authenticate.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import {
   createTask,
   getTasks,
@@ -16,9 +20,9 @@ import {
 
 const router = express.Router();
 
-// All task routes require authentication
-// CA4-C: loadHrAccessContext is a no-op for non-HR; HR company-wide views enforce in controller
-router.use(authenticate, loadHrAccessContext);
+// All task routes require authentication + Work module entitlement.
+// CA4-C: loadHrAccessContext is a no-op for non-HR; HR company-wide views enforce in controller.
+router.use(authenticate, loadHrAccessContext, requireEntitledModule("work"));
 
 // Work Management metadata (assignable employees, departments, roles)
 router.get("/meta", getWorkManagementMeta);

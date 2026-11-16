@@ -129,10 +129,18 @@
 
 .review-decision-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   align-items: center;
   margin-top: 4px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .review-decision-bar {
+    flex-wrap: wrap;
+  }
 }
 
 .review-decision-bar .btn-primary,

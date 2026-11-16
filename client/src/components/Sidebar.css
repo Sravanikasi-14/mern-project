@@ -39,6 +39,7 @@
 
 /* Main Content Area — Independently scrollable while sidebar stays fixed */
 .app-main-content {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 100vh;
@@ -54,6 +55,7 @@
   background-color: var(--page, #f8faf8);
   scroll-behavior: smooth;
   scroll-padding-bottom: 48px;
+  scrollbar-width: none;
 }
 
 /* ==========================================================================
@@ -87,16 +89,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   user-select: none;
-  scrollbar-width: thin;
-}
-
-.sidebar-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.sidebar-container::-webkit-scrollbar-thumb {
-  background: var(--sb-border);
-  border-radius: 4px;
+  scrollbar-width: none;
 }
 
 .sidebar-container.collapsed {
@@ -232,16 +225,8 @@
   padding: 10px 8px;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-}
-
-.sidebar-nav::-webkit-scrollbar {
-  width: 3px;
-}
-
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: var(--sb-border);
-  border-radius: 3px;
+  scrollbar-width: none;
+  position: relative;
 }
 
 .sidebar-container.collapsed .sidebar-nav {

@@ -4,6 +4,7 @@ import { useAuth } from "../../app/AuthContext";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import { useCallback, useState } from "react";
 import { useChatUnreadQuery } from "../../hooks/useChatQueries";
+import { moreItemVisible } from "../../utils/hrPortalAccess";
 
 const MODULES = [
   {
@@ -40,6 +41,7 @@ export default function CompanyAdminHomePage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const closeLogout = useCallback(() => setLogoutOpen(false), []);
   const chatUnread = Number(useChatUnreadQuery().data || 0);
+  const visibleModules = MODULES.filter((item) => moreItemVisible(user, company, item));
 
   const handleLogout = async () => {
     try {
@@ -65,7 +67,7 @@ export default function CompanyAdminHomePage() {
       </p>
 
       <div className="stack" style={{ gap: 10 }}>
-        {MODULES.map((item) => {
+        {visibleModules.map((item) => {
           const ModIcon = item.Icon;
           return (
             <button

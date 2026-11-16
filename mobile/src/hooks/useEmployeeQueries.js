@@ -148,15 +148,32 @@ export function useImpactLeaderboardQuery(params = {}, options = {}) {
   const normalized = {
     period: params.period || "all",
     department: params.department || "ALL",
+    page: params.page || 1,
+    // Mobile list UIs are scrollable without pager chrome; cap at API max (100).
+    limit: params.limit || 100,
+    search: params.search || "",
   };
   return useQuery({
     queryKey: qk.impactLeaderboard(normalized),
     queryFn: async () => {
-      const request = {};
+      const request = {
+        page: normalized.page,
+        limit: normalized.limit,
+      };
       if (normalized.department !== "ALL") request.department = normalized.department;
       if (normalized.period !== "all") request.period = normalized.period;
+      if (normalized.search.trim()) request.search = normalized.search.trim();
       const res = await api.get("/impact-points/leaderboard", { params: request });
-      return res.data?.leaderboard || res.data?.data?.leaderboard || [];
+      const leaderboard =
+        res.data?.leaderboard ||
+        res.data?.data?.leaderboard ||
+        (Array.isArray(res.data?.data) ? res.data.data : []) ||
+        [];
+      return {
+        leaderboard,
+        pagination: res.data?.pagination || res.data?.data?.pagination || null,
+        summary: res.data?.summary || res.data?.data?.summary || null,
+      };
     },
     staleTime: STALE.impact,
     ...options,

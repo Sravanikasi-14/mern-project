@@ -15,6 +15,8 @@ import {
 } from "../../services/documents";
 import { formatDisplayDate } from "../../utils/dateUtils";
 import { usePayslipsQuery, useSettlementQuery } from "../../hooks/useEmployeeQueries";
+import { useAuth } from "../../app/AuthContext";
+import { platformModuleAllowed } from "../../utils/hrPortalAccess";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -118,10 +120,12 @@ function MiniIcon({ children }) {
 }
 
 export default function EmployeePayslipsPage() {
+  const { company } = useAuth();
+  const settlementsEntitled = platformModuleAllowed(company, "settlements");
   const payslipsQuery = usePayslipsQuery();
-  const settlementQuery = useSettlementQuery();
+  const settlementQuery = useSettlementQuery({ enabled: settlementsEntitled });
   const items = useMemo(() => payslipsQuery.data || [], [payslipsQuery.data]);
-  const settlement = settlementQuery.data || null;
+  const settlement = settlementsEntitled ? settlementQuery.data || null : null;
   const loading = payslipsQuery.isLoading && items.length === 0;
   const [actionError, setActionError] = useState("");
   const error = actionError

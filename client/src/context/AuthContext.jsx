@@ -121,12 +121,24 @@ export function AuthProvider({ children }) {
       setSessionError(null);
     };
 
+    let entitlementsRefreshTimer = null;
+    const handleEntitlementsStale = () => {
+      if (entitlementsRefreshTimer) return;
+      entitlementsRefreshTimer = window.setTimeout(() => {
+        entitlementsRefreshTimer = null;
+        restoreSession({ silent: true });
+      }, 250);
+    };
+
     window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("hrms:session-expired", handleSessionExpired);
+    window.addEventListener("hrms:entitlements-stale", handleEntitlementsStale);
 
     return () => {
+      if (entitlementsRefreshTimer) window.clearTimeout(entitlementsRefreshTimer);
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("hrms:session-expired", handleSessionExpired);
+      window.removeEventListener("hrms:entitlements-stale", handleEntitlementsStale);
     };
   }, []);
 

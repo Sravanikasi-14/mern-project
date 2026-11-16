@@ -7,29 +7,31 @@ import { useAuth } from "../../app/AuthContext";
 import { useNotify } from "../../app/notifyContext";
 import { useChatUnreadQuery } from "../../hooks/useChatQueries";
 import { getCompanyBrandName } from "../../utils/companyBrand";
+import { moreItemVisible } from "../../utils/hrPortalAccess";
 
 const MODULES = [
   { id: "messages", label: "Messages", path: "/admin/messages", icon: "messages", color: "#e3f2e9", ink: "#155a37" },
-  { id: "attendance", label: "Attendance", path: "/admin/attendance", icon: "clock", color: "#eff6ff", ink: "#2563eb" },
-  { id: "live", label: "Live Tracking", path: "/admin/attendance/live", icon: "location", color: "#e3f2e9", ink: "#155a37" },
-  { id: "leave", label: "Leave Management", path: "/admin/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a" },
-  { id: "payroll", label: "Payroll", path: "/admin/payroll", icon: "payroll", color: "#e3f2e9", ink: "#155a37" },
-  { id: "payslips", label: "Payslips", path: "/admin/payroll", icon: "payslips", color: "#eef2ff", ink: "#4f46e5" },
-  { id: "assets", label: "Company Assets", path: "/admin/assets", icon: "assets", color: "#fdf3e2", ink: "#b06d0a" },
-  { id: "organization", label: "Organization", path: "/admin/organization", icon: "people", color: "#e3f2e9", ink: "#155a37" },
-  { id: "hiring", label: "Hiring & Onboarding", path: "/admin/hiring", icon: "onboarding", color: "#e3f2e9", ink: "#1d7347" },
-  { id: "work", label: "Work Management", path: "/admin/work-management", icon: "work", color: "#e3f2e9", ink: "#1d7347" },
-  { id: "impact", label: "Impact Points", path: "/admin/impact-points", icon: "impact", color: "#fdeceb", ink: "#c23b3b" },
-  { id: "reports", label: "Reports", path: "/admin/reports", icon: "reports", color: "#e3f2e9", ink: "#155a37" },
-  { id: "policies", label: "HR Policies", path: "/admin/policies", icon: "policies", color: "#eef2ff", ink: "#4f46e5" },
-  { id: "company", label: "Company Profile", path: "/admin/settings", icon: "profile", color: "#eff6ff", ink: "#2563eb" },
+  { id: "attendance", label: "Attendance", path: "/admin/attendance", icon: "clock", color: "#eff6ff", ink: "#2563eb", permission: "attendance.view" },
+  { id: "live", label: "Live Tracking", path: "/admin/attendance/live", icon: "location", color: "#e3f2e9", ink: "#155a37", permission: "attendance.view" },
+  { id: "leave", label: "Leave Management", path: "/admin/leave", icon: "leave", color: "#fdf3e2", ink: "#b06d0a", permission: "leave.view" },
+  { id: "payroll", label: "Payroll", path: "/admin/payroll", icon: "payroll", color: "#e3f2e9", ink: "#155a37", permission: "payroll.view" },
+  { id: "payslips", label: "Payslips", path: "/admin/payroll", icon: "payslips", color: "#eef2ff", ink: "#4f46e5", permission: "payroll.view" },
+  { id: "assets", label: "Company Assets", path: "/admin/assets", icon: "assets", color: "#fdf3e2", ink: "#b06d0a", permission: "assets.view" },
+  { id: "organization", label: "Organization", path: "/admin/organization", icon: "people", color: "#e3f2e9", ink: "#155a37", permission: "organization.view" },
+  { id: "hiring", label: "Hiring & Onboarding", path: "/admin/hiring", icon: "onboarding", color: "#e3f2e9", ink: "#1d7347", permission: "hiring.view" },
+  { id: "work", label: "Work Management", path: "/admin/work-management", icon: "work", color: "#e3f2e9", ink: "#1d7347", permission: "people.view" },
+  { id: "impact", label: "Impact Points", path: "/admin/impact-points", icon: "impact", color: "#fdeceb", ink: "#c23b3b", permission: "impact.view" },
+  { id: "reports", label: "Reports", path: "/admin/reports", icon: "reports", color: "#e3f2e9", ink: "#155a37", permission: "reports.view" },
+  { id: "policies", label: "HR Policies", path: "/admin/policies", icon: "policies", color: "#eef2ff", ink: "#4f46e5", permission: "policies.view" },
+  { id: "company", label: "Company Profile", path: "/admin/settings", icon: "profile", color: "#eff6ff", ink: "#2563eb", permission: "settings.view" },
 ];
 
 export default function HrMorePage() {
   const navigate = useNavigate();
-  const { logout, company } = useAuth();
+  const { logout, company, user } = useAuth();
   const openNotify = useNotify();
   const brand = getCompanyBrandName(company);
+  const visibleModules = MODULES.filter((item) => moreItemVisible(user, company, item));
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const closeLogout = useCallback(() => setLogoutOpen(false), []);
@@ -48,18 +50,24 @@ export default function HrMorePage() {
     }
   };
 
-  const utilities = [
+  const visibleUtilities = [
     { id: "notify", label: "Notifications", icon: "bell", action: "notify" },
-    { id: "settings", label: "Settings", icon: "settings", path: "/admin/settings" },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: "settings",
+      path: "/admin/settings",
+      permission: "settings.view",
+    },
     { id: "logout", label: "Sign out", icon: "logout", action: "logout", danger: true },
-  ];
+  ].filter((item) => !item.path || moreItemVisible(user, company, item));
 
   return (
     <div className="mo-page hr-more-tiles">
       <HrPortalHeader title="More" eyebrow={brand} />
 
       <div className="mo-grid">
-        {MODULES.map((item) => (
+        {visibleModules.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -78,7 +86,7 @@ export default function HrMorePage() {
       </div>
 
       <div className="mo-utils">
-        {utilities.map((item) => (
+        {visibleUtilities.map((item) => (
           <button
             key={item.id}
             type="button"

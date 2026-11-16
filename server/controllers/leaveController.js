@@ -18,6 +18,7 @@ import {
   assertEmployeeInScope,
   mergeEmployeeIdScopeFilter,
 } from "../services/hrAccessEnforcementService.js";
+import { buildPrefixCiRegex } from "../utils/searchRegex.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -36,10 +37,6 @@ async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   } catch (err) {
     console.error("Audit log error:", err.message);
   }
-}
-
-function escapeRegex(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
 
 /**
@@ -126,9 +123,9 @@ export async function getLeaveRequests(req, res, next) {
       }
     }
 
-    // Search by employee name, email, or code
+    // F58: prefix search by employee name, email, or code
     if (search) {
-      const regex = new RegExp(escapeRegex(search), "i");
+      const regex = buildPrefixCiRegex(search);
       const matchedEmployees = await Employee.find({
         $or: [
           { fullName: regex },
@@ -641,40 +638,24 @@ export async function decideLeaveRequest(req, res, next) {
     };
     await leaveRequest.save();
 
-    // Attendance Integration:
-    // If approved, update attendance logs for applicable dates
+    // F55: Attendance is authoritative for ON_LEAVE — do not dual-write attendanceLogs.
+    // Only mark today when it falls in the approved window and the employee has not punched in.
     const employee = await Employee.findById(leaveRequest.employeeId);
     if (employee && targetStatus === "APPROVED") {
-      const todayStr = toDateString(new Date());
+      const todayStr = getCompanyBusinessDate(
+        new Date(),
+        resolveCompanyTimezone(req.auth.company)
+      );
       const fromStr = toDateString(leaveRequest.fromDate);
       const toStr = toDateString(leaveRequest.toDate);
 
-      const customFields = employee.customFields || {};
-      const attendanceLogs = customFields.attendanceLogs || [];
-
-      // Check if today falls in the approved leave window
       if (todayStr >= fromStr && todayStr <= toStr) {
-        const todayLog = attendanceLogs.find((l) => l.date === todayStr);
-        if (!todayLog || !todayLog.checkIn) {
-          // Employee hasn't punched in today; reflect ON_LEAVE
-          if (todayLog) {
-            todayLog.status = "ON_LEAVE";
-          } else {
-            attendanceLogs.push({
-              date: todayStr,
-              checkIn: null,
-              checkOut: null,
-              status: "ON_LEAVE",
-              workingHours: "--",
-            });
-          }
-          employee.customFields = {
-            ...customFields,
-            attendanceLogs,
-          };
-          employee.markModified("customFields");
-          await employee.save();
-        }
+        const { ensureOnLeaveAttendanceDay } = await import("../services/attendanceService.js");
+        await ensureOnLeaveAttendanceDay({
+          models: req.auth.models,
+          employee,
+          dateKey: todayStr,
+        });
       }
     }
 

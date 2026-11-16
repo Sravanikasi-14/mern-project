@@ -33,8 +33,8 @@ Do **not** reopen F30–F34 for reimplementation unless a regression is proven. 
 | F40 | Offer/payslip PDF via Puppeteer/Chromium on request path | B/G | **P0** | CI → **Implemented** (shared browser + concurrency) | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f40) · [F40 doc](./F40_PDF_BROWSER_RUNTIME.md) |
 | F41 | Workforce cron: sequential all-companies × per-task employee reload vs 60s | D/G | **P0** | CI → **Implemented** (bounded concurrency, durable wave, roster cache) | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f41) · [F41 doc](./F41_WORKFORCE_SCHEDULER.md) |
 | F42 | Punch success notifies every HR portal user (sequential inserts) | C/B | **P0** | CI → **Implemented** (bulk insertMany + dedupe) | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f42) · [F42 doc](./F42_ATTENDANCE_NOTIFICATIONS.md) |
-| F43 | Serverless skips auto tenant provisioning → index drift risk | A/E/G | **P1** | CI | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f43) |
-| F44 | Provisioning `createIndexes` incomplete vs models in use | A/E | **P1** | CI | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f44) |
+| F43 | Serverless skips auto tenant provisioning → index drift risk | A/E/G | **P1** | CI → **Implemented** (inventory v3 + strict stamp gate; Vercel skip preserved) | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f43) |
+| F44 | Provisioning `createIndexes` incomplete vs models in use | A/E | **P1** | CI → **Implemented** (all getCompanyModels indexed models + F44 set) | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f44) |
 | F45 | No Mongo TTL on sessions/tokens/challenges (soft expiry only) | A | **P1** | CI | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f45) |
 | F46 | Chat `listConversations` N+1 previews/unreads | A/B | **P1** | CI | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f46) |
 | F47 | Employee-role directory: load all then filter/slice in memory | A/E | **P1** | CI | [PHASE2](./SCALABILITY_AUDIT_PHASE2.md#f47) |
@@ -77,10 +77,9 @@ Do **not** reopen F30–F34 for reimplementation unless a regression is proven. 
 
 | Bucket | IDs |
 |--------|-----|
-| Done (code) | F30–F34 (impl reviewed); **F35**–**F42** P0 implemented (see [PHASE2_P0_INTEGRATION_REVIEW.md](./PHASE2_P0_INTEGRATION_REVIEW.md)) |
-| Pending ops | F33 migrate/prune + prod verify; F31/F34 index explain on prod tenants |
-| Next P0 | F43+ (F38–F42 implemented) |
-| Next P1 | F43–F57 |
+| Done (code) | F30–F34 (impl reviewed); **F35**–**F42** P0; **F43**–**F44** P1 implemented (staging/prod `provision:tenants` + inventory still required) |
+| Pending ops | F33 migrate/prune + prod verify; F31/F34 index explain on prod tenants; **F43/F44** run inventory → provision on staging/prod tenants |
+| Next P1 | F45–F57 |
 | Later | F58–F79 |
 
 Full narrative, architecture, top-10, fix order, and validation commands: [`SCALABILITY_AUDIT_PHASE2.md`](./SCALABILITY_AUDIT_PHASE2.md).

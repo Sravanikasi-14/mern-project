@@ -1,0 +1,182 @@
+.pa-auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--g-400) 28%, transparent), transparent 60%),
+    radial-gradient(900px 420px at 100% 0%, color-mix(in srgb, var(--g-700) 18%, transparent), transparent 55%),
+    var(--page);
+  font-family: var(--font);
+}
+
+.pa-auth-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 28px 24px 24px;
+  font-family: var(--font);
+}
+
+.pa-auth-card .error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--rose-bg, #fde8ec);
+  border: 1px solid color-mix(in srgb, var(--rose, #b42318) 22%, var(--hair));
+  color: var(--rose, #b42318);
+  font-size: 13px;
+}
+
+.pa-auth-card .btn-primary,
+.pa-auth-card button.btn-primary {
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--g-700);
+  color: #fff;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pa-auth-card .btn-primary:hover:not(:disabled),
+.pa-auth-card button.btn-primary:hover:not(:disabled) {
+  background: var(--g-800);
+}
+
+.pa-auth-card .btn-primary:disabled,
+.pa-auth-card button.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pa-auth-card .btn-secondary,
+.pa-auth-card button.btn-secondary {
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--hair);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.pa-auth-card input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--g-600) 55%, var(--hair));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--g-400) 28%, transparent);
+}
+
+.pa-auth-card h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.pa-auth-card .auth-sub,
+.pa-auth-card .pa-auth-sub {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pa-auth-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--g-700);
+  margin-bottom: 10px;
+}
+
+.pa-auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.pa-auth-card input {
+  height: 42px;
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 0 12px;
+  font: inherit;
+  color: var(--ink);
+}
+
+.pa-password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.pa-password-field input {
+  width: 100%;
+  padding-right: 44px;
+  box-sizing: border-box;
+}
+
+.pa-password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.pa-password-toggle:hover {
+  background: color-mix(in srgb, var(--g-700) 10%, transparent);
+  color: var(--g-700);
+}
+
+.pa-password-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--g-700) 45%, transparent);
+  outline-offset: 1px;
+  color: var(--g-700);
+}
+
+.pa-password-toggle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.pa-auth-card .btn-primary,
+.pa-auth-card .btn-secondary {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.pa-auth-card .btn-secondary {
+  margin-top: 10px;
+}
+
+.pa-auth-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}

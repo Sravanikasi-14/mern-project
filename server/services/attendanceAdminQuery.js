@@ -97,6 +97,48 @@ export function assertBoundedAttendanceRange(startDate, endDate, maxDays = MAX_A
   return { startKey, endKey, daySpan };
 }
 
+/**
+ * F69 — Resolve a mandatory civil date window for attendance history.
+ * When the client omits start/end, defaults to the last `maxDays` inclusive days
+ * ending at `todayKey` (YYYY-MM-DD). Always enforces {@link assertBoundedAttendanceRange}.
+ *
+ * Memory / query bound for legacy-merge history is this window (≤ maxDays civil days)
+ * plus the requested page size when hydrating full Attendance documents.
+ *
+ * @returns {{ startKey: string, endKey: string, daySpan: number, defaulted: boolean }}
+ */
+export function resolveAttendanceHistoryDateWindow(
+  startDate,
+  endDate,
+  { todayKey, maxDays = MAX_ATTENDANCE_RANGE_DAYS } = {}
+) {
+  const providedStart = civilDateKey(startDate);
+  const providedEnd = civilDateKey(endDate);
+  if (providedStart && providedEnd) {
+    return { ...assertBoundedAttendanceRange(providedStart, providedEnd, maxDays), defaulted: false };
+  }
+  if (providedStart || providedEnd) {
+    throw new HttpError(400, "startDate and endDate must both be provided as YYYY-MM-DD.");
+  }
+  const endKey = civilDateKey(todayKey);
+  if (!endKey) {
+    throw new HttpError(400, "todayKey must be YYYY-MM-DD when defaulting attendance history window.");
+  }
+  const endUtc = Date.UTC(
+    Number(endKey.slice(0, 4)),
+    Number(endKey.slice(5, 7)) - 1,
+    Number(endKey.slice(8, 10))
+  );
+  const startUtc = endUtc - (maxDays - 1) * 86_400_000;
+  const startDateObj = new Date(startUtc);
+  const startKey = [
+    String(startDateObj.getUTCFullYear()).padStart(4, "0"),
+    String(startDateObj.getUTCMonth() + 1).padStart(2, "0"),
+    String(startDateObj.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+  return { ...assertBoundedAttendanceRange(startKey, endKey, maxDays), defaulted: true };
+}
+
 export function parsePagination(page, limit, { defaultLimit = DEFAULT_RANGE_PAGE_SIZE, maxLimit = 100 } = {}) {
   const parsedPage = Math.max(1, parseInt(page, 10) || 1);
   const parsedLimit = Math.min(maxLimit, Math.max(1, parseInt(limit, 10) || defaultLimit));

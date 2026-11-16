@@ -7,7 +7,7 @@ import { EMPLOYEE_STATUSES } from "../models/Employee.js";
 import { USER_ROLES, serializeUser } from "../models/User.js";
 import { AUDIT_ACTIONS } from "../models/AuditLog.js";
 import { HttpError } from "../utils/httpError.js";
-import { saveDocumentFile, getDocumentAbsolutePath } from "../services/documentStorage.js";
+import { saveDocumentFile, loadDocumentBuffer } from "../services/documentStorage.js";
 import { getActiveCompanyHrPolicy } from "../models/CompanyHrPolicy.js";
 import {
   provisionEmployeeAccount,
@@ -46,6 +46,9 @@ import {
   mergeEmployeeScopeFilter,
   redactOutOfScopeManagerIdentity,
 } from "../services/hrAccessEnforcementService.js";
+import { buildEmployeeFilterOptions } from "../services/employeeFilterOptionsService.js";
+import { buildEmployeeProjectsOverview } from "../services/employeeProjectsOverviewService.js";
+import { buildExactCiRegex, buildPrefixCiRegex } from "../utils/searchRegex.js";
 
 async function recordAuditLog(AuditLog, req, action, targetId, changes) {
   try {
@@ -65,10 +68,6 @@ async function recordAuditLog(AuditLog, req, action, targetId, changes) {
     // Audit logging should not crash the primary operational request
     console.error("Audit log error:", err.message);
   }
-}
-
-function escapeRegex(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 }
 
 /** Desktop People page uses 8/12/24/48; keep prior API sizes too. */
@@ -172,7 +171,8 @@ export async function getEmployees(req, res, next) {
     const andClauses = [];
 
     if (search) {
-      const regex = new RegExp(escapeRegex(search), "i");
+      // F58: prefix free-text search across common people fields.
+      const regex = buildPrefixCiRegex(search);
       andClauses.push({
         $or: [
           { fullName: regex },
@@ -194,23 +194,23 @@ export async function getEmployees(req, res, next) {
     }
 
     if (project) {
-      query["job.project.projectName"] = new RegExp(escapeRegex(project), "i");
+      query["job.project.projectName"] = buildExactCiRegex(project);
     }
 
     if (department) {
-      query["job.department"] = new RegExp(`^${escapeRegex(department)}$`, "i");
+      query["job.department"] = buildExactCiRegex(department);
     }
 
     if (jobTitle) {
-      query["job.jobTitle"] = new RegExp(escapeRegex(jobTitle), "i");
+      query["job.jobTitle"] = buildExactCiRegex(jobTitle);
     }
 
     if (employmentType) {
-      query["job.employmentType"] = new RegExp(`^${escapeRegex(employmentType)}$`, "i");
+      query["job.employmentType"] = buildExactCiRegex(employmentType);
     }
 
     if (workLocation) {
-      query["job.workLocation"] = new RegExp(escapeRegex(workLocation), "i");
+      query["job.workLocation"] = buildExactCiRegex(workLocation);
     }
 
     if (invitationStatusRaw) {
@@ -358,6 +358,57 @@ export async function getEmployees(req, res, next) {
   }
 }
 
+/**
+ * F56 — Distinct People filter options (departments, titles, projects, …).
+ * Scoped via mergeEmployeeScopeFilter; does not return employee documents.
+ */
+export async function getEmployeeFilterOptions(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const status =
+      typeof req.query.status === "string" ? req.query.status.trim() : "ALL";
+    const options = await buildEmployeeFilterOptions({
+      Employee,
+      hrAccess: req.hrAccess,
+      status,
+    });
+    res.status(200).json({
+      success: true,
+      ...options,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * F56 — AdminHome projects / department / leads overview (server aggregate).
+ * Replaces client aggregation over the capped employees pool.
+ */
+export async function getEmployeeProjectsOverview(req, res, next) {
+  try {
+    const { Employee } = req.auth.models;
+    const status =
+      typeof req.query.status === "string" ? req.query.status.trim() : "ACTIVE";
+    const overview = await buildEmployeeProjectsOverview({
+      Employee,
+      hrAccess: req.hrAccess,
+      status,
+    });
+    res.status(200).json({
+      success: true,
+      ...overview,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * F63 — People summary counts + CTC total without materializing all active IDs.
+ * CTC uses a scoped Employee → Compensation $lookup and picks the latest
+ * effective revision in the aggregation pipeline.
+ */
 export async function getEmployeeSummary(req, res, next) {
   try {
     const { Employee, EmployeeCompensation } = req.auth.models;
@@ -371,41 +422,79 @@ export async function getEmployeeSummary(req, res, next) {
       "job.project.projectName": { $exists: true, $nin: ["", null] },
     });
 
-    const [
-      totalEmployees,
-      activeEmployees,
-      inactiveEmployees,
-      assignedEmployees,
-      activeEmployeeDocs,
-    ] = await Promise.all([
+    const countPromise = Promise.all([
       Employee.countDocuments(baseAll),
       Employee.countDocuments(baseActive),
       Employee.countDocuments(baseInactive),
       Employee.countDocuments(baseAssigned),
-      Employee.find(baseActive).select("_id").lean(),
     ]);
 
-    const activeIds = activeEmployeeDocs.map((emp) => emp._id);
-    let compensations = [];
-    if (EmployeeCompensation && activeIds.length > 0) {
-      compensations = await EmployeeCompensation.find({
-        employeeId: { $in: activeIds },
-      })
-        .select("employeeId revisions.effectiveFromDate revisions.monthlyCostToCompany")
-        .lean();
+    let salaryPromise = Promise.resolve([{ totalMonthlySalary: 0 }]);
+    if (EmployeeCompensation) {
+      const compensationCollection = EmployeeCompensation.collection.name;
+      salaryPromise = Employee.aggregate([
+        { $match: baseActive },
+        {
+          $lookup: {
+            from: compensationCollection,
+            localField: "_id",
+            foreignField: "employeeId",
+            as: "_comp",
+            pipeline: [{ $project: { revisions: 1 } }],
+          },
+        },
+        { $unwind: { path: "$_comp", preserveNullAndEmptyArrays: false } },
+        {
+          $project: {
+            currentRevision: {
+              $reduce: {
+                input: { $ifNull: ["$_comp.revisions", []] },
+                initialValue: null,
+                in: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $lte: ["$$this.effectiveFromDate", now] },
+                        {
+                          $or: [
+                            { $eq: ["$$value", null] },
+                            { $gt: ["$$this.effectiveFromDate", "$$value.effectiveFromDate"] },
+                          ],
+                        },
+                      ],
+                    },
+                    "$$this",
+                    "$$value",
+                  ],
+                },
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalMonthlySalary: {
+              $sum: {
+                $convert: {
+                  input: "$currentRevision.monthlyCostToCompany",
+                  to: "double",
+                  onError: 0,
+                  onNull: 0,
+                },
+              },
+            },
+          },
+        },
+      ]);
     }
 
-    let totalMonthlySalary = 0;
-    for (const comp of compensations) {
+    const [
+      [totalEmployees, activeEmployees, inactiveEmployees, assignedEmployees],
+      salaryAgg,
+    ] = await Promise.all([countPromise, salaryPromise]);
 
-      const validRevisions = (comp.revisions || [])
-        .filter((rev) => new Date(rev.effectiveFromDate) <= now)
-        .sort((a, b) => new Date(b.effectiveFromDate) - new Date(a.effectiveFromDate));
-
-      if (validRevisions.length > 0 && validRevisions[0].monthlyCostToCompany != null) {
-        totalMonthlySalary += parseFloat(validRevisions[0].monthlyCostToCompany.toString());
-      }
-    }
+    const totalMonthlySalary = Number(salaryAgg?.[0]?.totalMonthlySalary) || 0;
 
     res.json({
       totalEmployees,
@@ -598,42 +687,72 @@ export async function streamEmployeeAvatar(req, res, next) {
  * HR_ADMIN callers receive a broad HR card without invitation tokens.
  * Does not replace HR-only GET /employees/:id management detail.
  */
+async function respondVisibleEmployeeProfile(req, res, { allowBasicDiscovery }) {
+  const { Employee } = req.auth.models;
+  if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
+    assertHrPermission(req.hrAccess, "people.view");
+    assertEmployeeInScope(
+      req.hrAccess,
+      req.params.id,
+      "You do not have access to this employee."
+    );
+  }
+  const result = await buildVisibleEmployeeProfile({
+    Employee,
+    user: req.auth.user,
+    targetEmployeeId: req.params.id,
+    allowBasicDiscovery,
+  });
+  const visibleEmployee = result.employee;
+  if (
+    req.auth.user.role === USER_ROLES.HR_ADMIN &&
+    visibleEmployee?.job?.reportingManagerId &&
+    typeof visibleEmployee.job.reportingManagerId === "object"
+  ) {
+    visibleEmployee.job = {
+      ...visibleEmployee.job,
+      reportingManagerId: redactOutOfScopeManagerIdentity(
+        req.hrAccess,
+        visibleEmployee.job.reportingManagerId
+      ),
+    };
+  }
+  return {
+    success: true,
+    relationship: result.relationship,
+    visibilityTier: result.visibilityTier,
+    accessLevel: result.accessLevel || null,
+    employee: visibleEmployee,
+  };
+}
+
 export async function getVisibleEmployeeProfile(req, res, next) {
   try {
-    const { Employee } = req.auth.models;
-    if (req.auth.user.role === USER_ROLES.HR_ADMIN) {
-      assertHrPermission(req.hrAccess, "people.view");
-      assertEmployeeInScope(
-        req.hrAccess,
-        req.params.id,
-        "You do not have access to this employee."
-      );
-    }
-    const result = await buildVisibleEmployeeProfile({
-      Employee,
-      user: req.auth.user,
-      targetEmployeeId: req.params.id,
+    const payload = await respondVisibleEmployeeProfile(req, res, {
+      allowBasicDiscovery: false,
     });
-    const visibleEmployee = result.employee;
-    if (
-      req.auth.user.role === USER_ROLES.HR_ADMIN &&
-      visibleEmployee?.job?.reportingManagerId &&
-      typeof visibleEmployee.job.reportingManagerId === "object"
-    ) {
-      visibleEmployee.job = {
-        ...visibleEmployee.job,
-        reportingManagerId: redactOutOfScopeManagerIdentity(
-          req.hrAccess,
-          visibleEmployee.job.reportingManagerId
-        ),
-      };
-    }
     res.json({
-      success: true,
-      relationship: result.relationship,
-      visibilityTier: result.visibilityTier,
-      employee: visibleEmployee,
+      success: payload.success,
+      relationship: payload.relationship,
+      visibilityTier: payload.visibilityTier,
+      employee: payload.employee,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Global Search / colleague detail — same hierarchy redaction as visible-profile,
+ * but unrelated ACTIVE employees return a BASIC name + designation card instead of 404.
+ * Never returns salary, bank, identity secrets, or auth credentials.
+ */
+export async function getPeopleDiscoveryProfile(req, res, next) {
+  try {
+    const payload = await respondVisibleEmployeeProfile(req, res, {
+      allowBasicDiscovery: true,
+    });
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -651,6 +770,26 @@ export async function getEmployeeDirectory(req, res, next) {
       user: req.auth.user,
       search: req.query.search,
       page: req.query.page,
+      limit: req.query.limit,
+      hrAccess: req.hrAccess,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Global header people search — ACTIVE employees only; hierarchy-redacted payloads.
+ */
+export async function getPeopleSearch(req, res, next) {
+  try {
+    const { buildPeopleSearch } = await import("../services/employeePeopleSearchService.js");
+    const { Employee } = req.auth.models;
+    const result = await buildPeopleSearch({
+      Employee,
+      user: req.auth.user,
+      q: req.query.q ?? req.query.search,
       limit: req.query.limit,
       hrAccess: req.hrAccess,
     });
@@ -2121,13 +2260,16 @@ export async function uploadEmployeeDocument(req, res, next) {
       );
     }
 
-    // Save document file securely via documentStorage
+    // F57: durable GridFS via tenant connection (disk only when forced / no connection).
     const saved = await saveDocumentFile({
       databaseName: req.auth.company.databaseName,
       employeeId: employee._id,
       fileName,
       fileData,
       mimeType,
+      connection: Employee.db,
+      ownerType: "employee",
+      company: req.auth.company,
     });
 
     const isHR = req.auth.user.role === USER_ROLES.HR_ADMIN;
@@ -2206,13 +2348,14 @@ export async function downloadDocument(req, res, next) {
       throw new HttpError(404, "Document not found");
     }
 
-    const filePath = getDocumentAbsolutePath({
+    const loaded = await loadDocumentBuffer({
       databaseName: req.auth.company.databaseName,
       employeeId: employee._id,
       storageKey: doc.storageKey,
+      connection: Employee.db,
     });
 
-    if (!filePath) {
+    if (!loaded?.buffer) {
       throw new HttpError(404, "Document file not found on storage server.");
     }
 
@@ -2226,7 +2369,7 @@ export async function downloadDocument(req, res, next) {
 
     res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${doc.fileName}"`);
-    return res.sendFile(filePath);
+    return res.status(200).send(loaded.buffer);
   } catch (error) {
     next(error);
   }

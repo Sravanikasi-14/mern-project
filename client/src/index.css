@@ -55,6 +55,64 @@
   box-sizing: border-box;
 }
 
+/*
+ * Hide native scrollbars (no gutter / no content shrink).
+ * OverlayScrollbar paints an ultra-thin short dark thumb on primary scrollports.
+ */
+:root {
+  --scroll-thumb-w: 2px;
+  --scroll-thumb: rgba(28, 32, 30, 0.62);
+  --scroll-thumb-hover: rgba(28, 32, 30, 0.85);
+}
+
+* {
+  scrollbar-width: none !important;
+}
+
+*::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+.hrms-overlay-scroll-rail {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  bottom: 0;
+  width: var(--scroll-thumb-w);
+  pointer-events: none;
+  z-index: 40;
+}
+
+.hrms-overlay-scroll-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--scroll-thumb);
+  pointer-events: auto;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+  will-change: transform, height, opacity;
+}
+
+.hrms-overlay-scroll-rail.is-visible .hrms-overlay-scroll-thumb,
+.hrms-overlay-scroll-rail.is-dragging .hrms-overlay-scroll-thumb {
+  opacity: 1;
+}
+
+.hrms-overlay-scroll-thumb:hover,
+.hrms-overlay-scroll-rail.is-dragging .hrms-overlay-scroll-thumb {
+  background: var(--scroll-thumb-hover);
+}
+
+.hrms-overlay-scroll-rail.is-dragging .hrms-overlay-scroll-thumb {
+  cursor: grabbing;
+}
+
 html,
 body,
 #root {
@@ -189,6 +247,7 @@ h2 {
 }
 
 .module-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -196,9 +255,41 @@ h2 {
   background: #e9ebe9;
   border-radius: 999px;
   margin-bottom: 14px;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.module-tabs.has-sliding-indicator {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.module-tabs-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.28s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    width 0.28s var(--ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 0.18s ease;
+  z-index: 0;
+}
+
+.module-tabs-indicator.is-ready {
+  opacity: 1;
 }
 
 .module-tab {
+  position: relative;
+  z-index: 1;
   height: 36px;
   padding: 0 14px;
   border: 0;
@@ -209,6 +300,10 @@ h2 {
   font-weight: 600;
   box-shadow: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .module-tab:hover:not(:disabled) {
@@ -217,10 +312,101 @@ h2 {
   transform: none;
 }
 
+.module-tabs.has-sliding-indicator .module-tab.is-active {
+  background: transparent;
+  color: var(--g-800);
+  box-shadow: none;
+}
+
 .module-tab.is-active {
   background: #ffffff;
   color: var(--g-800);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.module-tab-badge {
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(19, 26, 21, 0.08);
+  color: var(--muted);
+}
+
+.module-tab.is-active .module-tab-badge {
+  background: var(--g-100);
+  color: var(--g-800);
+}
+
+/* Interactive summary metric cards (Leave / Assets / Work pattern) */
+.metric-card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+button.metric-card,
+.metric-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 108px;
+  padding: 16px 18px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: box-shadow 0.18s var(--ease), border-color 0.18s var(--ease), transform 0.18s var(--ease);
+}
+
+button.metric-card:hover,
+.metric-card.is-interactive:hover {
+  border-color: color-mix(in srgb, var(--g-600) 35%, var(--hair));
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+button.metric-card.is-active,
+.metric-card.is-active {
+  border-color: var(--g-600);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--g-600) 18%, transparent), var(--shadow-sm);
+}
+
+.metric-card-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.metric-card-value {
+  font-size: var(--fs-stat, 26px);
+  font-weight: 750;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.metric-card-sub {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.card-scroll-body {
+  max-height: 280px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .dept-chip-row {
@@ -1547,6 +1733,26 @@ input.has-error {
   margin-bottom: 12px;
 }
 
+.fernly-topbar-leading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.fernly-topbar-leading.is-empty {
+  display: none;
+}
+
+.fernly-topbar-search,
+.global-search.fernly-topbar-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
 .fernly-topbar-left {
   display: flex;
   flex-direction: column;
@@ -2160,13 +2366,21 @@ button.lm-schedule-toggle {
 }
 
 button.settings-nav-btn:hover:not(:disabled),
-button.module-tab:hover:not(:disabled),
 button.icon-btn:hover:not(:disabled),
 button.fernly-icon-btn:hover:not(:disabled),
 button.app-pagination-btn:hover:not(:disabled),
 button.month-nav-arrow:hover:not(:disabled),
 button.lm-cal-nav-btn:hover:not(:disabled),
 button.sidebar-collapse-btn:hover:not(:disabled) {
+  background: var(--g-100, #e3f2e9);
+  color: var(--ink, #131a15);
+  border-color: var(--hair, #e3e7e4);
+  transform: none;
+  box-shadow: none;
+}
+
+/* Do not paint a solid hover chip over SegmentedTabs' sliding white indicator. */
+.module-tabs:not(.has-sliding-indicator) button.module-tab:hover:not(:disabled) {
   background: var(--g-100, #e3f2e9);
   color: var(--ink, #131a15);
   border-color: var(--hair, #e3e7e4);

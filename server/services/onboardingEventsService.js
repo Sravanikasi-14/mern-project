@@ -2,6 +2,7 @@ import EventEmitter from "node:events";
 import Company from "../models/Company.js";
 import { USER_ROLES } from "../models/User.js";
 import { assertHrPermission, resolveHrAccessContext } from "./hrAccessEnforcementService.js";
+import { attachSseLifecycle } from "../utils/sseLifecycle.js";
 
 class OnboardingEventEmitter extends EventEmitter {}
 
@@ -69,16 +70,15 @@ export function subscribeOnboardingEvents(req, res) {
     return;
   }
 
-  // Heartbeat to keep proxies / load balancers from timing out
-  const heartbeat = setInterval(() => {
-    try {
-      res.write(": heartbeat\n\n");
-    } catch {
-      clearInterval(heartbeat);
-    }
-  }, 25000);
+  // F64: heartbeat + bounded lifetime (RECONNECT before Vercel maxDuration).
+  let listener = null;
+  attachSseLifecycle(req, res, {
+    onCleanup: () => {
+      if (listener) onboardingEvents.off("onboarding_update", listener);
+    },
+  });
 
-  const listener = async (event) => {
+  listener = async (event) => {
     try {
       // Strict company isolation: never broadcast cross-tenant
       if (String(event.companyId) !== companyId) {
@@ -120,9 +120,4 @@ export function subscribeOnboardingEvents(req, res) {
   };
 
   onboardingEvents.on("onboarding_update", listener);
-
-  req.on("close", () => {
-    clearInterval(heartbeat);
-    onboardingEvents.off("onboarding_update", listener);
-  });
 }

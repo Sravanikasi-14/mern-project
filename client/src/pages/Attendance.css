@@ -772,3 +772,103 @@
     text-align: left;
   }
 }
+
+/* ==========================================================================
+   Admin Live Tracking: map-first layout with overlays ON TOP of the map
+   ========================================================================== */
+.lt-map-wrap {
+  position: relative;
+  isolation: isolate;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.lt-map-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.lt-map-overlay-card {
+  max-width: 380px;
+  text-align: center;
+  padding: 18px 24px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(19, 26, 21, 0.1);
+}
+
+.lt-map-overlay-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--g-100, #e3f2e9);
+  color: var(--g-800, #155a37);
+}
+
+.lt-map-overlay-title {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.lt-map-overlay-msg {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.lt-employee-select {
+  min-width: 180px;
+  max-width: 240px;
+}
+/* Employee Attendance Records — heading + table share ONE container (no nested wrapper) */
+.att-records-card {
+  background: var(--card, #ffffff);
+  border: 1px solid var(--hair, #e6ede8);
+  border-radius: var(--r-md, 12px);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(19, 26, 21, 0.04));
+  overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.att-records-title {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink, #131a15);
+}
+
+.att-records-card > .data-table {
+  margin-bottom: 12px;
+}
+
+.att-workspace-tabs.module-tabs {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 768px) {
+  .att-records-card {
+    padding: 12px;
+    overflow: visible;
+  }
+
+  .att-records-card > table.data-table.att-desktop-table {
+    display: none;
+  }
+}

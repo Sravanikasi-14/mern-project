@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
 import {
   loadHrAccessContext,
+  requireEntitledModule,
   requireHrPermission,
   requireEmployeeInScope,
 } from "../middleware/hrAccessEnforcement.js";
@@ -20,7 +21,7 @@ import {
 
 const router = express.Router();
 
-router.use(authenticate, loadHrAccessContext);
+router.use(authenticate, loadHrAccessContext, requireEntitledModule("impact"));
 
 // Employee & Manager personal endpoints
 router.get("/me", getMyPointsSummary);

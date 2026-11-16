@@ -3,6 +3,7 @@ import { buildHiringRedirect } from "../utils/hiringStage";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./AuthContext";
 import ProtectedRoute from "./ProtectedRoute";
+import ModuleEntitlementGate from "../components/ModuleEntitlementGate";
 import AppShell from "./AppShell";
 import { queryClient } from "./queryClient";
 import { ToastProvider } from "../components/Toast";
@@ -89,7 +90,7 @@ function HiringRedirect({ context }) {
 function Employee({ children }) {
   return (
     <ProtectedRoute roles={["EMPLOYEE"]}>
-      {children}
+      <ModuleEntitlementGate>{children}</ModuleEntitlementGate>
     </ProtectedRoute>
   );
 }
@@ -97,7 +98,7 @@ function Employee({ children }) {
 function Hr({ children }) {
   return (
     <ProtectedRoute roles={["HR_ADMIN"]}>
-      {children}
+      <ModuleEntitlementGate>{children}</ModuleEntitlementGate>
     </ProtectedRoute>
   );
 }
@@ -105,7 +106,7 @@ function Hr({ children }) {
 function CompanyAdmin({ children }) {
   return (
     <ProtectedRoute roles={["COMPANY_ADMIN"]}>
-      {children}
+      <ModuleEntitlementGate>{children}</ModuleEntitlementGate>
     </ProtectedRoute>
   );
 }

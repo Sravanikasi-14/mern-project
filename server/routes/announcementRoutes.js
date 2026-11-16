@@ -15,6 +15,12 @@ import { loadHrAccessContext } from "../middleware/hrAccessEnforcement.js";
 
 const router = Router();
 
+/**
+ * Company announcements — intentionally NOT a Platform Admin catalogue module.
+ * Gated by tenant HR permissions (`announcements.*`) inside the service layer.
+ * See platformFeatureCatalog.js header. Do not add requireEntitledModule here
+ * without an explicit product decision to introduce an announcements platform module.
+ */
 router.get("/publish-due", publishDueAnnouncementsNow);
 router.post("/publish-due", publishDueAnnouncementsNow);
 

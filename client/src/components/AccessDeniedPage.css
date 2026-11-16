@@ -1,0 +1,19 @@
+.access-denied-page {
+  min-height: min(58vh, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: transparent;
+}
+
+.access-denied-message {
+  margin: 0;
+  max-width: 36rem;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+  color: var(--muted, #646d67);
+}

@@ -3,6 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { HttpError } from "../utils/httpError.js";
+import {
+  documentFileIdFromStorageKey,
+  getDocumentFileBuffer,
+  isDocumentGridFsConfigured,
+  putDocumentFile,
+} from "./documentGridFsStorageService.js";
 
 export function getUploadsRoot() {
   if (process.env.UPLOADS_DIR) {
@@ -13,6 +19,18 @@ export function getUploadsRoot() {
     return path.join(os.tmpdir(), "hrms_uploads");
   }
   return path.join(process.cwd(), "uploads");
+}
+
+/**
+ * F57 — Prefer tenant GridFS when a Mongo connection is available.
+ * Force disk with DOCUMENT_STORAGE=disk (local debug only).
+ * Force GridFS with DOCUMENT_STORAGE=gridfs.
+ */
+export function shouldPersistDocumentsToGridFs(connection) {
+  const mode = String(process.env.DOCUMENT_STORAGE || "").trim().toLowerCase();
+  if (mode === "disk") return false;
+  if (mode === "gridfs") return isDocumentGridFsConfigured(connection);
+  return isDocumentGridFsConfigured(connection);
 }
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -63,7 +81,16 @@ export function validateDocumentFile({ fileName, mimeType, fileSize }) {
   return true;
 }
 
-export async function saveDocumentFile({ databaseName, employeeId, fileName, fileData, mimeType }) {
+export async function saveDocumentFile({
+  databaseName,
+  employeeId,
+  fileName,
+  fileData,
+  mimeType,
+  connection = null,
+  ownerType = "employee",
+  company = null,
+}) {
   validateDocumentFile({ fileName, mimeType });
 
   let fileBuffer;
@@ -81,11 +108,46 @@ export async function saveDocumentFile({ databaseName, employeeId, fileName, fil
     throw new HttpError(400, "File size exceeds the 10 MB maximum upload limit.");
   }
 
+  // Batch 4 — plan storage limit when company context is provided and usage is measurable.
+  if (company) {
+    const { assertStorageAllowsUpload } = await import("./platformStorageService.js");
+    await assertStorageAllowsUpload({
+      company,
+      connection,
+      incomingBytes: fileBuffer.length,
+    });
+  }
+
+  const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
+
+  // F57: durable GridFS when tenant connection is available (required on Vercel).
+  if (shouldPersistDocumentsToGridFs(connection)) {
+    const stored = await putDocumentFile({
+      connection,
+      body: fileBuffer,
+      contentType: mimeType || "application/octet-stream",
+      filename: safeName,
+      metadata: {
+        databaseName: String(databaseName || ""),
+        ownerType: String(ownerType || "employee"),
+        ownerId: String(employeeId || ""),
+        originalFileName: safeName,
+      },
+    });
+    return {
+      storageKey: stored.storageKey,
+      fileName: safeName,
+      fileSize: fileBuffer.length,
+      mimeType: mimeType || "application/octet-stream",
+      absolutePath: null,
+      backend: "gridfs",
+    };
+  }
+
   const uploadsRoot = getUploadsRoot();
   const baseDir = path.join(uploadsRoot, databaseName, String(employeeId));
   await fs.promises.mkdir(baseDir, { recursive: true });
 
-  const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
   const storageKey = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}_${safeName}`;
   const absolutePath = path.join(baseDir, storageKey);
 
@@ -97,6 +159,7 @@ export async function saveDocumentFile({ databaseName, employeeId, fileName, fil
     fileSize: fileBuffer.length,
     mimeType: mimeType || "application/octet-stream",
     absolutePath,
+    backend: "disk",
   };
 }
 
@@ -104,11 +167,44 @@ export function getDocumentAbsolutePath({ databaseName, employeeId, storageKey }
   if (!storageKey || typeof storageKey !== "string") {
     return null;
   }
+  // GridFS keys are not filesystem paths.
+  if (documentFileIdFromStorageKey(storageKey)) {
+    return null;
+  }
   // Sanitize path to prevent path traversal
   const safeKey = path.basename(storageKey);
   const uploadsRoot = getUploadsRoot();
   const filePath = path.join(uploadsRoot, databaseName, String(employeeId), safeKey);
   return fs.existsSync(filePath) ? filePath : null;
+}
+
+/**
+ * F57 — Resolve document bytes from GridFS (new) or legacy disk (old keys).
+ * Returns { buffer, backend } or null when not found.
+ */
+export async function loadDocumentBuffer({
+  databaseName,
+  employeeId,
+  storageKey,
+  connection = null,
+}) {
+  if (!storageKey || typeof storageKey !== "string") {
+    return null;
+  }
+
+  const gridId = documentFileIdFromStorageKey(storageKey);
+  if (gridId) {
+    if (!isDocumentGridFsConfigured(connection)) {
+      return null;
+    }
+    const buffer = await getDocumentFileBuffer({ connection, fileId: gridId });
+    return { buffer, backend: "gridfs" };
+  }
+
+  const filePath = getDocumentAbsolutePath({ databaseName, employeeId, storageKey });
+  if (!filePath) return null;
+  const buffer = await fs.promises.readFile(filePath);
+  return { buffer, backend: "disk" };
 }
 
 const LOGO_ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);

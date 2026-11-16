@@ -3,14 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import StatusBadge from "../components/StatusBadge";
 import SoftRefresh from "../components/SoftRefresh";
-import {
-  IconClose,
-  IconCalendar,
-} from "../components/EmployeeIcon";
+import { IconCalendar } from "../components/EmployeeIcon";
 import { TableSkeletonRows } from "../components/TableSkeleton";
 import Pagination from "../components/Pagination";
 import api from "../services/api";
 import AppHeader from "../components/AppHeader";
+import AppModal from "../components/AppModal";
+import SegmentedTabs from "../components/SegmentedTabs";
 import HandoverWorkspace from "../components/HandoverWorkspace";
 import { useAuth } from "../context/AuthContext";
 import { useDashboardQuery } from "../hooks/useEmployeeQueries";
@@ -367,6 +366,25 @@ export default function EmployeeLeave() {
       <AppHeader
         title={<><span className="m-title-full">Leave</span><span className="m-title-short">Time off</span></>}
         actions={<SoftRefresh active={dashboardQuery.isFetching && !!dashboardData} />}
+        nav={
+          <SegmentedTabs
+            ariaLabel="Leave sections"
+            value={pageTab}
+            onChange={(nextTab) => {
+              setPageTab(nextTab);
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (nextTab === "handovers") next.set("tab", "handovers");
+                  else next.delete("tab");
+                  return next;
+                },
+                { replace: true }
+              );
+            }}
+            tabs={PAGE_TABS}
+          />
+        }
       />
 
       {/* Alerts */}
@@ -374,35 +392,18 @@ export default function EmployeeLeave() {
       {actionError && <div className="error" style={{ marginBottom: 14 }}>{actionError}</div>}
       {error && <div className="error" style={{ marginBottom: 14 }}>{error}</div>}
 
-      <div className="text-filter-group" style={{ marginBottom: 14 }} role="tablist" aria-label="Leave sections">
-        {PAGE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={pageTab === tab.value}
-            className={`text-filter-link ${pageTab === tab.value ? "active" : ""}`}
-            onClick={() => {
-              setPageTab(tab.value);
-              setSearchParams(
-                (prev) => {
-                  const next = new URLSearchParams(prev);
-                  if (tab.value === "handovers") next.set("tab", "handovers");
-                  else next.delete("tab");
-                  return next;
-                },
-                { replace: true }
-              );
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {pageTab === "handovers" ? (
-        <section className="el-requests-section" aria-label="Work handovers">
-          <div className="el-card">
+        <section className="el-handovers-page" aria-label="Work handovers">
+          <header className="el-handovers-hero">
+            <div>
+              <h2 className="el-handovers-title">Work handovers</h2>
+              <p className="el-handovers-lede">
+                Track coverage you have handed over and responsibilities assigned to you. Coverage
+                never blocks leave approval.
+              </p>
+            </div>
+          </header>
+          <div className="el-handovers-workspace">
             <HandoverWorkspace
               mode="employee"
               canManage
@@ -653,18 +654,12 @@ export default function EmployeeLeave() {
               <h3 className="el-card-title">Leave Requests</h3>
               <p className="el-card-sub">Full history of applications</p>
             </div>
-            <div className="text-filter-group">
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  className={`text-filter-link ${reqStatusFilter === f.value ? "active" : ""}`}
-                  onClick={() => setReqStatusFilter(f.value)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Request status"
+              value={reqStatusFilter}
+              onChange={setReqStatusFilter}
+              tabs={STATUS_FILTERS}
+            />
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -739,134 +734,127 @@ export default function EmployeeLeave() {
       </>
       ) : null}
 
-      {selectedLeave && (
-        <div className="modal-overlay" onClick={() => setSelectedLeave(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <div className="modal-header">
-              <h2>Leave request</h2>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setSelectedLeave(null)}
-                aria-label="Close"
-              >
-                <IconClose size={14} />
-              </button>
+      <AppModal
+        open={Boolean(selectedLeave)}
+        onClose={() => setSelectedLeave(null)}
+        title="Leave request"
+        subtitle="Application details"
+        size="md"
+        className="el-leave-detail-modal"
+      >
+        {selectedLeave ? (
+          <dl className="el-leave-detail">
+            <div>
+              <dt>Type</dt>
+              <dd>{selectedLeave.leaveTypeCode || selectedLeave.leaveType || "—"}</dd>
             </div>
-            <dl className="el-leave-detail">
-              <div>
-                <dt>Type</dt>
-                <dd>{selectedLeave.leaveTypeCode || selectedLeave.leaveType || "—"}</dd>
-              </div>
-              <div>
-                <dt>Dates</dt>
-                <dd>
-                  {formatDate(selectedLeave.startDate)} – {formatDate(selectedLeave.endDate)}
-                </dd>
-              </div>
-              <div>
-                <dt>Status</dt>
-                <dd><StatusBadge status={selectedLeave.status} /></dd>
-              </div>
-              <div>
-                <dt>Reason</dt>
-                <dd>{selectedLeave.reason || "—"}</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      )}
-
-      {/* -----------------------------------------------------------------------
-          APPLY FOR LEAVE MODAL
-          ----------------------------------------------------------------------- */}
-      {showLeaveModal && (
-        <div className="modal-overlay" onClick={() => setShowLeaveModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <div className="modal-header">
-              <h2>Apply for Leave</h2>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => setShowLeaveModal(false)}
-                aria-label="Close"
-              >
-                <IconClose size={14} />
-              </button>
+            <div>
+              <dt>Dates</dt>
+              <dd>
+                {formatDate(selectedLeave.startDate)} – {formatDate(selectedLeave.endDate)}
+              </dd>
             </div>
+            <div>
+              <dt>Status</dt>
+              <dd>
+                <StatusBadge status={selectedLeave.status} />
+              </dd>
+            </div>
+            <div className="el-leave-detail-span">
+              <dt>Reason</dt>
+              <dd>{selectedLeave.reason || "—"}</dd>
+            </div>
+          </dl>
+        ) : null}
+      </AppModal>
 
-            {leaveModalError && <div className="error" style={{ marginBottom: 16 }}>{leaveModalError}</div>}
-
-            <form onSubmit={handleApplyLeave} className="auth-form" noValidate>
-              <div style={{ marginBottom: 14 }}>
-                <label>
-                  Leave Type *
-                  <select
-                    value={leaveForm.leaveType}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
-                    className="filter-select"
-                    style={{ width: "100%", marginTop: 4 }}
-                  >
-                    {detailedBalances.map((t) => (
-                      <option key={t.code} value={t.code}>
-                        {t.name || t.code} ({t.available ?? 0} days remaining)
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <DateRangePicker
-                  label="Leave dates *"
-                  placeholder="Select leave date range"
-                  startDate={leaveForm.startDate}
-                  endDate={leaveForm.endDate}
-                  minDate={leaveEligibility.earliestEligibleDate}
-                  onChange={({ startDate, endDate }) => {
-                    setLeaveForm((prev) => ({
-                      ...prev,
-                      startDate: startDate || "",
-                      endDate: endDate || startDate || "",
-                    }));
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label>
-                  Reason for Leave *
-                  <textarea
-                    rows={3}
-                    required
-                    value={leaveForm.reason}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                    placeholder="Briefly state reason for your absence..."
-                    style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid var(--hair)", boxSizing: "border-box", marginTop: 4 }}
-                  />
-                </label>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowLeaveModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingLeave}
-                  className="btn-primary"
-                >
-                  {submittingLeave ? "Submitting..." : "Submit Application"}
-                </button>
-              </div>
-            </form>
+      <AppModal
+        open={showLeaveModal}
+        onClose={() => !submittingLeave && setShowLeaveModal(false)}
+        locked={submittingLeave}
+        title="Apply for leave"
+        subtitle="Submit a new time-off request"
+        size="md"
+        className="el-leave-apply-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowLeaveModal(false)}
+              disabled={submittingLeave}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="el-apply-leave-form"
+              className="btn-primary"
+              disabled={submittingLeave}
+            >
+              {submittingLeave ? "Submitting…" : "Submit application"}
+            </button>
+          </>
+        }
+      >
+        {leaveModalError ? (
+          <div className="error el-leave-apply-error" role="alert">
+            {leaveModalError}
           </div>
-        </div>
-      )}
+        ) : null}
+
+        <form
+          id="el-apply-leave-form"
+          onSubmit={handleApplyLeave}
+          className="el-leave-apply-form"
+          noValidate
+        >
+          <label className="el-leave-field">
+            <span className="el-leave-label">Leave type</span>
+            <select
+              value={leaveForm.leaveType}
+              onChange={(e) => setLeaveForm({ ...leaveForm, leaveType: e.target.value })}
+              className="filter-select"
+              required
+            >
+              {detailedBalances.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.name || t.code} ({t.available ?? 0} days remaining)
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="el-leave-field">
+            <DateRangePicker
+              label="Leave dates"
+              placeholder="Select leave date range"
+              startDate={leaveForm.startDate}
+              endDate={leaveForm.endDate}
+              minDate={leaveEligibility.earliestEligibleDate}
+              onChange={({ startDate, endDate }) => {
+                setLeaveForm((prev) => ({
+                  ...prev,
+                  startDate: startDate || "",
+                  endDate: endDate || startDate || "",
+                }));
+              }}
+            />
+          </div>
+
+          <label className="el-leave-field">
+            <span className="el-leave-label">Reason</span>
+            <textarea
+              rows={4}
+              required
+              value={leaveForm.reason}
+              onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+              placeholder="Briefly state the reason for your absence"
+              className="el-leave-textarea"
+            />
+          </label>
+        </form>
+      </AppModal>
     </div>
   );
 }

@@ -84,6 +84,43 @@ function errorText(err, fallback) {
  *   - GET /offer-letters/:id                 offer HTML — only once the Offer / Timeline tab is opened
  *   - GET /onboarding/submissions/:userId    section field data — only once Onboarding / Timeline tab is opened
  */
+/** Small (i) button: hover/focus or click reveals a short popover; Escape / outside click closes it. */
+function InfoTip({ label, text }) {
+  const [shown, setShown] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!shown) return undefined;
+    const onDown = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setShown(false);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setShown(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [shown]);
+
+  return (
+    <span className={`hw-info-wrap${shown ? " is-open" : ""}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="hw-info-tip"
+        aria-label={label}
+        aria-expanded={shown}
+        onClick={() => setShown((v) => !v)}
+      >
+        i
+      </button>
+      <span className="hw-info-pop" role="tooltip">{text}</span>
+    </span>
+  );
+}
+
 export default function HiringCandidateModal({
   offerId,
   row,
@@ -785,28 +822,79 @@ export default function HiringCandidateModal({
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-          <button type="button" className="hw-btn hw-btn-sm" onClick={() => setReveal((v) => !v)}>
+        <div className="hw-onb-status-strip" role="list" aria-label="Onboarding status">
+          <div
+            className={`hw-onb-status-pill${view.offerStatus === "ACCEPTED" || offerInfo?.signature?.signedAt ? " is-done" : ""}`}
+            role="listitem"
+          >
+            <span className="hw-onb-status-label">Signed</span>
+            <InfoTip
+              label="Signed status details"
+              text={
+                offerInfo?.signature?.signedAt
+                  ? `Signed ${formatDateTime(offerInfo.signature.signedAt)}`
+                  : "Offer signed by the candidate"
+              }
+            />
+          </div>
+          <div
+            className={`hw-onb-status-pill${["SUBMITTED", "PROCESSING_APPROVAL", "CHANGES_REQUESTED"].includes(onboardingStatus) ? " is-active" : ""}${["APPROVED", "ACCOUNT_SETUP_SENT", "ACCOUNT_SETUP_PENDING", "ACTIVATED"].includes(onboardingStatus) ? " is-done" : ""}`}
+            role="listitem"
+          >
+            <span className="hw-onb-status-label">Under Review</span>
+            <InfoTip
+              label="Under review details"
+              text={onbBadge?.label || "HR is reviewing submitted onboarding sections"}
+            />
+          </div>
+          <div
+            className={`hw-onb-status-pill${onboardingStatus === "ACTIVATED" || Boolean(employeeId) ? " is-done" : ""}`}
+            role="listitem"
+          >
+            <span className="hw-onb-status-label">Completed</span>
+            <InfoTip
+              label="Completed status details"
+              text={
+                onboardingStatus === "ACTIVATED" || employeeId
+                  ? "Employee account activated"
+                  : "Completes after final approval and account activation"
+              }
+            />
+          </div>
+          <button type="button" className="hw-btn hw-btn-sm hw-onb-reveal" onClick={() => setReveal((v) => !v)}>
             {reveal ? "Mask numbers" : "Reveal numbers"}
           </button>
         </div>
 
-        {SECTION_KEYS.map((section) => (
-          <div className="hw-section" key={section}>
+        <div className="hw-onb-sections">
+          {SECTION_KEYS.filter((s) => s !== "documents").map((section) => (
+            <div className="hw-section" key={section}>
+              <h4>{SECTION_LABELS[section]}</h4>
+              <OnboardingSectionReviewBar
+                section={section}
+                review={sectionReviews[section]}
+                canReview={canReviewSections && Boolean(detail)}
+                busy={busy === "section"}
+                onDecision={openSectionDecision}
+              />
+              {renderSectionBody(section)}
+            </div>
+          ))}
+          <div className="hw-section" key="documents">
             <h4>
-              {SECTION_LABELS[section]}
-              {section === "documents" ? ` (${detail?.documents?.length ?? view.docsCount ?? 0})` : ""}
+              {SECTION_LABELS.documents}
+              {` (${detail?.documents?.length ?? view.docsCount ?? 0})`}
             </h4>
             <OnboardingSectionReviewBar
-              section={section}
-              review={sectionReviews[section]}
+              section="documents"
+              review={sectionReviews.documents}
               canReview={canReviewSections && Boolean(detail)}
               busy={busy === "section"}
               onDecision={openSectionDecision}
             />
-            {renderSectionBody(section)}
+            {renderSectionBody("documents")}
           </div>
-        ))}
+        </div>
       </>
     );
   };

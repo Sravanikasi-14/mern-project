@@ -366,6 +366,85 @@
   font-weight: 600;
   word-break: break-word;
 }
+.hw-onb-status-strip {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.hw-onb-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hw-line, #e6ede8);
+  background: #fff;
+  color: var(--hw-muted, #646d67);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.hw-onb-status-pill.is-active {
+  border-color: color-mix(in srgb, #1d4ed8 35%, #e6ede8);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.hw-onb-status-pill.is-done {
+  border-color: color-mix(in srgb, #047857 35%, #e6ede8);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.hw-onb-status-label {
+  line-height: 1;
+}
+
+.hw-info-tip {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  padding: 0;
+  opacity: 0.75;
+}
+
+.hw-info-tip:hover,
+.hw-info-tip:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.hw-onb-reveal {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.hw-onb-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .hw-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -525,4 +604,154 @@
     max-width: 100%;
     max-height: 96vh;
   }
+}
+/* ==========================================================================
+   Onboarding tab: status line + four review sections
+   ========================================================================== */
+
+/* Signed · Under Review · Completed share ONE line; reveal toggle sits at the end */
+.hw-onb-status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.hw-onb-status-strip .hw-onb-status-pill {
+  min-width: 0;
+  width: 100%;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.hw-onb-status-strip .hw-onb-reveal {
+  margin-left: 0;
+  height: 34px;
+  white-space: nowrap;
+}
+
+/* (i) popover — opens on hover, focus or click */
+.hw-info-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.hw-info-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--g-950, #0d3a23);
+  color: #f2f8f4;
+  font-size: 12px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 20px rgba(13, 58, 35, 0.22);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.hw-info-wrap:hover .hw-info-pop,
+.hw-info-wrap:focus-within .hw-info-pop,
+.hw-info-wrap.is-open .hw-info-pop {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Four review sections below the status line (documents spans full width) */
+.hw-onb-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.hw-onb-sections > .hw-section {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hw-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.hw-onb-sections > .hw-section:last-child {
+  grid-column: 1 / -1;
+}
+
+.hw-onb-sections > .hw-section h4 {
+  margin-bottom: 10px;
+}
+
+/* Section decision buttons wrap inside their card instead of overflowing */
+.hw-onb-sections .review-section {
+  margin-bottom: 10px !important;
+  padding: 8px 10px !important;
+  min-width: 0;
+}
+
+.hw-onb-sections .review-section > div {
+  min-width: 0;
+}
+
+.hw-onb-sections .review-decision-bar {
+  flex-wrap: wrap;
+  overflow: visible;
+  margin-top: 0;
+}
+
+.hw-onb-sections .review-decision-bar .btn-primary,
+.hw-onb-sections .review-decision-bar .btn-secondary,
+.hw-onb-sections .review-decision-bar .btn-danger {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hw-onb-sections .hw-grid {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+@media (max-width: 720px) {
+  .hw-onb-sections {
+    grid-template-columns: 1fr;
+  }
+
+  .hw-onb-status-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hw-onb-status-strip .hw-onb-status-pill {
+    padding: 0 8px;
+    font-size: 12px;
+    gap: 4px;
+  }
+
+  .hw-onb-status-strip .hw-onb-reveal {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+/* Offer / Onboarding / Stage badges sit on one baseline across the row */
+.hw-table tbody td {
+  vertical-align: top;
+}
+
+.hw-table tbody td .hw-badge {
+  vertical-align: top;
 }

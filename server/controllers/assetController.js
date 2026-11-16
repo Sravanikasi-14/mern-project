@@ -24,6 +24,7 @@ export async function listAssets(req, res, next) {
       status = "",
       condition = "",
       department = "",
+      attention = "",
       page = 1,
       limit = 25,
     } = req.query;
@@ -31,6 +32,7 @@ export async function listAssets(req, res, next) {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 25));
     const skip = (parsedPage - 1) * parsedLimit;
+    const attentionOnly = ["1", "true", "yes"].includes(String(attention).toLowerCase());
 
     // Filter Query
     const query = {};
@@ -39,12 +41,20 @@ export async function listAssets(req, res, next) {
       query.category = category;
     }
 
-    if (status && status !== "ALL") {
-      query.status = status;
-    }
+    // Needs Attention matches the summary metric: maintenance/lost OR damaged/poor condition.
+    if (attentionOnly) {
+      query.$or = [
+        { status: { $in: [ASSET_STATUSES.UNDER_MAINTENANCE, ASSET_STATUSES.LOST] } },
+        { condition: { $in: [ASSET_CONDITIONS.DAMAGED, ASSET_CONDITIONS.POOR] } },
+      ];
+    } else {
+      if (status && status !== "ALL") {
+        query.status = status;
+      }
 
-    if (condition && condition !== "ALL") {
-      query.condition = condition;
+      if (condition && condition !== "ALL") {
+        query.condition = condition;
+      }
     }
 
     if (department && department !== "ALL") {
@@ -54,16 +64,29 @@ export async function listAssets(req, res, next) {
     if (search && search.trim()) {
       const term = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(term, "i");
-      query.$or = [
-        { name: regex },
-        { assetTag: regex },
-        { serialNumber: regex },
-        { manufacturer: regex },
-        { modelNumber: regex },
-        { "currentAssignment.employeeName": regex },
-        { "currentAssignment.employeeCode": regex },
-      ];
+      const searchClause = {
+        $or: [
+          { name: regex },
+          { assetTag: regex },
+          { serialNumber: regex },
+          { manufacturer: regex },
+          { modelNumber: regex },
+          { "currentAssignment.employeeName": regex },
+          { "currentAssignment.employeeCode": regex },
+        ],
+      };
+      // Combine with attention $or via $and so neither filter is overwritten.
+      if (query.$or) {
+        query.$and = [...(query.$and || []), { $or: query.$or }, searchClause];
+        delete query.$or;
+      } else {
+        Object.assign(query, searchClause);
+      }
     }
+
+    // Summary metrics must reflect the HR's visible inventory, NOT the active list
+    // filters — otherwise clicking a metric card (status filter) would zero the others.
+    let summaryScope = null;
 
     // Scoped HR: unassigned inventory + assignments within employee scope (union)
     if (
@@ -84,20 +107,13 @@ export async function listAssets(req, res, next) {
         ],
       };
       query.$and = [...(query.$and || []), scopeClause];
+      summaryScope = scopeClause;
     }
 
-    const attentionFilter = {
-      $or: [
-        { status: ASSET_STATUSES.UNDER_MAINTENANCE },
-        { status: ASSET_STATUSES.LOST },
-        { condition: ASSET_CONDITIONS.DAMAGED },
-        { condition: ASSET_CONDITIONS.POOR },
-      ],
-    };
-    // Reuse the same scoped list query for aggregates (CUSTOM HR must not see company-wide totals)
-    const aggregateMatch = { ...query };
+    // Single aggregate (instead of aggregate + attention count) scoped only by HR visibility.
+    const summaryMatch = summaryScope ? [{ $match: summaryScope }] : [];
 
-    const [assets, totalMatched, statusCounts, attentionCount] = await Promise.all([
+    const [assets, totalMatched, summaryRows] = await Promise.all([
       CompanyAsset.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -105,27 +121,46 @@ export async function listAssets(req, res, next) {
         .lean(),
       CompanyAsset.countDocuments(query),
       CompanyAsset.aggregate([
-        ...(Object.keys(aggregateMatch).length ? [{ $match: aggregateMatch }] : []),
-        { $group: { _id: "$status", count: { $sum: 1 } } },
+        ...summaryMatch,
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            available: { $sum: { $cond: [{ $eq: ["$status", ASSET_STATUSES.AVAILABLE] }, 1, 0] } },
+            assigned: { $sum: { $cond: [{ $eq: ["$status", ASSET_STATUSES.ASSIGNED] }, 1, 0] } },
+            underMaintenance: {
+              $sum: { $cond: [{ $eq: ["$status", ASSET_STATUSES.UNDER_MAINTENANCE] }, 1, 0] },
+            },
+            retired: { $sum: { $cond: [{ $eq: ["$status", ASSET_STATUSES.RETIRED] }, 1, 0] } },
+            lost: { $sum: { $cond: [{ $eq: ["$status", ASSET_STATUSES.LOST] }, 1, 0] } },
+            requiringAttention: {
+              $sum: {
+                $cond: [
+                  {
+                    $or: [
+                      { $in: ["$status", [ASSET_STATUSES.UNDER_MAINTENANCE, ASSET_STATUSES.LOST]] },
+                      { $in: ["$condition", [ASSET_CONDITIONS.DAMAGED, ASSET_CONDITIONS.POOR]] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
       ]),
-      CompanyAsset.countDocuments(
-        Object.keys(aggregateMatch).length
-          ? { $and: [aggregateMatch, attentionFilter] }
-          : attentionFilter
-      ),
     ]);
 
-    const statusMap = Object.fromEntries(
-      statusCounts.map((row) => [row._id || "UNKNOWN", row.count])
-    );
+    const row = summaryRows[0] || {};
     const summary = {
-      total: Object.values(statusMap).reduce((sum, n) => sum + n, 0),
-      available: statusMap[ASSET_STATUSES.AVAILABLE] || 0,
-      assigned: statusMap[ASSET_STATUSES.ASSIGNED] || 0,
-      underMaintenance: statusMap[ASSET_STATUSES.UNDER_MAINTENANCE] || 0,
-      retired: statusMap[ASSET_STATUSES.RETIRED] || 0,
-      lost: statusMap[ASSET_STATUSES.LOST] || 0,
-      requiringAttention: attentionCount,
+      total: row.total || 0,
+      available: row.available || 0,
+      assigned: row.assigned || 0,
+      underMaintenance: row.underMaintenance || 0,
+      retired: row.retired || 0,
+      lost: row.lost || 0,
+      requiringAttention: row.requiringAttention || 0,
     };
 
     res.status(200).json({

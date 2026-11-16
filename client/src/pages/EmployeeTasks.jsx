@@ -15,6 +15,7 @@ import {
 } from "../components/EmployeeIcon";
 import AppModal from "../components/AppModal";
 import ModuleToolbar from "../components/ModuleToolbar";
+import SegmentedTabs from "../components/SegmentedTabs";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -491,22 +492,15 @@ export default function EmployeeTasks() {
         hideLogout={true}
         actions={<SoftRefresh active={tasksQuery.isFetching && !!tasksQuery.data} />}
         nav={
-          <div className="wm-view-switcher" role="tablist" aria-label="Task view">
-            <button
-              type="button"
-              className={`wm-tab-btn ${viewMode === VIEW_MODES.KANBAN ? "active" : ""}`}
-              onClick={() => setViewMode(VIEW_MODES.KANBAN)}
-            >
-              Board
-            </button>
-            <button
-              type="button"
-              className={`wm-tab-btn ${viewMode === VIEW_MODES.LIST ? "active" : ""}`}
-              onClick={() => setViewMode(VIEW_MODES.LIST)}
-            >
-              List
-            </button>
-          </div>
+          <SegmentedTabs
+            ariaLabel="Task view"
+            value={viewMode}
+            onChange={setViewMode}
+            tabs={[
+              { value: VIEW_MODES.KANBAN, label: "Board" },
+              { value: VIEW_MODES.LIST, label: "List" },
+            ]}
+          />
         }
       />
 
@@ -539,31 +533,23 @@ export default function EmployeeTasks() {
         {/* Main Workspace (Left ~75%) */}
         <div className="wm-main-col">
           <div className="wm-tab-strip" style={{ marginBottom: 10 }}>
-            <div className="wm-tab-group">
-              <button
-                type="button"
-                onClick={() => setActiveTab(EMPLOYEE_TABS.ALL)}
-                className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.ALL ? "active" : ""}`}
-              >
-                My Tasks
-              </button>
-              {meta.isManager && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab(EMPLOYEE_TABS.TEAM_QUEUE)}
-                  className={`wm-tab-btn ${activeTab === EMPLOYEE_TABS.TEAM_QUEUE ? "active" : ""}`}
-                >
-                  Team Review Queue
-                </button>
-              )}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Task sections"
+              value={activeTab}
+              onChange={setActiveTab}
+              tabs={[
+                { value: EMPLOYEE_TABS.ALL, label: "My Tasks" },
+                ...(meta.isManager
+                  ? [{ value: EMPLOYEE_TABS.TEAM_QUEUE, label: "Team Review Queue" }]
+                  : []),
+              ]}
+            />
             {projectSummaries.length > 1 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="wm-project-chip-row" role="group" aria-label="Project filter">
                 <button
                   type="button"
-                  className={`wm-tab-btn ${selectedProject === "ALL" ? "active" : ""}`}
+                  className={`wm-project-chip${selectedProject === "ALL" ? " is-active" : ""}`}
                   onClick={() => setSelectedProject("ALL")}
-                  style={{ fontSize: 11.5, padding: "3px 8px" }}
                 >
                   All Projects
                 </button>
@@ -571,9 +557,8 @@ export default function EmployeeTasks() {
                   <button
                     key={p.name}
                     type="button"
-                    className={`wm-tab-btn ${selectedProject === p.name ? "active" : ""}`}
+                    className={`wm-project-chip${selectedProject === p.name ? " is-active" : ""}`}
                     onClick={() => setSelectedProject(selectedProject === p.name ? "ALL" : p.name)}
-                    style={{ fontSize: 11.5, padding: "3px 8px" }}
                   >
                     {p.name}
                   </button>
