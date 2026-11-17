@@ -436,10 +436,17 @@ export default function EmployeeAttendancePage() {
   const stopTracking = async () => {
     clearLocalTrackingWatch();
     try {
+      setTrackingError("");
       await api.post("/employees/me/tracking/stop");
+      setTracking(false);
+      toast.push("Live tracking stopped.");
       await invalidateAttendance(queryClient);
-    } catch {
-      // ignore
+    } catch (err) {
+      setTracking(true);
+      attachTrackingWatch();
+      const msg = err.response?.data?.message || err.message || "Could not stop tracking.";
+      setTrackingError(msg);
+      toast.push(msg);
     }
   };
 

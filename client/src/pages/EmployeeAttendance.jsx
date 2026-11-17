@@ -458,6 +458,42 @@ export default function EmployeeAttendance() {
     }
   };
 
+  const attachLiveLocationWatch = () => {
+    if (unwatchRef.current) {
+      unwatchRef.current();
+      unwatchRef.current = null;
+    }
+    // F54: first fix immediate; then ~15s or ~75m movement (jitter ignored).
+    locationUploadGateRef.current = createLiveLocationUploadGate();
+    unwatchRef.current = watchLiveLocation(
+      async (newLoc) => {
+        const gate = locationUploadGateRef.current;
+        if (!gate?.shouldUpload(newLoc)) return;
+        try {
+          await api.post("/employees/me/tracking/update", { location: newLoc });
+          gate.markSent(newLoc);
+          setTrackingSession((prev) => (prev ? { ...prev, lastLocation: newLoc } : null));
+        } catch (err) {
+          const msg = String(err.response?.data?.message || "");
+          const status = err.response?.status;
+          if (
+            status === 400 &&
+            (msg.includes("expired") ||
+              msg.includes("No active tracking") ||
+              msg.includes("no active punch-in"))
+          ) {
+            handleStopTracking(true);
+          }
+        }
+      },
+      (err) => {
+        setTrackingError(err.message);
+        // Permission denied / position unavailable — stop local watcher safely.
+        handleStopTracking(false);
+      }
+    );
+  };
+
   const handleStartTracking = async () => {
     if (isLiveTracking || unwatchRef.current) return;
     if (todayStatus !== "CHECKED_IN") {
@@ -471,40 +507,7 @@ export default function EmployeeAttendance() {
         setIsLiveTracking(true);
         setTrackingSession(res.data.session);
         await invalidateAttendance(queryClient);
-
-        if (unwatchRef.current) {
-          unwatchRef.current();
-        }
-
-        // F54: first fix immediate; then ~15s or ~75m movement (jitter ignored).
-        locationUploadGateRef.current = createLiveLocationUploadGate();
-        unwatchRef.current = watchLiveLocation(
-          async (newLoc) => {
-            const gate = locationUploadGateRef.current;
-            if (!gate?.shouldUpload(newLoc)) return;
-            try {
-              await api.post("/employees/me/tracking/update", { location: newLoc });
-              gate.markSent(newLoc);
-              setTrackingSession((prev) => (prev ? { ...prev, lastLocation: newLoc } : null));
-            } catch (err) {
-              const msg = String(err.response?.data?.message || "");
-              const status = err.response?.status;
-              if (
-                status === 400 &&
-                (msg.includes("expired") ||
-                  msg.includes("No active tracking") ||
-                  msg.includes("no active punch-in"))
-              ) {
-                handleStopTracking(true);
-              }
-            }
-          },
-          (err) => {
-            setTrackingError(err.message);
-            // Permission denied / position unavailable — stop local watcher safely.
-            handleStopTracking(false);
-          }
-        );
+        attachLiveLocationWatch();
       }
     } catch (err) {
       setTrackingError(err.response?.data?.message || "Failed to start live tracking session.");
@@ -512,21 +515,31 @@ export default function EmployeeAttendance() {
   };
 
   const handleStopTracking = async (silent = false) => {
+    const previousWatcher = unwatchRef.current;
+    if (previousWatcher) {
+      previousWatcher();
+      unwatchRef.current = null;
+    }
+    locationUploadGateRef.current?.reset();
+    locationUploadGateRef.current = null;
+
     try {
-      if (unwatchRef.current) {
-        unwatchRef.current();
-        unwatchRef.current = null;
-      }
-      locationUploadGateRef.current?.reset();
-      locationUploadGateRef.current = null;
-      setIsLiveTracking(false);
-      setTrackingSession(null);
       if (!silent) {
+        setTrackingError("");
         await api.post("/employees/me/tracking/stop");
       }
+      setIsLiveTracking(false);
+      setTrackingSession(null);
       await invalidateAttendance(queryClient);
-    } catch {
-      // ignore stop error
+    } catch (err) {
+      if (!silent) {
+        setTrackingError(
+          err?.response?.data?.message || "Could not stop live tracking. Please try again."
+        );
+      }
+      // Keep UI honest if backend stop failed: restore flag + watcher so retry stays consistent.
+      setIsLiveTracking(true);
+      attachLiveLocationWatch();
     }
   };
 
@@ -872,6 +885,11 @@ export default function EmployeeAttendance() {
             )}
 
             {/* Live Tracking toggle — server requires active punch-in + policy */}
+            {trackingError ? (
+              <div className="error" role="alert" style={{ width: "100%", marginTop: 8 }}>
+                {trackingError}
+              </div>
+            ) : null}
             {isLiveTracking ? (
               <button
                 type="button"

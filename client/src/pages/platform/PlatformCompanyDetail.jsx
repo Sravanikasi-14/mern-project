@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import ActionFeedbackModal from "../../components/ActionFeedbackModal";
 import platformApi from "../../services/platformApi";
 import PlatformCompanyFeatures from "./PlatformCompanyFeatures";
 import PlatformCompanySubscription from "./PlatformCompanySubscription";
 import {
-  PaAlert,
   PaErrorState,
   PaLoadingState,
   PaPageHeader,
@@ -15,8 +15,8 @@ import {
 export default function PlatformCompanyDetail() {
   const { companyId } = useParams();
   const qc = useQueryClient();
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState(null);
+  const [confirmStatus, setConfirmStatus] = useState(null);
 
   const { data, isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ["platform", "company", companyId],
@@ -40,22 +40,41 @@ export default function PlatformCompanyDetail() {
         })
       ).data,
     onSuccess: () => {
-      setMessage("Status updated.");
-      setError("");
+      setConfirmStatus(null);
+      setFeedback({
+        mode: "success",
+        title: "Status updated",
+        message: "Company status updated successfully.",
+      });
       invalidate();
     },
-    onError: (err) => setError(err?.response?.data?.message || "Status update failed."),
+    onError: (err) => {
+      setConfirmStatus(null);
+      setFeedback({
+        mode: "error",
+        title: "Status update failed",
+        message: err?.response?.data?.message || "Status update failed.",
+      });
+    },
   });
 
   const reprovisionMutation = useMutation({
     mutationFn: async () =>
       (await platformApi.post(`/platform/companies/${companyId}/reprovision`)).data,
     onSuccess: (result) => {
-      setMessage(result.provisioning?.message || "Provisioning finished.");
-      setError("");
+      setFeedback({
+        mode: "success",
+        title: "Provisioning finished",
+        message: result.provisioning?.message || "Provisioning finished.",
+      });
       invalidate();
     },
-    onError: (err) => setError(err?.response?.data?.message || "Provisioning failed."),
+    onError: (err) =>
+      setFeedback({
+        mode: "error",
+        title: "Provisioning failed",
+        message: err?.response?.data?.message || "Provisioning failed.",
+      }),
   });
 
   if (isLoading) {
@@ -116,8 +135,30 @@ export default function PlatformCompanyDetail() {
         description="Approved company metadata only — no employee or payroll data."
       />
 
-      {message ? <PaAlert tone="success">{message}</PaAlert> : null}
-      {error ? <PaAlert tone="error">{error}</PaAlert> : null}
+      <ActionFeedbackModal
+        open={Boolean(confirmStatus)}
+        mode="confirm"
+        danger={confirmStatus === "SUSPENDED"}
+        busy={statusMutation.isPending}
+        title={confirmStatus === "SUSPENDED" ? "Suspend company?" : "Activate company?"}
+        message={
+          confirmStatus === "SUSPENDED"
+            ? "Suspend this company? Tenant data will not be deleted."
+            : "Activate this company?"
+        }
+        confirmLabel={statusMutation.isPending ? "Updating…" : "Confirm"}
+        onConfirm={() => statusMutation.mutate(confirmStatus)}
+        onClose={() => {
+          if (!statusMutation.isPending) setConfirmStatus(null);
+        }}
+      />
+      <ActionFeedbackModal
+        open={Boolean(feedback)}
+        mode={feedback?.mode || "success"}
+        title={feedback?.title || ""}
+        message={feedback?.message || ""}
+        onClose={() => setFeedback(null)}
+      />
 
       <div className="pa-grid-stats">
         <div className="pa-stat">
@@ -152,9 +193,7 @@ export default function PlatformCompanyDetail() {
             type="button"
             className="pa-btn pa-btn-primary"
             disabled={statusMutation.isPending}
-            onClick={() => {
-              if (window.confirm("Activate this company?")) statusMutation.mutate("ACTIVE");
-            }}
+            onClick={() => setConfirmStatus("ACTIVE")}
           >
             Activate
           </button>
@@ -164,11 +203,7 @@ export default function PlatformCompanyDetail() {
             type="button"
             className="pa-btn pa-btn-danger"
             disabled={statusMutation.isPending}
-            onClick={() => {
-              if (window.confirm("Suspend this company? Tenant data will not be deleted.")) {
-                statusMutation.mutate("SUSPENDED");
-              }
-            }}
+            onClick={() => setConfirmStatus("SUSPENDED")}
           >
             Suspend
           </button>

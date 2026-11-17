@@ -141,8 +141,10 @@ router.post(
 // Live tracking — authenticate only; privacy/lifecycle enforced in service layer
 router.post("/me/tracking/start", authenticate, requireEntitledModule("liveTracking"), startTracking);
 router.post("/me/tracking/update", authenticate, requireEntitledModule("liveTracking"), updateTrackingLocation);
-router.post("/me/tracking/stop", authenticate, requireEntitledModule("liveTracking"), stopTracking);
-router.get("/me/tracking/status", authenticate, requireEntitledModule("liveTracking"), getTrackingStatusHandler);
+// Stop/status stay available without module entitlement so clients can always clean up
+// after a global/company disable (start/update remain gated).
+router.post("/me/tracking/stop", authenticate, stopTracking);
+router.get("/me/tracking/status", authenticate, getTrackingStatusHandler);
 
 router.post("/me/leave-requests", authenticate, requireEntitledModule("leave"), applyLeave);
 // Payslip download — controller ownership (assertCanAccessPayslip) remains authoritative

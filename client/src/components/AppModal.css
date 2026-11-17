@@ -1,3 +1,24 @@
+.action-feedback-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink, #131a15);
+}
+
+.action-feedback-loading {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted, #646d67);
+}
+
+.action-feedback-modal--error .action-feedback-message {
+  color: var(--rose, #c23b3b);
+}
+
+.action-feedback-modal--success .action-feedback-message {
+  color: var(--g-800, #155a37);
+}
+
 .app-modal-overlay {
   position: fixed;
   inset: 0;

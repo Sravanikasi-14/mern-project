@@ -3,6 +3,7 @@ import { HttpError } from "../utils/httpError.js";
 import {
   getPlatformCapability,
   getPlatformFeatureCatalogPublic,
+  getPlatformModule,
   listPlatformCapabilityKeys,
   listPlatformModuleKeys,
 } from "../constants/platformFeatureCatalog.js";
@@ -116,8 +117,21 @@ export async function updateGlobalFeatures({ modules, capabilities, confirm, adm
   settings.updatedByEmail = admin?.email || "";
   await settings.save();
 
-  // Global feature flips affect every tenant entitlement resolution; drop stale company metadata.
+  // Global feature flips affect every tenant entitlement resolution; drop stale company metadata
+  // and NEW-B02 entitlement settings/plan snapshots on this isolate.
   clearCompanyMetadataCache();
+  const { invalidatePlatformEntitlementCaches } = await import(
+    "../utils/platformEntitlementCache.js"
+  );
+  invalidatePlatformEntitlementCaches();
+
+  const liveTrackingDisabled = changes.some(
+    (c) => c.type === "module" && c.key === "liveTracking" && c.to === false
+  );
+  let liveTrackingSessionsStopped = 0;
+  if (liveTrackingDisabled) {
+    liveTrackingSessionsStopped = await stopActiveLiveTrackingAcrossCompanies();
+  }
 
   await recordPlatformAudit({
     actor: admin,
@@ -125,11 +139,44 @@ export async function updateGlobalFeatures({ modules, capabilities, confirm, adm
     targetType: "PlatformSettings",
     targetId: settings._id,
     outcome: "SUCCESS",
-    metadata: { changes },
+    metadata: { changes, liveTrackingSessionsStopped },
     req,
   });
 
-  return { global: serializeGlobalFeatureState(settings), unchanged: false, changes };
+  return {
+    global: serializeGlobalFeatureState(settings),
+    unchanged: false,
+    changes,
+    liveTrackingSessionsStopped,
+  };
+}
+
+/** Best-effort stop of ACTIVE live-tracking sessions in every tenant DB. */
+async function stopActiveLiveTrackingAcrossCompanies() {
+  const { getCompanyModels } = await import("../config/db.js");
+  // databaseName is required by getCompanyModels / getTenantConnection — _id alone is not enough.
+  const companies = await Company.find({}).select("_id databaseName").lean();
+  let stopped = 0;
+  const stoppedAt = new Date();
+  for (const company of companies) {
+    if (!company?.databaseName) continue;
+    try {
+      const models = await getCompanyModels(company, { provision: false });
+      if (!models?.LiveTrackingSession) continue;
+      const result = await models.LiveTrackingSession.updateMany(
+        { status: "ACTIVE" },
+        { $set: { status: "STOPPED", stoppedAt } }
+      );
+      stopped += result?.modifiedCount || 0;
+    } catch (err) {
+      // Skip tenants that cannot be opened; disable still applies via entitlements.
+      console.warn(
+        `[platformFeature] liveTracking cleanup skipped for ${company.databaseName}:`,
+        err?.message || err
+      );
+    }
+  }
+  return stopped;
 }
 
 export async function getCompanyFeatureAccess(companyId) {

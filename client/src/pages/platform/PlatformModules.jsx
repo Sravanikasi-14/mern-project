@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, History, ToggleLeft, ToggleRight } from "lucide-react";
+import { History, ToggleLeft, ToggleRight } from "lucide-react";
+import ActionFeedbackModal from "../../components/ActionFeedbackModal";
 import platformApi from "../../services/platformApi";
 import {
-  PaAlert,
   PaLoadingState,
   PaPageHeader,
   formatPaDate,
@@ -11,8 +11,7 @@ import {
 
 export default function PlatformModules() {
   const qc = useQueryClient();
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState(null); // { mode, title, message, details }
   const [pendingDisable, setPendingDisable] = useState(null);
   const [impact, setImpact] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -30,14 +29,15 @@ export default function PlatformModules() {
   const mutation = useMutation({
     mutationFn: async (body) => (await platformApi.patch("/platform/modules", body)).data,
     onSuccess: async (result) => {
-      if (result?.unchanged) {
-        setMessage("No changes were needed — settings already matched.");
-      } else {
-        setMessage("Global feature settings saved. Tenant APIs enforce the change immediately.");
-      }
-      setError("");
       setPendingDisable(null);
       setImpact(null);
+      setFeedback({
+        mode: "success",
+        title: "Settings saved",
+        message: result?.unchanged
+          ? "No changes were needed — settings already matched."
+          : "Global feature settings saved. Tenant APIs enforce the change immediately.",
+      });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["platform", "modules"] }),
         qc.invalidateQueries({ queryKey: ["platform", "modules", "history"] }),
@@ -45,11 +45,11 @@ export default function PlatformModules() {
       ]);
     },
     onError: (err) => {
-      setMessage("");
-      setError(err?.response?.data?.message || "Unable to update features.");
-      if (err?.response?.data?.code === "CONFIRMATION_REQUIRED") {
-        setImpact(err.response.data.impact || null);
-      }
+      setFeedback({
+        mode: "error",
+        title: "Unable to update features",
+        message: err?.response?.data?.message || "Unable to update features.",
+      });
     },
   });
 
@@ -58,18 +58,22 @@ export default function PlatformModules() {
 
   const onToggleModule = async (mod, nextEnabled) => {
     if (busy) return;
-    setError("");
-    setMessage("");
     if (!nextEnabled) {
       setPreviewLoading(true);
+      setFeedback({ mode: "loading", title: "Preparing disable", message: "Loading impact…" });
       try {
         const preview = await platformApi.get(`/platform/modules/${mod.key}/impact`, {
           params: { enabled: "false" },
         });
         setImpact(preview.data);
         setPendingDisable({ type: "module", key: mod.key, label: mod.label });
+        setFeedback(null);
       } catch (err) {
-        setError(err?.response?.data?.message || "Unable to preview impact.");
+        setFeedback({
+          mode: "error",
+          title: "Unable to preview impact",
+          message: err?.response?.data?.message || "Unable to preview impact.",
+        });
       } finally {
         setPreviewLoading(false);
       }
@@ -80,8 +84,6 @@ export default function PlatformModules() {
 
   const onToggleCapability = async (cap, nextEnabled) => {
     if (busy) return;
-    setError("");
-    setMessage("");
     if (!nextEnabled) {
       setPendingDisable({ type: "capability", key: cap.key, label: cap.label });
       setImpact(null);
@@ -108,54 +110,36 @@ export default function PlatformModules() {
         description="Global availability controls. Company overrides and subscription plans cannot bypass a global disable."
       />
 
-      {message ? <PaAlert tone="success">{message}</PaAlert> : null}
-      {error ? <PaAlert tone="error">{error}</PaAlert> : null}
-      {busy ? (
-        <PaAlert tone="info">
-          {mutation.isPending ? "Saving feature settings…" : "Loading disable impact…"}
-        </PaAlert>
-      ) : null}
+      <ActionFeedbackModal
+        open={Boolean(pendingDisable)}
+        mode="confirm"
+        danger
+        busy={mutation.isPending}
+        title={`Disable ${pendingDisable?.label || ""}`}
+        message="Restrictive changes take effect immediately for tenant APIs and navigation."
+        details={
+          impact ? (
+            <p className="action-feedback-message" style={{ marginTop: 10 }}>
+              Affected companies: <strong>{impact.affectedCompanies}</strong> of {impact.totalCompanies}
+            </p>
+          ) : null
+        }
+        confirmLabel={mutation.isPending ? "Disabling…" : "Confirm disable"}
+        onConfirm={confirmDisable}
+        onClose={() => {
+          if (mutation.isPending) return;
+          setPendingDisable(null);
+          setImpact(null);
+        }}
+      />
 
-      {pendingDisable ? (
-        <div className="pa-panel" style={{ borderColor: "color-mix(in srgb, var(--amber, #9a6700) 45%, var(--hair))" }}>
-          <div className="pa-panel-head">
-            <h2>
-              <AlertTriangle size={16} strokeWidth={2} style={{ marginRight: 8, verticalAlign: "text-bottom" }} />
-              Confirm disable: {pendingDisable.label}
-            </h2>
-            <p className="pa-panel-desc">
-              Restrictive changes take effect immediately for tenant APIs and navigation.
-            </p>
-          </div>
-          {impact ? (
-            <p>
-              Affected companies: <strong>{impact.affectedCompanies}</strong> of{" "}
-              {impact.totalCompanies}
-            </p>
-          ) : null}
-          <div className="pa-toolbar">
-            <button
-              type="button"
-              className="pa-btn pa-btn-danger"
-              disabled={busy}
-              onClick={confirmDisable}
-            >
-              {mutation.isPending ? "Disabling…" : "Confirm disable"}
-            </button>
-            <button
-              type="button"
-              className="pa-btn pa-btn-secondary"
-              disabled={busy}
-              onClick={() => {
-                setPendingDisable(null);
-                setImpact(null);
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <ActionFeedbackModal
+        open={Boolean(feedback)}
+        mode={feedback?.mode || "success"}
+        title={feedback?.title || ""}
+        message={feedback?.message || ""}
+        onClose={() => setFeedback(null)}
+      />
 
       {isLoading ? <PaLoadingState title="Loading catalogue" message="Fetching global module settings…" /> : null}
 

@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import ActionFeedbackModal from "../../components/ActionFeedbackModal";
 import platformApi from "../../services/platformApi";
-import { PaAlert } from "../../components/platform/paUi";
 
 export default function PlatformCompanyFeatures({ companyId }) {
   const qc = useQueryClient();
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState(null);
   const [pending, setPending] = useState(null);
 
   const { data, isLoading, isFetching } = useQuery({
@@ -20,17 +19,23 @@ export default function PlatformCompanyFeatures({ companyId }) {
     mutationFn: async (body) =>
       (await platformApi.patch(`/platform/companies/${companyId}/features`, body)).data,
     onSuccess: async () => {
-      setMessage("Company feature access updated. Effective entitlements apply immediately.");
-      setError("");
       setPending(null);
+      setFeedback({
+        mode: "success",
+        title: "Feature access updated",
+        message: "Company feature access updated. Effective entitlements apply immediately.",
+      });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["platform", "company-features", companyId] }),
         qc.invalidateQueries({ queryKey: ["platform", "company", companyId] }),
       ]);
     },
     onError: (err) => {
-      setMessage("");
-      setError(err?.response?.data?.message || "Update failed.");
+      setFeedback({
+        mode: "error",
+        title: "Update failed",
+        message: err?.response?.data?.message || "Update failed.",
+      });
     },
   });
 
@@ -56,33 +61,29 @@ export default function PlatformCompanyFeatures({ companyId }) {
         plan. Company overrides cannot bypass a global restriction.
         {isFetching && !isLoading ? " · Refreshing…" : null}
       </p>
-      {message ? <PaAlert tone="success">{message}</PaAlert> : null}
-      {error ? <PaAlert tone="error">{error}</PaAlert> : null}
-      {busy ? <PaAlert tone="info">Saving company feature access…</PaAlert> : null}
 
-      {pending ? (
-        <div className="pa-toolbar">
-          <span>
-            Confirm {pending.enabled ? "enable" : "disable"} <strong>{pending.label}</strong>?
-          </span>
-          <button
-            type="button"
-            className="pa-btn pa-btn-danger"
-            disabled={busy}
-            onClick={confirmPending}
-          >
-            {busy ? "Saving…" : "Confirm"}
-          </button>
-          <button
-            type="button"
-            className="pa-btn pa-btn-secondary"
-            disabled={busy}
-            onClick={() => setPending(null)}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : null}
+      <ActionFeedbackModal
+        open={Boolean(pending)}
+        mode="confirm"
+        danger={!pending?.enabled}
+        busy={busy}
+        title={`${pending?.enabled ? "Enable" : "Disable"} ${pending?.label || ""}`}
+        message={`Confirm ${pending?.enabled ? "enable" : "disable"} for this company?`}
+        confirmLabel={busy ? "Saving…" : "Confirm"}
+        onConfirm={confirmPending}
+        onClose={() => {
+          if (busy) return;
+          setPending(null);
+        }}
+      />
+
+      <ActionFeedbackModal
+        open={Boolean(feedback)}
+        mode={feedback?.mode || "success"}
+        title={feedback?.title || ""}
+        message={feedback?.message || ""}
+        onClose={() => setFeedback(null)}
+      />
 
       {(data.modules || []).map((mod) => (
         <div key={mod.key} style={{ marginBottom: 18 }}>
@@ -98,76 +99,56 @@ export default function PlatformCompanyFeatures({ companyId }) {
               </div>
             </div>
             <div className="pa-toolbar">
-              <span className={`pa-badge${mod.effective ? "" : " is-danger"}`}>
-                {mod.effective ? "Effective on" : "Effective off"}
-              </span>
               <button
                 type="button"
                 className="pa-btn pa-btn-secondary"
                 disabled={busy || !mod.globalEnabled || !mod.planEntitled}
-                title={
-                  !mod.globalEnabled
-                    ? "Blocked by global restriction"
-                    : !mod.planEntitled
-                      ? "Not in subscription plan"
-                      : ""
-                }
                 onClick={() =>
                   setPending({
                     type: "module",
                     key: mod.key,
                     label: mod.label,
-                    enabled: mod.companyOverride === false ? true : false,
+                    enabled: mod.companyOverride === false,
                   })
                 }
               >
-                {mod.companyOverride === false ? "Clear company disable" : "Disable for company"}
+                {mod.companyOverride === false ? "Enable for company" : "Disable for company"}
               </button>
             </div>
           </div>
-          <table className="pa-table">
-            <thead>
-              <tr>
-                <th>Capability</th>
-                <th>Effective</th>
-                <th>Why</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(mod.capabilities || []).map((cap) => (
-                <tr key={cap.key}>
-                  <td>
-                    {cap.label}
-                    <div className="pa-muted">{cap.key}</div>
-                  </td>
-                  <td>
-                    <span className={`pa-badge${cap.effective ? "" : " is-warn"}`}>
-                      {cap.effective ? "On" : "Off"}
-                    </span>
-                  </td>
-                  <td className="pa-muted">{cap.effective ? "—" : cap.reasonLabel}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="pa-btn pa-btn-secondary"
-                      disabled={busy || !cap.globalEnabled || !mod.globalEnabled}
-                      onClick={() =>
-                        setPending({
-                          type: "capability",
-                          key: cap.key,
-                          label: cap.label,
-                          enabled: cap.companyOverride === false,
-                        })
-                      }
-                    >
-                      {cap.companyOverride === false ? "Clear override" : "Disable"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {(mod.capabilities || []).length ? (
+            <div className="pa-table-wrap" style={{ marginTop: 8 }}>
+              <table className="pa-table">
+                <tbody>
+                  {(mod.capabilities || []).map((cap) => (
+                    <tr key={cap.key}>
+                      <td>{cap.label}</td>
+                      <td className="pa-muted">
+                        {cap.effective ? "Available" : cap.reasonLabel || "Unavailable"}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="pa-btn pa-btn-secondary"
+                          disabled={busy || !cap.globalEnabled || !mod.globalEnabled}
+                          onClick={() =>
+                            setPending({
+                              type: "capability",
+                              key: cap.key,
+                              label: cap.label,
+                              enabled: cap.companyOverride === false,
+                            })
+                          }
+                        >
+                          {cap.companyOverride === false ? "Enable" : "Disable"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       ))}
     </div>

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import AppHeader from "../components/AppHeader";
 import AppModal from "../components/AppModal";
+import ActionFeedbackModal from "../components/ActionFeedbackModal";
 import CompanyHrAccessModal from "../components/CompanyHrAccessModal";
 import PortalEmploymentProfileForm from "../components/PortalEmploymentProfileForm";
 import ModuleToolbar from "../components/ModuleToolbar";
@@ -83,6 +84,7 @@ export default function CompanyHrManagement() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [actionFeedback, setActionFeedback] = useState(null);
 
   const listQuery = useCompanyHrAdminsQuery({
     page,
@@ -227,28 +229,42 @@ export default function CompanyHrManagement() {
     try {
       const { type, hrAdmin } = confirmAction;
       const id = hrAdmin.id;
+      let successText = "";
       if (type === "resend") {
         const res = await api.post(`/company-admin/hr-admins/${id}/resend`);
-        showSuccess(res.data.emailSent ? "Invitation resent." : "Invitation regenerated. Email delivery failed.");
+        successText = res.data.emailSent
+          ? "Invitation resent."
+          : "Invitation regenerated. Email delivery failed.";
         if (!res.data.emailSent && res.data.inviteLink) {
           setInviteResult(res.data);
           setInviteOpen(true);
         }
       } else if (type === "revoke") {
         await api.post(`/company-admin/hr-admins/${id}/revoke`);
-        showSuccess("Invitation revoked.");
+        successText = "Invitation revoked.";
       } else if (type === "deactivate") {
         await api.post(`/company-admin/hr-admins/${id}/deactivate`);
-        showSuccess("HR Admin deactivated.");
+        successText = "HR Admin deactivated.";
       } else if (type === "activate") {
         await api.post(`/company-admin/hr-admins/${id}/activate`);
-        showSuccess("HR Admin activated.");
+        successText = "HR Admin activated.";
       }
       setConfirmAction(null);
       setDetailAdmin(null);
       await refreshLists();
+      setActionFeedback({
+        mode: "success",
+        title: "Action completed",
+        message: successText,
+      });
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || err.message || "Action failed.");
+      const msg = err.response?.data?.message || err.message || "Action failed.";
+      setConfirmAction(null);
+      setActionFeedback({
+        mode: "error",
+        title: "Action failed",
+        message: msg,
+      });
     } finally {
       setActionBusy(false);
       setMenuOpenId(null);
@@ -462,6 +478,13 @@ export default function CompanyHrManagement() {
         }
       />
 
+      <ActionFeedbackModal
+        open={Boolean(actionFeedback)}
+        mode={actionFeedback?.mode || "success"}
+        title={actionFeedback?.title || ""}
+        message={actionFeedback?.message || ""}
+        onClose={() => setActionFeedback(null)}
+      />
       {successMsg ? <div className="success-alert">{successMsg}</div> : null}
       {errorMsg ? <div className="error" role="alert">{errorMsg}</div> : null}
 

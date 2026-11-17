@@ -5,14 +5,15 @@ const ToastContext = createContext(null);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const push = useCallback((message) => {
+  const push = useCallback((message, options = {}) => {
     const text = String(message || "").trim();
     if (!text) return;
+    const kind = options.kind === "error" || options.kind === "success" ? options.kind : "info";
     const id = `${Date.now()}-${Math.random()}`;
     setToasts((prev) => {
       // Avoid duplicate identical toasts already visible.
-      if (prev.some((item) => item.message === text)) return prev;
-      return [...prev, { id, message: text }];
+      if (prev.some((item) => item.message === text && item.kind === kind)) return prev;
+      return [...prev, { id, message: text, kind }];
     });
     setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
@@ -26,7 +27,11 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-stack" aria-live="polite">
         {toasts.map((toast) => (
-          <div key={toast.id} className="toast" role="status">
+          <div
+            key={toast.id}
+            className={`toast toast--${toast.kind || "info"}`}
+            role={toast.kind === "error" ? "alert" : "status"}
+          >
             {toast.message}
           </div>
         ))}

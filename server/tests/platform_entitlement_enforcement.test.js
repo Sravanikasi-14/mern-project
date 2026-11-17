@@ -389,11 +389,19 @@ describe("Platform entitlement enforcement matrix", () => {
       .set("Cookie", empCookieA);
     assert.notEqual(attendanceOk.status, 403);
 
-    const trackingBlocked = await request(app)
+    // start/update remain entitlement-gated after global disable
+    const trackingStartBlocked = await request(app)
+      .post("/api/employees/me/tracking/start")
+      .set("Cookie", empCookieA)
+      .send({ durationMinutes: 30 });
+    assert.equal(trackingStartBlocked.status, 403);
+    assert.equal(trackingStartBlocked.body.code, "PLATFORM_MODULE_DISABLED");
+
+    // stop/status stay authenticate-only so clients can observe/cleanup after disable
+    const trackingStatus = await request(app)
       .get("/api/employees/me/tracking/status")
       .set("Cookie", empCookieA);
-    assert.equal(trackingBlocked.status, 403);
-    assert.equal(trackingBlocked.body.code, "PLATFORM_MODULE_DISABLED");
+    assert.notEqual(trackingStatus.status, 403);
 
     await request(app)
       .patch("/api/platform/modules")
