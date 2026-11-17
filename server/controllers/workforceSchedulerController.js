@@ -1,16 +1,21 @@
 import { HttpError } from "../utils/httpError.js";
 import { cronAuthorized } from "../services/announcementService.js";
 import {
-  runSchedulerForAllCompanies,
   runCompanyScheduler,
   schedulerEnabled,
   schedulerMode,
 } from "../services/workforceScheduler/index.js";
+import {
+  normalizeChainDepth,
+  runSchedulerWithAutoContinue,
+} from "../services/workforceScheduler/autoContinue.js";
 import { approveSchedulerAssignmentService } from "../services/workManagementService.js";
 
 /**
  * Secure cron entry — company-by-company scheduling.
  * Auth: Bearer CRON_SECRET (same pattern as announcement publish-due).
+ * NEW-S1: when WORKFORCE_SCHEDULER_AUTO_CONTINUE=true and the wave is truncated,
+ * awaited in-process hops continue the same wave (no fire-and-forget).
  */
 export async function runWorkforceSchedulerCron(req, res, next) {
   try {
@@ -40,19 +45,28 @@ export async function runWorkforceSchedulerCron(req, res, next) {
     const budgetMsRaw = req.query.budgetMs ?? req.body?.budgetMs;
     const concurrencyRaw = req.query.concurrency ?? req.body?.concurrency;
     const maxCompaniesRaw = req.query.maxCompanies ?? req.body?.maxCompanies;
+    const chainDepthRaw = req.query.chainDepth ?? req.body?.chainDepth;
+    const waveStartedAtRaw = req.query.waveStartedAt ?? req.body?.waveStartedAt;
     const budgetMs = budgetMsRaw != null && budgetMsRaw !== "" ? Number(budgetMsRaw) : undefined;
     const concurrency =
       concurrencyRaw != null && concurrencyRaw !== "" ? Number(concurrencyRaw) : undefined;
     const maxCompanies =
       maxCompaniesRaw != null && maxCompaniesRaw !== "" ? Number(maxCompaniesRaw) : undefined;
+    const chainDepth = normalizeChainDepth(chainDepthRaw);
+    const waveStartedAt = waveStartedAtRaw ? new Date(waveStartedAtRaw) : undefined;
+    const waveStartedAtValid =
+      waveStartedAt && !Number.isNaN(waveStartedAt.getTime()) ? waveStartedAt : undefined;
 
     console.info("[workforce-scheduler] cron start", {
       mode,
       afterCompanyId: afterCompanyId ? String(afterCompanyId) : null,
+      chainDepth,
     });
-    const result = await runSchedulerForAllCompanies({
+    const result = await runSchedulerWithAutoContinue({
       mode,
-      afterCompanyId,
+      afterCompanyId: afterCompanyId ? String(afterCompanyId) : null,
+      chainDepth,
+      ...(waveStartedAtValid ? { waveStartedAt: waveStartedAtValid } : {}),
       ...(Number.isFinite(budgetMs) ? { budgetMs } : {}),
       ...(Number.isFinite(concurrency) ? { concurrency } : {}),
       ...(Number.isFinite(maxCompanies) ? { maxCompanies } : {}),
@@ -64,6 +78,10 @@ export async function runWorkforceSchedulerCron(req, res, next) {
       attempted: result.attempted,
       truncated: result.truncated,
       nextAfterCompanyId: result.nextAfterCompanyId || null,
+      hops: result.hops,
+      chainDepth: result.chainDepth,
+      autoContinued: result.autoContinued,
+      continuationStoppedReason: result.continuationStoppedReason,
       reason: result.reason,
     });
 

@@ -5,6 +5,7 @@ import AppHeader from "../components/AppHeader";
 import ProfilePhotoField from "../components/ProfilePhotoField";
 import { invalidateProfile } from "../lib/queryKeys";
 import { useAuth } from "../context/AuthContext";
+import { loginPathForRole } from "../utils/navigation";
 import {
   IconClose,
   IconCheck,
@@ -197,11 +198,12 @@ export default function EmployeeSettings() {
   };
 
   const handleLogout = async () => {
+    const loginPath = loginPathForRole(user?.role);
     try {
       await logout();
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     } catch {
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

@@ -16,6 +16,8 @@
     "provision:company": "node scripts/provisionCompany.js",
     "provision:tenants": "node scripts/provisionAllTenants.js",
     "inventory:tenant-indexes": "node scripts/inventoryTenantIndexes.js",
+    "cleanup:duplicate-active-tracking": "node scripts/cleanupDuplicateActiveLiveTracking.js",
+    "migrate:notification-read-state": "node scripts/migrateNotificationReadState.js",
     "seed:offer-template-master": "node scripts/seedOfferTemplateMaster.js",
     "test:email": "node scripts/sendTestEmail.js",
     "face:models": "node scripts/downloadFaceModels.js"

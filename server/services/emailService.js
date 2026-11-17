@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
+import Company from "../models/Company.js";
 import { isValidEmail, normalizeEmail } from "../utils/email.js";
 import { decryptSecret } from "../utils/secretCrypto.js";
 
@@ -153,6 +154,37 @@ class EmailService {
       return;
     }
     this.setTransporter(client);
+  }
+
+  /**
+   * F84 — Auth/cache company docs omit emailSettings. Reload SMTP fields (+ciphertext)
+   * when a caller passes a stripped company into send/verify paths.
+   * @param {object|null|undefined} company
+   */
+  async hydrateCompanyEmailSettings(company) {
+    if (!company) return company;
+    if (company.emailSettings?.appPasswordEncrypted) return company;
+    const id = company._id || company.id;
+    if (!id) return company;
+    try {
+      // Include select:false ciphertext while keeping default field selection.
+      const fresh = await Company.findById(id)
+        .select("+emailSettings.appPasswordEncrypted")
+        .lean();
+      if (!fresh?.emailSettings) return company;
+      return {
+        ...company,
+        companyName: company.companyName || fresh.companyName,
+        slug: company.slug || fresh.slug,
+        emailSettings: fresh.emailSettings,
+      };
+    } catch (err) {
+      console.error(
+        "[EmailService] Failed to hydrate company email settings:",
+        this.sanitizeError(err)
+      );
+      return company;
+    }
   }
 
   /**
@@ -447,6 +479,7 @@ class EmailService {
           socketTimeout: parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 20000,
         });
       } else if (company) {
+        company = await this.hydrateCompanyEmailSettings(company);
         const resolution = this.resolveCompanySmtpConfig(company);
         if (!resolution.config) {
           return {
@@ -534,6 +567,7 @@ class EmailService {
     // Resolve credentials based on context
     let config = null;
     if (company) {
+      company = await this.hydrateCompanyEmailSettings(company);
       const resolution = this.resolveCompanySmtpConfig(company);
       if (!resolution.config) {
         return {

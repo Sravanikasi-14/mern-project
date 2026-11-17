@@ -25,6 +25,7 @@ import {
   beginOrResumeSchedulerWave,
   clearFleetProgress,
   companyNeedsSchedulerRun,
+  contiguousCompletedCursor,
   loadFleetProgress,
   saveFleetProgress,
 } from "./fleetProgress.js";
@@ -416,6 +417,34 @@ export async function runSchedulerForAllCompanies(options = {}) {
   let truncated = false;
   let stopNewWork = false;
 
+  // NEW-S2: mid-wave durable checkpoints (never mark the wave complete here).
+  const completedFullyIds = new Set();
+  let lastCheckpointCursor =
+    resumeAfterCompanyId != null ? String(resumeAfterCompanyId) : null;
+  let checkpointQueue = Promise.resolve();
+
+  const enqueueCheckpoint = (cursor) => {
+    const nextCursor = cursor != null ? String(cursor) : null;
+    // Only persist when the contiguous cursor advances — avoids excessive writes
+    // under concurrency when earlier tenants in order are still in flight.
+    if (nextCursor === lastCheckpointCursor) return checkpointQueue;
+    lastCheckpointCursor = nextCursor;
+    checkpointQueue = checkpointQueue
+      .then(() =>
+        saveFleetProgress({
+          waveStartedAt: wave.waveStartedAt,
+          // Always truncated while the hop is in flight — never clear early.
+          truncated: true,
+          afterCompanyId: nextCursor,
+          now: new Date(),
+        })
+      )
+      .catch(() => {
+        // non-blocking; final persist still runs
+      });
+    return checkpointQueue;
+  };
+
   const results = await mapWithBoundedConcurrency(
     companies,
     concurrency,
@@ -445,10 +474,32 @@ export async function runSchedulerForAllCompanies(options = {}) {
         const outcome = await runWithTenantConnectionScope(() =>
           runCompanyScheduler(company, { ...options, deadline: companyDeadline })
         );
-        return {
+        const result = {
           ...outcome,
           durationMs: outcome.durationMs ?? Date.now() - companyStarted,
         };
+
+        // Checkpoint only after a fully completed company (not mid-queue truncated).
+        if (result.companyId && !result.skipped && !result.summary?.truncated) {
+          completedFullyIds.add(String(result.companyId));
+          const cursor = contiguousCompletedCursor(
+            companies,
+            completedFullyIds,
+            resumeAfterCompanyId
+          );
+          await enqueueCheckpoint(cursor);
+        } else if (result.summary?.truncated) {
+          truncated = true;
+          // Persist best contiguous cursor so a kill cannot leave zero progress.
+          const cursor = contiguousCompletedCursor(
+            companies,
+            completedFullyIds,
+            resumeAfterCompanyId
+          );
+          await enqueueCheckpoint(cursor);
+        }
+
+        return result;
       } catch (err) {
         return {
           companyId: String(company._id),
@@ -472,6 +523,9 @@ export async function runSchedulerForAllCompanies(options = {}) {
     }
   );
 
+  // Drain in-flight checkpoints before final fleet write.
+  await checkpointQueue.catch(() => {});
+
   const attemptedResults = results.filter((r) => r.reason !== "budget_exhausted");
   const processedIds = new Set(results.map((r) => String(r.companyId)));
   const notStarted = companies.filter((c) => !processedIds.has(String(c._id)));
@@ -482,17 +536,18 @@ export async function runSchedulerForAllCompanies(options = {}) {
     truncated = true;
   }
 
-  // Resume cursor = last *fully completed* company only. Mid-queue truncated tenants
-  // stay selectable via companyNeedsSchedulerRun + truncated-first ordering — never skip them.
-  const lastFullyCompleted = [...attemptedResults]
-    .reverse()
-    .find((r) => r.companyId && !r.skipped && !r.summary?.truncated);
-  const nextAfterCompanyId = truncated
-    ? lastFullyCompleted?.companyId || null
-    : null;
+  // Resume cursor = furthest contiguous *fully completed* company only.
+  // Mid-queue truncated tenants stay selectable via companyNeedsSchedulerRun +
+  // truncated-first ordering — never skip them.
+  const completedCursor = contiguousCompletedCursor(
+    companies,
+    completedFullyIds,
+    resumeAfterCompanyId
+  );
+  let nextAfterCompanyId = truncated ? completedCursor : null;
 
-  // Persist fleet progress before returning so a later invocation can resume the wave.
-  // Progress is only as durable as this write — Vercel may kill before it lands.
+  // Final fleet persist. clearFleetProgress only after verified zero pending —
+  // interrupted runs must never mark the wave complete.
   if (truncated) {
     await saveFleetProgress({
       waveStartedAt: wave.waveStartedAt,
@@ -512,10 +567,13 @@ export async function runSchedulerForAllCompanies(options = {}) {
     );
     if (stillPending.length) {
       truncated = true;
+      // Preserve contiguous cursor from this hop — never wipe afterCompanyId to null
+      // just because the capped slice looked complete.
+      nextAfterCompanyId = completedCursor;
       await saveFleetProgress({
         waveStartedAt: wave.waveStartedAt,
         truncated: true,
-        afterCompanyId: null,
+        afterCompanyId: nextAfterCompanyId,
         now: new Date(),
       });
     } else {

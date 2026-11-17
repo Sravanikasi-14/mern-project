@@ -17,7 +17,7 @@ export function createAttendanceVerificationChallengeSchema() {
         default: "PUNCH",
         index: true,
       },
-      expiresAt: { type: Date, required: true, index: true },
+      expiresAt: { type: Date, required: true },
       consumedAt: { type: Date, default: null, index: true },
       consumedBy: { type: String, default: "", trim: true },
       /** SHA-256 of bound evidence (optional anti-replay of payload). */
@@ -27,6 +27,11 @@ export function createAttendanceVerificationChallengeSchema() {
   );
 
   schema.index({ employeeId: 1, purpose: 1, consumedAt: 1, expiresAt: 1 });
+  // F45 — short-lived challenges only; safe to purge at expiresAt.
+  schema.index(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: "expiresAt_ttl" }
+  );
   return schema;
 }
 

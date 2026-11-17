@@ -113,6 +113,25 @@ describe("buildPeopleSearchQuery", () => {
     assert.ok(fields.includes("phoneNumber"));
   });
 
+  it("NEW-B01: name/code/job use prefix regex; email/phone keep contains", () => {
+    const query = buildPeopleSearchQuery("Ada");
+    const byField = Object.fromEntries(
+      query.$or.map((clause) => {
+        const field = Object.keys(clause)[0];
+        return [field, clause[field]];
+      })
+    );
+    assert.equal(byField.fullName.source.startsWith("^"), true);
+    assert.equal(byField.employeeCode.source.startsWith("^"), true);
+    assert.equal(byField["job.jobTitle"].source.startsWith("^"), true);
+    assert.equal(byField.email.source.startsWith("^"), false);
+    assert.equal(byField.phoneNumber.source.startsWith("^"), false);
+    // Mid-string name match is intentionally not expressed in the Mongo filter.
+    assert.equal(byField.fullName.test("Ada Lovelace"), true);
+    assert.equal(byField.fullName.test("Augusta Ada"), false);
+    assert.equal(byField.email.test("ceo.ada@example.com"), true);
+  });
+
   it("adds digit-tolerant phone matching for numeric queries", () => {
     const query = buildPeopleSearchQuery("99999");
     assert.ok(query.$or.some((clause) => clause.phoneNumber instanceof RegExp));

@@ -19,6 +19,13 @@ export {
   companyConcurrency,
   schedulerBudgetMs,
   maxCompaniesPerInvocation,
+  schedulerAutoContinue,
+  schedulerMaxChainDepth,
+  schedulerChainBudgetMs,
+  schedulerMinHopBudgetMs,
+  schedulerContinueViaHttp,
+  schedulerContinueTimeoutMs,
+  schedulerContinueBaseUrl,
 } from "./config.js";
 
 export { loadAssignableTaskQueue } from "./taskQueue.js";
@@ -55,6 +62,15 @@ export {
   beginOrResumeSchedulerWave,
   clearFleetProgress,
   companyNeedsSchedulerRun,
+  contiguousCompletedCursor,
   loadFleetProgress,
   saveFleetProgress,
 } from "./fleetProgress.js";
+export {
+  normalizeChainDepth,
+  shouldAutoContinue,
+  remainingHopBudgetMs,
+  buildContinuationRequest,
+  continueSchedulerWaveViaHttp,
+  runSchedulerWithAutoContinue,
+} from "./autoContinue.js";

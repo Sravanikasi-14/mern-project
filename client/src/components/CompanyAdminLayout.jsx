@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getCompanyBrandName } from "../utils/companyBrand";
+import { loginPathForRole } from "../utils/navigation";
 import api from "../services/api";
 import "./CompanyAdminLayout.css";
 
@@ -59,10 +60,11 @@ export default function CompanyAdminLayout() {
   }, [company?.branding?.logoUrl]);
 
   const handleLogout = async () => {
+    const loginPath = loginPathForRole(user?.role);
     try {
       await logout();
     } finally {
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

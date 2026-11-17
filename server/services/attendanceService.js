@@ -1372,12 +1372,6 @@ export async function startLiveTrackingSession({
     }
   }
 
-  // Clean up any existing active sessions (no duplicate ACTIVE rows)
-  await LiveTrackingSession.updateMany(
-    { employeeId: employee._id, status: "ACTIVE" },
-    { $set: { status: "STOPPED", stoppedAt: new Date() } }
-  );
-
   const duration = Math.min(Math.max(parseInt(durationMinutes, 10) || 30, 5), 120);
   const startedAt = new Date();
   const expiresAt = new Date(startedAt.getTime() + duration * 60 * 1000);
@@ -1385,15 +1379,56 @@ export async function startLiveTrackingSession({
     ? CLIENT_PLATFORMS.WEB
     : clientPlatform;
 
-  const session = new LiveTrackingSession({
-    employeeId: employee._id,
-    status: "ACTIVE",
-    startedAt,
-    expiresAt,
-    deviceInfo: { userAgent, clientPlatform: platform },
-  });
+  // F73 — stop any existing ACTIVE rows, then create. Unique partial index +
+  // duplicate-key retry keeps a single ACTIVE under concurrent starts.
+  async function stopActiveForEmployee() {
+    await LiveTrackingSession.updateMany(
+      { employeeId: employee._id, status: "ACTIVE" },
+      { $set: { status: "STOPPED", stoppedAt: new Date() } }
+    );
+  }
 
-  await session.save();
+  async function createActiveSession() {
+    const session = new LiveTrackingSession({
+      employeeId: employee._id,
+      status: "ACTIVE",
+      startedAt,
+      expiresAt,
+      deviceInfo: { userAgent, clientPlatform: platform },
+    });
+    await session.save();
+    return session;
+  }
+
+  await stopActiveForEmployee();
+
+  let session;
+  try {
+    session = await createActiveSession();
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err;
+    // Another concurrent starter already holds ACTIVE — return it (idempotent).
+    session = await LiveTrackingSession.findOne({
+      employeeId: employee._id,
+      status: "ACTIVE",
+    }).sort({ startedAt: -1, _id: -1 });
+    if (!session) {
+      await stopActiveForEmployee();
+      try {
+        session = await createActiveSession();
+      } catch (err2) {
+        if (!isDuplicateKeyError(err2)) throw err2;
+        session = await LiveTrackingSession.findOne({
+          employeeId: employee._id,
+          status: "ACTIVE",
+        }).sort({ startedAt: -1, _id: -1 });
+        if (!session) throw err2;
+      }
+    }
+  }
+
+  const remainingMs = Math.max(0, new Date(session.expiresAt).getTime() - Date.now());
+  const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
 
   return {
     success: true,
@@ -1403,7 +1438,8 @@ export async function startLiveTrackingSession({
       status: "ACTIVE",
       startedAt: session.startedAt,
       expiresAt: session.expiresAt,
-      remainingMinutes: duration,
+      remainingMinutes:
+        session.expiresAt.getTime() === expiresAt.getTime() ? duration : remainingMinutes,
     },
   };
 }

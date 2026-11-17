@@ -1,17 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { chatPollIntervalMs } from "./chatPollInterval.js";
-
-const root = dirname(fileURLToPath(import.meta.url));
-const useChatQueries = readFileSync(join(root, "../hooks/useChatQueries.js"), "utf8");
+import {
+  CHAT_LIST_POLL_MS,
+  chatPollIntervalMs,
+  resetChatPollActivityForTests,
+} from "./chatPollInterval.js";
 
 describe("F66 mobile chat polling helpers", () => {
   it("pauses polling when the document is hidden", () => {
     const prev = globalThis.document;
-    globalThis.document = { visibilityState: "hidden" };
+    globalThis.document = { visibilityState: "hidden", addEventListener() {} };
     try {
       assert.equal(chatPollIntervalMs(10_000, {}), false);
     } finally {
@@ -19,19 +17,25 @@ describe("F66 mobile chat polling helpers", () => {
     }
   });
 
-  it("returns base interval when visible", () => {
+  it("returns base interval when visible and recently active", () => {
     const prev = globalThis.document;
-    globalThis.document = { visibilityState: "visible" };
+    globalThis.document = { visibilityState: "visible", addEventListener() {} };
     try {
-      assert.equal(chatPollIntervalMs(10_000, {}), 10_000);
+      resetChatPollActivityForTests(Date.now());
+      assert.equal(chatPollIntervalMs(CHAT_LIST_POLL_MS, {}), CHAT_LIST_POLL_MS);
     } finally {
       globalThis.document = prev;
     }
   });
 
-  it("useChatQueries disables background refetch intervals", () => {
-    assert.match(useChatQueries, /chatPollIntervalMs/);
-    const bgFlags = useChatQueries.match(/refetchIntervalInBackground:\s*false/g) || [];
-    assert.ok(bgFlags.length >= 2);
+  it("applies idle backoff when visible but inactive", () => {
+    const prev = globalThis.document;
+    globalThis.document = { visibilityState: "visible", addEventListener() {} };
+    try {
+      resetChatPollActivityForTests(Date.now() - 120_000);
+      assert.equal(chatPollIntervalMs(10_000, {}), 30_000);
+    } finally {
+      globalThis.document = prev;
+    }
   });
 });

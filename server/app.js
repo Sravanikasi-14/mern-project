@@ -32,6 +32,11 @@ import projectEntityRoutes from "./routes/projectEntityRoutes.js";
 import platformRoutes from "./routes/platformRoutes.js";
 import { tenantConnectionScopeMiddleware } from "./config/db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import {
+  defaultJsonParser,
+  mountElevatedJsonBodyParsers,
+} from "./middleware/jsonBodyLimits.js";
+import { corsOriginDelegate } from "./utils/corsOrigins.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,48 +48,9 @@ export function createApp() {
   // Trust first proxy (Render, Heroku, Nginx) for secure cookies & req.protocol
   app.set("trust proxy", 1);
 
-  const explicitOrigins = [
-    "https://mern-project-nu-nine.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://localhost:5000",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-  ];
-
-  if (process.env.CLIENT_URL) {
-    explicitOrigins.push(process.env.CLIENT_URL.trim().replace(/\/+$/, ""));
-  }
-  if (process.env.FRONTEND_URL) {
-    explicitOrigins.push(process.env.FRONTEND_URL.trim().replace(/\/+$/, ""));
-  }
-
+  // F80 — explicit allowlist only (no *.vercel.app / *.onrender.com wildcards).
   const corsOptions = {
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, same-origin, curl, server-to-server)
-      if (!origin) {
-        return callback(null, true);
-      }
-      const cleanOrigin = origin.trim().replace(/\/+$/, "");
-      if (explicitOrigins.includes(cleanOrigin)) {
-        return callback(null, true);
-      }
-      try {
-        const url = new URL(cleanOrigin);
-        if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-          return callback(null, true);
-        }
-        if (url.hostname.endsWith(".vercel.app")) {
-          return callback(null, true);
-        }
-        if (url.hostname.endsWith(".onrender.com")) {
-          return callback(null, true);
-        }
-      } catch {
-        // ignore parsing error
-      }
-      return callback(null, false);
-    },
+    origin: corsOriginDelegate,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -103,7 +69,9 @@ export function createApp() {
 
   app.use(cors(corsOptions));
 
-  app.use(express.json({ limit: "15mb" }));
+  // F72 — elevated JSON limits on face/media routes first, then a small default.
+  mountElevatedJsonBodyParsers(app);
+  app.use(defaultJsonParser);
   app.use(cookieParser());
 
   // F35: request-scoped tenant connection retain/release (before authenticate/routes).

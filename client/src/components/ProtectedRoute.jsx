@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { IconAlertCircle, IconRefresh } from "./Icons";
 import SessionBoot from "./SessionBoot";
 import { firstAccessibleHrPath } from "../utils/hrPortalAccess";
+import { loginPathForLocation } from "../utils/navigation";
 
 export default function ProtectedRoute({ children, roles }) {
   const { loading, isAuthenticated, user, company, sessionError, restoreSession } = useAuth();
@@ -67,7 +68,7 @@ export default function ProtectedRoute({ children, roles }) {
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
-                  window.location.href = "/login";
+                  window.location.href = loginPathForLocation(location.pathname);
                 }}
               >
                 Sign in Again
@@ -80,7 +81,13 @@ export default function ProtectedRoute({ children, roles }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return (
+      <Navigate
+        to={loginPathForLocation(location.pathname)}
+        replace
+        state={{ from: location }}
+      />
+    );
   }
 
   if (roles && !roles.includes(user.role)) {

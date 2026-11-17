@@ -1,10 +1,13 @@
 import rateLimit from "express-rate-limit";
+import { createMongoRateLimitStore } from "./mongoRateLimitStore.js";
 
 export const refreshSessionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: process.env.NODE_ENV === "production" ? 60 : 300,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: false,
+  store: createMongoRateLimitStore({ prefix: "rl:refresh:" }),
   skip: () => process.env.NODE_ENV === "test",
   handler: (_req, res) => {
     res.status(429).json({
@@ -19,6 +22,8 @@ export const loginLimiter = rateLimit({
   limit: process.env.NODE_ENV === "production" ? 10 : 100,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: false,
+  store: createMongoRateLimitStore({ prefix: "rl:login:" }),
   skip: () => process.env.NODE_ENV === "test",
   handler: (_req, res) => {
     res.status(429).json({

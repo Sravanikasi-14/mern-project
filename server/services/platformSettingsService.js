@@ -182,6 +182,11 @@ export async function updatePlatformSettings({ payload, confirm, admin, req }) {
   doc.markModified("maintenance");
   await doc.save();
   invalidateMaintenanceCache();
+  // Settings document changed — drop entitlement snapshot on this isolate (NEW-B02).
+  const { invalidatePlatformSettingsCache } = await import(
+    "../utils/platformEntitlementCache.js"
+  );
+  invalidatePlatformSettingsCache();
 
   await recordPlatformAudit({
     actor: admin,

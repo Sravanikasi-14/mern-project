@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Shield } from "lucide-react";
+import AuthShell from "../../components/auth/AuthShell";
 import { usePlatformAuth } from "../../context/PlatformAuthContext";
 import { getPlatformToken } from "../../services/platformApi";
 import "./PlatformAuth.css";
@@ -70,56 +71,49 @@ export default function PlatformMfaSetup() {
 
   if (recoveryCodes) {
     return (
-      <div className="pa-auth-shell">
-        <div className="pa-auth-card">
-          <div className="pa-auth-eyebrow">
-            <Shield size={12} /> Platform MFA
-          </div>
-          <h1>Save recovery codes</h1>
-          <p className="auth-sub">
-            Store these one-time codes securely. They will not be shown again.
-          </p>
-          <ul>
-            {recoveryCodes.map((c) => (
-              <li key={c}>
-                <code>{c}</code>
-              </li>
-            ))}
-          </ul>
-          <button
-            className="btn-primary"
-            type="button"
-            onClick={async () => {
-              await refresh();
-              navigate("/platform", { replace: true });
-            }}
-          >
-            Continue to platform
-          </button>
-        </div>
-      </div>
+      <AuthShell portal="platform" title="Save recovery codes">
+        <ul className="hrms-auth-recovery-list">
+          {recoveryCodes.map((c) => (
+            <li key={c}>
+              <code>{c}</code>
+            </li>
+          ))}
+        </ul>
+        <button
+          className="hrms-auth-submit"
+          type="button"
+          onClick={async () => {
+            await refresh();
+            navigate("/platform", { replace: true });
+          }}
+        >
+          Continue to platform
+        </button>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="pa-auth-shell">
-      <form className="pa-auth-card" onSubmit={onConfirm}>
-        <div className="pa-auth-eyebrow">
-          <Shield size={12} /> Platform MFA
+    <AuthShell
+      portal="platform"
+      title="Set up MFA"
+    >
+      {loading ? <p className="hrms-auth-note">Preparing authenticator…</p> : null}
+      {error ? (
+        <div role="alert" className="hrms-auth-alert" data-kind="error">
+          <Shield size={16} aria-hidden="true" />
+          <span>{error}</span>
         </div>
-        <h1>Set up MFA</h1>
-        <p className="pa-auth-sub">
-          MFA is mandatory for Platform Admin. Add this authenticator key, then enter a 6-digit code.
-        </p>
-        {loading ? <p>Preparing authenticator…</p> : null}
-        {error ? <div className="error">{error}</div> : null}
+      ) : null}
+
+      <form className="hrms-auth-form" onSubmit={onConfirm}>
         {!loading && secret ? (
           <>
             <label>
               Secret key
               <input readOnly value={secret} onFocus={(e) => e.target.select()} />
             </label>
-            <p className="auth-sub" style={{ wordBreak: "break-all" }}>
+            <p className="hrms-auth-note" style={{ textAlign: "left", wordBreak: "break-all" }}>
               otpauth: {otpauthUrl}
             </p>
           </>
@@ -132,12 +126,13 @@ export default function PlatformMfaSetup() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             required
+            placeholder="6-digit code"
           />
         </label>
-        <button className="btn-primary" type="submit" disabled={submitting || loading}>
+        <button className="hrms-auth-submit" type="submit" disabled={submitting || loading}>
           {submitting ? "Verifying…" : "Enable MFA and continue"}
         </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

@@ -7,7 +7,7 @@
  */
 
 /** Bump when required inventory set or verification semantics change. */
-export const TENANT_INDEX_SCHEMA_VERSION = 3;
+export const TENANT_INDEX_SCHEMA_VERSION = 5;
 
 /**
  * Serialize an index key preserving Mongo/Mongoose field order (do not sort).

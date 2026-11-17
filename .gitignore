@@ -7,3 +7,8 @@ dist/
 .idea/
 uploads/
 server/uploads/
+
+.vercel
+.env
+.env.*
+!.env.example

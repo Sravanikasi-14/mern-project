@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Shield } from "lucide-react";
+import AuthShell from "../../components/auth/AuthShell";
 import SessionBoot from "../../components/SessionBoot";
 import { usePlatformAuth } from "../../context/PlatformAuthContext";
 import "./PlatformAuth.css";
@@ -39,37 +40,46 @@ export default function PlatformLogin() {
   };
 
   return (
-    <div className="pa-auth-shell">
-      <form className="pa-auth-card" onSubmit={onSubmit}>
-        <div className="pa-auth-eyebrow">
-          <Shield size={12} /> Platform Admin
+    <AuthShell portal="platform" title="Welcome back">
+      {error ? (
+        <div role="alert" className="hrms-auth-alert" data-kind="error">
+          <Shield size={16} aria-hidden="true" />
+          <span>{error}</span>
         </div>
-        <h1>Sign in</h1>
-        <p className="pa-auth-sub">Separate from company workspaces.</p>
-        {error ? <div className="error">{error}</div> : null}
+      ) : null}
+
+      <form className="hrms-auth-form" onSubmit={onSubmit} noValidate>
         <label>
           Email
           <input
             type="email"
             autoComplete="username"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (error) setError("");
+            }}
+            placeholder="admin@platform.com"
             required
           />
         </label>
         <label>
           Password
-          <div className="pa-password-field">
+          <div className="hrms-auth-password">
             <input
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError("");
+              }}
+              placeholder="••••••••"
               required
             />
             <button
               type="button"
-              className="pa-password-toggle"
+              className="hrms-auth-password-toggle"
               onClick={() => setShowPassword((prev) => !prev)}
               aria-label={showPassword ? "Hide password" : "Show password"}
               title={showPassword ? "Hide password" : "Show password"}
@@ -78,11 +88,10 @@ export default function PlatformLogin() {
             </button>
           </div>
         </label>
-        <button className="btn-primary" type="submit" disabled={submitting}>
-          {submitting ? "Signing in…" : "Continue"}
+        <button className="hrms-auth-submit" type="submit" disabled={submitting}>
+          {submitting ? "Signing in…" : "Sign in"}
         </button>
-        <p className="pa-auth-note">Company and employee portals use a different sign-in page.</p>
       </form>
-    </div>
+    </AuthShell>
   );
 }

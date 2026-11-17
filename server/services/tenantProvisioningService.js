@@ -45,6 +45,11 @@ import {
   TENANT_INDEX_SCHEMA_VERSION,
   inventoryTenantConnection,
 } from "./tenantIndexInventory.js";
+import { ensureTenantEphemeralTtlIndexes } from "./ephemeralTtlIndexes.js";
+import {
+  cleanupDuplicateActiveSessions,
+  ensureActiveEmployeeUniqueIndex,
+} from "./liveTrackingActiveSession.js";
 
 export { TENANT_INDEX_SCHEMA_VERSION };
 
@@ -341,6 +346,28 @@ export async function provisionTenantDatabase(company, connection) {
     outcome.collectionsCreated.push("attendance_verification_challenges");
     outcome.repaired = true;
   }
+
+  // F45 — convert/create ephemeral TTL indexes before schema createIndexes on
+  // challenges/tokens/sessions (avoids IndexOptionsConflict with legacy expiresAt_1).
+  try {
+    const ttlResults = await ensureTenantEphemeralTtlIndexes(conn);
+    outcome.ephemeralTtlIndexes = ttlResults;
+    outcome.indexesCreated.push(
+      "F45 ephemeral TTL: authTokens, authSessions.purgeAt, attendance_verification_challenges"
+    );
+  } catch (ttlErr) {
+    outcome.indexFailures.push({
+      collection: "ephemeral_ttl",
+      phase: "createIndexes",
+      message: ttlErr.message,
+      summary: "F45 ensureTenantEphemeralTtlIndexes",
+    });
+    console.warn(
+      `[TenantProvisioning] Ephemeral TTL ensure failed on ${outcome.databaseName}:`,
+      ttlErr.message
+    );
+  }
+
   const AttendanceVerificationChallenge = getAttendanceVerificationChallengeModel(conn);
   await createIndexesTracked(
     outcome,
@@ -356,10 +383,61 @@ export async function provisionTenantDatabase(company, connection) {
   }
 
   const LiveTrackingSession = getLiveTrackingSessionModel(conn);
+
+  // F73 — cleanup duplicate ACTIVE sessions before unique partial index create.
+  try {
+    const cleanup = await cleanupDuplicateActiveSessions(LiveTrackingSession, {
+      apply: true,
+    });
+    outcome.liveTrackingActiveCleanup = cleanup;
+    if (cleanup.stopped > 0) {
+      outcome.repaired = true;
+      outcome.indexesCreated.push(
+        `live_tracking_sessions: F73 stopped ${cleanup.stopped} duplicate ACTIVE session(s)`
+      );
+    }
+  } catch (cleanupErr) {
+    outcome.indexFailures.push({
+      collection: "live_tracking_sessions",
+      phase: "createIndexes",
+      message: cleanupErr.message,
+      summary: "F73 cleanupDuplicateActiveSessions",
+    });
+    console.warn(
+      `[TenantProvisioning] F73 ACTIVE cleanup failed on ${outcome.databaseName}:`,
+      cleanupErr.message
+    );
+  }
+
+  // Ensure unique partial ACTIVE index (drop/recreate of wrong same-name index
+  // is encapsulated in ensureActiveEmployeeUniqueIndex — not syncIndexes).
+  try {
+    const ensured = await ensureActiveEmployeeUniqueIndex(
+      LiveTrackingSession.collection
+    );
+    if (ensured.status === "created") {
+      outcome.indexesCreated.push(
+        `live_tracking_sessions: ${ensured.name} (unique partial ACTIVE)`
+      );
+      outcome.repaired = true;
+    }
+  } catch (uniqErr) {
+    outcome.indexFailures.push({
+      collection: "live_tracking_sessions",
+      phase: "createIndexes",
+      message: uniqErr.message,
+      summary: "F73 uniq_live_tracking_active_employeeId",
+    });
+    console.warn(
+      `[TenantProvisioning] F73 unique ACTIVE index failed on ${outcome.databaseName}:`,
+      uniqErr.message
+    );
+  }
+
   await createIndexesTracked(
     outcome,
     LiveTrackingSession,
-    "live_tracking_sessions: { employeeId: 1, status: 1 }, { startedAt: -1, status: 1 }"
+    "live_tracking_sessions: { employeeId: 1, status: 1 }, { startedAt: -1, status: 1 }, F73 unique ACTIVE"
   );
 
   // 8. Ensure payroll_cycles collection exists
@@ -512,6 +590,7 @@ export async function provisionTenantDatabase(company, connection) {
   );
 
   // AuthSession revoke-all indexes (F31) — createIndexes is additive / idempotent
+  // (F45 purgeAt TTL already ensured earlier in this provision pass.)
   await createIndexesTracked(
     outcome,
     getAuthSessionModel(conn),

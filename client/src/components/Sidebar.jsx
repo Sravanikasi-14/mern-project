@@ -7,6 +7,7 @@ import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import api from "../services/api";
 import { getCompanyBrandName } from "../utils/companyBrand";
 import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
+import { loginPathForRole } from "../utils/navigation";
 
 const HR_NAV_ITEMS = [
   {
@@ -294,10 +295,11 @@ export default function Sidebar({
       : EMPLOYEE_NAV_ITEMS;
 
   const handleLogout = async () => {
+    const loginPath = loginPathForRole(user?.role);
     try {
       const res = await logout();
       if (res && !res.serverRevoked) {
-        navigate("/login", {
+        navigate(loginPath, {
           replace: true,
           state: {
             logoutWarning:
@@ -305,10 +307,10 @@ export default function Sidebar({
           },
         });
       } else {
-        navigate("/login", { replace: true });
+        navigate(loginPath, { replace: true });
       }
     } catch {
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

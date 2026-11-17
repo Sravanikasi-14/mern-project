@@ -558,23 +558,103 @@ async function lastMessagePreview(Message, conversationId, joinedAt) {
   };
 }
 
+const CONVERSATION_LIST_DEFAULT_LIMIT = 50;
+const CONVERSATION_LIST_MAX_LIMIT = 100;
+/** Soft cap when clients omit limit (legacy full-list callers). */
+const CONVERSATION_LIST_LEGACY_SOFT_CAP = 500;
+
+function parseConversationListPaging(req) {
+  const limitRaw = req.query?.limit ?? req.body?.limit;
+  const offsetRaw = req.query?.offset ?? req.body?.offset;
+  const offset = Math.max(0, Number.parseInt(String(offsetRaw ?? "0"), 10) || 0);
+  const explicit = limitRaw != null && String(limitRaw).trim() !== "";
+  if (!explicit) {
+    return { limit: CONVERSATION_LIST_LEGACY_SOFT_CAP, offset, explicit: false };
+  }
+  const parsed = Number.parseInt(String(limitRaw), 10);
+  const limit = Math.min(
+    CONVERSATION_LIST_MAX_LIMIT,
+    Math.max(1, Number.isFinite(parsed) ? parsed : CONVERSATION_LIST_DEFAULT_LIMIT)
+  );
+  return { limit, offset, explicit: true };
+}
+
+/**
+ * NEW-B04 — Activity-ordered conversation list with optional limit/offset.
+ * Omitting limit keeps legacy shape but soft-caps at 500. F46 batching preserved
+ * for the paged membership slice only (no per-conversation message queries).
+ */
 export async function listConversations(req) {
   const { user, models } = req.auth;
-  const memberships = await models.ConversationMember.find({
-    userId: user._id,
-    leftAt: null,
-  }).lean();
-  if (memberships.length === 0) return [];
+  const { limit, offset, explicit } = parseConversationListPaging(req);
 
-  const ids = memberships.map((member) => member.conversationId);
-  const conversations = await models.Conversation.find({
-    _id: { $in: ids },
-  }).select("-imageData").lean();
+  const memberMatch = { userId: user._id, leftAt: null };
+  const total = await models.ConversationMember.countDocuments(memberMatch);
+  if (total === 0) {
+    return { conversations: [], total: 0, limit, offset, hasMore: false, explicit };
+  }
+
+  // Page memberships joined to conversations, sorted by last activity (indexed).
+  const pageRows = await models.ConversationMember.aggregate([
+    { $match: memberMatch },
+    {
+      $lookup: {
+        from: "conversations",
+        localField: "conversationId",
+        foreignField: "_id",
+        as: "conversation",
+      },
+    },
+    { $unwind: "$conversation" },
+    {
+      $addFields: {
+        activityAt: {
+          $ifNull: ["$conversation.lastMessageAt", "$conversation.createdAt"],
+        },
+      },
+    },
+    { $sort: { activityAt: -1, _id: -1 } },
+    { $skip: offset },
+    { $limit: limit },
+    {
+      $project: {
+        _id: 1,
+        userId: 1,
+        conversationId: 1,
+        lastReadAt: 1,
+        lastReadMessageId: 1,
+        leftAt: 1,
+        joinedAt: 1,
+        conversation: {
+          _id: "$conversation._id",
+          type: "$conversation.type",
+          name: "$conversation.name",
+          description: "$conversation.description",
+          adminUserIds: "$conversation.adminUserIds",
+          imageStorageKey: "$conversation.imageStorageKey",
+          imageMimeType: "$conversation.imageMimeType",
+          lastMessageAt: "$conversation.lastMessageAt",
+          createdAt: "$conversation.createdAt",
+        },
+      },
+    },
+  ]);
+
+  if (pageRows.length === 0) {
+    return { conversations: [], total, limit, offset, hasMore: false, explicit };
+  }
+
+  const activeMemberships = pageRows.map((row) => ({
+    _id: row._id,
+    userId: row.userId,
+    conversationId: row.conversationId,
+    lastReadAt: row.lastReadAt,
+    lastReadMessageId: row.lastReadMessageId,
+    leftAt: row.leftAt,
+    joinedAt: row.joinedAt,
+  }));
+  const conversations = pageRows.map((row) => row.conversation).filter(Boolean);
   const byId = new Map(conversations.map((row) => [String(row._id), row]));
-
-  // Keep memberships that still resolve to a conversation (tenant-local ids only).
-  const activeMemberships = memberships.filter((member) => byId.has(String(member.conversationId)));
-  if (activeMemberships.length === 0) return [];
 
   const groupConversations = [];
   const directConversations = [];
@@ -583,7 +663,7 @@ export async function listConversations(req) {
     else directConversations.push(conversation);
   }
 
-  // F46: O(1) Message aggregations + batched member/peer lookups (not per-conversation).
+  // F46: O(1) Message aggregations + batched member/peer lookups (page slice only).
   const [previewByConversation, unreadByConversation, memberCountByConversation, peerByConversation] =
     await Promise.all([
       batchLatestMessagePreviews(models.Message, activeMemberships),
@@ -602,7 +682,7 @@ export async function listConversations(req) {
     if (!conversation) continue;
     const preview = previewByConversation.get(String(conversation._id)) || emptyPreview;
     const unreadCount = unreadByConversation.get(String(conversation._id)) || 0;
-    const activityAt = preview.lastMessageAt || conversation.createdAt;
+    const activityAt = preview.lastMessageAt || conversation.lastMessageAt || conversation.createdAt;
     if (conversation.type === CONVERSATION_TYPES.GROUP) {
       const admins = (conversation.adminUserIds || []).map((id) => String(id));
       items.push({
@@ -635,12 +715,21 @@ export async function listConversations(req) {
     });
   }
 
+  // Aggregation already sorts by activity; keep stable secondary order.
   items.sort((a, b) => {
     const aTime = new Date(a.lastMessageAt || a.createdAt || 0).getTime();
     const bTime = new Date(b.lastMessageAt || b.createdAt || 0).getTime();
     return bTime - aTime;
   });
-  return items;
+
+  return {
+    conversations: items,
+    total,
+    limit,
+    offset,
+    hasMore: offset + items.length < total,
+    explicit,
+  };
 }
 
 export async function getConversation(req, conversationId) {

@@ -264,6 +264,12 @@ export async function refreshSession(req, res, next) {
     session.expiresAt = decoded?.exp
       ? new Date(decoded.exp * 1000)
       : new Date(Date.now() + 8 * 60 * 60 * 1000);
+    // F45 — keep purgeAt at the later of access/refresh expiry.
+    const refreshEnd = session.refreshExpiresAt;
+    session.purgeAt =
+      refreshEnd && refreshEnd.getTime() > session.expiresAt.getTime()
+        ? refreshEnd
+        : session.expiresAt;
     await session.save();
     setAuthCookie(res, token);
 

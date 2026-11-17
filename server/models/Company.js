@@ -212,7 +212,8 @@ const companySchema = new mongoose.Schema(
       smtpHost: { type: String, default: "smtp.gmail.com" },
       smtpPort: { type: Number, default: 587 },
       smtpSecure: { type: Boolean, default: false },
-      appPasswordEncrypted: { type: String, default: "" },
+      // F84 — never selected by default; email modules must +select explicitly.
+      appPasswordEncrypted: { type: String, default: "", select: false },
       isConfigured: { type: Boolean, default: false },
       lastVerifiedAt: { type: Date, default: null },
       updatedAt: { type: Date, default: null },

@@ -40,7 +40,6 @@ export function createAuthTokenSchema() {
       expiresAt: {
         type: Date,
         required: true,
-        index: true,
       },
       usedAt: {
         type: Date,
@@ -65,6 +64,12 @@ export function createAuthTokenSchema() {
       timestamps: true,
       collection: "authTokens",
     }
+  );
+
+  // F45 — TTL purge of expired invite/reset tokens (ephemeral only).
+  authTokenSchema.index(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: "expiresAt_ttl" }
   );
 
   return authTokenSchema;

@@ -45,8 +45,12 @@ import {
   setCachedCompanyMetadata,
 } from "../utils/companyMetadataCache.js";
 
-/** Lean projection for auth/tenant resolution (excludes binary logo blob). */
-const COMPANY_AUTH_SELECT = "-branding.logoData";
+/**
+ * Lean projection for auth/tenant resolution.
+ * F84 — exclude emailSettings (SMTP ciphertext) from auth hot path + metadata cache.
+ * F49 — exclude binary logo blob.
+ */
+const COMPANY_AUTH_SELECT = "-branding.logoData -emailSettings";
 
 /**
  * Per-process tenant connection cache (F35).
@@ -152,6 +156,18 @@ export async function connectCentralDB() {
       });
       if (process.env.NODE_ENV !== "test") {
         console.log("Central MongoDB connected");
+      }
+      // F45 — ensure central ephemeral TTL indexes (platform sessions, rate-limit hits).
+      try {
+        const { ensureCentralEphemeralTtlIndexes } = await import(
+          "../services/ephemeralTtlIndexes.js"
+        );
+        await ensureCentralEphemeralTtlIndexes(mongoose.connection);
+      } catch (ttlErr) {
+        console.error(
+          "Central ephemeral TTL index ensure failed:",
+          ttlErr?.message || ttlErr
+        );
       }
       return mongoose.connection;
     } catch (error) {
@@ -543,13 +559,14 @@ export async function getCompanyModels(company, { provision = false } = {}) {
 }
 
 export async function findCompanyBySlug(slug) {
-  return Company.findOne({ slug });
+  // F84 — same auth projection as findCompanyById (no SMTP settings on login path).
+  return Company.findOne({ slug }).select(COMPANY_AUTH_SELECT).lean();
 }
 
 /**
  * F49 — Company lookup with short-lived in-process metadata cache.
  * Used by authenticate for status + tenant databaseName resolution.
- * Returns a lean plain object (logoData excluded).
+ * Returns a lean plain object (logoData + emailSettings excluded).
  */
 export async function findCompanyById(companyId) {
   if (companyId == null || companyId === "") return null;
@@ -563,6 +580,9 @@ export async function findCompanyById(companyId) {
   setCachedCompanyMetadata(companyId, doc);
   return doc;
 }
+
+/** Exported for targeted tests (F84). */
+export { COMPANY_AUTH_SELECT };
 
 export {
   invalidateCompanyMetadataCache,

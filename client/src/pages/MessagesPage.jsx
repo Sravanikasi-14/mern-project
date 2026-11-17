@@ -16,6 +16,18 @@ import AuthedAvatar from "../components/AuthedAvatar";
 import { initialsFromName } from "../utils/employeeAvatar";
 import "./Messages.css";
 
+/** F86 — debounce directory search so typing does not hit /conversations/directory every keystroke. */
+const DIRECTORY_SEARCH_DEBOUNCE_MS = 280;
+
+function useDebouncedValue(value, delayMs = DIRECTORY_SEARCH_DEBOUNCE_MS) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 function initials(name) {
   return initialsFromName(name, "?");
 }
@@ -956,16 +968,19 @@ export default function MessagesPage() {
 }
 
 function DirectoryDialog({ open, query, onQuery, onClose, onSelect, busy, selfId }) {
+  const debouncedQuery = useDebouncedValue(query.trim());
   const directoryQuery = useQuery({
-    queryKey: qk.chatDirectory(query.trim()),
+    queryKey: qk.chatDirectory(debouncedQuery),
     enabled: open,
     queryFn: async () => {
-      const res = await api.get("/conversations/directory", { params: { search: query.trim() } });
+      const res = await api.get("/conversations/directory", { params: { search: debouncedQuery } });
       return res.data?.people || [];
     },
     staleTime: 10_000,
+    placeholderData: (previousData) => previousData,
   });
   const people = (directoryQuery.data || []).filter((person) => person.userId !== selfId);
+  const searching = directoryQuery.isFetching && query.trim() !== debouncedQuery;
 
   return (
     <AppModal
@@ -986,11 +1001,11 @@ function DirectoryDialog({ open, query, onQuery, onClose, onSelect, busy, selfId
           aria-label="Search colleagues"
         />
       </label>
-      {directoryQuery.isLoading ? <p className="msg-muted">Searching…</p> : null}
+      {directoryQuery.isLoading || searching ? <p className="msg-muted">Searching…</p> : null}
       {directoryQuery.isError ? (
         <p className="msg-banner" role="alert">{apiMessage(directoryQuery.error, "People could not be loaded.")}</p>
       ) : null}
-      {!directoryQuery.isLoading && people.length === 0 ? (
+      {!directoryQuery.isLoading && !searching && people.length === 0 ? (
         <div className="msg-empty"><p>No one matches that search.</p></div>
       ) : (
         <ul className="msg-directory">
@@ -1065,14 +1080,16 @@ function GroupCreateDialog({ open, selfId, onClose, onCreated }) {
     setSaving(false);
   }, [open]);
 
+  const debouncedQuery = useDebouncedValue(query.trim());
   const directoryQuery = useQuery({
-    queryKey: qk.chatDirectory(`group:${query.trim()}`),
+    queryKey: qk.chatDirectory(`group:${debouncedQuery}`),
     enabled: open,
     queryFn: async () => {
-      const res = await api.get("/conversations/directory", { params: { search: query.trim() } });
+      const res = await api.get("/conversations/directory", { params: { search: debouncedQuery } });
       return res.data?.people || [];
     },
     staleTime: 10_000,
+    placeholderData: (previousData) => previousData,
   });
   const people = (directoryQuery.data || []).filter((person) => person.userId !== selfId && !selected.some((item) => item.userId === person.userId));
 
@@ -1217,14 +1234,16 @@ function GroupDetailsDialog({ open, conversation, selfId, onClose, onChanged, on
     setImage(null);
   }, [open, conversation?.id, conversation?.name, conversation?.description]);
 
+  const debouncedQuery = useDebouncedValue(query.trim());
   const directoryQuery = useQuery({
-    queryKey: qk.chatDirectory(`add:${conversation?.id || ""}:${query.trim()}`),
+    queryKey: qk.chatDirectory(`add:${conversation?.id || ""}:${debouncedQuery}`),
     enabled: open && isAdmin,
     queryFn: async () => {
-      const res = await api.get("/conversations/directory", { params: { search: query.trim() } });
+      const res = await api.get("/conversations/directory", { params: { search: debouncedQuery } });
       return res.data?.people || [];
     },
     staleTime: 10_000,
+    placeholderData: (previousData) => previousData,
   });
   const memberIds = new Set(members.map((member) => member.userId));
   const candidates = (directoryQuery.data || []).filter((person) => person.userId !== selfId && !memberIds.has(person.userId));

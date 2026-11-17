@@ -10,6 +10,8 @@ export const ORG_SELECT =
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_RESULT_LIMIT = 25;
 const UNASSIGNED_PAGE_LIMIT = 100;
+/** F48-BOOT — Cap materialized hierarchy roots in bootstrap (unassigned stay on children API). */
+const BOOTSTRAP_HIERARCHY_ROOTS_LIMIT = 200;
 
 function escapeRegex(text) {
   return String(text).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -224,7 +226,9 @@ async function countDirectReports(Employee, scopedMatch, managerObjectIds) {
 }
 
 /**
- * F48 Phase B — Bounded HR bootstrap: hierarchy roots + counts (not full workforce).
+ * F48 Phase B / F48-BOOT — Bounded HR bootstrap: hierarchy roots + counts.
+ * Does **not** materialize the full no-manager set (unassigned leaves load via
+ * children?managerId=none). Roots are employees with no manager who have ≥1 report.
  */
 export async function buildOrganizationBootstrap(Employee, options = {}) {
   const statusKey = resolveOrganizationStatusParam(options.status);
@@ -243,44 +247,69 @@ export async function buildOrganizationBootstrap(Employee, options = {}) {
     options.hrAccess
   );
 
-  const [
-    total,
-    activeCount,
-    withManager,
-    withoutManager,
-    noManagerDocs,
-  ] = await Promise.all([
-    Employee.countDocuments(statusFilter),
-    Employee.countDocuments(activeFilter),
-    Employee.countDocuments({
-      $and: [
-        statusFilter,
-        { "job.reportingManagerId": { $ne: null, $exists: true } },
-      ],
-    }),
-    Employee.countDocuments({ $and: [statusFilter, noManagerClause] }),
-    Employee.find({ $and: [statusFilter, noManagerClause] })
-      .select(ORG_SELECT)
-      .sort({ fullName: 1 })
-      .lean(),
-  ]);
+  const rootsLimit = Math.max(
+    1,
+    Number(options.hierarchyRootsLimit) || BOOTSTRAP_HIERARCHY_ROOTS_LIMIT
+  );
 
-  const noManagerOids = noManagerDocs.map((d) => d._id);
-  const reportCounts = await countDirectReports(Employee, statusFilter, noManagerOids);
+  const [total, activeCount, withManager, withoutManager, managersWithReports] =
+    await Promise.all([
+      Employee.countDocuments(statusFilter),
+      Employee.countDocuments(activeFilter),
+      Employee.countDocuments({
+        $and: [
+          statusFilter,
+          { "job.reportingManagerId": { $ne: null, $exists: true } },
+        ],
+      }),
+      Employee.countDocuments({ $and: [statusFilter, noManagerClause] }),
+      // Only managers who actually have reports — never scan all no-manager employees.
+      Employee.aggregate([
+        {
+          $match: {
+            $and: [
+              statusFilter,
+              { "job.reportingManagerId": { $ne: null, $exists: true } },
+            ],
+          },
+        },
+        { $group: { _id: "$job.reportingManagerId", count: { $sum: 1 } } },
+      ]),
+    ]);
 
-  const hierarchyRootDocs = [];
-  let unassignedCount = 0;
-  for (const doc of noManagerDocs) {
-    const id = String(doc._id);
-    const count = reportCounts.get(id) || 0;
-    if (count > 0) hierarchyRootDocs.push({ doc, count });
-    else unassignedCount += 1;
+  const reportCounts = new Map();
+  const managerOids = [];
+  for (const row of managersWithReports) {
+    if (!row?._id) continue;
+    reportCounts.set(String(row._id), Number(row.count) || 0);
+    managerOids.push(row._id);
   }
 
-  const employees = hierarchyRootDocs.map(({ doc, count }) =>
-    serializeLazyNode(doc, { treeManagerId: null, directReportCount: count })
+  let hierarchyRootTotal = 0;
+  let hierarchyRootDocs = [];
+  if (managerOids.length) {
+    const rootMatch = {
+      $and: [statusFilter, noManagerClause, { _id: { $in: managerOids } }],
+    };
+    [hierarchyRootTotal, hierarchyRootDocs] = await Promise.all([
+      Employee.countDocuments(rootMatch),
+      Employee.find(rootMatch)
+        .select(ORG_SELECT)
+        .sort({ fullName: 1 })
+        .limit(rootsLimit)
+        .lean(),
+    ]);
+  }
+
+  const unassignedCount = Math.max(0, withoutManager - hierarchyRootTotal);
+  const employees = hierarchyRootDocs.map((doc) =>
+    serializeLazyNode(doc, {
+      treeManagerId: null,
+      directReportCount: reportCounts.get(String(doc._id)) || 0,
+    })
   );
   const hierarchyRootIds = employees.map((e) => e.id);
+  const hierarchyRootsTruncated = hierarchyRootTotal > employees.length;
 
   let filterOptions = {
     departments: [],
@@ -325,7 +354,10 @@ export async function buildOrganizationBootstrap(Employee, options = {}) {
       active: activeCount,
       withManager,
       withoutManager,
-      hierarchyRoots: hierarchyRootIds.length,
+      hierarchyRoots: hierarchyRootTotal,
+      hierarchyRootsReturned: employees.length,
+      hierarchyRootsTruncated,
+      hierarchyRootsLimit: rootsLimit,
       unassigned: unassignedCount,
       cycleEdgesBroken: 0,
       statusFilter: statusKey === "ALL" ? "ALL" : statusKey,
@@ -334,6 +366,8 @@ export async function buildOrganizationBootstrap(Employee, options = {}) {
     },
   };
 }
+
+export { BOOTSTRAP_HIERARCHY_ROOTS_LIMIT, UNASSIGNED_PAGE_LIMIT };
 
 /**
  * F48 Phase B — Direct reports for a manager, or unassigned pool when managerId=none.

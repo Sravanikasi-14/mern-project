@@ -95,6 +95,15 @@ export function createLiveTrackingSessionSchema() {
   sessionSchema.index({ employeeId: 1, createdAt: -1 });
   // F38: admin history lists filter by startedAt (+ optional status) without full-roster $in.
   sessionSchema.index({ startedAt: -1, status: 1 });
+  // F73 — at most one ACTIVE session per employee (never TTL this collection).
+  sessionSchema.index(
+    { employeeId: 1 },
+    {
+      unique: true,
+      name: "uniq_live_tracking_active_employeeId",
+      partialFilterExpression: { status: TRACKING_STATUSES.ACTIVE },
+    }
+  );
 
   return sessionSchema;
 }

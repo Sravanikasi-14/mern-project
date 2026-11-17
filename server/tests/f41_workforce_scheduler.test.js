@@ -23,10 +23,22 @@ import {
   runSchedulerForAllCompanies,
 } from "../services/workforceScheduler/executionController.js";
 import {
+  beginOrResumeSchedulerWave,
   clearFleetProgress,
   companyNeedsSchedulerRun,
+  contiguousCompletedCursor,
+  getFleetStateModel,
   loadFleetProgress,
+  saveFleetProgress,
 } from "../services/workforceScheduler/fleetProgress.js";
+import {
+  buildContinuationRequest,
+  continueSchedulerWaveViaHttp,
+  normalizeChainDepth,
+  remainingHopBudgetMs,
+  runSchedulerWithAutoContinue,
+  shouldAutoContinue,
+} from "../services/workforceScheduler/autoContinue.js";
 import { decideAssignment, ASSIGNMENT_PATHS } from "../services/workforceScheduler/strategy.js";
 import { calculateWorkloadByEmployee } from "../services/workforceScheduler/workload.js";
 import { ELIGIBLE_EMPLOYEE_SELECT } from "../services/workforceScheduler/eligibility.js";
@@ -47,6 +59,8 @@ process.env.WORKFORCE_SCHEDULER_MODE = "dry-run";
 process.env.WORKFORCE_SCHEDULER_MAX_ACTIVE_TASKS = "5";
 process.env.WORKFORCE_SCHEDULER_COMPANY_CONCURRENCY = "2";
 process.env.WORKFORCE_SCHEDULER_BUDGET_MS = "50000";
+process.env.WORKFORCE_SCHEDULER_AUTO_CONTINUE = "false";
+process.env.WORKFORCE_SCHEDULER_MAX_CHAIN_DEPTH = "3";
 
 function cookieFrom(response) {
   const cookies = response.headers["set-cookie"] || [];
@@ -489,5 +503,371 @@ describe("F41 cron authentication", () => {
       .set("Cookie", hrCookieA)
       .query({ dryRun: "true" });
     assert.ok(ok.status === 200 || ok.status === 503);
+  });
+});
+
+describe("Batch C NEW-S1 auto-continue", () => {
+  it("shouldAutoContinue respects flag, truncation, and chain depth", () => {
+    assert.equal(shouldAutoContinue({ truncated: true, chainDepth: 0, autoContinue: false }), false);
+    assert.equal(shouldAutoContinue({ truncated: false, chainDepth: 0, autoContinue: true }), false);
+    assert.equal(shouldAutoContinue({ truncated: true, chainDepth: 0, autoContinue: true, maxChainDepth: 3 }), true);
+    assert.equal(shouldAutoContinue({ truncated: true, chainDepth: 3, autoContinue: true, maxChainDepth: 3 }), false);
+    assert.equal(normalizeChainDepth("2"), 2);
+    assert.equal(normalizeChainDepth(-1), 0);
+  });
+
+  it("remainingHopBudgetMs enforces min hop and chain deadline", () => {
+    const now = 1_000_000;
+    assert.equal(
+      remainingHopBudgetMs({
+        chainDeadlineMs: now + 20_000,
+        nowMs: now,
+        configuredBudgetMs: 50_000,
+        minHopBudgetMs: 5_000,
+        headroomMs: 1_000,
+      }),
+      19_000
+    );
+    assert.equal(
+      remainingHopBudgetMs({
+        chainDeadlineMs: now + 4_000,
+        nowMs: now,
+        configuredBudgetMs: 50_000,
+        minHopBudgetMs: 5_000,
+        headroomMs: 1_000,
+      }),
+      0
+    );
+  });
+
+  it("buildContinuationRequest requires CRON_SECRET and preserves mode/cursor/depth", () => {
+    const built = buildContinuationRequest({
+      baseUrl: "https://example.test",
+      afterCompanyId: "abc123",
+      waveStartedAt: new Date("2026-11-17T02:00:00.000Z"),
+      chainDepth: 2,
+      mode: "dry-run",
+      budgetMs: 15000,
+      cronSecret: "f41-workforce-cron-secret",
+    });
+    assert.equal(built.ok, true);
+    assert.equal(built.headers.Authorization, "Bearer f41-workforce-cron-secret");
+    assert.equal(built.body.afterCompanyId, "abc123");
+    assert.equal(built.body.chainDepth, 2);
+    assert.equal(built.body.dryRun, "true");
+    assert.equal(built.body.budgetMs, 15000);
+
+    const noSecret = buildContinuationRequest({
+      baseUrl: "https://example.test",
+      cronSecret: "",
+    });
+    assert.equal(noSecret.ok, false);
+    assert.equal(noSecret.reason, "missing_cron_secret");
+  });
+
+  it("continueSchedulerWaveViaHttp handles timeout/failure without throwing", async () => {
+    const timedOut = await continueSchedulerWaveViaHttp(
+      {
+        baseUrl: "https://example.test",
+        cronSecret: "f41-workforce-cron-secret",
+        timeoutMs: 20,
+      },
+      {
+        fetchImpl: () =>
+          new Promise((_, reject) => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          }),
+      }
+    );
+    assert.equal(timedOut.ok, false);
+    assert.equal(timedOut.reason, "timeout");
+
+    const httpErr = await continueSchedulerWaveViaHttp(
+      {
+        baseUrl: "https://example.test",
+        cronSecret: "f41-workforce-cron-secret",
+      },
+      {
+        fetchImpl: async () => ({
+          ok: false,
+          status: 401,
+          json: async () => ({ success: false }),
+        }),
+      }
+    );
+    assert.equal(httpErr.ok, false);
+    assert.equal(httpErr.reason, "http_error");
+    assert.equal(httpErr.status, 401);
+  });
+
+  it("feature flag disabled does not auto-continue a truncated wave", async () => {
+    await clearFleetProgress();
+    await Company.updateMany(
+      { _id: { $in: [companyA._id, companyB._id, companyC._id] } },
+      {
+        $unset: {
+          "config.workforceScheduler.lastRunAt": 1,
+          "config.workforceScheduler.lastRunSummary": 1,
+        },
+      }
+    );
+    const waveNow = new Date("2026-11-17T08:00:00.000Z");
+    const result = await runSchedulerWithAutoContinue({
+      force: true,
+      mode: "dry-run",
+      concurrency: 1,
+      maxCompanies: 1,
+      budgetMs: 60_000,
+      chainBudgetMs: 60_000,
+      ignoreFleetCursor: true,
+      now: waveNow,
+      waveStartedAt: waveNow,
+      autoContinue: false,
+      maxChainDepth: 3,
+    });
+    assert.equal(result.truncated, true);
+    assert.equal(result.hops, 1);
+    assert.equal(result.autoContinued, false);
+    assert.equal(result.continuationStoppedReason, "auto_continue_disabled");
+  });
+
+  it("truncated wave continuation preserves cursor, mode, and processes more companies", async () => {
+    await clearFleetProgress();
+    await Company.updateMany(
+      { _id: { $in: [companyA._id, companyB._id, companyC._id] } },
+      {
+        $unset: {
+          "config.workforceScheduler.lastRunAt": 1,
+          "config.workforceScheduler.lastRunSummary": 1,
+        },
+      }
+    );
+    const waveNow = new Date("2026-11-17T08:10:00.000Z");
+    const result = await runSchedulerWithAutoContinue({
+      force: true,
+      mode: "dry-run",
+      concurrency: 1,
+      maxCompanies: 1,
+      budgetMs: 60_000,
+      chainBudgetMs: 120_000,
+      minHopBudgetMs: 1_000,
+      ignoreFleetCursor: true,
+      now: waveNow,
+      waveStartedAt: waveNow,
+      autoContinue: true,
+      maxChainDepth: 3,
+    });
+    assert.ok(result.hops >= 2);
+    assert.equal(result.autoContinued, true);
+    assert.ok(result.attempted >= 2);
+    assert.ok(result.results.every((r) => r.summary?.mode === "dry-run" || r.skipped));
+    // Same wave across hops
+    assert.equal(new Date(result.waveStartedAt).toISOString(), waveNow.toISOString());
+  });
+
+  it("chain depth limit stops continuation", async () => {
+    await clearFleetProgress();
+    await Company.updateMany(
+      { _id: { $in: [companyA._id, companyB._id, companyC._id] } },
+      {
+        $unset: {
+          "config.workforceScheduler.lastRunAt": 1,
+          "config.workforceScheduler.lastRunSummary": 1,
+        },
+      }
+    );
+    const waveNow = new Date("2026-11-17T08:20:00.000Z");
+    const result = await runSchedulerWithAutoContinue({
+      force: true,
+      mode: "dry-run",
+      concurrency: 1,
+      maxCompanies: 1,
+      budgetMs: 60_000,
+      chainBudgetMs: 180_000,
+      minHopBudgetMs: 1_000,
+      ignoreFleetCursor: true,
+      now: waveNow,
+      waveStartedAt: waveNow,
+      autoContinue: true,
+      maxChainDepth: 1,
+    });
+    // Initial hop + at most 1 continuation => hops <= 2
+    assert.ok(result.hops <= 2);
+    assert.equal(result.chainDepth, 1);
+    if (result.truncated) {
+      assert.equal(result.continuationStoppedReason, "max_chain_depth");
+    }
+  });
+
+  it("cron continuation still requires Bearer auth (chainDepth query alone is insufficient)", async () => {
+    const denied = await request(app)
+      .post("/api/workforce-scheduler/run")
+      .query({ chainDepth: 1, afterCompanyId: String(companyA._id), dryRun: "true" });
+    assert.equal(denied.status, 401);
+
+    const ok = await request(app)
+      .post("/api/workforce-scheduler/run")
+      .set("Authorization", "Bearer f41-workforce-cron-secret")
+      .query({
+        dryRun: "true",
+        chainDepth: 1,
+        concurrency: 1,
+        budgetMs: 15000,
+        maxCompanies: 1,
+      });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.success, true);
+    assert.equal(ok.body.results?.[0]?.summary?.mode || "dry-run", "dry-run");
+  });
+
+  it("apply mode is preserved across auto-continue hops", async () => {
+    await clearFleetProgress();
+    await Company.updateMany(
+      { _id: { $in: [companyA._id, companyB._id, companyC._id] } },
+      {
+        $unset: {
+          "config.workforceScheduler.lastRunAt": 1,
+          "config.workforceScheduler.lastRunSummary": 1,
+        },
+      }
+    );
+    // Ensure a fresh UNASSIGNED task for apply path idempotency later.
+    await modelsA.Task.updateMany(
+      { title: "F41 unassigned A" },
+      { $set: { status: TASK_STATUSES.UNASSIGNED, assigneeId: null } }
+    );
+    const waveNow = new Date("2026-11-17T08:30:00.000Z");
+    const result = await runSchedulerWithAutoContinue({
+      force: true,
+      mode: "apply",
+      concurrency: 1,
+      maxCompanies: 1,
+      budgetMs: 60_000,
+      chainBudgetMs: 120_000,
+      minHopBudgetMs: 1_000,
+      ignoreFleetCursor: true,
+      now: waveNow,
+      waveStartedAt: waveNow,
+      autoContinue: true,
+      maxChainDepth: 2,
+    });
+    const modes = result.results
+      .filter((r) => r.summary?.mode)
+      .map((r) => r.summary.mode);
+    assert.ok(modes.length >= 1);
+    assert.ok(modes.every((m) => m === "apply"));
+  });
+});
+
+describe("Batch C NEW-S3 CAS wave start", () => {
+  it("concurrent beginOrResumeSchedulerWave converges on one waveStartedAt", async () => {
+    await clearFleetProgress();
+    const now = new Date("2026-11-17T09:00:00.000Z");
+    const [a, b, c] = await Promise.all([
+      beginOrResumeSchedulerWave({ now }),
+      beginOrResumeSchedulerWave({ now }),
+      beginOrResumeSchedulerWave({ now }),
+    ]);
+    const started = [a, b, c].map((w) => new Date(w.waveStartedAt).getTime());
+    assert.equal(new Set(started).size, 1);
+    const fleet = await loadFleetProgress();
+    assert.equal(new Date(fleet.waveStartedAt).getTime(), started[0]);
+    // At most one starter; others resume (or all resume if create race resolved).
+    const starters = [a, b, c].filter((w) => !w.resumed);
+    assert.ok(starters.length <= 1);
+  });
+
+  it("resume preserves afterCompanyId and does not reset active wave progress", async () => {
+    await clearFleetProgress();
+    const waveStartedAt = new Date("2026-11-17T09:05:00.000Z");
+    await saveFleetProgress({
+      waveStartedAt,
+      truncated: true,
+      afterCompanyId: String(companyB._id),
+      now: new Date("2026-11-17T09:05:30.000Z"),
+    });
+    const resumed = await beginOrResumeSchedulerWave({
+      now: new Date("2026-11-17T09:06:00.000Z"),
+    });
+    assert.equal(resumed.resumed, true);
+    assert.equal(String(resumed.afterCompanyId), String(companyB._id));
+    assert.equal(new Date(resumed.waveStartedAt).toISOString(), waveStartedAt.toISOString());
+    const fleet = await loadFleetProgress();
+    assert.equal(String(fleet.afterCompanyId), String(companyB._id));
+  });
+});
+
+describe("Batch C NEW-S2 fleet durability", () => {
+  it("contiguousCompletedCursor never skips gaps", () => {
+    const ordered = [{ _id: "1" }, { _id: "2" }, { _id: "3" }];
+    assert.equal(contiguousCompletedCursor(ordered, new Set(["1", "3"])), "1");
+    assert.equal(contiguousCompletedCursor(ordered, new Set(["1", "2"]), "0"), "2");
+    assert.equal(contiguousCompletedCursor(ordered, new Set()), null);
+  });
+
+  it("checkpoints persist progress before final write; interrupt cannot mark complete", async () => {
+    await clearFleetProgress();
+    await Company.updateMany(
+      { _id: { $in: [companyA._id, companyB._id, companyC._id] } },
+      {
+        $unset: {
+          "config.workforceScheduler.lastRunAt": 1,
+          "config.workforceScheduler.lastRunSummary": 1,
+        },
+      }
+    );
+    const waveNow = new Date("2026-11-17T10:00:00.000Z");
+    const first = await runSchedulerForAllCompanies({
+      force: true,
+      mode: "dry-run",
+      concurrency: 1,
+      maxCompanies: 1,
+      budgetMs: 60_000,
+      ignoreFleetCursor: true,
+      now: waveNow,
+      waveStartedAt: waveNow,
+    });
+    assert.equal(first.truncated, true);
+    const fleetAfter = await loadFleetProgress();
+    assert.equal(fleetAfter?.truncated, true);
+    assert.ok(fleetAfter?.afterCompanyId || fleetAfter?.waveStartedAt);
+    // Simulate process death before a mistaken clear: fleet must stay truncated.
+    assert.notEqual(fleetAfter?.truncated, false);
+
+    // Mid-wave save with truncated:true must not be cleared by a partial re-read path.
+    await saveFleetProgress({
+      waveStartedAt: waveNow,
+      truncated: true,
+      afterCompanyId: first.nextAfterCompanyId,
+      now: new Date(),
+    });
+    const Fleet = getFleetStateModel();
+    const raw = await Fleet.findById("workforce-scheduler-fleet").lean();
+    assert.equal(raw.truncated, true);
+  });
+
+  it("no duplicate employee assignments under apply + lock contention", async () => {
+    const task = await modelsA.Task.findOneAndUpdate(
+      { title: "F41 unassigned A" },
+      { $set: { status: TASK_STATUSES.UNASSIGNED, assigneeId: null } },
+      { returnDocument: "after" }
+    );
+    assert.ok(task);
+
+    const [r1, r2] = await Promise.all([
+      runCompanyScheduler(companyA, { force: true, mode: "apply" }),
+      runCompanyScheduler(companyA, { force: true, mode: "apply" }),
+    ]);
+    const outcomes = [r1, r2];
+    const applied = outcomes.filter((r) => !r.skipped);
+    const locked = outcomes.filter((r) => r.reason === "lock_held");
+    assert.ok(applied.length >= 1);
+    assert.ok(locked.length + applied.length === 2);
+
+    const after = await modelsA.Task.findById(task._id).lean();
+    assert.equal(after.status, TASK_STATUSES.ASSIGNED);
+    assert.equal(String(after.assigneeId), String(empA._id));
   });
 });

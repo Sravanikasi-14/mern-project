@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Shield } from "lucide-react";
+import AuthShell from "../../components/auth/AuthShell";
 import { usePlatformAuth } from "../../context/PlatformAuthContext";
 import "./PlatformAuth.css";
 
@@ -35,14 +36,15 @@ export default function PlatformMfaVerify() {
   };
 
   return (
-    <div className="pa-auth-shell">
-      <form className="pa-auth-card" onSubmit={onSubmit}>
-        <div className="pa-auth-eyebrow">
-          <Shield size={12} /> Platform MFA
+    <AuthShell portal="platform" title="Two-factor authentication">
+      {error ? (
+        <div role="alert" className="hrms-auth-alert" data-kind="error">
+          <Shield size={16} aria-hidden="true" />
+          <span>{error}</span>
         </div>
-        <h1>Two-factor authentication</h1>
-        <p className="pa-auth-sub">Enter the code from your authenticator app to continue.</p>
-        {error ? <div className="error">{error}</div> : null}
+      ) : null}
+
+      <form className="hrms-auth-form" onSubmit={onSubmit}>
         {!useRecovery ? (
           <label>
             Authentication code
@@ -52,6 +54,7 @@ export default function PlatformMfaVerify() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required={!useRecovery}
+              placeholder="6-digit code"
             />
           </label>
         ) : (
@@ -61,20 +64,21 @@ export default function PlatformMfaVerify() {
               value={recoveryCode}
               onChange={(e) => setRecoveryCode(e.target.value)}
               required={useRecovery}
+              placeholder="One-time recovery code"
             />
           </label>
         )}
-        <button className="btn-primary" type="submit" disabled={submitting}>
+        <button className="hrms-auth-submit" type="submit" disabled={submitting}>
           {submitting ? "Verifying…" : "Verify"}
         </button>
         <button
           type="button"
-          className="btn-secondary"
+          className="hrms-auth-secondary"
           onClick={() => setUseRecovery((v) => !v)}
         >
           {useRecovery ? "Use authenticator code" : "Use a recovery code"}
         </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

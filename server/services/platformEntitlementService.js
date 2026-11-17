@@ -14,6 +14,10 @@ import {
   planAllowsModuleFromRecord,
   resolvePlanRecordForCompany,
 } from "./platformPlanService.js";
+import {
+  getCachedPlatformSettings,
+  setCachedPlatformSettings,
+} from "../utils/platformEntitlementCache.js";
 
 const DENY_REASONS = Object.freeze({
   GLOBAL_MODULE: "GLOBAL_MODULE_DISABLED",
@@ -58,8 +62,21 @@ function seedEnabledMaps() {
 /**
  * Load or seed singleton PlatformSettings.
  * Seed enables all catalog modules (preserves existing HRMS). After seed, missing keys fail closed.
+ *
+ * @param {{ lean?: boolean, bypassCache?: boolean }} [options]
+ * - Writers (Platform Admin updates) must use the default mongoose document path
+ *   (`lean: false`) so mutations are never applied to a cached snapshot.
+ * - Entitlement hot path uses `{ lean: true }` with NEW-B02 short-TTL cache.
  */
-export async function getOrCreatePlatformSettings() {
+export async function getOrCreatePlatformSettings(options = {}) {
+  const lean = Boolean(options.lean);
+  const bypassCache = Boolean(options.bypassCache);
+
+  if (lean && !bypassCache) {
+    const cached = getCachedPlatformSettings();
+    if (cached) return cached;
+  }
+
   let doc = await PlatformSettings.findOne({ singletonKey: "default" });
   if (!doc) {
     const seeded = seedEnabledMaps();
@@ -76,6 +93,17 @@ export async function getOrCreatePlatformSettings() {
         throw err;
       }
     }
+  }
+
+  if (!doc) {
+    // Fail closed: missing settings must never imply "all entitled".
+    return null;
+  }
+
+  if (lean) {
+    const snapshot = typeof doc.toObject === "function" ? doc.toObject() : doc;
+    if (!bypassCache) setCachedPlatformSettings(snapshot);
+    return snapshot;
   }
   return doc;
 }
@@ -291,9 +319,18 @@ export function resolveEffectiveEntitlements({ company, settings, planRecord = n
 
 export async function getEffectiveEntitlementsForCompany(company) {
   const [settings, planRecord] = await Promise.all([
-    getOrCreatePlatformSettings(),
+    getOrCreatePlatformSettings({ lean: true }),
     resolvePlanRecordForCompany(company),
   ]);
+  // Fail closed if central settings could not be loaded.
+  if (!settings) {
+    const empty = resolveEffectiveEntitlements({
+      company,
+      settings: { modules: {}, capabilities: {} },
+      planRecord: null,
+    });
+    return { settings: null, planRecord: null, effective: empty };
+  }
   return {
     settings,
     planRecord,

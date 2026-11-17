@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
+import { loginPathForRole } from "../utils/navigation";
 import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import "./MobileNav.css";
 
@@ -228,15 +229,16 @@ export default function MobileNav() {
 
   const handleLogout = async () => {
     setMoreOpen(false);
+    const loginPath = loginPathForRole(user?.role);
     try {
       const res = await logout();
       if (res && !res.serverRevoked) {
-        navigate("/login", { replace: true, state: { logoutWarning: "You have been signed out." } });
+        navigate(loginPath, { replace: true, state: { logoutWarning: "You have been signed out." } });
       } else {
-        navigate("/login", { replace: true });
+        navigate(loginPath, { replace: true });
       }
     } catch {
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

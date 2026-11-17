@@ -11,6 +11,21 @@ export function homeForRole(role) {
   return "/login";
 }
 
+/** Dedicated portal login paths (no role picker on the form). */
+export function loginPathForRole(role) {
+  if (role === "COMPANY_ADMIN" || role === "HR_ADMIN") return "/admin/login";
+  if (role === "EMPLOYEE") return "/login";
+  return "/login";
+}
+
+/** Pick login route from the protected location the user tried to open. */
+export function loginPathForLocation(pathname = "") {
+  const path = String(pathname || "");
+  if (path.startsWith("/admin") || path.startsWith("/company")) return "/admin/login";
+  if (path.startsWith("/app")) return "/login";
+  return "/login";
+}
+
 /**
  * Logical parent for nested desktop routes (direct entry / empty history).
  */

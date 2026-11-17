@@ -591,6 +591,57 @@
     #f4faf6;
 }
 
+.auth-screen--illustrated {
+  justify-content: flex-start;
+  gap: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.auth-hero {
+  text-align: center;
+  padding: 8px 4px 0;
+}
+
+.auth-hero-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--g-800, #155a37);
+}
+
+.auth-hero .page-title {
+  margin: 0 auto 10px;
+  max-width: 14ch;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.auth-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+  margin: 0 auto 4px;
+  filter: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.auth-form-title {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--ink, #131a15);
+}
+
 .auth-card {
   background: var(--card);
   border: none;

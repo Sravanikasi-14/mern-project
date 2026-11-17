@@ -217,7 +217,9 @@ describe("Tenant-Specific Email Configuration & Settings Verification Suite", ()
     assert.ok(res.body.message.includes("535 Authentication Failed") || res.body.message.includes("verify"));
 
     // Verify database state: Company A settings MUST remain untouched
-    const freshCompanyA = await Company.findById(companyA._id);
+    const freshCompanyA = await Company.findById(companyA._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     assert.equal(freshCompanyA.emailSettings.fromEmail, "hr@alpha.test");
     assert.equal(freshCompanyA.emailSettings.smtpHost, "smtp.alpha.test");
     assert.equal(freshCompanyA.emailSettings.smtpPort, 587);
@@ -254,7 +256,9 @@ describe("Tenant-Specific Email Configuration & Settings Verification Suite", ()
     assert.equal(res.body.emailSettings.hasAppPassword, true);
 
     // Verify DB
-    const freshCompanyA = await Company.findById(companyA._id);
+    const freshCompanyA = await Company.findById(companyA._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     assert.equal(freshCompanyA.emailSettings.fromEmail, "updated-hr@alpha.test");
     assert.equal(decryptSecret(freshCompanyA.emailSettings.appPasswordEncrypted), "new-super-secure-pass-456");
   });
@@ -323,7 +327,9 @@ describe("Tenant-Specific Email Configuration & Settings Verification Suite", ()
       verify: async () => true,
     });
 
-    const before = await Company.findById(companyA._id);
+    const before = await Company.findById(companyA._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     const previousEncrypted = before.emailSettings.appPasswordEncrypted;
     assert.ok(previousEncrypted);
     const previousPlain = decryptSecret(previousEncrypted);
@@ -345,7 +351,9 @@ describe("Tenant-Specific Email Configuration & Settings Verification Suite", ()
     assert.equal(res.body.emailSettings.hasAppPassword, true);
     assert.equal(res.body.emailSettings.fromName, "Alpha HR Preserved");
 
-    const after = await Company.findById(companyA._id);
+    const after = await Company.findById(companyA._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     assert.equal(after.emailSettings.appPasswordEncrypted, previousEncrypted);
     assert.equal(decryptSecret(after.emailSettings.appPasswordEncrypted), previousPlain);
     assert.equal(after.emailSettings.fromName, "Alpha HR Preserved");

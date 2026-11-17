@@ -44,7 +44,6 @@ export default function LoginPage() {
     return <Navigate to={destinationForLogin(returnUrl, user.role)} replace />;
   }
 
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -81,28 +80,29 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="auth-screen">
-      <div className="auth-card">
+    <main className="auth-screen auth-screen--illustrated">
+      <div className="auth-hero">
         <div className="brand-mark">
           <LeafIcon />
         </div>
-        <h1 className="page-title" style={{ textAlign: "center" }}>Verdant HRMS</h1>
-        <p className="caption" style={{ textAlign: "center", margin: "6px 0 20px" }}>
-          Welcome back
-        </p>
+        <h1 className="page-title">Work, connected.</h1>
+        <img
+          className="auth-illustration"
+          src="/illustrations/hrms-login-illustration.png"
+          alt="Illustrated professionals collaborating with speech bubbles, ladders, and connected workplace scenes"
+          width={776}
+          height={726}
+          decoding="async"
+        />
+      </div>
+
+      <div className="auth-card">
+        <p className="auth-hero-eyebrow">Employee</p>
+        <h2 className="auth-form-title">Welcome back</h2>
         {warning ? <div className="alert alert-warn">{warning}</div> : null}
-        {error ? <div role="alert" className="alert alert-error">{error}</div> : null}
-        {isAuthenticated && user ? (
-          <div className="alert alert-warn">
-            Signed in as {user.email}. Continue to your portal or sign in below with a different account.
-            <button
-              type="button"
-              className="btn-secondary btn-block"
-              style={{ marginTop: 10 }}
-              onClick={() => navigate(homeForRole(user.role), { replace: true })}
-            >
-              Continue
-            </button>
+        {error ? (
+          <div role="alert" className="alert alert-error">
+            {error}
           </div>
         ) : null}
         <form className="form-grid" onSubmit={handleSubmit} noValidate>

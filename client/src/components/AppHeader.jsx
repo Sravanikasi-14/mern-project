@@ -6,6 +6,7 @@ import GlobalSearch from "./GlobalSearch";
 import PageIdentity from "./PageIdentity";
 import AuthedAvatar from "./AuthedAvatar";
 import { IconBell, IconLogOut } from "./EmployeeIcon";
+import { loginPathForRole } from "../utils/navigation";
 
 /**
  * Shared authenticated portal chrome.
@@ -33,20 +34,21 @@ export default function AppHeader({
   const [unreadCount, setUnreadCount] = useState(0);
 
   const handleLogout = async () => {
+    const loginPath = loginPathForRole(user?.role);
     try {
       const res = await logout();
       if (res && !res.serverRevoked) {
-        navigate("/login", {
+        navigate(loginPath, {
           replace: true,
           state: {
             logoutWarning: "You have been signed out.",
           },
         });
       } else {
-        navigate("/login", { replace: true });
+        navigate(loginPath, { replace: true });
       }
     } catch {
-      navigate("/login", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

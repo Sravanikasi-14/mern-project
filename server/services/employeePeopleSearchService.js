@@ -10,7 +10,7 @@ import {
   assertNoSensitiveLeak,
   serializePeopleSearchHit,
 } from "./employeeVisibilityService.js";
-import { escapeRegex } from "../utils/searchRegex.js";
+import { buildPrefixCiRegex, escapeRegex } from "../utils/searchRegex.js";
 
 const PEOPLE_SEARCH_SELECT =
   "_id fullName preferredName employeeCode email phoneNumber avatar status job.jobTitle job.department job.workLocation job.employmentType job.reportingManagerId";
@@ -67,7 +67,11 @@ function digitsOnly(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-/** Loose contains regex for phone / email fragments (candidates only; auth post-filter still required). */
+/**
+ * NEW-B01 — Loose contains regex for email / phone fragments only.
+ * Name and code fields use {@link buildPrefixCiRegex} (index-friendlier).
+ * Candidates still require {@link hitMatchesAuthorizedQuery} post-filter.
+ */
 function buildContainsCiRegex(raw) {
   const term = String(raw || "").trim();
   if (!term) return null;
@@ -83,28 +87,36 @@ function buildPhoneDigitsRegex(raw) {
 /**
  * Broad candidate filter (ACTIVE employees). May match fields the viewer cannot see;
  * callers must post-filter with {@link hitMatchesAuthorizedQuery}.
- * Uses substring match so designation / email / phone fragments all work.
+ *
+ * NEW-B01 behavior:
+ * - fullName / preferredName / employeeCode / job fields: **prefix** CI match (`^term`)
+ * - email / phoneNumber: **contains** CI match (and digit-tolerant phone)
+ *
+ * Intentional UX change: mid-string name/code/title matches (e.g. "ra" → "Sara")
+ * are no longer returned from Mongo; prefix matches ("Rao", "Rachel") still work.
  */
 export function buildPeopleSearchQuery(q) {
   const query = { status: EMPLOYEE_STATUSES.ACTIVE };
   if (!q) return query;
+  const prefix = buildPrefixCiRegex(q);
   const contains = buildContainsCiRegex(q);
   const phoneDigits = buildPhoneDigitsRegex(q);
-  if (!contains && !phoneDigits) return query;
+  if (!prefix && !contains && !phoneDigits) return query;
 
   query.$or = [];
-  if (contains) {
+  if (prefix) {
     query.$or.push(
-      { fullName: contains },
-      { preferredName: contains },
-      { employeeCode: contains },
-      { email: contains },
-      { phoneNumber: contains },
-      { "job.jobTitle": contains },
-      { "job.department": contains },
-      { "job.workLocation": contains },
-      { "job.employmentType": contains }
+      { fullName: prefix },
+      { preferredName: prefix },
+      { employeeCode: prefix },
+      { "job.jobTitle": prefix },
+      { "job.department": prefix },
+      { "job.workLocation": prefix },
+      { "job.employmentType": prefix }
     );
+  }
+  if (contains) {
+    query.$or.push({ email: contains }, { phoneNumber: contains });
   }
   if (phoneDigits) {
     query.$or.push({ phoneNumber: phoneDigits });

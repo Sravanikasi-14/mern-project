@@ -1,10 +1,29 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 
+/**
+ * F85 — Platform JWT signing secret.
+ * Production: PLATFORM_JWT_SECRET is required (fail closed; no JWT_SECRET fallback).
+ * Non-production: PLATFORM_JWT_SECRET, else JWT_SECRET for local/test convenience.
+ */
 function platformSecret() {
-  const secret = process.env.PLATFORM_JWT_SECRET || process.env.JWT_SECRET;
+  const dedicated = process.env.PLATFORM_JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    if (!dedicated || dedicated.length < 32) {
+      throw new Error(
+        "PLATFORM_JWT_SECRET must be set to at least 32 characters in production"
+      );
+    }
+    return dedicated;
+  }
+
+  const secret = dedicated || process.env.JWT_SECRET;
   if (!secret || secret.length < 32) {
-    throw new Error("PLATFORM_JWT_SECRET (or JWT_SECRET) must be at least 32 characters");
+    throw new Error(
+      "PLATFORM_JWT_SECRET (or JWT_SECRET in non-production) must be at least 32 characters"
+    );
   }
   return secret;
 }

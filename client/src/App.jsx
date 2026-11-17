@@ -23,6 +23,7 @@ const EmployeeDashboard = lazy(() => import("./pages/EmployeeDashboard"));
 const EmployeeHome = lazy(() => import("./pages/EmployeeHome"));
 const EmployeeProfile = lazy(() => import("./pages/EmployeeProfile"));
 const Login = lazy(() => import("./pages/Login"));
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const HiringOnboardingPage = lazy(() => import("./pages/HiringOnboardingPage"));
 const OrganizationPage = lazy(() => import("./pages/OrganizationPage"));
@@ -115,6 +116,7 @@ function App() {
         <Suspense fallback={<RouteFallback />}>
           <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/platform/login" element={<PlatformLogin />} />
           <Route path="/platform/mfa/setup" element={<PlatformMfaSetup />} />
           <Route path="/platform/mfa" element={<PlatformMfaVerify />} />

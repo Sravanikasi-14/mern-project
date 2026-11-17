@@ -40,7 +40,9 @@ function serializeEmailSettings(company) {
  */
 export async function getEmailSettings(req, res, next) {
   try {
-    const company = await Company.findById(req.auth.company._id);
+    const company = await Company.findById(req.auth.company._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     if (!company) {
       throw new HttpError(404, "Company not found");
     }
@@ -69,7 +71,9 @@ export async function updateEmailSettings(req, res, next) {
       smtpSecure,
     } = req.body || {};
 
-    const company = await Company.findById(req.auth.company._id);
+    const company = await Company.findById(req.auth.company._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     if (!company) {
       throw new HttpError(404, "Company not found");
     }
@@ -190,9 +194,9 @@ export async function updateEmailSettings(req, res, next) {
     company.markModified("emailSettings");
     await company.save();
 
-    // Refresh auth company reference for this request lifecycle
+    // F84 — do not propagate SMTP ciphertext onto the auth company snapshot.
     if (req.auth?.company) {
-      req.auth.company.emailSettings = company.emailSettings;
+      delete req.auth.company.emailSettings;
     }
 
     // Invalidate cached transporter for this company so next send uses new credentials
@@ -214,7 +218,9 @@ export async function updateEmailSettings(req, res, next) {
  */
 export async function sendTestEmailSettings(req, res, next) {
   try {
-    const company = await Company.findById(req.auth.company._id);
+    const company = await Company.findById(req.auth.company._id).select(
+      "+emailSettings.appPasswordEncrypted"
+    );
     if (!company) {
       throw new HttpError(404, "Company not found");
     }

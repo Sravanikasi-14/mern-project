@@ -16,7 +16,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import Company, { COMPANY_STATUSES } from "../models/Company.js";
-import { connectCentralDB, disconnectAll, getCompanyModels } from "../config/db.js";
+import {
+  connectCentralDB,
+  disconnectAll,
+  getTenantConnection,
+  runWithTenantConnectionScope,
+} from "../config/db.js";
+import { getUserModel } from "../models/User.js";
+import { getNotificationReadStateModel } from "../models/NotificationReadState.js";
 import { migrateLegacyReadNotificationIds } from "../services/notificationReadStateService.js";
 
 const apply = process.argv.includes("--apply");
@@ -43,37 +50,44 @@ async function main() {
   let totalUsers = 0;
   for (const company of companies) {
     if (!company.databaseName) continue;
-    const models = await getCompanyModels(company, { provision: true });
+    // F33-OPS: load models without auto-provision (avoids unrelated index conflicts).
+    await runWithTenantConnectionScope(async () => {
+      const conn = await getTenantConnection(company.databaseName);
+      const models = {
+        User: getUserModel(conn),
+        NotificationReadState: getNotificationReadStateModel(conn),
+      };
 
-    if (!apply) {
-      const users = await models.User.find({
-        "preferences.readNotificationIds.0": { $exists: true },
-      })
-        .select("preferences.readNotificationIds")
-        .lean();
-      const keys = users.reduce(
-        (n, u) => n + (u.preferences?.readNotificationIds?.length || 0),
-        0
-      );
-      totalUsers += users.length;
-      totalKeys += keys;
+      if (!apply) {
+        const users = await models.User.find({
+          "preferences.readNotificationIds.0": { $exists: true },
+        })
+          .select("preferences.readNotificationIds")
+          .lean();
+        const keys = users.reduce(
+          (n, u) => n + (u.preferences?.readNotificationIds?.length || 0),
+          0
+        );
+        totalUsers += users.length;
+        totalKeys += keys;
+        console.log(
+          `\n[${company.slug}] usersWithLegacy=${users.length} legacyKeys=${keys}`
+        );
+        return;
+      }
+
+      const result = await migrateLegacyReadNotificationIds(models, { pruneLegacy });
+      totalUsers += result.usersScanned;
+      totalKeys += result.keysMigrated;
       console.log(
-        `\n[${company.slug}] usersWithLegacy=${users.length} legacyKeys=${keys}`
+        `\n[${company.slug}] scanned=${result.usersScanned} migrated=${result.keysMigrated} ` +
+          `dupes=${result.duplicatesSkipped} prunedUsers=${result.pruned} ` +
+          `pruneSkipped=${result.pruneSkipped || 0} verifyFail=${result.verificationFailures || 0}`
       );
-      continue;
-    }
-
-    const result = await migrateLegacyReadNotificationIds(models, { pruneLegacy });
-    totalUsers += result.usersScanned;
-    totalKeys += result.keysMigrated;
-    console.log(
-      `\n[${company.slug}] scanned=${result.usersScanned} migrated=${result.keysMigrated} ` +
-        `dupes=${result.duplicatesSkipped} prunedUsers=${result.pruned} ` +
-        `pruneSkipped=${result.pruneSkipped || 0} verifyFail=${result.verificationFailures || 0}`
-    );
-    if ((result.verificationFailures || 0) > 0) {
-      process.exitCode = 1;
-    }
+      if ((result.verificationFailures || 0) > 0) {
+        process.exitCode = 1;
+      }
+    });
   }
 
   console.log(

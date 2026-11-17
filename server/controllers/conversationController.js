@@ -42,8 +42,20 @@ export async function getDirectory(req, res, next) {
 
 export async function getConversations(req, res, next) {
   try {
-    const conversations = await listConversations(req);
-    res.json({ success: true, conversations });
+    const result = await listConversations(req);
+    // NEW-B04: paging meta is additive — legacy clients that only read
+    // `conversations` keep working.
+    if (Array.isArray(result)) {
+      return res.json({ success: true, conversations: result });
+    }
+    res.json({
+      success: true,
+      conversations: result.conversations || [],
+      total: result.total,
+      limit: result.limit,
+      offset: result.offset,
+      hasMore: Boolean(result.hasMore),
+    });
   } catch (error) {
     next(error);
   }

@@ -62,6 +62,17 @@ export function errorHandler(err, _req, res, _next) {
     }
   }
 
+  // F72 — express.json / body-parser payload too large
+  if (
+    err?.type === "entity.too.large" ||
+    err?.status === 413 ||
+    err?.statusCode === 413
+  ) {
+    status = 413;
+    code = "PAYLOAD_TOO_LARGE";
+    message = "Request body is too large for this endpoint.";
+  }
+
   // Handle Mongoose CastError (e.g. invalid ObjectId)
   if (err.name === "CastError") {
     status = 404;

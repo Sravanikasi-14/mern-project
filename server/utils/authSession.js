@@ -29,5 +29,11 @@ export async function createAuthSessionRecord(models, { userId, token, req, refr
     doc.refreshExpiresAt = new Date(Date.now() + REFRESH_SESSION_MS);
   }
 
+  // F45 — purge after the later of access expiry and refresh expiry.
+  doc.purgeAt =
+    doc.refreshExpiresAt && doc.refreshExpiresAt > expiresAt
+      ? doc.refreshExpiresAt
+      : expiresAt;
+
   return models.AuthSession.create(doc);
 }

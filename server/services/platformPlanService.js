@@ -15,6 +15,12 @@ import {
   PLATFORM_AUDIT_ACTIONS,
   recordPlatformAudit,
 } from "./platformAuditService.js";
+import {
+  getCachedPlatformPlanByCode,
+  getCachedPlatformPlanById,
+  invalidatePlatformPlanCache,
+  setCachedPlatformPlan,
+} from "../utils/platformEntitlementCache.js";
 
 let seedPromise = null;
 
@@ -155,11 +161,19 @@ export async function resolvePlanRecordForCompany(company) {
   await ensureDefaultPlansSeeded();
   const planId = company?.subscription?.planId;
   if (planId && mongoose.isValidObjectId(planId)) {
+    const cached = getCachedPlatformPlanById(planId);
+    if (cached) return cached;
     const byId = await PlatformPlan.findById(planId).lean();
-    if (byId) return byId;
+    if (byId) {
+      setCachedPlatformPlan(byId);
+      return byId;
+    }
   }
   const code = String(company?.subscription?.plan || "TRIAL").toUpperCase();
+  const cachedCode = getCachedPlatformPlanByCode(code);
+  if (cachedCode) return cachedCode;
   const byCode = await PlatformPlan.findOne({ code }).lean();
+  if (byCode) setCachedPlatformPlan(byCode);
   return byCode || null;
 }
 
@@ -277,6 +291,9 @@ export async function createPlan({ payload, admin, req }) {
     isSystem: false,
   });
 
+  invalidatePlatformPlanCache(plan._id);
+  invalidatePlatformPlanCache(plan.code);
+
   await recordPlatformAudit({
     actor: admin,
     action: PLATFORM_AUDIT_ACTIONS.PLAN_CREATED,
@@ -363,6 +380,8 @@ export async function updatePlan({ planId, payload, admin, req }) {
   }
 
   await plan.save();
+  invalidatePlatformPlanCache(plan._id);
+  invalidatePlatformPlanCache(plan.code);
 
   await recordPlatformAudit({
     actor: admin,
