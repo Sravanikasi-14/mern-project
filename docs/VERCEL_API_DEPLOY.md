@@ -4,9 +4,11 @@ The frontend stays on the existing Vercel project. The API is a **second** Verce
 
 Target API URL used in root `vercel.json`:
 
-`https://mern-hrms-api.vercel.app`
+`https://mern-project-backend-woad.vercel.app`
 
-If Vercel assigns a different URL, update the rewrite in root [`vercel.json`](../vercel.json) and redeploy the frontend.
+(Project: `mern-project-backend`. Older docs referenced `mern-hrms-api.vercel.app`, which is retired.)
+
+If Vercel assigns a different production alias, update the rewrite in root [`vercel.json`](../vercel.json) and redeploy the frontend.
 
 ## A. Create the API project
 
@@ -14,7 +16,7 @@ If Vercel assigns a different URL, update the rewrite in root [`vercel.json`](..
 2. Import `Sravanikasi-14/mern-project`
 3. **Root Directory** → `server` (Edit → select `server`)
 4. Framework Preset: Other
-5. Project name: prefer `mern-hrms-api` (matches the rewrite)
+5. Project name: prefer `mern-project-backend` (matches current production alias / rewrite)
 6. Add Environment Variables (Production + Preview):
 
 | Name | Example / notes |
@@ -45,7 +47,7 @@ If Vercel assigns a different URL, update the rewrite in root [`vercel.json`](..
 
 Open:
 
-`https://mern-hrms-api.vercel.app/api/health`
+`https://mern-project-backend-woad.vercel.app/api/health`
 
 Expect JSON with `"service":"hrms-api"` and `"runtime":"vercel"`.
 

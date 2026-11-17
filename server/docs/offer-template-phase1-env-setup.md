@@ -62,7 +62,7 @@ On `VERCEL` / Lambda **without** a Chromium binary, `pdfService` previously skip
 
 ### Vercel project settings (manual)
 
-1. Server API project (`mern-hrms-api` or equivalent) → Settings → **Environment Variables**: set R2 vars; optionally Chromium overrides.
+1. Server API project (`mern-project-backend` or equivalent) → Settings → **Environment Variables**: set R2 vars; optionally Chromium overrides.
 2. Function resources: increase memory for PDF routes (recommend **1024 MB**, maxDuration ≥ **30s** where plan allows) via `server/vercel.json` `functions` config.
 3. Confirm Node.js **≥ 20** (matches `package.json` engines).
 4. Redeploy after adding `@sparticuz/chromium` — first cold start downloads/decompresses Chromium; verify one DEFAULT_BUILDER PDF visually.

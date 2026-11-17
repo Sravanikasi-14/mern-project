@@ -125,13 +125,13 @@ Projects (from `docs/VERCEL_API_DEPLOY.md` + repo `vercel.json` files):
 
 | App | Vercel root | Config |
 |-----|-------------|--------|
-| Desktop frontend | **repository root** | Root `vercel.json` → builds `client`, rewrites `/api/*` → `https://mern-hrms-api.vercel.app` |
+| Desktop frontend | **repository root** | Root `vercel.json` → builds `client`, rewrites `/api/*` → `https://mern-project-backend-woad.vercel.app` |
 | API backend | **`server/`** | `server/vercel.json` (`bom1`, 1024 MB, `maxDuration` 60, workforce cron) |
 | Mobile web (optional) | **`mobile/`** | `mobile/vercel.json` (Vite SPA) — **not** a substitute for Android APK |
 
 ### Backend API (Production)
 
-From a machine linked to the **API** Vercel project (`mern-hrms-api`, Root Directory = `server`):
+From a machine linked to the **API** Vercel project (`mern-project-backend`, Root Directory = `server`):
 
 ```bash
 cd server
@@ -143,10 +143,10 @@ Or via dashboard: Deployments → Redeploy Production after `main` contains the 
 Confirm after deploy:
 
 ```bash
-curl -sS "https://mern-hrms-api.vercel.app/api/health"
+curl -sS "https://mern-project-backend-woad.vercel.app/api/health"
 ```
 
-Expect `"service":"hrms-api"` and `"runtime":"vercel"`.
+Expect `"service":"hrms-api"` and `"environment":"production"`.
 
 ### Desktop frontend (Production)
 
@@ -377,10 +377,10 @@ Backend-only deploy without mobile rebuild leaves native app on old overview cal
 ### API
 
 ```bash
-curl -sS "https://mern-hrms-api.vercel.app/api/health"
-curl -sS -o /dev/null -w "%{http_code}" -X POST "https://mern-hrms-api.vercel.app/api/workforce-scheduler/run"
+curl -sS "https://mern-project-backend-woad.vercel.app/api/health"
+curl -sS -o /dev/null -w "%{http_code}" -X POST "https://mern-project-backend-woad.vercel.app/api/workforce-scheduler/run"
 # expect 401 without Bearer
-curl -sS -X GET "https://mern-hrms-api.vercel.app/api/workforce-scheduler/run" \
+curl -sS -X GET "https://mern-project-backend-woad.vercel.app/api/workforce-scheduler/run" \
   -H "Authorization: Bearer $CRON_SECRET"
 # expect success + skipped: true / scheduler_disabled while ENABLED is false
 ```
