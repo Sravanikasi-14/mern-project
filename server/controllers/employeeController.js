@@ -1204,6 +1204,28 @@ export async function getEmployeeDashboard(req, res, next) {
       console.warn("[dashboard] covering responsibilities:", coverErr.message);
     }
 
+    // Fail closed per module: dashboard shell stays reachable, but disabled modules
+    // must not leak attendance / leave / payroll / assets / work data.
+    let modules = {};
+    try {
+      const {
+        getEffectiveEntitlementsForCompany,
+        entitlementsPublicSnapshot,
+      } = await import("../services/platformEntitlementService.js");
+      const { effective } = await getEffectiveEntitlementsForCompany(req.auth.company, {
+        authoritative: true,
+      });
+      modules = entitlementsPublicSnapshot(effective).modules || {};
+    } catch {
+      modules = {};
+    }
+
+    const attendanceAllowed = modules.attendance === true;
+    const leaveAllowed = modules.leave === true;
+    const payrollAllowed = modules.payroll === true;
+    const assetsAllowed = modules.assets === true;
+    const workAllowed = modules.work === true;
+
     res.json({
       success: true,
       user: serializeUser(req.auth.user),
@@ -1221,41 +1243,46 @@ export async function getEmployeeDashboard(req, res, next) {
         joiningDate: employee.job?.joiningDate || null,
         project: employee.job?.project || null,
       },
-      attendance: {
-        today: {
-          date: todayStr,
-          status: todayStatus,
-          checkInTime: todayLog?.checkIn || null,
-          checkOutTime: todayLog?.checkOut || null,
-          workingHours: todayLog?.workingHours || (todayStatus === "CHECKED_IN" ? "In Progress" : "--"),
-        },
-        summary: {
-          totalWorkingDays,
-          daysPresent,
-          attendanceRate,
-        },
-        recentRecords: recentAttendance,
-      },
-      leave: {
-        balance: leaveBalancesData.balance,
-        detailed: leaveBalancesData.detailed || [],
-        summary: leaveSummary,
-        recentRequests: formattedRequests.slice(0, 10),
-        scheduledRanges: dbRequests
-          .filter((r) => r.status === "PENDING" || r.status === "APPROVED")
-          .map((r) => ({
-            id: String(r._id),
-            leaveType: r.leaveTypeCode,
-            status: r.status,
-            startDate: toDateString(r.fromDate),
-            endDate: toDateString(r.toDate),
-          })),
-        config: leaveConfig,
-      },
-      coveringResponsibilities,
-      holidays: upcomingHolidays,
-      payslips,
-      assets: assignedAssets,
+      attendance: attendanceAllowed
+        ? {
+            today: {
+              date: todayStr,
+              status: todayStatus,
+              checkInTime: todayLog?.checkIn || null,
+              checkOutTime: todayLog?.checkOut || null,
+              workingHours:
+                todayLog?.workingHours || (todayStatus === "CHECKED_IN" ? "In Progress" : "--"),
+            },
+            summary: {
+              totalWorkingDays,
+              daysPresent,
+              attendanceRate,
+            },
+            recentRecords: recentAttendance,
+          }
+        : null,
+      leave: leaveAllowed
+        ? {
+            balance: leaveBalancesData.balance,
+            detailed: leaveBalancesData.detailed || [],
+            summary: leaveSummary,
+            recentRequests: formattedRequests.slice(0, 10),
+            scheduledRanges: dbRequests
+              .filter((r) => r.status === "PENDING" || r.status === "APPROVED")
+              .map((r) => ({
+                id: String(r._id),
+                leaveType: r.leaveTypeCode,
+                status: r.status,
+                startDate: toDateString(r.fromDate),
+                endDate: toDateString(r.toDate),
+              })),
+            config: leaveConfig,
+          }
+        : null,
+      coveringResponsibilities: workAllowed ? coveringResponsibilities : [],
+      holidays: leaveAllowed ? upcomingHolidays : [],
+      payslips: payrollAllowed ? payslips : [],
+      assets: assetsAllowed ? assignedAssets : [],
     });
   } catch (error) {
     next(error);

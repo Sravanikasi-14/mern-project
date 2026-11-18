@@ -2,10 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 import { HttpError } from "../utils/httpError.js";
 
 /**
- * Currently supported default Gemini Flash model.
- * Easily customized through process.env.GEMINI_MODEL.
+ * Default Gemini Flash model for Ask-AI / HR analyst.
+ * Override with GEMINI_MODEL on the API service (e.g. gemini-2.5-flash,
+ * gemini-3.5-flash-lite) when Google rotates model IDs.
  */
-export const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+export const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 let cachedClient = null;
 let lastApiKey = null;

@@ -5,7 +5,9 @@
  */
 
 const BUILTIN_PRODUCTION_ORIGINS = Object.freeze([
+  "https://mern-project.vercel.app",
   "https://mern-project-nu-nine.vercel.app",
+  "https://mern-project-backend-woad.vercel.app",
 ]);
 
 const DEV_LOCAL_ORIGINS = Object.freeze([

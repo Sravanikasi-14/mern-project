@@ -122,23 +122,44 @@ export function AuthProvider({ children }) {
     };
 
     let entitlementsRefreshTimer = null;
-    const handleEntitlementsStale = () => {
+    let lastEntitlementsJson = null;
+    const refreshEntitlements = () => {
       if (entitlementsRefreshTimer) return;
-      entitlementsRefreshTimer = window.setTimeout(() => {
+      entitlementsRefreshTimer = window.setTimeout(async () => {
         entitlementsRefreshTimer = null;
-        restoreSession({ silent: true });
+        if (!localStorage.getItem("hrms_token")) return;
+        const result = await restoreSession({ silent: true });
+        if (!result?.success) return;
+        const nextJson = JSON.stringify(result.data?.company?.entitlements || null);
+        if (lastEntitlementsJson != null && lastEntitlementsJson !== nextJson) {
+          // Drop React Query caches so disabled modules cannot keep showing stale data.
+          clearUserQueries();
+        }
+        lastEntitlementsJson = nextJson;
       }, 250);
+    };
+
+    const handleEntitlementsStale = () => {
+      refreshEntitlements();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && localStorage.getItem("hrms_token")) {
+        refreshEntitlements();
+      }
     };
 
     window.addEventListener("pageshow", handlePageShow);
     window.addEventListener("hrms:session-expired", handleSessionExpired);
     window.addEventListener("hrms:entitlements-stale", handleEntitlementsStale);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       if (entitlementsRefreshTimer) window.clearTimeout(entitlementsRefreshTimer);
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("hrms:session-expired", handleSessionExpired);
       window.removeEventListener("hrms:entitlements-stale", handleEntitlementsStale);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 

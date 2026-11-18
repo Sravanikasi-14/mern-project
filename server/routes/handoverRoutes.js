@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import { USER_ROLES } from "../models/User.js";
 import {
   createHandover,
@@ -21,7 +25,8 @@ import {
 
 const router = Router();
 
-router.use(authenticate, loadHrAccessContext);
+// Leave-linked workflow — disabled leave module must block employee and HR handover APIs.
+router.use(authenticate, loadHrAccessContext, requireEntitledModule("leave"));
 
 // Static paths before /:id — HR company-wide list maps to leave.view (leave-linked workflow)
 router.get(

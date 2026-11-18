@@ -1,10 +1,14 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
+import { HttpError } from "./httpError.js";
 
 /**
  * F85 — Platform JWT signing secret.
  * Production: PLATFORM_JWT_SECRET is required (fail closed; no JWT_SECRET fallback).
  * Non-production: PLATFORM_JWT_SECRET, else JWT_SECRET for local/test convenience.
+ *
+ * Throws HttpError (503) so login surfaces PLATFORM_AUTH_MISCONFIGURED instead of
+ * a generic SERVER_ERROR after a valid password (wrong-password paths never sign).
  */
 function platformSecret() {
   const dedicated = process.env.PLATFORM_JWT_SECRET;
@@ -12,8 +16,10 @@ function platformSecret() {
 
   if (isProduction) {
     if (!dedicated || dedicated.length < 32) {
-      throw new Error(
-        "PLATFORM_JWT_SECRET must be set to at least 32 characters in production"
+      throw new HttpError(
+        503,
+        "Platform Admin authentication is not configured correctly. Set PLATFORM_JWT_SECRET (≥32 characters) on the API service.",
+        { code: "PLATFORM_AUTH_MISCONFIGURED" }
       );
     }
     return dedicated;
@@ -21,11 +27,18 @@ function platformSecret() {
 
   const secret = dedicated || process.env.JWT_SECRET;
   if (!secret || secret.length < 32) {
-    throw new Error(
-      "PLATFORM_JWT_SECRET (or JWT_SECRET in non-production) must be at least 32 characters"
+    throw new HttpError(
+      503,
+      "PLATFORM_JWT_SECRET (or JWT_SECRET in non-production) must be at least 32 characters.",
+      { code: "PLATFORM_AUTH_MISCONFIGURED" }
     );
   }
   return secret;
+}
+
+/** Call during API boot so misconfiguration fails loudly before the first login. */
+export function assertPlatformJwtConfigured() {
+  platformSecret();
 }
 
 export function getPlatformJwtIssuer() {

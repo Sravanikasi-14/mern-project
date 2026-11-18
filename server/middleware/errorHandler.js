@@ -39,6 +39,7 @@ export function errorHandler(err, _req, res, _next) {
     "CONVERSION_NOT_CONFIGURED",
     "STORAGE_NOT_CONFIGURED",
     "PLATFORM_MAINTENANCE",
+    "PLATFORM_AUTH_MISCONFIGURED",
   ]);
 
   // Distinguish service unavailable (503) from unexpected server errors (500)

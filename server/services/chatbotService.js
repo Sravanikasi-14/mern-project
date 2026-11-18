@@ -17,7 +17,9 @@ import { HttpError } from "../utils/httpError.js";
 export async function getAuthorizedContext({ models, user, company }) {
   const { Employee, CompanyHrPolicy, Task, ImpactPointTransaction } = models;
 
-  const isHrAdmin = user?.role === "HR_ADMIN";
+  // Company Admin shares the HR portal AI Reports / analyst tools with HR Admin.
+  const isHrAdmin =
+    user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN";
   const contextData = {
     companyName: company?.companyName || "HRMS",
     userRole: user?.role || "EMPLOYEE",
@@ -147,9 +149,13 @@ export function buildSystemInstruction(context) {
     : "";
 
   // HR Administrator System Prompt
-  if (context.isHrAdmin || context.userRole === "HR_ADMIN") {
+  if (
+    context.isHrAdmin ||
+    context.userRole === "HR_ADMIN" ||
+    context.userRole === "COMPANY_ADMIN"
+  ) {
     return `You are "HRMS Assistant", an advanced, proactive AI HR Analyst and Strategic Operational Advisor for ${context.companyName}.
-You are speaking directly with an authorized HR Administrator (${context.userEmail}).
+You are speaking directly with an authorized HR/company administrator (${context.userEmail}).
 
 ### Your Role as Real-Time AI HR Analyst:
 1. You have SECURE, REAL-TIME access to live database analytical tools:
@@ -333,13 +339,14 @@ export function detectHrQueryIntent(message = "") {
     };
   }
 
-  // 4. Payroll queries
+  // 4. Payroll / salary queries (including average CTC questions)
   if (
     text.includes("payroll") ||
     text.includes("salary") ||
     text.includes("disbursement") ||
     text.includes("wage") ||
     text.includes("compensation") ||
+    text.includes("ctc") ||
     text.includes("ready to process")
   ) {
     return {
@@ -350,6 +357,13 @@ export function detectHrQueryIntent(message = "") {
           text.includes("trend") ||
           text.includes("over time") ||
           text.includes("past month"),
+        includeSalaryAverages:
+          text.includes("average") ||
+          text.includes("avg") ||
+          text.includes("mean") ||
+          text.includes("typical") ||
+          text.includes("how much") ||
+          (text.includes("salary") && text.includes("getting")),
       },
     };
   }
@@ -400,6 +414,28 @@ export function detectHrQueryIntent(message = "") {
   }
 
   return null;
+}
+
+/** Best-effort text extraction from @google/genai generateContent / stream chunks. */
+function extractGeminiText(payload) {
+  if (!payload) return "";
+  if (typeof payload.text === "string" && payload.text.trim()) return payload.text;
+  if (typeof payload.text === "function") {
+    try {
+      const value = payload.text();
+      if (typeof value === "string" && value.trim()) return value;
+    } catch {
+      /* ignore accessor errors */
+    }
+  }
+  const parts = payload.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const joined = parts
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .join("");
+    if (joined.trim()) return joined;
+  }
+  return "";
 }
 
 /**
@@ -562,8 +598,7 @@ export async function sendChatMessage({
         );
 
         const replyText =
-          synthesisResponse.text ||
-          synthesisResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+          extractGeminiText(synthesisResponse) ||
           formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage);
 
         return {
@@ -584,8 +619,7 @@ export async function sendChatMessage({
     }
 
     const replyText =
-      initialResponse.text ||
-      initialResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
+      extractGeminiText(initialResponse) ||
       "I'm sorry, I couldn't generate a response. Please try rephrasing your question.";
 
     return {
@@ -595,18 +629,23 @@ export async function sendChatMessage({
   } catch (error) {
     if (isHrAdmin) {
       const errMsg = String(error?.message || "").toLowerCase();
-      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
-        const intentTool = detectHrQueryIntent(userMessage);
-        if (intentTool) {
-          try {
-            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
-            return {
-              reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
-              model: "deterministic-live-analyst",
-            };
-          } catch {
-            // Fall through
-          }
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (
+        intentTool &&
+        (errMsg.includes("429") ||
+          errMsg.includes("quota") ||
+          errMsg.includes("resource_exhausted") ||
+          errMsg.includes("model") ||
+          errMsg.includes("not found"))
+      ) {
+        try {
+          const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
+          return {
+            reply: formatDeterministicAnalysis(intentTool.name, toolResult, userMessage),
+            model: "deterministic-live-analyst",
+          };
+        } catch {
+          // Fall through
         }
       }
     }
@@ -780,17 +819,28 @@ export async function* streamChatMessage({
             { abortSignal }
           );
 
+          let yielded = false;
           for await (const chunk of responseStream) {
             if (abortSignal?.aborted) break;
-            const text = chunk.text;
+            const text = extractGeminiText(chunk);
             if (text) {
+              yielded = true;
               yield text;
             }
+          }
+          if (!yielded && lastToolResult) {
+            yield formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage);
           }
           return;
         } catch (synthesisErr) {
           const errMsg = String(synthesisErr?.message || "").toLowerCase();
-          if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+          if (
+            errMsg.includes("429") ||
+            errMsg.includes("quota") ||
+            errMsg.includes("resource_exhausted") ||
+            errMsg.includes("model") ||
+            errMsg.includes("not found")
+          ) {
             yield formatDeterministicAnalysis(lastToolName, lastToolResult, userMessage);
             return;
           }
@@ -799,17 +849,23 @@ export async function* streamChatMessage({
       }
 
       // If no function call was made, yield the initial text response
-      const text =
-        initialResponse.text ||
-        initialResponse.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "";
+      const text = extractGeminiText(initialResponse);
       if (text) {
         yield text;
         return;
       }
+
+      // Gemini returned neither tools nor text — answer from live DB when intent is clear.
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (intentTool) {
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
+        yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
+        return;
+      }
     }
 
-    // Default stream for regular employee
+    // Default stream for regular employee (and HR fallback when no analyst intent matched)
+    let streamedAny = false;
     const responseStream = await executeWithRetry(
       () =>
         ai.models.generateContentStream({
@@ -827,24 +883,38 @@ export async function* streamChatMessage({
 
     for await (const chunk of responseStream) {
       if (abortSignal?.aborted) break;
-      const text = chunk.text;
+      const text = extractGeminiText(chunk);
       if (text) {
+        streamedAny = true;
         yield text;
+      }
+    }
+
+    if (!streamedAny && isHrAdmin) {
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (intentTool) {
+        const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
+        yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
       }
     }
   } catch (error) {
     if (isHrAdmin) {
       const errMsg = String(error?.message || "").toLowerCase();
-      if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
-        const intentTool = detectHrQueryIntent(userMessage);
-        if (intentTool) {
-          try {
-            const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
-            yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
-            return;
-          } catch {
-            // Fall through
-          }
+      const intentTool = detectHrQueryIntent(userMessage);
+      if (
+        intentTool &&
+        (errMsg.includes("429") ||
+          errMsg.includes("quota") ||
+          errMsg.includes("resource_exhausted") ||
+          errMsg.includes("model") ||
+          errMsg.includes("not found"))
+      ) {
+        try {
+          const toolResult = await executeHrAnalystTool(intentTool.name, intentTool.args, toolCtx);
+          yield formatDeterministicAnalysis(intentTool.name, toolResult, userMessage);
+          return;
+        } catch {
+          // Fall through
         }
       }
     }

@@ -12,14 +12,24 @@ const PORTAL_TO_PLATFORM_MODULE = Object.freeze({
   "live-tracking": "liveTracking",
   leave: "leave",
   payroll: "payroll",
+  payslips: "payroll",
   settlements: "settlements",
   hiring: "hiring",
   assets: "assets",
   organization: "organization",
+  directory: "organization",
   "policies-settings": "policies",
   reports: "reports",
   "impact-points": "impact",
+  impact: "impact",
   work: "work",
+  "work-impact": "work",
+  tasks: "work",
+  messages: "chat",
+  documents: "people",
+  home: null,
+  profile: null,
+  settings: null,
 });
 
 /**
@@ -245,4 +255,72 @@ export function firstAccessibleHrPath(user, company, currentPath = "") {
     return adminLocationAllowed(user, company, modPath, modSearch);
   });
   return match?.path || null;
+}
+
+/**
+ * Platform module for employee `/app/*` paths.
+ * Null = shell / personal (dashboard, profile, settings) — always reachable.
+ */
+export function platformModuleForEmployeePath(pathname = "") {
+  const path = String(pathname || "");
+  if (path === "/app" || path === "/app/" || path === "/app/dashboard" || path.startsWith("/app/dashboard/")) {
+    return null;
+  }
+  if (path === "/app/profile" || path.startsWith("/app/profile/")) return null;
+  if (path === "/app/settings" || path.startsWith("/app/settings/")) return null;
+  if (path.startsWith("/app/documents")) return "people";
+  if (path.startsWith("/app/attendance")) return "attendance";
+  if (path.startsWith("/app/leave")) return "leave";
+  if (path.startsWith("/app/tasks") || path.startsWith("/app/work-impact")) return "work";
+  if (path.startsWith("/app/impact-points")) return "impact";
+  if (path.startsWith("/app/payslips")) return "payroll";
+  if (path.startsWith("/app/assets")) return "assets";
+  if (path.startsWith("/app/directory") || path.startsWith("/app/people")) return "organization";
+  if (path.startsWith("/app/messages")) return "chat";
+  return null;
+}
+
+export function employeeLocationAllowed(user, company, pathname = "") {
+  if (!user || user.role !== "EMPLOYEE") return false;
+  const platformKey = platformModuleForEmployeePath(pathname);
+  if (platformKey && !platformModuleAllowed(company, platformKey)) return false;
+  return true;
+}
+
+/** Filter employee sidebar / mobile nav items by platform entitlements. */
+export function isEmployeeNavItemVisible(company, item) {
+  if (!item) return false;
+  const mapped =
+    Object.prototype.hasOwnProperty.call(PORTAL_TO_PLATFORM_MODULE, item.id)
+      ? PORTAL_TO_PLATFORM_MODULE[item.id]
+      : platformModuleForEmployeePath(item.path || "");
+  if (!mapped) return true;
+  return platformModuleAllowed(company, mapped);
+}
+
+export function visibleEmployeeNavItems(company, items = []) {
+  return items.filter((item) => isEmployeeNavItemVisible(company, item));
+}
+
+export function firstAccessibleEmployeePath(company, currentPath = "") {
+  const current = String(currentPath || "").split("?")[0];
+  const candidates = [
+    "/app/dashboard",
+    "/app/profile",
+    "/app/settings",
+    "/app/attendance",
+    "/app/leave",
+    "/app/messages",
+    "/app/directory",
+    "/app/payslips",
+    "/app/assets",
+    "/app/tasks",
+    "/app/impact-points",
+    "/app/documents",
+  ];
+  for (const path of candidates) {
+    if (path === current) continue;
+    if (employeeLocationAllowed({ role: "EMPLOYEE" }, company, path)) return path;
+  }
+  return "/app/dashboard";
 }

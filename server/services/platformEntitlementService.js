@@ -317,15 +317,75 @@ export function resolveEffectiveEntitlements({ company, settings, planRecord = n
   };
 }
 
-export async function getEffectiveEntitlementsForCompany(company) {
+/**
+ * Merge a fresh DB snapshot of subscription + featureAccess onto the request company.
+ * Required on multi-instance hosts (e.g. Vercel): company metadata cache is per-isolate,
+ * so a Platform Admin disable on isolate A must not leave isolate B entitled until TTL.
+ *
+ * @returns {object|null} company for evaluation, or null if the company no longer exists
+ */
+async function loadAuthoritativeCompanyForEntitlements(company) {
+  const companyId = company?._id || company?.id;
+  if (!companyId) return company || null;
+
+  const fresh = await Company.findById(companyId)
+    .select("subscription config.featureAccess companyName slug status")
+    .lean();
+  if (!fresh) return null;
+
+  return {
+    ...company,
+    subscription: fresh.subscription,
+    status: fresh.status ?? company.status,
+    config: {
+      ...(company.config || {}),
+      ...(fresh.config || {}),
+      featureAccess: fresh.config?.featureAccess || {
+        modules: {},
+        capabilities: {},
+      },
+    },
+  };
+}
+
+/**
+ * Resolve effective entitlements for a company.
+ *
+ * Authorization-sensitive callers should keep the default `{ authoritative: true }`
+ * so disables apply immediately across serverless isolates (bypass settings cache +
+ * re-read company featureAccess from Mongo).
+ *
+ * @param {object} company
+ * @param {{ authoritative?: boolean }} [options]
+ */
+export async function getEffectiveEntitlementsForCompany(company, options = {}) {
+  const authoritative = options.authoritative !== false;
+
+  let companyForEval = company;
+  if (authoritative) {
+    companyForEval = await loadAuthoritativeCompanyForEntitlements(company);
+    if (!companyForEval) {
+      const empty = resolveEffectiveEntitlements({
+        company: { subscription: {}, config: { featureAccess: { modules: {}, capabilities: {} } } },
+        settings: { modules: {}, capabilities: {} },
+        planRecord: null,
+      });
+      return { settings: null, planRecord: null, effective: empty };
+    }
+  }
+
   const [settings, planRecord] = await Promise.all([
-    getOrCreatePlatformSettings({ lean: true }),
-    resolvePlanRecordForCompany(company),
+    getOrCreatePlatformSettings({
+      lean: true,
+      // Authoritative path must not grant access from another isolate's cached "all on".
+      bypassCache: authoritative,
+    }),
+    resolvePlanRecordForCompany(companyForEval),
   ]);
   // Fail closed if central settings could not be loaded.
   if (!settings) {
     const empty = resolveEffectiveEntitlements({
-      company,
+      company: companyForEval,
       settings: { modules: {}, capabilities: {} },
       planRecord: null,
     });
@@ -334,7 +394,11 @@ export async function getEffectiveEntitlementsForCompany(company) {
   return {
     settings,
     planRecord,
-    effective: resolveEffectiveEntitlements({ company, settings, planRecord }),
+    effective: resolveEffectiveEntitlements({
+      company: companyForEval,
+      settings,
+      planRecord,
+    }),
   };
 }
 
@@ -352,7 +416,9 @@ export function entitlementsPublicSnapshot(effective) {
 }
 
 export async function assertModuleEntitled(company, moduleKey) {
-  const { effective } = await getEffectiveEntitlementsForCompany(company);
+  const { effective } = await getEffectiveEntitlementsForCompany(company, {
+    authoritative: true,
+  });
   const result = effective.modules[moduleKey];
   if (!result?.allowed) {
     throw new HttpError(403, "This module is not available for your company.", {
@@ -366,7 +432,9 @@ export async function assertModuleEntitled(company, moduleKey) {
 }
 
 export async function assertCapabilityEntitled(company, capabilityKey) {
-  const { effective } = await getEffectiveEntitlementsForCompany(company);
+  const { effective } = await getEffectiveEntitlementsForCompany(company, {
+    authoritative: true,
+  });
   const result = effective.capabilities[capabilityKey];
   if (!result?.allowed) {
     throw new HttpError(403, "This feature is not available for your company.", {

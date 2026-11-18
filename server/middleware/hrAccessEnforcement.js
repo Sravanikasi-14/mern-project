@@ -102,6 +102,40 @@ export function requireEntitledModule(moduleKey) {
   };
 }
 
+/**
+ * Allow when any of the listed modules is entitled (fail closed if none are).
+ * Used for shared supporting endpoints (e.g. active HR policy used by leave + attendance).
+ */
+export function requireAnyEntitledModule(...moduleKeys) {
+  const keys = moduleKeys.flat().filter(Boolean);
+  return async (req, res, next) => {
+    try {
+      const {
+        getEffectiveEntitlementsForCompany,
+      } = await import("../services/platformEntitlementService.js");
+      const { HttpError } = await import("../utils/httpError.js");
+      if (!req.auth?.company) {
+        throw new HttpError(403, "This module is not available for your company.", {
+          code: "PLATFORM_MODULE_DISABLED",
+        });
+      }
+      const { effective } = await getEffectiveEntitlementsForCompany(req.auth.company, {
+        authoritative: true,
+      });
+      const allowed = keys.some((key) => effective.modules?.[key]?.allowed);
+      if (!allowed) {
+        throw new HttpError(403, "This module is not available for your company.", {
+          code: "PLATFORM_MODULE_DISABLED",
+          moduleKeys: keys,
+        });
+      }
+      return next();
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+
 export function requireEntitledCapability(capabilityKey) {
   return async (req, res, next) => {
     try {

@@ -47,25 +47,26 @@ export async function recordPlatformAudit({
   metadata = {},
   req = null,
 }) {
-  if (!Object.values(PLATFORM_AUDIT_ACTIONS).includes(action)) {
-    throw new Error(`Unknown platform audit action: ${action}`);
-  }
-  const doc = {
-    actorPlatformAdminId: actor?._id || actor?.id || null,
-    actorEmail: actor?.email || "",
-    action,
-    targetType,
-    targetId: targetId != null ? String(targetId) : "",
-    outcome,
-    metadata: sanitizeMetadata(metadata),
-    ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
-    userAgent: String(req?.headers?.["user-agent"] || "").slice(0, 300),
-    timestamp: new Date(),
-  };
   try {
+    if (!Object.values(PLATFORM_AUDIT_ACTIONS).includes(action)) {
+      console.error("[platformAudit] unknown action (skipped):", action);
+      return null;
+    }
+    const doc = {
+      actorPlatformAdminId: actor?._id || actor?.id || null,
+      actorEmail: actor?.email || "",
+      action,
+      targetType,
+      targetId: targetId != null ? String(targetId) : "",
+      outcome,
+      metadata: sanitizeMetadata(metadata),
+      ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || "",
+      userAgent: String(req?.headers?.["user-agent"] || "").slice(0, 300),
+      timestamp: new Date(),
+    };
     return await PlatformAuditLog.create(doc);
   } catch (err) {
-    // Mutations should succeed even if audit persistence fails.
+    // Mutations / login must succeed even if audit persistence fails.
     console.error("[platformAudit] append failed:", err?.message || err);
     return null;
   }

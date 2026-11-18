@@ -106,7 +106,7 @@ export const HR_ANALYST_FUNCTION_DECLARATIONS = [
   {
     name: "analyzePayrollReadiness",
     description:
-      "Analyzes payroll cycle status, register calculation issues, active employees lacking compensation setup, payment disbursement readiness, and historical compensation changes across pay periods.",
+      "Analyzes payroll cycle status, register calculation issues, active employees lacking compensation setup, payment disbursement readiness, historical compensation changes, and company average monthly CTC / salary when asked about average pay.",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -114,6 +114,11 @@ export const HR_ANALYST_FUNCTION_DECLARATIONS = [
           type: "BOOLEAN",
           description:
             "Set to true to compare the current cycle with previous finalized cycles.",
+        },
+        includeSalaryAverages: {
+          type: "BOOLEAN",
+          description:
+            "Set to true when the user asks for average, typical, or mean salary / CTC for employees.",
         },
       },
     },
@@ -690,10 +695,31 @@ async function runLeaveAnalysis({
 /**
  * Tool 4: Payroll Readiness & Validation Analysis
  */
+function decimalToNumber(value) {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (typeof value === "object" && value.$numberDecimal != null) {
+    const n = Number(value.$numberDecimal);
+    return Number.isFinite(n) ? n : null;
+  }
+  // Decimal128
+  try {
+    const n = Number(String(value));
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 async function runPayrollReadinessAnalysis({
   models,
   hrAccess = null,
   compareHistoricalCycles = false,
+  includeSalaryAverages = false,
 }) {
   const { PayrollCycle, Employee, EmployeeCompensation, Payslip } = models;
 
@@ -789,7 +815,46 @@ async function runPayrollReadinessAnalysis({
       : null,
     unconfiguredStaffCount: activeStaffWithoutComp.length,
     unconfiguredStaff: activeStaffWithoutComp.slice(0, 8),
+    activeStaffCount,
   };
+
+  // Tenant-scoped average monthly CTC from compensation records (never fabricate).
+  // Always attach so salary / average-pay questions have real numbers even when the
+  // model omits includeSalaryAverages; CUSTOM HR scope still applies via activeFilter.
+  {
+    const scopedActive = await Employee.find(activeFilter).select("_id").lean();
+    const scopedIds = scopedActive.map((e) => e._id);
+    const comps = scopedIds.length
+      ? await EmployeeCompensation.find({ employeeId: { $in: scopedIds } }).lean()
+      : [];
+    const monthlyValues = [];
+    for (const comp of comps) {
+      const revisions = Array.isArray(comp.revisions) ? comp.revisions : [];
+      if (!revisions.length) continue;
+      const latest = [...revisions].sort((a, b) => {
+        const da = new Date(a.effectiveFromDate || 0).getTime();
+        const db = new Date(b.effectiveFromDate || 0).getTime();
+        return db - da;
+      })[0];
+      const ctc = decimalToNumber(latest?.monthlyCostToCompany);
+      if (ctc != null && ctc > 0) monthlyValues.push(ctc);
+    }
+    const configuredCount = monthlyValues.length;
+    const sum = monthlyValues.reduce((acc, n) => acc + n, 0);
+    const averageMonthlyCtc =
+      configuredCount > 0 ? Math.round((sum / configuredCount) * 100) / 100 : null;
+    result.salaryAverages = {
+      currencyNote: "Amounts are monthly cost-to-company (CTC) from configured compensation.",
+      employeesWithCompensation: configuredCount,
+      activeEmployees: activeStaffCount,
+      employeesMissingCompensation: Math.max(0, activeStaffCount - configuredCount),
+      averageMonthlyCtc,
+      minMonthlyCtc: configuredCount ? Math.min(...monthlyValues) : null,
+      maxMonthlyCtc: configuredCount ? Math.max(...monthlyValues) : null,
+      dataAvailable: configuredCount > 0,
+      requestedExplicitly: Boolean(includeSalaryAverages),
+    };
+  }
 
   if (compareHistoricalCycles) {
     const historical = await PayrollCycle.find({ status: { $in: ["FINALIZED", "PAID"] } })
@@ -1040,6 +1105,7 @@ export async function executeHrAnalystTool(
         models,
         hrAccess,
         compareHistoricalCycles: args.compareHistoricalCycles,
+        includeSalaryAverages: args.includeSalaryAverages,
       });
 
     case "analyzeRecruitmentAndOffers":
@@ -1173,12 +1239,26 @@ ${compText}
     }
 
     case "analyzePayrollReadiness": {
-      const isReady = data.readinessStatus === "READY";
       let text = `### Real-Time Payroll Readiness Analysis\n\n`;
       text += `- **Readiness Status:** **${data.readinessStatus}** (${data.readinessVerdict})\n`;
       if (data.currentCycle) {
         text += `- **Current Period:** ${data.currentCycle.period} (Status: ${data.currentCycle.status}, Payment: ${data.currentCycle.paymentStatus})\n`;
         text += `- **Staff Included:** ${data.currentCycle.employeeCount}\n`;
+      }
+
+      const avg = data.salaryAverages;
+      if (avg) {
+        text += `\n### Compensation Snapshot (this company only)\n`;
+        if (avg.dataAvailable && avg.averageMonthlyCtc != null) {
+          text += `- **Average monthly CTC:** **${avg.averageMonthlyCtc}** (across ${avg.employeesWithCompensation} configured employee(s))\n`;
+          if (avg.minMonthlyCtc != null && avg.maxMonthlyCtc != null) {
+            text += `- **Range:** ${avg.minMonthlyCtc} – ${avg.maxMonthlyCtc}\n`;
+          }
+          text += `- **Active employees:** ${avg.activeEmployees}; missing compensation setup: ${avg.employeesMissingCompensation}\n`;
+          text += `- ${avg.currencyNote}\n`;
+        } else {
+          text += `- No configured monthly CTC records were found for active employees in your access scope. Average salary cannot be computed from live data.\n`;
+        }
       }
 
       if (data.blockers?.length > 0) {
@@ -1192,7 +1272,7 @@ ${compText}
       }
 
       text += `\n### Recommended Actions:\n`;
-      text += `1. Navigate to the [Payroll Action Centre](file:///admin/payroll) to configure compensation and resolve register items.`;
+      text += `1. Navigate to the [Payroll Action Centre](/admin/payroll) to configure compensation and resolve register items.`;
       return text;
     }
 

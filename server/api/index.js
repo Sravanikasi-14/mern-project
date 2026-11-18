@@ -26,6 +26,15 @@ async function ensureReady() {
 
       await connectCentralDB();
 
+      // Fail closed early when Platform Admin JWT cannot be signed (avoids opaque
+      // SERVER_ERROR only after a correct password on /platform/auth/login).
+      if (process.env.NODE_ENV === "production") {
+        const { assertPlatformJwtConfigured } = await import(
+          "../utils/platformToken.js"
+        );
+        assertPlatformJwtConfigured();
+      }
+
       // Never run expensive tenant provisioning automatically on Vercel.
       if (
         process.env.VERCEL !== "1" &&

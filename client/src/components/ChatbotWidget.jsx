@@ -382,7 +382,9 @@ export default function ChatbotWidget() {
       }
 
       if (!modelReply && !modelMessageAdded) {
-        throw new Error("Received empty response from assistant.");
+        throw new Error(
+          "The assistant returned no content. Please try again, or rephrase your question (for example, ask about payroll readiness or average monthly CTC)."
+        );
       }
     } catch (err) {
       if (err.name === "AbortError") {

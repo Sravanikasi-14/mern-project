@@ -10,12 +10,22 @@ import {
 } from "../controllers/policyController.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole } from "../middleware/authorize.js";
-import { loadHrAccessContext, requireHrPermission } from "../middleware/hrAccessEnforcement.js";
+import {
+  loadHrAccessContext,
+  requireAnyEntitledModule,
+  requireHrPermission,
+} from "../middleware/hrAccessEnforcement.js";
 import { USER_ROLES } from "../models/User.js";
 
 const router = express.Router();
 
-router.get("/active", authenticate, getActivePolicy);
+// Shared by leave/attendance UX; allow when any consuming module is entitled.
+router.get(
+  "/active",
+  authenticate,
+  requireAnyEntitledModule("policies", "leave", "attendance"),
+  getActivePolicy
+);
 
 router.use(authenticate, requireRole(USER_ROLES.HR_ADMIN, USER_ROLES.COMPANY_ADMIN), loadHrAccessContext);
 

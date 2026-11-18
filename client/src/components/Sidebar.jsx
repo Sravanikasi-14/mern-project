@@ -6,7 +6,11 @@ import { IconClose } from "./Icons";
 import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import api from "../services/api";
 import { getCompanyBrandName } from "../utils/companyBrand";
-import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
+import {
+  isSettlementsLocation,
+  visibleEmployeeNavItems,
+  visibleHrPortalModules,
+} from "../utils/hrPortalAccess";
 import { loginPathForRole } from "../utils/navigation";
 
 const HR_NAV_ITEMS = [
@@ -292,7 +296,7 @@ export default function Sidebar({
   const navItems =
     user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN"
       ? withMessages(visibleHrNav(user, company), "/admin/messages")
-      : EMPLOYEE_NAV_ITEMS;
+      : visibleEmployeeNavItems(company, EMPLOYEE_NAV_ITEMS);
 
   const handleLogout = async () => {
     const loginPath = loginPathForRole(user?.role);

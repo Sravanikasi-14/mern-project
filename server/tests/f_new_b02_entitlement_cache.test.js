@@ -132,4 +132,36 @@ describe("NEW-B02 platform entitlement cache", () => {
     assert.equal(typeof doc.save, "function");
     assert.ok(doc.modules);
   });
+
+  it("assertModuleEntitled re-reads company featureAccess (stale metadata cannot keep module on)", async () => {
+    clearPlatformEntitlementCache();
+    await Company.updateOne(
+      { _id: company._id },
+      { $set: { "config.featureAccess.modules.leave": false } }
+    );
+
+    // Stale in-memory company object still claims leave is enabled.
+    const staleCompany = {
+      ...company.toObject(),
+      config: {
+        ...(company.config || {}),
+        featureAccess: { modules: { leave: true }, capabilities: {} },
+      },
+    };
+
+    let denied = null;
+    try {
+      await assertModuleEntitled(staleCompany, "leave");
+    } catch (err) {
+      denied = err;
+    }
+    assert.ok(denied instanceof HttpError);
+    assert.equal(denied.status, 403);
+    assert.equal(denied.code, "PLATFORM_MODULE_DISABLED");
+
+    await Company.updateOne(
+      { _id: company._id },
+      { $unset: { "config.featureAccess.modules.leave": "" } }
+    );
+  });
 });

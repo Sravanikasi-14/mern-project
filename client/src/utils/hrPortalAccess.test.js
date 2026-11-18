@@ -3,8 +3,12 @@ import assert from "node:assert/strict";
 import {
   HR_PORTAL_MODULES,
   adminLocationAllowed,
+  employeeLocationAllowed,
+  firstAccessibleEmployeePath,
   firstAccessibleHrPath,
   platformModuleForAdminPath,
+  platformModuleForEmployeePath,
+  visibleEmployeeNavItems,
   visibleHrPortalModules,
 } from "./hrPortalAccess.js";
 
@@ -233,4 +237,28 @@ test("live tracking path uses liveTracking module not only attendance permission
   assert.equal(adminLocationAllowed(user, trackingOff, "/admin/live-tracking", ""), false);
   assert.equal(adminLocationAllowed(user, trackingOff, "/admin/attendance/live", ""), false);
   assert.equal(adminLocationAllowed(user, trackingOff, "/admin/attendance", ""), true);
+});
+
+test("employee deep links and nav respect company module entitlements", () => {
+  const emp = { role: "EMPLOYEE" };
+  const leaveOff = companyWith({ leave: false });
+  assert.equal(platformModuleForEmployeePath("/app/leave"), "leave");
+  assert.equal(employeeLocationAllowed(emp, leaveOff, "/app/leave"), false);
+  assert.equal(employeeLocationAllowed(emp, leaveOff, "/app/dashboard"), true);
+  assert.equal(employeeLocationAllowed(emp, leaveOff, "/app/profile"), true);
+
+  const nav = visibleEmployeeNavItems(leaveOff, [
+    { id: "dashboard", path: "/app/dashboard" },
+    { id: "leave", path: "/app/leave" },
+    { id: "attendance", path: "/app/attendance" },
+    { id: "messages", path: "/app/messages" },
+  ]);
+  assert.deepEqual(
+    nav.map((item) => item.id),
+    ["dashboard", "attendance", "messages"]
+  );
+
+  const payrollOff = companyWith({ payroll: false });
+  assert.equal(employeeLocationAllowed(emp, payrollOff, "/app/payslips"), false);
+  assert.equal(firstAccessibleEmployeePath(payrollOff, "/app/payslips"), "/app/dashboard");
 });

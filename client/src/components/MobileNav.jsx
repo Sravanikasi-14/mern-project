@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isSettlementsLocation, visibleHrPortalModules } from "../utils/hrPortalAccess";
+import {
+  isSettlementsLocation,
+  platformModuleAllowed,
+  visibleEmployeeNavItems,
+  visibleHrPortalModules,
+} from "../utils/hrPortalAccess";
 import { loginPathForRole } from "../utils/navigation";
 import { EmployeeIcon, IconLogOut } from "./EmployeeIcon";
 import "./MobileNav.css";
@@ -192,16 +197,22 @@ export default function MobileNav() {
     ...item,
     icon: PORTAL_MOBILE_ICON[item.id] || "file",
   }));
-  const tabs = isHr ? portalItems.slice(0, 4) : EMP_TABS;
+  const employeeTabs = visibleEmployeeNavItems(company, EMP_TABS);
+  const employeeMore = visibleEmployeeNavItems(company, EMP_MORE);
+  const tabs = isHr ? portalItems.slice(0, 4) : employeeTabs;
   const messageItem = {
     id: "messages",
     label: "Messages",
     path: isHr ? "/admin/messages" : "/app/messages",
     icon: "messages",
   };
+  const chatAllowed = platformModuleAllowed(company, "chat");
   const moreItems = isHr
-    ? [messageItem, ...portalItems.slice(4).filter((item) => item.id !== "messages")]
-    : EMP_MORE;
+    ? [
+        ...(chatAllowed ? [messageItem] : []),
+        ...portalItems.slice(4).filter((item) => item.id !== "messages"),
+      ]
+    : employeeMore;
   const moreActive = moreItems.some((item) => isActive(item, location.pathname, location.search));
 
   useEffect(() => {

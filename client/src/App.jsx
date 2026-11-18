@@ -5,6 +5,7 @@ import { homeForRole } from "./utils/navigation";
 import { QueryClientProvider } from "@tanstack/react-query";
 import AppLayout from "./components/AppLayout";
 import HrModuleGate from "./components/HrModuleGate";
+import EmployeeModuleGate from "./components/EmployeeModuleGate";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SessionBoot from "./components/SessionBoot";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -70,6 +71,16 @@ function Portal({ children }) {
     <ProtectedRoute roles={PORTAL_ROLES}>
       <AppLayout>
         <HrModuleGate>{children}</HrModuleGate>
+      </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function EmployeePortal({ children }) {
+  return (
+    <ProtectedRoute roles={["EMPLOYEE"]}>
+      <AppLayout>
+        <EmployeeModuleGate>{children}</EmployeeModuleGate>
       </AppLayout>
     </ProtectedRoute>
   );
@@ -176,151 +187,91 @@ function App() {
           <Route
             path="/app"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeDashboard />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeDashboard /></EmployeePortal>
             }
           />
           <Route
             path="/app/dashboard"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeDashboard />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeDashboard /></EmployeePortal>
             }
           />
           <Route
             path="/app/attendance"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeAttendance />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeAttendance /></EmployeePortal>
             }
           />
           <Route
             path="/app/leave"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeLeave />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeLeave /></EmployeePortal>
             }
           />
           <Route
             path="/app/payslips"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeePayslips />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeePayslips /></EmployeePortal>
             }
           />
           <Route
             path="/app/assets"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeAssets />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeAssets /></EmployeePortal>
             }
           />
           <Route
             path="/app/tasks"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeTasks />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeTasks /></EmployeePortal>
             }
           />
           <Route
             path="/app/work-impact"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeTasks />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeTasks /></EmployeePortal>
             }
           />
           <Route
             path="/app/impact-points"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeImpactPoints />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeImpactPoints /></EmployeePortal>
             }
           />
           <Route
             path="/app/profile"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeHome defaultTab="overview" />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeHome defaultTab="overview" /></EmployeePortal>
             }
           />
           <Route
             path="/app/directory"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <PeopleDirectory />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><PeopleDirectory /></EmployeePortal>
             }
           />
           <Route
             path="/app/people/:id"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <ColleagueProfilePage />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><ColleagueProfilePage /></EmployeePortal>
             }
           />
           <Route
             path="/app/settings"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeSettings />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeSettings /></EmployeePortal>
             }
           />
           <Route
             path="/app/messages"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <MessagesPage />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><MessagesPage /></EmployeePortal>
             }
           />
           <Route
             path="/app/documents"
             element={
-              <ProtectedRoute roles={["EMPLOYEE"]}>
-                <AppLayout>
-                  <EmployeeHome defaultTab="documents" />
-                </AppLayout>
-              </ProtectedRoute>
+              <EmployeePortal><EmployeeHome defaultTab="documents" /></EmployeePortal>
             }
           />
           <Route path="/" element={<IndexRedirect />} />
