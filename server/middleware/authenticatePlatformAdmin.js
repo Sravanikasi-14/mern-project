@@ -1,7 +1,7 @@
 import PlatformAdmin from "../models/PlatformAdmin.js";
 import PlatformAdminSession from "../models/PlatformAdminSession.js";
 import { getPlatformAuthCookieName } from "../utils/platformAuthCookie.js";
-import { isPlatformAdminDevMfaBypassEnabled } from "../utils/platformDevMfaBypass.js";
+import { isPlatformAdminMfaBypassEnabled } from "../utils/platformDevMfaBypass.js";
 import { verifyPlatformAuthToken } from "../utils/platformToken.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -54,9 +54,9 @@ export async function authenticatePlatformAdmin(req, _res, next) {
       });
     }
 
-    // Production and non-dev environments still require MFA enrollment.
-    // Development-only bypass allows a password-issued session without mutating MFA state.
-    if (!admin.mfaEnabled && !isPlatformAdminDevMfaBypassEnabled()) {
+    // When MFA enforcement is active, password-only sessions without enrollment are rejected.
+    // Temporary pause / development bypass allow full JWT sessions without mutating MFA state.
+    if (!admin.mfaEnabled && !isPlatformAdminMfaBypassEnabled()) {
       throw new HttpError(403, "MFA enrollment is required before accessing the platform", {
         code: "PLATFORM_MFA_REQUIRED",
       });

@@ -47,7 +47,7 @@ function toSettingsDto(doc) {
       loginRateLimitWindowMinutes: doc.security?.loginRateLimitWindowMinutes || 15,
       mfaRateLimitPerWindow: doc.security?.mfaRateLimitPerWindow || 20,
       notes: [
-        "Platform Admin MFA enrollment and verification remain mandatory regardless of display flags.",
+        "MFA utilities remain installed. Runtime mandatory MFA is controlled by PLATFORM_ADMIN_MFA_ENFORCEMENT (off/paused by default in this release; set on to require enrollment and OTP again).",
         "Login/MFA rate-limit fields are policy documentation today; runtime enforcement uses middleware defaults (and env) until shared/dynamic limiters are wired.",
         "Platform session hours are enforced for JWT exp, session expiresAt, and cookie maxAge on newly issued sessions.",
       ],

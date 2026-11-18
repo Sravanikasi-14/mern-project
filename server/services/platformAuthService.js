@@ -10,7 +10,10 @@ import {
   generateTotpSecret,
   verifyTotpCode,
 } from "../utils/platformTotp.js";
-import { isPlatformAdminDevMfaBypassEnabled } from "../utils/platformDevMfaBypass.js";
+import {
+  isPlatformAdminMfaBypassEnabled,
+  platformAdminMfaBypassReason,
+} from "../utils/platformDevMfaBypass.js";
 import {
   signPlatformAuthToken,
   signPlatformMfaChallengeToken,
@@ -120,14 +123,15 @@ export async function platformLogin({ email, password, req }) {
     });
   }
 
-  // Local development only: issue a full session after password verification.
-  // Production MFA enrollment/verify paths remain unchanged.
-  if (isPlatformAdminDevMfaBypassEnabled()) {
+  // Temporary MFA pause (PLATFORM_ADMIN_MFA_ENFORCEMENT) and/or development bypass:
+  // issue a full session after password verification. MFA setup/verify APIs remain intact.
+  if (isPlatformAdminMfaBypassEnabled()) {
+    const via = platformAdminMfaBypassReason() || "mfa_bypass";
     await recordPlatformAudit({
       actor: admin,
       action: PLATFORM_AUDIT_ACTIONS.LOGIN_SUCCESS,
       outcome: "SUCCESS",
-      metadata: { via: "dev_mfa_bypass", nodeEnv: "development" },
+      metadata: { via, nodeEnv: process.env.NODE_ENV || "" },
       req,
     });
     const session = await issueSession(admin, req);

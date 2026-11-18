@@ -147,7 +147,9 @@ export default function PlatformSettingsPage() {
       <div className="pa-panel">
         <h2>Security</h2>
         <p className="pa-muted">
-          Platform Admin MFA is mandatory and cannot be disabled. Rate-limit fields document policy;
+          MFA enrollment APIs remain available. Runtime enforcement is controlled by
+          PLATFORM_ADMIN_MFA_ENFORCEMENT (currently paused when unset/off; set to on to
+          require MFA again). Rate-limit fields document policy;
           middleware enforces limits.
         </p>
         <div className="pa-form-grid">
