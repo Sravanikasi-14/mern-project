@@ -18,11 +18,24 @@
 | Locks | Per-company lock (anti-overlap); TTL now 90s (was 240s ≫ kill window). |
 | Resume | Fleet document `workforce_scheduler_fleet` + fair ordering; optional `afterCompanyId`. |
 
+## Trigger (operations)
+
+| | |
+|--|--|
+| Endpoint | `GET` / `POST` `/api/workforce-scheduler/run` (still deployed on the API) |
+| Auth | `Authorization: Bearer <CRON_SECRET>` |
+| Platform | **cron-job.org** — daily external HTTP trigger |
+| Schedule | **02:00 UTC** / **07:30 AM IST** (once per day — current operational policy) |
+| Vercel Cron | **Not used.** Removed from [`server/vercel.json`](../server/vercel.json) in commit `d06fd4e`. Announcements remain on Vercel Cron (`0 3 * * *` UTC). |
+| `AUTO_CONTINUE` | Keep **`WORKFORCE_SCHEDULER_AUTO_CONTINUE=false`** (unset) in production |
+| Mode | Production target: **dry-run** until apply is explicitly approved |
+| Registry | [`CRON_JOBS_REGISTRY.md`](./CRON_JOBS_REGISTRY.md) |
+
 ## Architecture (after F41 + Batch C)
 
 ```
-GET/POST /api/workforce-scheduler/run   (Bearer CRON_SECRET)
-  └─ runSchedulerWithAutoContinue          (NEW-S1)
+GET/POST /api/workforce-scheduler/run   (Bearer CRON_SECRET; triggered by cron-job.org)
+  └─ runSchedulerWithAutoContinue          (NEW-S1; keep disabled in production)
        └─ runSchedulerForAllCompanies × N hops (awaited in-process)
             ├─ beginOrResumeSchedulerWave (CAS — NEW-S3)
             ├─ discover ACTIVE|TRIAL companies
@@ -39,7 +52,7 @@ GET/POST /api/workforce-scheduler/run   (Bearer CRON_SECRET)
             │         ├─ mid-wave fleet checkpoint on contiguous completion (NEW-S2)
             │         └─ release lock + ALS scope (success / failure / return)
             └─ saveFleetProgress | clearFleetProgress (clear only when zero pending)
-                 return { truncated, nextAfterCompanyId, waveStartedAt, hops, results[], durations }
+                 return sanitized public summary (no per-tenant decision dump on cron HTTP)
 ```
 
 **Allocation rules are unchanged** (weights, AUTO priorities, leave/skills/capacity, atomic UNASSIGNED assign).
@@ -88,15 +101,17 @@ Cron query/body overrides (authenticated): `afterCompanyId`, `budgetMs`, `concur
 | Assign path | Atomic UNASSIGNED → assigned prevents duplicate ownership. |
 | Connections | Each company runs inside its own `runWithTenantConnectionScope`; scopes release so the process does not pin all tenant DBs at once. Concurrency K bounds simultaneous open scopes. |
 
-## Vercel behavior
+## Hosting behavior (Vercel function + external cron)
 
 | | |
 |--|--|
-| Cron | `0 2 * * *` → `/api/workforce-scheduler/run` |
-| Limits | `maxDuration: 60`, memory 1024 |
-| Budget | Default hop 50s; chain budget 55s leaves headroom |
-| Auto-continue | Enable only with lower `BUDGET_MS` (e.g. 15–20s) so depth≤3 fits in 60s |
+| Trigger | **cron-job.org** daily → `/api/workforce-scheduler/run` (not Vercel Cron) |
+| Vercel Cron | Announcements only (`0 3 * * *` UTC) in `server/vercel.json` |
+| Limits | `maxDuration: 60`, memory 1024 on `api/index.js` |
+| Budget | Default hop 50s; chain budget 55s leaves headroom under 60s |
+| Auto-continue | **Disabled in production.** If ever approved, use lower `BUDGET_MS` so hops fit in `maxDuration` |
 | Cold / warm | Same logic; ALS scopes release between companies |
+| Policy | One daily business run; do not schedule sub-daily workforce crons on the current plan |
 
 ## Throughput: structural vs measured
 
@@ -130,17 +145,19 @@ Cron query/body overrides (authenticated): `afterCompanyId`, `budgetMs`, `concur
 
 ## Deployment requirements
 
-1. Set Production `CRON_SECRET` (≥16 chars) so Vercel injects Bearer on the cron.
-2. Keep `WORKFORCE_SCHEDULER_ENABLED=false` until dry-run review; then `MODE=dry-run`, later `apply`.
-3. **Do not enable `WORKFORCE_SCHEDULER_AUTO_CONTINUE` in production until staging dry-run verification.**
-4. Staging dry-run: `ENABLED=true`, `MODE=dry-run`, `AUTO_CONTINUE=true`, lower `BUDGET_MS` / `MAX_COMPANIES` as needed; confirm multi-hop `hops`, cursor resume, no duplicate assigns.
-5. Optionally tune `COMPANY_CONCURRENCY` (2–4), `BUDGET_MS`, `MAX_COMPANIES`, `MAX_CHAIN_DEPTH`.
-6. No Redis/Kafka. No OfferLetter `syncIndexes()`. No Batch D.
-7. Redeploy `server` so `vercel.json` cron + `maxDuration: 60` apply.
+1. Set Production `CRON_SECRET` (≥16 chars) for Bearer auth (Vercel injects it automatically for **announcement** Vercel Cron; cron-job.org must send the same header for workforce).
+2. Keep `WORKFORCE_SCHEDULER_ENABLED=false` until dry-run review; then `MODE=dry-run`, later `apply` only with approval.
+3. **Do not enable `WORKFORCE_SCHEDULER_AUTO_CONTINUE` in production** (current policy: remain disabled).
+4. Point cron-job.org at the production API workforce endpoint daily at **07:30 AM IST**; do not also register workforce on Vercel Cron.
+5. Staging dry-run of auto-continue (if ever evaluating the flag): `ENABLED=true`, `MODE=dry-run`, temporary `AUTO_CONTINUE=true`, lower `BUDGET_MS` / `MAX_COMPANIES`; confirm multi-hop `hops`, cursor resume, no duplicate assigns — then turn `AUTO_CONTINUE` back off before production.
+6. Optionally tune `COMPANY_CONCURRENCY` (2–4), `BUDGET_MS`, `MAX_COMPANIES`, `MAX_CHAIN_DEPTH`.
+7. No Redis/Kafka. No OfferLetter `syncIndexes()`. No Batch D.
+8. Redeploy `server` so announcement `vercel.json` cron + `maxDuration: 60` apply. Workforce trigger changes are ops-side (cron-job.org), not Vercel Cron entries.
 
 ## Remaining limitations
 
-- Hobby plan still has one scheduled cron per day; auto-continue only helps within a single invocation’s chain budget / maxDuration.
+- Daily policy means a truncated wave may resume on the **next** daily invocation unless auto-continue is explicitly approved (it is not, in production).
+- External client timeouts (e.g. cron-job.org ~30s) may be shorter than default `BUDGET_MS`; prefer budgets that finish before the client gives up, or accept client timeout while the Vercel function continues under `maxDuration`.
 - Hard kill mid-company before `lastRunSummary` write may re-process that company’s queue; assigns remain idempotent.
 - Enabling `apply` at scale needs monitoring of `truncated` / `errorCount` / fleet doc / `hops`.
 - Unrelated announcement / notification / payslip workflows are intentionally untouched.
