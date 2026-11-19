@@ -368,14 +368,17 @@ describe("Workforce Scheduler — cron auth & manual regression", () => {
   it("rejects cron without secret", async () => {
     const res = await request(app).post("/api/workforce-scheduler/run");
     assert.equal(res.status, 401);
+    assert.equal(res.body.code, "CRON_UNAUTHORIZED");
   });
 
-  it("accepts cron with bearer secret", async () => {
+  it("accepts cron with bearer secret and returns public summary only", async () => {
     const res = await request(app)
       .post("/api/workforce-scheduler/run")
       .set("Authorization", "Bearer workforce-cron-test-secret");
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
+    assert.equal(res.body.results, undefined);
+    assert.equal(JSON.stringify(res.body).includes("workforce-cron-test-secret"), false);
   });
 
   it("manual assigned task creation still works", async () => {

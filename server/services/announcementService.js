@@ -585,16 +585,8 @@ export async function publishDueForAllCompanies(now = new Date(), options = {}) 
   };
 }
 
-export function cronAuthorized(req) {
-  const secret = process.env.CRON_SECRET || process.env.ANNOUNCEMENT_CRON_SECRET || "";
-  if (!secret) return "unconfigured";
-  const header = String(req.get("authorization") || "");
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const left = Buffer.from(token);
-  const right = Buffer.from(secret);
-  if (left.length !== right.length || left.length === 0) return "denied";
-  return crypto.timingSafeEqual(left, right) ? "ok" : "denied";
-}
+/** @deprecated Import from ../utils/cronAuth.js — re-exported for existing callers/tests. */
+export { cronAuthorized, requireCronSecret, resolveCronSecret } from "../utils/cronAuth.js";
 
 async function resolveDepartments(models, access, departmentIds) {
   const unique = [...new Set(departmentIds.map(String))];

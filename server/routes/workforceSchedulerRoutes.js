@@ -5,6 +5,7 @@ import {
   requireEntitledModule,
   requireHrPermission,
 } from "../middleware/hrAccessEnforcement.js";
+import { requireCronSecret } from "../utils/cronAuth.js";
 import {
   runWorkforceSchedulerCron,
   runWorkforceSchedulerForCompany,
@@ -13,9 +14,13 @@ import {
 
 const router = express.Router();
 
-/** Cron / automation — Bearer CRON_SECRET (no user session). */
-router.get("/run", runWorkforceSchedulerCron);
-router.post("/run", runWorkforceSchedulerCron);
+/**
+ * Cron / automation — Authorization: Bearer <CRON_SECRET> only (no user JWT).
+ * GET retained for Vercel Cron; POST preferred for cron-job.org / manual ops.
+ * requireCronSecret runs first; the handler also re-checks for defense in depth.
+ */
+router.get("/run", requireCronSecret, runWorkforceSchedulerCron);
+router.post("/run", requireCronSecret, runWorkforceSchedulerCron);
 
 /** Authenticated HR: dry-run (default) or apply for current tenant. */
 router.post(

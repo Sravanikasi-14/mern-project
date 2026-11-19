@@ -1,5 +1,5 @@
 import { HttpError } from "../utils/httpError.js";
-import { cronAuthorized } from "../services/announcementService.js";
+import { cronAuthorized } from "../utils/cronAuth.js";
 import {
   runCompanyScheduler,
   schedulerEnabled,
@@ -9,32 +9,38 @@ import {
   normalizeChainDepth,
   runSchedulerWithAutoContinue,
 } from "../services/workforceScheduler/autoContinue.js";
+import { toPublicWorkforceCronSummary } from "../services/workforceScheduler/publicSummary.js";
 import { approveSchedulerAssignmentService } from "../services/workManagementService.js";
 
 /**
  * Secure cron entry — company-by-company scheduling.
- * Auth: Bearer CRON_SECRET (same pattern as announcement publish-due).
+ * Auth: Authorization Bearer CRON_SECRET (Vercel Cron / cron-job.org).
  * NEW-S1: when WORKFORCE_SCHEDULER_AUTO_CONTINUE=true and the wave is truncated,
  * awaited in-process hops continue the same wave (no fire-and-forget).
+ *
+ * HTTP response is a public aggregate summary only — no employee/decision payloads.
  */
 export async function runWorkforceSchedulerCron(req, res, next) {
   try {
     const verdict = cronAuthorized(req);
     if (verdict === "unconfigured") {
-      throw new HttpError(503, "Workforce scheduler cron is not configured.");
+      throw new HttpError(503, "Workforce scheduler cron is not configured.", {
+        code: "CRON_UNCONFIGURED",
+      });
     }
     if (verdict !== "ok") {
-      throw new HttpError(401, "Unauthorized");
+      throw new HttpError(401, "Unauthorized", { code: "CRON_UNAUTHORIZED" });
     }
 
     if (!schedulerEnabled()) {
-      return res.json({
-        success: true,
-        skipped: true,
-        reason: "scheduler_disabled",
-        mode: schedulerMode(),
-        hint: "Set WORKFORCE_SCHEDULER_ENABLED=true to enable.",
-      });
+      return res.status(200).json(
+        toPublicWorkforceCronSummary({
+          skipped: true,
+          reason: "scheduler_disabled",
+          mode: schedulerMode(),
+          hint: "Set WORKFORCE_SCHEDULER_ENABLED=true to enable.",
+        })
+      );
     }
 
     const forceDryRun = String(req.query.dryRun || req.body?.dryRun || "").toLowerCase() === "true";
@@ -59,6 +65,7 @@ export async function runWorkforceSchedulerCron(req, res, next) {
 
     console.info("[workforce-scheduler] cron start", {
       mode,
+      method: req.method,
       afterCompanyId: afterCompanyId ? String(afterCompanyId) : null,
       chainDepth,
     });
@@ -83,10 +90,12 @@ export async function runWorkforceSchedulerCron(req, res, next) {
       autoContinued: result.autoContinued,
       continuationStoppedReason: result.continuationStoppedReason,
       reason: result.reason,
+      durationMs: result.durationMs,
     });
 
-    res.json({ success: true, ...result });
+    res.status(200).json(toPublicWorkforceCronSummary({ ...result, mode }));
   } catch (error) {
+    // Never log Authorization headers or CRON_SECRET values.
     if (!error?.status || error.status >= 500) {
       console.error("[workforce-scheduler] cron failed", error?.message || error);
     }

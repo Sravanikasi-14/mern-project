@@ -485,6 +485,14 @@ describe("F41 cron authentication", () => {
   it("rejects unauthenticated cron and accepts Bearer CRON_SECRET", async () => {
     const denied = await request(app).post("/api/workforce-scheduler/run");
     assert.equal(denied.status, 401);
+    assert.equal(denied.body.code, "CRON_UNAUTHORIZED");
+
+    const wrong = await request(app)
+      .post("/api/workforce-scheduler/run")
+      .set("Authorization", "Bearer totally-wrong-secret");
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.body.code, "CRON_UNAUTHORIZED");
+    assert.equal(JSON.stringify(wrong.body).includes("f41-workforce-cron-secret"), false);
 
     const ok = await request(app)
       .post("/api/workforce-scheduler/run")
@@ -492,6 +500,22 @@ describe("F41 cron authentication", () => {
       .set("Authorization", "Bearer f41-workforce-cron-secret");
     assert.equal(ok.status, 200);
     assert.equal(ok.body.success, true);
+    // Public summary only — no per-tenant decision / employee payloads.
+    assert.equal(ok.body.results, undefined);
+    assert.equal(typeof ok.body.attempted, "number");
+  });
+
+  it("GET cron run accepts the same Bearer secret (Vercel Cron compatibility)", async () => {
+    const denied = await request(app).get("/api/workforce-scheduler/run");
+    assert.equal(denied.status, 401);
+
+    const ok = await request(app)
+      .get("/api/workforce-scheduler/run")
+      .query({ dryRun: "true", concurrency: 1, budgetMs: 15000, maxCompanies: 1 })
+      .set("Authorization", "Bearer f41-workforce-cron-secret");
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.success, true);
+    assert.equal(ok.body.results, undefined);
   });
 
   it("HR company run still requires auth cookie (not cron secret alone)", async () => {
@@ -719,7 +743,8 @@ describe("Batch C NEW-S1 auto-continue", () => {
       });
     assert.equal(ok.status, 200);
     assert.equal(ok.body.success, true);
-    assert.equal(ok.body.results?.[0]?.summary?.mode || "dry-run", "dry-run");
+    assert.equal(ok.body.mode, "dry-run");
+    assert.equal(ok.body.results, undefined);
   });
 
   it("apply mode is preserved across auto-continue hops", async () => {
