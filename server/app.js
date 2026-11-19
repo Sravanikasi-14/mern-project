@@ -26,6 +26,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import conversationRoutes from "./routes/conversationRoutes.js";
 import announcementRoutes from "./routes/announcementRoutes.js";
 import workforceSchedulerRoutes from "./routes/workforceSchedulerRoutes.js";
+import schedulerDispatchRoutes from "./routes/schedulerDispatchRoutes.js";
 import departmentRoutes from "./routes/departmentRoutes.js";
 import designationRoutes from "./routes/designationRoutes.js";
 import projectEntityRoutes from "./routes/projectEntityRoutes.js";
@@ -127,6 +128,7 @@ export function createApp() {
   app.use("/api/conversations", conversationRoutes);
   app.use("/api/announcements", announcementRoutes);
   app.use("/api/workforce-scheduler", workforceSchedulerRoutes);
+  app.use("/api/scheduler", schedulerDispatchRoutes);
   // Batch 3: A1–A6 authz management mounts unmounted (route modules kept on disk).
   app.use("/api/departments", departmentRoutes);
   app.use("/api/designations", designationRoutes);

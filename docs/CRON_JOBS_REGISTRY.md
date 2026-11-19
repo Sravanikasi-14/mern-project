@@ -72,6 +72,24 @@ Implementation map: `server/routes/announcementRoutes.js`, `server/controllers/a
 
 ---
 
+## 1.3 Central Scheduler Dispatcher (implemented; production OFF)
+
+| Field | Value |
+|-------|--------|
+| **Job name** | Central Scheduler Dispatcher |
+| **Endpoint** | `/api/scheduler/dispatch` |
+| **HTTP methods** | `GET`, `POST` |
+| **Purpose** | Single HTTP entry that runs only **due** registry jobs (workforce dry-run, announcements detect-only). Designed for a future 15-minute cron-job.org trigger. |
+| **Feature flag** | `SCHEDULER_DISPATCH_ENABLED` — **default false** |
+| **Budget** | `SCHEDULER_DISPATCH_BUDGET_MS` default **22000** |
+| **Auth** | `requireCronSecret` + Bearer `CRON_SECRET` |
+| **Production status** | **Code present; not cut over.** Existing workforce + announcement triggers remain. Announcement adapter is **detect-only** (no publish/notify). Workforce adapter forces **dry-run**. |
+| **Idle behavior** | When no `nextRunAt` is due → no tenant DB connections |
+
+Job registry (central Mongo): `scheduler_dispatch_jobs` with daily IST schedules — workforce **07:30**, announcements **08:30**.
+
+---
+
 ## 2. External schedules (outside the repository)
 
 | Job | Platform | Notes |
