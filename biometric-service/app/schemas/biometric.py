@@ -145,6 +145,8 @@ class ReadinessChecks(BaseModel):
     recognition_model_loaded: bool = False
     biometric_models_loaded: bool
     pad_model_loaded: bool
+    liveness_ready: bool = False
+    recognition_ready: bool = False
 
 
 class ReadinessResponse(BaseModel):

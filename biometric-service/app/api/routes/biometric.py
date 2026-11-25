@@ -30,17 +30,23 @@ router = APIRouter(
 async def biometric_health() -> JSONResponse:
     """Internal biometric subsystem health and independent model readiness status."""
     settings = get_settings()
+    config_valid, _ = settings.validate_required_config()
     detection_loaded = model_manager.is_detection_model_loaded()
     recognition_loaded = model_manager.is_recognition_model_loaded()
     biometric_loaded = model_manager.are_biometric_models_loaded()
     pad_loaded = model_manager.is_pad_model_loaded()
-    ready = model_manager.app_initialized and biometric_loaded and pad_loaded
+    app_init = model_manager.app_initialized
+
+    liveness_ready = app_init and config_valid and detection_loaded and pad_loaded
+    recognition_ready = app_init and config_valid and detection_loaded and recognition_loaded
 
     return JSONResponse(
-        status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+        status_code=status.HTTP_200_OK if liveness_ready else status.HTTP_503_SERVICE_UNAVAILABLE,
         content={
-            "status": "ready" if ready else "unavailable",
+            "status": "ready" if liveness_ready else "unavailable",
             "service": settings.app_name,
+            "liveness_ready": liveness_ready,
+            "recognition_ready": recognition_ready,
             "detection_model_loaded": detection_loaded,
             "recognition_model_loaded": recognition_loaded,
             "biometric_models_loaded": biometric_loaded,

@@ -174,14 +174,29 @@ def test_liveness_endpoint_succeeds_with_mock_detection_and_pad_and_enroll_stays
             "v1se": _MockOnnxSession([[-2.0, 3.0, -2.0]]),
         }
 
-        # /ready must still be 503 because face_recognition is not loaded
+        # /ready returns 200 because liveness capability (detection + PAD) is ready
         ready_resp = client.get("/ready")
-        assert ready_resp.status_code == 503
+        assert ready_resp.status_code == 200
         ready_body = ready_resp.json()
+        assert ready_body["ready"] is True
+        assert ready_body["checks"]["liveness_ready"] is True
+        assert ready_body["checks"]["recognition_ready"] is False
         assert ready_body["checks"]["detection_model_loaded"] is True
         assert ready_body["checks"]["pad_model_loaded"] is True
         assert ready_body["checks"]["recognition_model_loaded"] is False
-        assert ready_body["ready"] is False
+        assert ready_body["checks"]["biometric_models_loaded"] is False
+
+        # /api/v1/biometric/health also reflects liveness_ready = True and recognition_ready = False
+        bio_health_resp = client.get(
+            "/api/v1/biometric/health",
+            headers={INTERNAL_AUTH_HEADER: VALID_SECRET},
+        )
+        assert bio_health_resp.status_code == 200
+        bio_health_body = bio_health_resp.json()
+        assert bio_health_body["status"] == "ready"
+        assert bio_health_body["liveness_ready"] is True
+        assert bio_health_body["recognition_ready"] is False
+        assert bio_health_body["biometric_models_loaded"] is False
 
         # /liveness succeeds without leaking internal model details
         live_resp = client.post(

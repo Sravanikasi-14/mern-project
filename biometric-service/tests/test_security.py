@@ -47,7 +47,7 @@ def test_protected_endpoint_rejects_invalid_auth(monkeypatch) -> None:
 
 
 def test_protected_endpoint_fails_closed_when_server_secret_unset(monkeypatch) -> None:
-    monkeypatch.delenv("BIOMETRIC_INTERNAL_SECRET", raising=False)
+    monkeypatch.setenv("BIOMETRIC_INTERNAL_SECRET", "")
     clear_settings_cache()
     model_manager.reset_for_tests()
 

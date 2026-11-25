@@ -27,7 +27,9 @@ async def health() -> HealthResponse:
 async def readiness() -> JSONResponse:
     """Report granular readiness: app init, config validity, biometric models, and PAD model.
 
-    Returns 503 whenever required configuration or biometric/PAD models are not ready.
+    Distinguishes liveness readiness (app init + config + detection + PAD)
+    from recognition readiness (app init + config + detection + recognition).
+    Returns 200 when liveness is ready; otherwise returns 503.
     """
     settings = get_settings()
     config_valid, config_errors = settings.validate_required_config()
@@ -37,7 +39,10 @@ async def readiness() -> JSONResponse:
     pad_loaded = model_manager.is_pad_model_loaded()
     app_init = model_manager.app_initialized
 
-    overall_ready = app_init and config_valid and biometric_loaded and pad_loaded
+    liveness_ready = app_init and config_valid and detection_loaded and pad_loaded
+    recognition_ready = app_init and config_valid and detection_loaded and recognition_loaded
+
+    overall_ready = liveness_ready
 
     payload = ReadinessResponse(
         ready=overall_ready,
@@ -48,6 +53,8 @@ async def readiness() -> JSONResponse:
             recognition_model_loaded=recognition_loaded,
             biometric_models_loaded=biometric_loaded,
             pad_model_loaded=pad_loaded,
+            liveness_ready=liveness_ready,
+            recognition_ready=recognition_ready,
         ),
         models=model_manager.get_all_statuses(),
         config_errors=config_errors,

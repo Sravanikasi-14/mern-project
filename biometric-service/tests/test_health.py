@@ -40,6 +40,10 @@ def test_ready_reports_unavailable_when_models_absent(monkeypatch) -> None:
         assert body["ready"] is False
         assert body["checks"]["app_initialized"] is True
         assert body["checks"]["config_valid"] is True
+        assert body["checks"]["liveness_ready"] is False
+        assert body["checks"]["recognition_ready"] is False
+        assert body["checks"]["detection_model_loaded"] is False
+        assert body["checks"]["recognition_model_loaded"] is False
         assert body["checks"]["biometric_models_loaded"] is False
         assert body["checks"]["pad_model_loaded"] is False
         assert body["models"]["face_detection"]["configured"] is False
@@ -48,7 +52,7 @@ def test_ready_reports_unavailable_when_models_absent(monkeypatch) -> None:
 
 
 def test_ready_reports_invalid_config_when_secret_missing(monkeypatch) -> None:
-    monkeypatch.delenv("BIOMETRIC_INTERNAL_SECRET", raising=False)
+    monkeypatch.setenv("BIOMETRIC_INTERNAL_SECRET", "")
     clear_settings_cache()
     model_manager.reset_for_tests()
 
@@ -81,8 +85,40 @@ def test_ready_returns_200_when_mocked_models_ready(monkeypatch) -> None:
         assert resp.status_code == 200
         body = resp.json()
         assert body["ready"] is True
+        assert body["checks"]["liveness_ready"] is True
+        assert body["checks"]["recognition_ready"] is True
         assert body["checks"]["biometric_models_loaded"] is True
         assert body["checks"]["pad_model_loaded"] is True
+
+    model_manager.reset_for_tests()
+
+
+def test_ready_returns_200_when_detection_and_pad_loaded_without_recognition(monkeypatch) -> None:
+    monkeypatch.setenv("BIOMETRIC_INTERNAL_SECRET", "test-internal-secret-32-characters!!")
+    clear_settings_cache()
+    model_manager.reset_for_tests()
+
+    with TestClient(create_app()) as client:
+        model_manager._models["face_detection"] = ModelStatus(
+            name="face_detection", configured=True, loaded=True, ready=True, path="mock"
+        )
+        model_manager._models["face_liveness"] = ModelStatus(
+            name="face_liveness", configured=True, loaded=True, ready=True, path="mock"
+        )
+        model_manager._models["face_recognition"] = ModelStatus(
+            name="face_recognition", configured=False, loaded=False, ready=False, path=None
+        )
+
+        resp = client.get("/ready")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ready"] is True
+        assert body["checks"]["liveness_ready"] is True
+        assert body["checks"]["recognition_ready"] is False
+        assert body["checks"]["detection_model_loaded"] is True
+        assert body["checks"]["pad_model_loaded"] is True
+        assert body["checks"]["recognition_model_loaded"] is False
+        assert body["checks"]["biometric_models_loaded"] is False
 
     model_manager.reset_for_tests()
 
