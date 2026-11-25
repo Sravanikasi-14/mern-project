@@ -1,175 +1,250 @@
 # HRMS Biometric Service — Model Licensing & Technical Verification Report
 
 **Target Service:** `biometric-service/` (Python 3.11, FastAPI, CPU-only ONNX Runtime / PyTorch)  
-**Review Scope:** Read-only licensing, provenance, compatibility, and limitation verification for the three candidate model families. No weights were downloaded, no packages were installed, and no HRMS client/server files were modified.  
-**Review Date:** 2026-11-25
+**Review Scope:** Documentation-only licensing, provenance, compatibility, and limitation verification for candidate model families (YuNet, SFace, MiniFASNet V2/V1SE).  
+**Review Date:** 2026-11-25  
+
+---
+
+## Strict Policy: Pre-Deployment Model Clearance Rule
+
+> [!CAUTION]
+> **Mandatory Policy Rule:** No model weights or checkpoints may be downloaded into the production project repository, stored in deployment images, or configured for production runtime execution until the required clearance checklist has been completed and formally reviewed by legal, security, and compliance stakeholders.
 
 ---
 
 ## Executive Summary
 
-| Candidate | Stage | Code License | Distributed Weight License | Training Dataset Provenance | Commercial Deployment Status | Technical Compatibility (`biometric-service/`) |
+| Candidate | Pipeline Role | Repository / Code License | Distributed Model Artifact License | Training Dataset Benchmark / Provenance | Commercial Deployment Clearance Status | Technical Integration Status in `biometric-service/` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **YuNet** (`face_detection_yunet_2023mar.onnx`) | Face Detection + 5-Point Landmarks | MIT (`opencv_zoo`) | MIT (`opencv_zoo` model directory) | **WIDER FACE** (research benchmark; non-commercial / academic norms) | **Unclear / Legal Review Required** (MIT artifact vs. WIDER FACE upstream data) | **Direct ONNX Compatibility** (`onnxruntime` / `cv2.FaceDetectorYN`) |
-| **SFace** (`face_recognition_sface_2021dec.onnx`) | Face Recognition (128-D Embedding) | Apache-2.0 (`opencv_zoo`) | Apache-2.0 (`opencv_zoo` model directory) | **MS1M / CASIA-WebFace** (upstream SFace research corpora; MS-Celeb-1M retracted) | **Unclear / Legal Review Required** (Apache-2.0 artifact vs. MS1M/WebFace provenance) | **Direct ONNX Compatibility** (`onnxruntime` / `cv2.FaceRecognizerSF`) |
-| **MiniFASNet V2 & V1SE** (`Silent-Face-Anti-Spoofing`) | Presentation Attack Detection (PAD) | Apache-2.0 | Apache-2.0 repo tree (no separate weight provenance file) | **Undocumented in repository** (architecture evaluated on OULU-NPU / CASIA-FASD-class datasets) | **Unclear / Legal Review Required** (Apache-2.0 code vs. undocumented `.pth` training data) | **Conversion Required** (`.pth` `state_dict` incompatible with `torch.jit.load`; export to `.onnx`) |
-
-> [!CAUTION]
-> **Key Compliance Principle:** A permissive repository license (`MIT` or `Apache-2.0`) on code and hosted binary files does **not** automatically grant commercial rights over underlying third-party training datasets (such as WIDER FACE, MS1M, CASIA-WebFace, OULU-NPU, or CASIA-FASD). None of the three candidates can be declared unconditionally commercially approved solely on the basis of their GitHub repository licenses.
+| **YuNet** (`face_detection_yunet_2023mar.onnx`) | Face Detection + 5-Point Landmarks | MIT (`opencv_zoo`) | MIT (`opencv_zoo/models/face_detection_yunet`) | WIDER FACE benchmark evaluation / training pipeline | **Unresolved Legal/IP Question** (Requires IP review of upstream dataset interaction) | **Integrated** (`YuNetDetectorAdapter` via OpenCV `FaceDetectorYN` / ONNX) |
+| **SFace** (`face_recognition_sface_2021dec.onnx`) | Face Recognition (128-D Embedding) | Apache-2.0 (`opencv_zoo`) | Apache-2.0 (`opencv_zoo/models/face_recognition_sface`) | Upstream literature cites MS1M / CASIA-WebFace; exact checkpoint dataset unverified in primary sources | **Unresolved Legal/IP Question** (Requires primary-source checkpoint provenance verification) | **Placeholder** (`extract_face_embedding` fails closed with HTTP 503) |
+| **MiniFASNet V2 & V1SE** (`Silent-Face-Anti-Spoofing`) | Presentation Attack Detection (PAD) | Apache-2.0 (`minivision-ai/Silent-Face-Anti-Spoofing`) | Distributed within Apache-2.0 repo tree (no separate weight grant) | Undocumented in repository (academic PAD literature uses OULU-NPU / CASIA-FASD / CelebA-Spoof) | **Unresolved Legal/IP Question** (Checkpoints lack training dataset & consent documentation) | **Integrated** (`MiniFASNetOnnxAdapter` via ONNX Runtime; export required) |
 
 ---
 
-## Current `biometric-service/` Compatibility Baseline
+## Core Licensing Distinctions & Principles
 
-Verified from the existing `biometric-service/` codebase:
-- **Runtime Dependencies** (`biometric-service/requirements.txt`): `python 3.11`, `fastapi==0.115.6`, `onnxruntime==1.20.1`, `opencv-python-headless==4.10.0.84`, `torch==2.5.1` (CPU), `numpy==2.1.3`, `pillow==11.0.0`.
-- **Configuration** (`biometric-service/app/core/config.py`): Model paths are configured via `FACE_DETECTION_MODEL_PATH`, `FACE_RECOGNITION_MODEL_PATH`, and `PAD_MODEL_PATH` under `WEIGHTS_DIR` (`./weights`). Currently all three default to `""` (unconfigured).
-- **Model Loader Contract** (`biometric-service/app/services/model_manager.py`, `_validate_and_open_artifact`):
-  - `.onnx` files are loaded via `onnxruntime.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])`.
-  - `.pt` / `.pth` files are loaded **only** via `torch.jit.load(str(model_path), map_location="cpu")` (TorchScript archives). Raw PyTorch `state_dict` `.pth` checkpoints are **not** supported by `ModelManager` as written.
-- **Inference Service Boundaries** (`app/services/face_detection.py`, `app/services/face_recognition.py`, `app/services/face_liveness.py`):
-  - All three service functions are currently Phase 1 fail-closed stubs (`async def`) raising `ModelUnavailableError` (`503`).
-  - Because `onnxruntime` and PyTorch CPU inference are synchronous and CPU-bound, production inference must be dispatched via `asyncio.to_thread(...)` or a bounded threadpool so FastAPI's event loop is not blocked.
+When evaluating deep-learning models for commercial software deployment, four distinct legal and operational layers must be evaluated separately:
+
+1. **Repository & Code License:** The copyright license governing the implementation source code (e.g., Python scripts, model definition classes, data loaders).
+2. **Distributed Model Artifact License:** The copyright or distribution license under which the binary weights or graph files (`.onnx`, `.pth`, `.tflite`) are hosted and released by the maintainers.
+3. **Training Dataset Provenance & License:** The copyright, terms of use, privacy rights, and consent terms of the raw images and annotations used during training optimization.
+4. **Commercial Deployment Clearance:** The enterprise business decision—evaluated by qualified IP counsel—determining whether deploying model weights derived from specific datasets creates legal exposure under copyright, breach of contract, or biometric data protection laws (e.g., GDPR Article 9, India DPDP Act, Illinois BIPA).
+
+> [!IMPORTANT]
+> **Do Not Conflate Layers:** A permissive model artifact license (such as MIT or Apache-2.0) does **not** automatically become invalid simply because an upstream research dataset had restrictive academic terms. Conversely, a permissive code license does **not** automatically grant commercial rights over proprietary or restricted training data. The interaction between training data terms and downstream functional weights is an **unresolved legal and intellectual property question** that depends on jurisdiction, fair use / text-and-data-mining doctrines, and contractual privity.
+
+---
+
+## Current `biometric-service/` Implementation Baseline
+
+The current implementation status in `biometric-service/` is:
+
+- **Face Detection (YuNet):** Fully implemented adapter (`app/services/face_detector_yunet.py`) wrapping `cv2.FaceDetectorYN` with thread-safe input sizing and strict single-face validation. Configurable via `FACE_DETECTION_MODEL_PATH`.
+- **Presentation Attack Detection (MiniFASNet V2 & V1SE):** Fully implemented adapter (`app/services/pad_minifasnet.py`) supporting multi-scale crops (`2.7x` and `4.0x`) and CPU ONNX Runtime sessions with independent variant score tracking. Offline export utility provided at `scripts/export_minifasnet_onnx.py`. Configurable via `PAD_V2_MODEL_PATH` and `PAD_V1SE_MODEL_PATH`.
+- **Face Recognition (Deferred):** Intentionally preserved as a Phase 1/Phase 2 fail-closed placeholder (`app/services/face_recognition.py`), raising `ModelUnavailableError` (HTTP 503).
+- **Service Capability Readiness:** `/ready` returns HTTP 200 when liveness capability (detection + PAD) is loaded; `/enroll` and `/verify` remain strictly fail-closed (HTTP 503) pending face recognition selection.
+- **Model Weights Baseline:** **Zero model weights are configured or bundled.** All weights directories (`weights/`) contain only `.gitkeep`. Tests execute exclusively against synthetic arrays and mock session objects.
+
+---
+
+## Runtime Concurrency & Threading Engineering Requirements
+
+In FastAPI applications running on ASGI servers (such as Uvicorn), route handlers defined with `async def` execute on the main event loop thread:
+
+- **Production Engineering Requirement:** CPU-bound inference operations (such as ONNX Runtime forward passes, OpenCV image decodes, and PyTorch executions) are synchronous and blocking. Executing them directly inside asynchronous route handlers blocks the event loop, degrading API responsiveness and causing health probes (`/health`, `/ready`) to stall.
+- **Dispatch Strategy:** In production, synchronous model inference and CPU-intensive preprocessing must be dispatched using `asyncio.to_thread(...)` or a dedicated bounded `concurrent.futures.ThreadPoolExecutor`.
+- **Threadpool Tuning:** CPU execution providers (`onnxruntime.InferenceSession`) should be configured with bounded `intra_op_num_threads` (e.g., 2–4) and `inter_op_num_threads` (e.g., 1) to prevent CPU thread oversubscription and thrashing under concurrent attendance punch requests.
+- **Status & Production Readiness:** Full threadpool integration, concurrency limits, and load validation remain required engineering tasks for production deployment; this capability must not be assumed to be complete without empirical load testing.
 
 ---
 
 ## 1. YuNet — OpenCV Zoo (`face_detection_yunet_2023mar.onnx`)
 
-### 1.1 Exact Upstream Repository and Model File
-- **Upstream Repository:** `https://github.com/opencv/opencv_zoo`
+### 1.1 Upstream Origin & Artifact Information
+- **Repository:** `https://github.com/opencv/opencv_zoo`
 - **Model Directory:** `https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet`
-- **Exact Model File:** `face_detection_yunet_2023mar.onnx` (approx. 232 KB, ~75K parameters)
-- **Upstream Training Origin:** `ShiqiYu/libfacedetection.train` / OpenCV Zoo YuNet pipeline.
+- **Model File Name:** `face_detection_yunet_2023mar.onnx` (~232 KB, ~75K parameters)
+- **Upstream Development:** Originates from `ShiqiYu/libfacedetection.train` and was integrated into OpenCV Zoo.
 
-### 1.2 Code License and Model-Weight License
-- **Code License (Verified):** **MIT License** in `opencv/opencv_zoo/models/face_detection_yunet`.
-- **Model-Weight License (Verified):** The `face_detection_yunet_2023mar.onnx` artifact is distributed inside the MIT-licensed `face_detection_yunet` directory of `opencv/opencv_zoo` without a separate restrictive commercial weight EULA.
+### 1.2 Code vs. Model Artifact Licensing
+- **Code License:** MIT License in `opencv/opencv_zoo/models/face_detection_yunet/`.
+- **Model Artifact License:** The `.onnx` weight file is distributed in the same directory under the terms of the MIT license.
 
-### 1.3 Training Dataset Provenance and Dataset License
-- **Training Dataset Provenance (Verified):** Trained and benchmarked on **WIDER FACE** (`libfacedetection.train` / OpenCV Zoo documentation).
-- **Dataset License (Verified Fact + Compliance Risk):** WIDER FACE is a public academic face-detection dataset distributed for **research purposes** (images sourced from public web search/WIDER). It does not provide an explicit commercial redistribution or model-derivation grant.
+### 1.3 Training Dataset Provenance & Dataset License
+- **Training Benchmark Provenance:** OpenCV Zoo documentation and upstream papers record evaluation and training on the **WIDER FACE** benchmark dataset.
+- **Dataset License Status:** WIDER FACE was published for non-commercial academic research. The WIDER FACE terms do **not** provide an explicit commercial grant.
+- **OpenCV Zoo Position:** OpenCV Zoo publishes the model directory under MIT, but does **not** assert or warrant a dataset-level commercial grant from the original WIDER FACE image rights holders.
 
-### 1.4 Commercial Deployment Assessment
-- **Status:** **Unclear — Requires Legal Sign-Off (Not Unconditionally Permitted).**
-- **Reasoning:** While the OpenCV Zoo code and `.onnx` file are distributed under **MIT** (which permits commercial use, modification, and distribution), the weights are functionally derived from WIDER FACE. Whether deploying the `.onnx` weights for server-side commercial HRMS inference (without redistributing WIDER FACE images) is acceptable under your company's IP/compliance posture is a legal determination, not something guaranteed by the MIT `LICENSE` file alone.
+### 1.4 Commercial Deployment Clearance Status
+- **Status:** **Unresolved Legal/IP Question (Review Required).**
+- **Assessment:** While the OpenCV Zoo code and `.onnx` file are distributed under MIT, whether deploying the `.onnx` weights for server-side commercial HRMS inference creates dataset-derivative exposure is an open legal determination requiring corporate IP review.
 
 ### 1.5 Written Clarification from Upstream Maintainers
-- **Verified Public Record:** Community and corporate compliance inquiries in `opencv/opencv_zoo` (e.g., Issues `#318` and `#320`) have specifically asked maintainers to clarify commercial usage of OpenCV Zoo models trained on academic datasets such as WIDER FACE.
-- **Gap:** No blanket commercial indemnity or dataset-level copyright waiver from WIDER FACE authors is published in `opencv/opencv_zoo` for `face_detection_yunet_2023mar.onnx`.
+- **Public Discussions:** Community and corporate compliance inquiries in `opencv/opencv_zoo` (e.g., Issues `#318` and `#320`) have requested maintainers clarify commercial usage of OpenCV Zoo models trained on academic datasets such as WIDER FACE.
+- **Status:** Maintainers clarify repository file grants (MIT/Apache-2.0), but OpenCV Zoo publishes no blanket commercial indemnity or dataset-level copyright waiver from original benchmark authors.
 
-### 1.6 Format, Compatibility with `biometric-service/`, and Conversion Requirements
-- **Format:** Standard **ONNX** (`face_detection_yunet_2023mar.onnx`).
-- **Compatibility:** **Directly compatible** with `biometric-service/` out of the box:
-  - `model_manager.py` opens `.onnx` directly using `onnxruntime.InferenceSession(..., providers=["CPUExecutionProvider"])`.
-  - Also natively supported by `opencv-python-headless==4.10.0.84` via `cv2.FaceDetectorYN.create(...)`.
-- **Conversion Requirements:** **None.** No format conversion needed.
-- **Alignment Output:** Outputs bounding boxes, detection confidence, and **5 facial landmarks** (right eye, left eye, nose tip, right mouth corner, left mouth corner), which directly feed 5-point similarity-transform alignment (`112x112`) for SFace.
+### 1.6 Technical Compatibility, Outputs & Downstream Alignment Role
+- **Format:** Native ONNX (compatible with `onnxruntime==1.20.1` and `opencv-python-headless==4.10.0.84` via `cv2.FaceDetectorYN`).
+- **Conversion Requirements:** None.
+- **Outputs:** Bounding box `(x, y, w, h)`, detection confidence score, and **5 facial landmarks** (right eye, left eye, nose tip, right mouth corner, left mouth corner).
+- **Role in Pipeline:** The 5 facial landmarks are required to calculate a partial affine similarity transform (`cv2.estimateAffinePartial2D`) to warp faces into canonical 112x112 coordinates for downstream recognition models (such as SFace or MobileFaceNet).
 
-### 1.7 Security, Accuracy, and Anti-Spoofing Limitations
-- **Detection Limitations:** Degrades on extreme yaw/roll/pitch (`> 45°`), heavy occlusion (masks/scarves/hands), severe motion blur, very low-light webcam frames, or tiny faces (`< 20x20` px).
-- **Security / Anti-Spoofing Limitations:** YuNet is strictly a **2D face detector**; it provides **zero** liveness or anti-spoofing capability and will happily detect printed photos, phone screens, and deepfake replays. It must be paired with a downstream PAD gate (`MiniFASNet` or equivalent) and server-side challenge/replay protection.
+### 1.7 Limitations & Security Considerations
+- **Detection Edge Cases:** Performance degrades on extreme pose angles (yaw/pitch/roll `> 45°`), heavy facial occlusion (masks, scarves, hands), severe motion blur, low-light sensor noise, and small faces where `min(w, h) < 60px`.
+- **Anti-Spoofing Limitation:** YuNet is strictly a **2D bounding-box and landmark detector**. It possesses **zero presentation attack detection (PAD) capabilities**. While it can detect printed photos, phone screens, and video replays as faces, it cannot establish liveness or verify that the detected face is genuine. Detection must always be gated by dedicated PAD verification.
 
 ---
 
 ## 2. SFace — OpenCV Zoo (`face_recognition_sface_2021dec.onnx`)
 
-### 2.1 Exact Upstream Repository and Model File
-- **Upstream Repository:** `https://github.com/opencv/opencv_zoo`
+### 2.1 Upstream Origin & Artifact Information
+- **Repository:** `https://github.com/opencv/opencv_zoo`
 - **Model Directory:** `https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface`
-- **Exact Model File:** `face_recognition_sface_2021dec.onnx` (approx. 38 MB)
+- **Model File Name:** `face_recognition_sface_2021dec.onnx` (~38 MB)
+- **Paper Reference:** *"Accurate and Lightweight Face Recognition with Sigmoid-Constrained Hypersphere Loss"* (Zhong et al., 2021).
 
-### 2.2 Code License and Model-Weight License
-- **Code License (Verified):** **Apache License 2.0** in `opencv/opencv_zoo/models/face_recognition_sface`.
-- **Model-Weight License (Verified):** The `face_recognition_sface_2021dec.onnx` file is distributed inside the Apache-2.0-licensed `face_recognition_sface` directory in `opencv/opencv_zoo`.
+### 2.2 Code vs. Model Artifact Licensing
+- **Code License:** Apache License 2.0 in `opencv/opencv_zoo/models/face_recognition_sface/`.
+- **Model Artifact License:** Distributed under Apache License 2.0 within OpenCV Zoo.
 
-### 2.3 Training Dataset Provenance and Dataset License
-- **Training Dataset Provenance (Verified):** Upstream SFace models were trained on large-scale public academic face-recognition corpora — specifically **MS1M** (MS-Celeb-1M / MS1MV2 variants) and/or **CASIA-WebFace**.
-- **Dataset License & Legal History (Verified):**
-  - **MS-Celeb-1M (MS1M):** Originally released by Microsoft for academic/non-commercial research and **officially retired/retracted by Microsoft** due to privacy and consent concerns. Derivative cleaned splits (`MS1M-ArcFace`, `MS1MV2`) remain strictly non-commercial research benchmarks.
-  - **CASIA-WebFace:** Released for non-commercial academic research only.
+### 2.3 Training Dataset Provenance & Verification Gap
+- **Literature Context:** Upstream academic papers evaluating SFace architectures describe training on large academic face benchmarks such as **MS1M** (MS-Celeb-1M / MS1MV2) and **CASIA-WebFace**.
+- **Important Distinction:** MS-Celeb-1M was retired by Microsoft due to ethical and privacy concerns; academic splits (e.g., MS1M-ArcFace) carry non-commercial research terms.
+- **Unverified Checkpoint Provenance:** OpenCV Zoo documentation explicitly grants Apache-2.0 for the model wrapper and hosted `.onnx` file, but **does not document the exact primary-source training corpus used to optimize `face_recognition_sface_2021dec.onnx`**. Whether this specific checkpoint was trained on an academic MS1M split, WebFace, or a vendor-internal dataset is unconfirmed in primary documentation.
 
-### 2.4 Commercial Deployment Assessment
-- **Status:** **Unclear / High Compliance Sensitivity — Requires Legal Sign-Off.**
-- **Reasoning:** Even though `opencv/opencv_zoo` ships `face_recognition_sface_2021dec.onnx` under **Apache-2.0** (which on paper allows commercial use), the weights were trained on web-scraped celebrity/public face datasets (`MS1M` / `CASIA-WebFace`) without data-subject consent. Commercial use of models trained on retracted or non-commercial biometric datasets carries both dataset-license risk and regulatory/privacy scrutiny (e.g., GDPR, India DPDP Act, BIPA) depending on jurisdiction and enterprise customer legal standards.
+### 2.4 Commercial Deployment Clearance Status
+- **Status:** **Unresolved Legal/IP Question (Primary-Source Confirmation Required).**
+- **Assessment:** The artifact is offered under Apache-2.0. However, because biometric face-recognition weights in commercial HRMS platforms face strict data protection regulations (GDPR Art. 9, DPDP Act, BIPA), primary-source confirmation of the checkpoint's underlying training dataset and consent status must be established before production deployment.
 
 ### 2.5 Written Clarification from Upstream Maintainers
-- **Verified Public Record:** Discussions in `opencv/opencv_zoo` (including Issues `#318` / `#320`) document user requests for commercial clarity around SFace and its upstream datasets.
-- **Gap:** OpenCV Zoo maintainers apply Apache-2.0 to the contributed repository directory, but **have not provided** a clean-room dataset provenance warranty or legal indemnification covering the upstream MS1M/WebFace training imagery.
+- **Public Discussions:** OpenCV Zoo discussions (including Issues `#318` and `#320`) reflect community requests for dataset-level warranties. Maintainers confirm repository licensing terms but do not provide third-party data clearance warranties.
 
-### 2.6 Format, Compatibility with `biometric-service/`, and Conversion Requirements
-- **Format:** Standard **ONNX** (`face_recognition_sface_2021dec.onnx`).
-- **Compatibility:** **Directly compatible** with `biometric-service/`:
-  - Loaded directly by `model_manager.py` via `onnxruntime.InferenceSession(..., providers=["CPUExecutionProvider"])`.
-  - Also supported natively via `cv2.FaceRecognizerSF.create(...)` in `opencv-python-headless==4.10.0.84`.
-- **Conversion Requirements:** **None.**
-- **Preprocessing Requirement:** Requires `112x112` aligned face crop produced from 5-point landmarks (e.g., from YuNet) before embedding extraction (outputs 128-D embedding for cosine similarity matching).
-- **Performance Note (Unmeasured):** At ~38 MB ONNX, SFace is noticeably heavier than a ~4 MB MobileFaceNet checkpoint; actual CPU latency on target container hardware is **unmeasured** and must be benchmarked against the `< 300 ms` stage budget.
+### 2.6 Technical Compatibility, Input/Output Specs & Latency
+- **Format:** Native ONNX (~38 MB).
+- **Input Requirements:** Requires pre-aligned **112x112** 3-channel BGR face crops generated via 5-point similarity transformation from facial landmarks.
+- **Output:** Normalized **128-dimensional embedding vector** compared using cosine similarity.
+- **Conversion Requirements:** None.
+- **CPU Performance Considerations:** At ~38 MB, SFace has a significantly larger parameter footprint than lightweight mobile architectures (~4 MB MobileFaceNet). Target CPU container latency has **not been empirically benchmarked** on production hardware and must be evaluated against single-stage latency targets.
+- **Implementation Status in Project:** **Deferred.** `extract_face_embedding` remains a fail-closed stub.
 
-### 2.7 Security, Accuracy, and Anti-Spoofing Limitations
-- **Accuracy Limitations:** Sensitive to alignment errors, extreme pose, occlusions (masks/sunglasses), low resolution, and severe lighting/ISP differences between laptop webcams and Android cameras. Cosine threshold calibration must be validated on representative employee captures to balance FAR and FRR.
-- **Security / Anti-Spoofing Limitations:** SFace is a **passive identity matcher only**. It cannot distinguish a live employee from a high-resolution photo or video replay; a replay of an authorized employee's face will match with high cosine similarity unless blocked by PAD + challenge replay protection.
+### 2.7 Accuracy, Threshold Calibration & Security Limitations
+- **Alignment Sensitivity:** Recognition accuracy degrades sharply if landmark localization is imprecise or if bounding-box crops are fed without 5-point similarity alignment.
+- **Environmental Drift:** Facial occlusions (glasses, facial hair, masks), lighting variance, and sensor differences between mobile front cameras and laptop webcams affect cosine similarity scores.
+- **FAR/FRR Threshold Calibration:** The operational cosine threshold must be empirically calibrated using representative capture samples to balance False Acceptance Rate (security) against False Rejection Rate (user convenience).
+- **Anti-Spoofing Limitation:** SFace is a **passive feature extractor only**. It cannot distinguish between a real face and a high-resolution spoof presentation; a photo replay of an authorized employee will match with high similarity unless blocked by PAD.
 
 ---
 
 ## 3. MiniFASNet V2 and V1SE — MiniVision (`Silent-Face-Anti-Spoofing`)
 
-### 3.1 Exact Upstream Repository and Model Files
-- **Upstream Repository:** `https://github.com/minivision-ai/Silent-Face-Anti-Spoofing`
-- **Model Directory:** `resources/anti_spoof_models/`
-- **Exact Model Files:**
-  - `2.7_80x80_MiniFASNetV2.pth` (MiniFASNetV2, ~0.435M params, ~1.8 MB, `2.7x` context scale, `80x80` input)
-  - `4_0_0_80x80_MiniFASNetV1SE.pth` (MiniFASNetV1SE, ~0.41–0.44M params, ~1.8 MB, `1.0x`/`4.0x` scale, `80x80` input)
+### 3.1 Upstream Origin & Artifact Information
+- **Repository:** `https://github.com/minivision-ai/Silent-Face-Anti-Spoofing`
+- **Checkpoints:**
+  - `resources/anti_spoof_models/2.7_80x80_MiniFASNetV2.pth` (~1.8 MB, ~0.435M params, `2.7x` context scale)
+  - `resources/anti_spoof_models/4_0_0_80x80_MiniFASNetV1SE.pth` (~1.8 MB, ~0.41–0.44M params, `4.0x` context scale)
 
-### 3.2 Code License and Model-Weight License
-- **Code License (Verified):** **Apache License 2.0** (`LICENSE` at repository root).
-- **Model-Weight License (Verified Fact + Gap):** The `.pth` files sit inside the Apache-2.0 repository under `resources/anti_spoof_models/`, with **no separate model-weight license file or dataset attribution card** explaining the provenance or licensing of the weights independently of the code.
+### 3.2 Code vs. Model Artifact Licensing
+- **Code License:** Apache License 2.0 at the repository root.
+- **Model Artifact License:** The `.pth` weight files are hosted in the Apache-2.0 repository tree without a separate restrictive license file.
 
-### 3.3 Training Dataset Provenance and Dataset License
-- **Training Dataset Provenance (Gap — Undocumented):** The `Silent-Face-Anti-Spoofing` repository provides model definitions (`MiniFASNet.py`), training/Fourier-auxiliary scripts, and pre-trained `.pth` checkpoints, **but does not document** which exact datasets were used to train `2.7_80x80_MiniFASNetV2.pth` and `4_0_0_80x80_MiniFASNetV1SE.pth`, nor whether subject consent was obtained.
-- **Public Anti-Spoofing Dataset Context:** In academic/practitioner workflows around MiniFASNet, models are commonly trained or benchmarked on **OULU-NPU**, **CASIA-FASD**, **CASIA-SURF**, or **CelebA-Spoof**. All of those public academic PAD benchmarks restrict use to **non-commercial research only**. Whether MiniVision used internal proprietary data, public academic datasets, or a mix for the published `.pth` files is **unknown**.
+### 3.3 Training Dataset Provenance & Verification Gap
+- **Undocumented Training Provenance:** The `Silent-Face-Anti-Spoofing` repository documents model architectures and Fourier-frequency auxiliary supervision loss, but **provides no dataset cards, subject consent documentation, or primary-source disclosure** of the exact images used to train the included `.pth` weights.
+- **Benchmark Context:** In academic literature, MiniFASNet models are evaluated on datasets such as OULU-NPU, CASIA-FASD, and CelebA-Spoof, which are strictly non-commercial research benchmarks. Whether MiniVision trained these checkpoints on public research benchmarks, internal proprietary data, or a combination is unverified.
 
-### 3.4 Commercial Deployment Assessment
-- **Status:** **Unclear — High Provenance Gap (Requires Legal Acceptance or Retraining).**
-- **Reasoning:** Apache-2.0 explicitly permits commercial use of the **codebase** (`MiniFASNet` architecture and training pipeline). However, because the training dataset provenance of the pre-trained `.pth` weights is **undocumented**, a compliance/legal team cannot verify that the `.pth` weights are free from non-commercial dataset restrictions or biometric consent issues. For strict zero-risk commercial provenance, the safest path is training `MiniFASNet` from scratch using the Apache-2.0 code on a commercially licensed or internally consented dataset.
+### 3.4 Commercial Deployment Clearance Status
+- **Status:** **Unresolved Legal/IP Question (Undocumented Provenance).**
+- **Assessment:** Commercial use of the code is permitted under Apache-2.0. However, deploying the pre-trained weights requires either accepting the risk of undocumented dataset provenance or re-training the Apache-2.0 MiniFASNet architecture on a commercially licensed or consented anti-spoofing dataset.
 
-### 3.5 Written Clarification from Upstream Maintainers
-- **Verified Public Record:** None found in the repository documentation (`README.md` / `LICENSE`) clarifying the exact training dataset provenance or commercial warranty for the bundled `.pth` checkpoints.
+### 3.5 Technical Compatibility, Preprocessing & Dual-Model Execution
+- **Format:** Raw PyTorch `state_dict` `.pth` files.
+- **Incompatibility with `torch.jit.load`:** Upstream checkpoints are **not** TorchScript archives. Attempting to load them via `torch.jit.load()` fails.
+- **Conversion Requirement:** Must be exported to **ONNX** (`80x80` input, opset 17) using `scripts/export_minifasnet_onnx.py`.
+- **Multi-Scale Crop Preprocessing:**
+  - MiniFASNet V2 expects a **2.7x** scale expansion around the face center, clamped to image bounds and resized to **80x80**.
+  - MiniFASNet V1SE expects a wider context expansion (**4.0x** scale), clamped to image bounds and resized to **80x80**.
+- **Output Logits & Class Index Verification:**
+  - Upstream models produce 3-class classification logits `[class_0, class_1, class_2]`.
+  - In upstream test scripts, softmax probability at **index 1** represents the bona fide (live) class.
+  - Class-index mapping must remain explicitly subject to verification against the exact upstream checkpoint and exported ONNX model before deployment.
+- **Dual-Model Configuration:** Combining V2 (focusing on local frequency cues) and V1SE (evaluating broader context) improves attack discrimination; both variant scores should be observed independently before applying fusion weights.
+- **Implementation Status in Project:** Fully integrated in `app/services/pad_minifasnet.py` via ONNX Runtime CPUExecutionProvider. Default threshold (0.5) is explicitly marked **uncalibrated** until validated against physical capture samples.
 
-### 3.6 Format, Compatibility with `biometric-service/`, and Conversion Requirements
-- **Format:** PyTorch `state_dict` checkpoint files (`.pth`).
-- **Compatibility:** **NOT directly compatible with `biometric-service/` as-is:**
-  - `biometric-service/app/services/model_manager.py` (lines 162–165) loads `.pt`/`.pth` files exclusively via `torch.jit.load(str(model_path), map_location="cpu")`.
-  - Standard `state_dict` `.pth` files from `Silent-Face-Anti-Spoofing` are **not TorchScript archives** and will fail `torch.jit.load(...)`.
-- **Conversion Requirements:**
-  1. **Recommended:** Export both `MiniFASNetV2` and `MiniFASNetV1SE` to **ONNX** (`80x80` RGB/BGR input matching the repo's preprocessing) so all three pipeline stages run uniformly on `onnxruntime` `CPUExecutionProvider`.
-  2. **Multi-model PAD wiring:** `ModelManager` currently tracks a single `PAD_MODEL_PATH` (`face_liveness`). To run the standard dual-scale ensemble (`V2` at `2.7x` crop + `V1SE` at tighter/wider crop), either support two PAD ONNX paths/configs or package a fused/combined PAD session.
-  3. **Preprocessing:** Requires `CropImage` logic matching `Silent-Face-Anti-Spoofing` (scaling the detector bounding box by `2.7` / `4.0` while preserving aspect ratio and padding/clamping to `80x80`) and 3-class softmax output (`[spoof_or_bg, live, spoof]` — exact class index mapping from `test.py` must be preserved during export).
-
-### 3.7 Security, Accuracy, and Anti-Spoofing Limitations
-- **Passive Single-Frame Limitation:** MiniFASNet evaluates spatial texture and implicit frequency-domain cues from a **single RGB frame**. It does **not** perform active challenge-response liveness (blink, head-pose, expression) or 3D depth/IR sensing.
-- **Bypass / Attack Risks:**
-  - Vulnerable to **high-DPI OLED / Retina screen replay** held at optimal distance and lighting where moiré/pixel-grid artifacts are minimal.
-  - Vulnerable to **high-quality 3D silicone/resin masks** or well-lit ultra-high-res matte prints.
-  - **Domain shift:** Webcam compression, low-light denoising, beauty filters, or ISP differences between Android front cameras and laptop webcams can cause elevated false rejections (BPCER) or false acceptances (APCER).
-- **Certification:** Holds **no** independent **ISO/IEC 30107-3 (PAD Level 1 or Level 2)** certification. Any repository accuracy claims apply only to academic test splits, not real-world HRMS environments.
+### 3.6 Limitations & Attack Vulnerabilities
+- **Passive Single-Frame Scope:** Operates strictly on single static 2D images. Does not perform active challenge-response (e.g., eye blink, head turns, smile) or 3D depth/IR analysis.
+- **Attack Vulnerabilities:** Vulnerable to high-DPI OLED/Retina screen replays held at distances where moiré patterns are imperceptible, well-lit matte photographic prints, and high-quality 3D silicone or resin masks.
+- **Domain Shift:** Significant differences in camera sensors, automatic white balance, lens distortion, and compression between mobile front cameras and laptop webcams can alter frequency characteristics, leading to false rejections (BPCER) or false acceptances (APCER).
+- **Certification:** Holds **no independent ISO/IEC 30107-3 (PAD Level 1 or Level 2)** certification.
 
 ---
 
 ## Facts vs. Assumptions vs. Unresolved Questions
 
-### Verified Facts
-- `biometric-service/requirements.txt` includes `onnxruntime==1.20.1`, `opencv-python-headless==4.10.0.84`, and CPU `torch==2.5.1`.
-- `biometric-service/app/services/model_manager.py` loads `.onnx` via `onnxruntime.InferenceSession` and `.pt`/`.pth` only via `torch.jit.load`.
-- `opencv/opencv_zoo` licenses `face_detection_yunet` under **MIT** and `face_recognition_sface` under **Apache-2.0**.
-- `minivision-ai/Silent-Face-Anti-Spoofing` licenses its repository under **Apache-2.0**, and its pre-trained weights are raw PyTorch `.pth` files (`2.7_80x80_MiniFASNetV2.pth`, `4_0_0_80x80_MiniFASNetV1SE.pth`).
-- YuNet was trained/evaluated on WIDER FACE; SFace upstream research relies on MS1M / CASIA-WebFace; MiniFASNet's bundled `.pth` training dataset is undocumented in the repo.
+### Confirmed Technical & Legal Facts
+1. `biometric-service/` environment includes `onnxruntime==1.20.1`, `opencv-python-headless==4.10.0.84`, `numpy==2.1.3`, `pillow==11.0.0`, and `torch==2.5.1`.
+2. `ModelManager` loads `.onnx` models via `onnxruntime.InferenceSession` and rejects raw PyTorch `.pth` `state_dict` checkpoints with explicit export guidance.
+3. OpenCV Zoo licenses `face_detection_yunet` under **MIT** and `face_recognition_sface` under **Apache-2.0**.
+4. MiniVision licenses `Silent-Face-Anti-Spoofing` code under **Apache-2.0**, but checkpoint training data provenance is omitted from repository documentation.
+5. SFace requires 112x112 pre-aligned crops and generates 128-D embeddings; MiniFASNet V2/V1SE requires 80x80 multi-scale crops and generates 3-class logits.
+6. Phase 2 implementation routes `/ready` to HTTP 200 upon liveness readiness (detection + PAD), while `/enroll` and `/verify` fail closed (HTTP 503) pending face recognition model selection.
 
-### Engineering Assumptions / Inferences
-- Exporting MiniFASNetV2 and MiniFASNetV1SE to ONNX is straightforward because both architectures use standard CNN + SE blocks (`torch.onnx.export`).
-- Running YuNet + MiniFASNet (2x) + SFace on CPU via ONNX Runtime can likely fit within a `< 1 s` total request budget on modern multi-vCPU containers, **but actual CPU latency on target hardware is unmeasured**.
+### Engineering Assumptions (Subject to Empirical Validation)
+1. Combining YuNet (75K params) + MiniFASNet V2/V1SE (0.86M params) + SFace (9.5M params) on CPU via ONNX Runtime can achieve acceptable responsiveness, but actual container latency under load remains unmeasured.
+2. Equal-weight score fusion (0.5 V2 + 0.5 V1SE) is an initial operational baseline and must be calibrated on actual hardware before production deployment.
 
-### Unresolved Questions (Action Items Before Commercial GA)
-1. **Legal Clearance on OpenCV Zoo Weights:** Does legal counsel approve commercial server-side inference using `face_detection_yunet_2023mar.onnx` (MIT) and `face_recognition_sface_2021dec.onnx` (Apache-2.0) despite upstream academic training data (WIDER FACE, MS1M/CASIA-WebFace)?
-2. **Legal Clearance or Retraining for MiniFASNet Weights:** Will legal/compliance accept the undocumented dataset provenance of MiniVision's `.pth` files under Apache-2.0, or must MiniFASNet be retrained from scratch on a commercially cleared/consented PAD dataset?
-3. **Target CPU Benchmarking:** What is the p95 latency and RAM footprint of `YuNet + MiniFASNetV2/V1SE (ONNX) + SFace` on the actual production CPU container under concurrent punch-in load?
-4. **Biometric Privacy Governance:** Are employee consent, retention limits, template revocation, and regional biometric laws (e.g., GDPR Art. 9, India DPDP Act, BIPA) signed off alongside technical deployment?
+### Unresolved Legal, IP & Governance Questions
+1. **OpenCV Zoo Derivative Clearance:** Does corporate legal counsel approve deploying OpenCV Zoo MIT/Apache-2.0 `.onnx` models for server-side commercial inference where upstream research utilized WIDER FACE or MS1M/WebFace?
+2. **SFace Checkpoint Primary Source:** Can primary-source documentation be established verifying the exact training images used to produce `face_recognition_sface_2021dec.onnx`?
+3. **MiniFASNet Checkpoint Policy:** Will compliance accept the undocumented dataset provenance of MiniVision's `.pth` weights under Apache-2.0, or does enterprise risk policy require retraining on a consented dataset?
+4. **Biometric Data Governance:** Have data protection impact assessments (DPIA), employee biometric consent mechanisms, retention schedules, and template encryption workflows been signed off under applicable regional laws (e.g., GDPR Art. 9, DPDP Act, BIPA)?
+
+---
+
+## Model Clearance Checklist
+
+Before downloading or configuring any model weights in the production HRMS environment, compliance and engineering teams must complete and document the following verification checklist for each candidate:
+
+```markdown
+### Model Clearance Checklist: [Model Name & Version]
+
+- [ ] 1. Exact Artifact Identification:
+      - Source URL: __________________________________________________
+      - Immutable Revision (Git Commit SHA / Release Tag): ___________
+      - Artifact File Name: __________________________________________
+- [ ] 2. Cryptographic Integrity:
+      - SHA-256 Checksum: ____________________________________________
+      - Verified against upstream publisher hash: [Yes / No]
+- [ ] 3. License Verification:
+      - Repository License: __________________________________________
+      - Artifact-Specific License / EULA: ____________________________
+      - Upstream Scope & Restrictions (e.g., non-commercial, attribution):
+        ______________________________________________________________
+- [ ] 4. Author / Maintainer Confirmation (if applicable):
+      - Written confirmation or issue response received: [Yes / N/A]
+      - Record reference: ____________________________________________
+- [ ] 5. Training Dataset Provenance & Consent:
+      - Primary-source training dataset identified: __________________
+      - Dataset licensing terms documented: _________________________
+      - Data subject consent / privacy evaluation completed: _________
+- [ ] 6. Commercial-Use Clearance:
+      - Legal / IP counsel review completed: [Yes / Pending]
+      - Formal approval status: [Approved / Conditional / Rejected]
+      - Date of Legal Sign-Off: ______________________________________
+      - Approving Counsel: ___________________________________________
+- [ ] 7. Technical Validation & Proposed Engineering Targets:
+      - Supported by current `biometric-service/` environment: [Yes / No]
+      - Single-stage CPU latency (Proposed engineering target: < 300 ms): _____ ms
+      - End-to-end request CPU latency (Proposed engineering target: < 1000 ms): _____ ms
+      - Verification FAR / FRR / APCER / BPCER calibrated: [Yes / Pending]
+```
+
+---
+
+## Action Items Before Commercial GA
+
+1. **Submit OpenCV Zoo YuNet & SFace for IP Review:** Present the OpenCV Zoo MIT/Apache-2.0 artifact grants and training dataset contexts to enterprise IP counsel for commercial deployment clearance.
+2. **Resolve SFace Checkpoint Provenance:** Request or confirm primary-source documentation regarding the exact dataset used to produce `face_recognition_sface_2021dec.onnx`.
+3. **Decide on MiniFASNet Weights vs. Retraining:** Determine whether to seek legal acceptance of MiniVision's Apache-2.0 `.pth` weights or to train MiniFASNet from scratch on a fully documented, consented commercial anti-spoofing dataset.
+4. **Hardware CPU Benchmarking:** Measure actual p95 CPU inference latency and memory footprints under concurrent multi-user punch-in load on the target container architecture against proposed engineering targets (< 300 ms per stage, < 1,000 ms end-to-end).
+5. **Biometric Privacy Compliance:** Verify company-wide policies for employee consent, biometric data retention, encryption key rotation, and audit logging as mandated by local data protection authorities.
