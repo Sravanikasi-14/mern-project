@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
+README.md
