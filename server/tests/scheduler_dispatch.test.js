@@ -28,6 +28,10 @@ import {
   ANNOUNCEMENT_AUDIENCES,
   ANNOUNCEMENT_PRIORITIES,
 } from "../models/Announcement.js";
+import { TASK_PRIORITIES, TASK_STATUSES } from "../models/Task.js";
+import { EMPLOYEE_STATUSES } from "../models/Employee.js";
+import { USER_ROLES } from "../models/User.js";
+import { hashPassword } from "../utils/password.js";
 import {
   JOB_KEYS,
   SCHEDULE_ACTIONS,
@@ -635,6 +639,99 @@ describe("schedulerDispatch HTTP + service", () => {
     assert.equal(wf.summary?.results, undefined);
   });
 
+  it("workforce dry-run success advances Asia/Kolkata schedule without applying assignments", async () => {
+    // After 07:30 IST so ADVANCE_DAILY lands on the next civil day at 07:30 IST.
+    const now = new Date("2026-03-20T02:30:00.000Z");
+    process.env.WORKFORCE_SCHEDULER_ENABLED = "true";
+    // Prove dispatcher hard-forces dry-run even when env mode is apply.
+    process.env.WORKFORCE_SCHEDULER_MODE = "apply";
+
+    await forceJobDue(JOB_KEYS.WORKFORCE, now);
+    await getDispatchJobModel().updateOne(
+      { _id: JOB_KEYS.ANNOUNCEMENTS },
+      { $set: { nextRunAt: new Date("2099-01-01T00:00:00.000Z") } }
+    );
+
+    const hrUser = await models.User.create({
+      email: `wf-hr-${RUN_ID}@dispatch.test`,
+      passwordHash: await hashPassword("DispatchPass123!"),
+      role: USER_ROLES.HR_ADMIN,
+      isActive: true,
+    });
+    const empUser = await models.User.create({
+      email: `wf-emp-${RUN_ID}@dispatch.test`,
+      passwordHash: await hashPassword("DispatchPass123!"),
+      role: USER_ROLES.EMPLOYEE,
+      isActive: true,
+    });
+    const employee = await models.Employee.create({
+      userId: empUser._id,
+      companyId: company._id,
+      employeeCode: `WF-${RUN_ID}`.slice(0, 20),
+      fullName: "Dispatch Eligible",
+      email: `wf-emp-${RUN_ID}@dispatch.test`,
+      status: EMPLOYEE_STATUSES.ACTIVE,
+      skills: ["node"],
+      job: { department: "Engineering", jobTitle: "Dev" },
+    });
+    const task = await models.Task.create({
+      title: `WF dry-run queue ${RUN_ID}`,
+      description: "Queued for dry-run proposals only",
+      assigneeId: null,
+      assignedByUserId: hrUser._id,
+      assignedBySnapshot: {
+        fullName: "HR",
+        role: USER_ROLES.HR_ADMIN,
+        email: hrUser.email,
+      },
+      department: "Engineering",
+      priority: TASK_PRIORITIES.MEDIUM,
+      status: TASK_STATUSES.UNASSIGNED,
+      deadline: new Date(now.getTime() + 3 * 86_400_000),
+      requiredSkills: ["node"],
+    });
+    const notifBefore = models.Notification
+      ? await models.Notification.countDocuments({})
+      : 0;
+
+    try {
+      const result = await runSchedulerDispatch({
+        now,
+        budgetMs: 20000,
+        force: true,
+      });
+
+      assert.equal(result.jobsDue, 1);
+      assert.equal(result.jobsAttempted, 1);
+      const wf = result.jobs.find((j) => j.jobKey === JOB_KEYS.WORKFORCE);
+      assert.ok(wf);
+      assert.equal(wf.status, "ok");
+      assert.equal(wf.executionMode, "dry-run");
+      assert.equal(wf.scheduleAction, SCHEDULE_ACTIONS.ADVANCE_DAILY);
+      assert.equal(wf.summary?.mode, "dry-run");
+      assert.equal(wf.summary?.truncated, false);
+      assert.ok(Number(wf.summary?.attempted) >= 1);
+      // Dry-run success is not apply: ownership must remain unchanged.
+      assert.equal(wf.summary?.autoApplied, undefined);
+
+      const job = await getDispatchJobModel().findById(JOB_KEYS.WORKFORCE).lean();
+      assert.equal(job.lastStatus, "ok");
+      assert.equal(job.nextRunAt.toISOString(), "2026-03-21T02:00:00.000Z");
+
+      const reloaded = await models.Task.findById(task._id).lean();
+      assert.equal(reloaded.status, TASK_STATUSES.UNASSIGNED);
+      assert.equal(reloaded.assigneeId, null);
+      if (models.Notification) {
+        assert.equal(await models.Notification.countDocuments({}), notifBefore);
+      }
+    } finally {
+      process.env.WORKFORCE_SCHEDULER_MODE = "dry-run";
+      await models.Task.deleteOne({ _id: task._id });
+      await models.Employee.deleteOne({ _id: employee._id });
+      await models.User.deleteMany({ _id: { $in: [hrUser._id, empUser._id] } });
+    }
+  });
+
   it("announcements detect-only counts due rows without publishing", async () => {
     await models.Announcement.create({
       title: "Due soon",
@@ -696,6 +793,59 @@ describe("schedulerDispatch HTTP + service", () => {
 
     const still = await models.Announcement.findOne({ title: "Fleet due" }).lean();
     assert.equal(still.status, ANNOUNCEMENT_STATUSES.SCHEDULED);
+  });
+
+  it("announcements detect-only success advances Asia/Kolkata daily schedule and persists lastStatus", async () => {
+    // After 08:30 IST so ADVANCE_DAILY lands on the next civil day at 08:30 IST.
+    const now = new Date("2026-03-20T03:30:00.000Z");
+    await forceJobDue(JOB_KEYS.ANNOUNCEMENTS, now);
+    await getDispatchJobModel().updateOne(
+      { _id: JOB_KEYS.WORKFORCE },
+      { $set: { nextRunAt: new Date("2099-01-01T00:00:00.000Z") } }
+    );
+
+    const created = await models.Announcement.create({
+      title: "Detect-only success row",
+      body: "Must stay scheduled",
+      status: ANNOUNCEMENT_STATUSES.SCHEDULED,
+      scheduledAt: new Date("2026-03-19T08:00:00.000Z"),
+      audience: ANNOUNCEMENT_AUDIENCES.COMPANY,
+      priority: ANNOUNCEMENT_PRIORITIES.NORMAL,
+      publishedBy: new mongoose.Types.ObjectId(),
+    });
+    const notifBefore = models.Notification
+      ? await models.Notification.countDocuments({})
+      : 0;
+
+    const result = await runSchedulerDispatch({
+      now,
+      budgetMs: 20000,
+      force: true,
+    });
+
+    assert.equal(result.jobsDue, 1);
+    assert.equal(result.jobsAttempted, 1);
+    const ann = result.jobs.find((j) => j.jobKey === JOB_KEYS.ANNOUNCEMENTS);
+    assert.ok(ann);
+    assert.equal(ann.status, "ok");
+    assert.equal(ann.executionMode, "detect-only");
+    assert.equal(ann.scheduleAction, SCHEDULE_ACTIONS.ADVANCE_DAILY);
+    assert.equal(ann.summary?.mode, "detect-only");
+    assert.equal(ann.summary?.published, 0);
+    assert.equal(ann.summary?.mutations, false);
+    assert.ok(Number(ann.summary?.dueCount) >= 1);
+
+    const job = await getDispatchJobModel().findById(JOB_KEYS.ANNOUNCEMENTS).lean();
+    assert.equal(job.lastStatus, "ok");
+    assert.equal(job.nextRunAt.toISOString(), "2026-03-21T03:00:00.000Z");
+
+    const still = await models.Announcement.findById(created._id).lean();
+    assert.equal(still.status, ANNOUNCEMENT_STATUSES.SCHEDULED);
+    assert.equal(still.publishedAt, null);
+    assert.equal(still.notifiedAt, null);
+    if (models.Notification) {
+      assert.equal(await models.Notification.countDocuments({}), notifBefore);
+    }
   });
 
   it("isolates adapter failures and still records other job status", async () => {

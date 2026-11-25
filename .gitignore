@@ -12,3 +12,9 @@ server/uploads/
 .env
 .env.*
 !.env.example
+
+# Local-only verification / scratch artifacts (do not commit)
+/tmp-evidence/
+/tmp-fix-wm.mjs
+/tmp-login.json
+/server/.tmp_phase4b_workforce_skip.mjs

@@ -92,6 +92,17 @@ function extractFaceImage(req) {
   return img;
 }
 
+function extractFaceEvidence(req) {
+  const raw = req.body?.faceEvidence;
+  const challengeId = raw?.challengeId || req.body?.challengeId || req.body?.challenge?.id;
+  const challengeNonce = raw?.challengeNonce || raw?.nonce || req.body?.challengeNonce || req.body?.challenge?.nonce;
+  if (!challengeId && !challengeNonce) return null;
+  return {
+    challengeId: challengeId ? String(challengeId) : undefined,
+    challengeNonce: challengeNonce ? String(challengeNonce) : undefined,
+  };
+}
+
 function extractClientClaims(req) {
   return {
     faceVerified: req.body?.faceVerified,
@@ -141,6 +152,7 @@ export async function punchIn(req, res, next) {
       remoteWorkRequestId,
       wifiEvidence: extractWifiEvidence(req),
       faceImageBase64: extractFaceImage(req),
+      faceEvidence: extractFaceEvidence(req),
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
@@ -176,6 +188,7 @@ export async function punchOut(req, res, next) {
       companyTimezone,
       wifiEvidence: extractWifiEvidence(req),
       faceImageBase64: extractFaceImage(req),
+      faceEvidence: extractFaceEvidence(req),
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
@@ -210,6 +223,7 @@ export async function handleCheckIn(req, res, next) {
       remoteWorkRequestId,
       wifiEvidence: extractWifiEvidence(req),
       faceImageBase64: extractFaceImage(req),
+      faceEvidence: extractFaceEvidence(req),
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,
@@ -240,6 +254,7 @@ export async function handleCheckOut(req, res, next) {
       companyTimezone,
       wifiEvidence: extractWifiEvidence(req),
       faceImageBase64: extractFaceImage(req),
+      faceEvidence: extractFaceEvidence(req),
       clientPlatform,
       clientClaims: extractClientClaims(req),
       companyId: req.auth.company?._id,

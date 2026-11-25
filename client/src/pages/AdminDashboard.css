@@ -294,7 +294,7 @@
   --dash-kpi-min-h: 118px;
   --dash-insight-tile-min-h: 96px;
   --dash-dept-min-h: 108px;
-  --dash-body-max-h: 240px;
+  --dash-body-max-h: none;
 }
 
 .dash-pair-row {
@@ -327,16 +327,15 @@
   margin-bottom: 6px;
 }
 
-/* Content-sized body; scrolls only when content exceeds the compact max */
+/* Allow dashboard cards to expand naturally with their content without nested vertical scrolling */
 .dash-pair-row .dash-card-body,
 .dash-pair-row .card-scroll-body.dash-card-body {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  max-height: var(--dash-body-max-h);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
 }
 
 /* Base Bento Card */
@@ -1639,9 +1638,9 @@ div.stat .stat__arrow {
 }
 
 .payroll-card-body.dash-card-body {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: var(--dash-body-max-h, 240px);
+  max-height: none;
 }
 
 .payroll-card.is-restricted .payroll-cycle-box {

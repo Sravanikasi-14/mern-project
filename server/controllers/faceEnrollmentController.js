@@ -6,6 +6,10 @@ import {
   getFaceEnrollmentStatus,
 } from "../services/faceRecognitionService.js";
 import { USER_ROLES } from "../models/User.js";
+import {
+  consumeVerificationChallenge,
+  hashEvidencePayload,
+} from "../services/verificationChallengeService.js";
 
 async function getTargetEmployee(req, employeeId = null) {
   const { Employee } = req.auth.models;
@@ -67,13 +71,42 @@ export async function getMyFaceEnrollment(req, res, next) {
 
 /**
  * POST /api/employees/me/face-enrollment
- * Body: { imageBase64, consentAccepted, consentTextVersion? }
+ * Body: { imageBase64, consentAccepted, consentTextVersion?, challengeId?, challengeNonce? }
  */
 export async function enrollMyFace(req, res, next) {
   try {
     assertFaceModel(req);
     const employee = await getTargetEmployee(req);
-    const { imageBase64, consentAccepted, consentTextVersion } = req.body || {};
+    const {
+      imageBase64,
+      consentAccepted,
+      consentTextVersion,
+      challengeId: directChallengeId,
+      challengeNonce: directChallengeNonce,
+      faceEvidence,
+    } = req.body || {};
+
+    const challengeId = directChallengeId || faceEvidence?.challengeId || req.body?.challenge?.id;
+    const challengeNonce = directChallengeNonce || faceEvidence?.challengeNonce || req.body?.challenge?.nonce;
+
+    const { AttendanceVerificationChallenge } = req.auth.models;
+    if (AttendanceVerificationChallenge && (challengeId || challengeNonce)) {
+      const evidenceHash = hashEvidencePayload([
+        employee._id,
+        "FACE_ENROLL",
+        consentTextVersion || "v1",
+      ]);
+      await consumeVerificationChallenge({
+        Challenge: AttendanceVerificationChallenge,
+        challengeId,
+        nonce: challengeNonce,
+        companyId: req.auth.company._id,
+        employeeId: employee._id,
+        purpose: "FACE_ENROLL",
+        evidenceHash,
+        consumeLabel: "face_enroll",
+      });
+    }
 
     const result = await enrollEmployeeFace({
       FaceEnrollment: req.auth.models.EmployeeFaceEnrollment,

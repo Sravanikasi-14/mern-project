@@ -8,6 +8,7 @@ import api from "../services/api";
 import { getCompanyBrandName } from "../utils/companyBrand";
 import {
   isSettlementsLocation,
+  platformModuleAllowed,
   visibleEmployeeNavItems,
   visibleHrPortalModules,
 } from "../utils/hrPortalAccess";
@@ -289,13 +290,19 @@ export default function Sidebar({
     };
   }, [company?.branding?.logoUrl]);
 
+  const chatEntitled = platformModuleAllowed(company, "chat");
   const unreadQuery = useChatUnreadQuery({
-    enabled: user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN" || user?.role === "EMPLOYEE",
+    enabled:
+      chatEntitled &&
+      (user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN" || user?.role === "EMPLOYEE"),
   });
   const unreadCount = unreadQuery.data || 0;
+  const hrNav = visibleHrNav(user, company);
   const navItems =
     user?.role === "HR_ADMIN" || user?.role === "COMPANY_ADMIN"
-      ? withMessages(visibleHrNav(user, company), "/admin/messages")
+      ? chatEntitled
+        ? withMessages(hrNav, "/admin/messages")
+        : hrNav
       : visibleEmployeeNavItems(company, EMPLOYEE_NAV_ITEMS);
 
   const handleLogout = async () => {

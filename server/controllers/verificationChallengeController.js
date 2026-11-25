@@ -14,7 +14,8 @@ async function getTargetEmployee(req) {
 
 /**
  * POST /api/employees/me/attendance/verification-challenge
- * Issues a PUNCH challenge for Wi-Fi (and related) evidence binding.
+ * Issues a challenge for Wi-Fi or Face evidence binding.
+ * Body (optional): { purpose?: "PUNCH" | "FACE_ENROLL" }
  */
 export async function issuePunchVerificationChallenge(req, res, next) {
   try {
@@ -22,13 +23,16 @@ export async function issuePunchVerificationChallenge(req, res, next) {
     if (!AttendanceVerificationChallenge) {
       throw new HttpError(500, "Verification challenge store is unavailable.");
     }
+    const requestedPurpose = String(req.body?.purpose || "PUNCH").toUpperCase();
+    const purpose = requestedPurpose === "FACE_ENROLL" ? "FACE_ENROLL" : "PUNCH";
+
     const employee = await getTargetEmployee(req);
     const challenge = await issueVerificationChallenge({
       Challenge: AttendanceVerificationChallenge,
       companyId: req.auth.company._id,
       employeeId: employee._id,
       userId: req.auth.user._id,
-      purpose: "PUNCH",
+      purpose,
       ttlMs: 2 * 60 * 1000,
     });
 
@@ -39,6 +43,7 @@ export async function issuePunchVerificationChallenge(req, res, next) {
         wifi:
           "Include challengeId and challengeNonce with wifiEvidence on punch. " +
           "SSID/BSSID remain OS-reported best-effort evidence, not 802.1X proof.",
+        face: "Include challengeId and challengeNonce (or faceEvidence) with face verification.",
       },
     });
   } catch (error) {

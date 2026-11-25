@@ -8,8 +8,23 @@
 
 import fs from "fs";
 import path from "path";
+import Module from "node:module";
 import { fileURLToPath } from "url";
 import { HttpError } from "../utils/httpError.js";
+
+// Ensure @vladmandic/face-api resolves to pure JS @tensorflow/tfjs without requiring native tfjs-node
+function ensureTfjsNodeAlias() {
+  const origResolve = Module._resolveFilename;
+  if (origResolve.__tfjsAliased) return;
+  const wrapped = function (request, ...args) {
+    if (request === "@tensorflow/tfjs-node") {
+      return origResolve.call(this, "@tensorflow/tfjs", ...args);
+    }
+    return origResolve.call(this, request, ...args);
+  };
+  wrapped.__tfjsAliased = true;
+  Module._resolveFilename = wrapped;
+}
 
 /** Max decoded edge (px) accepted before rejection. */
 export const FACE_MAX_IMAGE_EDGE = Math.max(
@@ -187,17 +202,34 @@ export async function ensureFaceRuntime() {
 }
 
 async function loadFaceRuntimeFromDisk() {
+  ensureTfjsNodeAlias();
+
   const tf = await import("@tensorflow/tfjs");
   await import("@tensorflow/tfjs-backend-cpu");
   await tf.setBackend("cpu");
   await tf.ready();
 
-  const faceapi = await import("@vladmandic/face-api");
+  const faceapiModule = await import("@vladmandic/face-api");
+  const faceapi = faceapiModule.default || faceapiModule;
+
   const canvasMod = await import("@napi-rs/canvas").catch(() => null);
-  const createCanvas = canvasMod?.createCanvas;
-  const loadImage = canvasMod?.loadImage;
-  if (!createCanvas || !loadImage) {
+  if (!canvasMod?.createCanvas || !canvasMod?.loadImage) {
     throw new Error("Canvas backend (@napi-rs/canvas) is required for face recognition.");
+  }
+
+  class SafeCanvas extends canvasMod.Canvas {
+    constructor(width = 1, height = 1) {
+      super(Number(width) || 1, Number(height) || 1);
+    }
+  }
+
+  if (faceapi?.env?.monkeyPatch) {
+    faceapi.env.monkeyPatch({
+      Canvas: SafeCanvas,
+      Image: canvasMod.Image,
+      ImageData: canvasMod.ImageData,
+      createCanvasElement: (w = 1, h = 1) => new SafeCanvas(Number(w) || 1, Number(h) || 1),
+    });
   }
 
   const modelsDir = defaultModelsDir();
@@ -217,7 +249,10 @@ async function loadFaceRuntimeFromDisk() {
   return {
     tf,
     faceapi,
-    canvasApi: { createCanvas, loadImage },
+    canvasApi: {
+      createCanvas: (w = 1, h = 1) => new SafeCanvas(w, h),
+      loadImage: canvasMod.loadImage,
+    },
     modelsDir,
   };
 }

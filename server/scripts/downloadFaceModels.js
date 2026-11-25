@@ -53,13 +53,21 @@ function download(url, dest) {
 
 async function main() {
   fs.mkdirSync(outDir, { recursive: true });
+  const localPkgDir = path.join(__dirname, "../node_modules/@vladmandic/face-api/model");
+
   for (const name of FILES) {
     const dest = path.join(outDir, name);
     if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
-      console.log(`skip ${name}`);
+      console.log(`skip (already present) ${name}`);
       continue;
     }
-    console.log(`download ${name}`);
+    const localPkgFile = path.join(localPkgDir, name);
+    if (fs.existsSync(localPkgFile) && fs.statSync(localPkgFile).size > 0) {
+      console.log(`copy from package: ${name}`);
+      fs.copyFileSync(localPkgFile, dest);
+      continue;
+    }
+    console.log(`download from remote: ${name}`);
     await download(`${BASE}/${name}`, dest);
   }
   console.log(`Face models ready in ${outDir}`);

@@ -357,6 +357,7 @@ export async function runAttendanceVerifications({
   geofenceMeta = null,
   wifiEvidence = null,
   faceImageBase64 = null,
+  faceEvidence = null,
   clientPlatform = "",
   /** Reject if client sends proof booleans */
   clientClaims = null,
@@ -500,6 +501,22 @@ export async function runAttendanceVerifications({
       }
     }
     if (!faceImageBase64) {
+      if (faceMandatory || faceEvidence?.challengeId || faceEvidence?.challengeNonce) {
+        if (!faceImageBase64) {
+          const faceEntry = {
+            method: VERIFICATION_METHODS.FACE,
+            attempted: true,
+            mandatory: requirements.methods.face.mandatory,
+            ok: false,
+            reason: "FACE_IMAGE_MISSING",
+            message: "Face image is required for biometric verification.",
+          };
+          results.methods.push(faceEntry);
+          results.allMandatoryPassed = false;
+          results.blockedReason = faceEntry.reason;
+          throw new HttpError(400, faceEntry.message);
+        }
+      }
       const faceEntry = {
         method: VERIFICATION_METHODS.FACE,
         attempted: true,
@@ -524,6 +541,32 @@ export async function runAttendanceVerifications({
         matchThreshold: cfg.face.matchThreshold,
         requireLiveness: cfg.face.requireLiveness,
       });
+
+      // Replay protection: Face verification (when mandatory or when challenge is provided) must consume single-use challenge
+      if (faceResult.ok && (faceMandatory || faceEvidence?.challengeId || faceEvidence?.challengeNonce)) {
+        if (!models?.AttendanceVerificationChallenge) {
+          throw new HttpError(500, "Verification challenge store is unavailable for Face verification.");
+        }
+        if (!faceEvidence?.challengeId || !faceEvidence?.challengeNonce) {
+          throw new HttpError(400, "Verification expired. Please try again.");
+        }
+        const evidenceHash = hashEvidencePayload([
+          employee._id,
+          "FACE",
+          faceResult.distance != null ? faceResult.distance : "",
+          clientPlatform,
+        ]);
+        await consumeVerificationChallenge({
+          Challenge: models.AttendanceVerificationChallenge,
+          challengeId: faceEvidence.challengeId,
+          nonce: faceEvidence.challengeNonce,
+          companyId: faceCompanyId,
+          employeeId: employee._id,
+          purpose: "PUNCH",
+          evidenceHash,
+          consumeLabel: "face_punch",
+        });
+      }
       const faceEntry = {
         method: VERIFICATION_METHODS.FACE,
         attempted: true,

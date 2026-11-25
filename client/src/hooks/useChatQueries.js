@@ -7,6 +7,7 @@ import {
   CHAT_UNREAD_POLL_MS,
   chatPollIntervalMs,
 } from "../lib/chatPollInterval";
+import { isPermanentPlatformEntitlementError } from "../lib/platformEntitlementError";
 
 /** NEW-B04 — default page size for conversation list polls (server also soft-caps). */
 const CONVERSATION_LIST_LIMIT = 50;
@@ -72,7 +73,10 @@ export function useChatUnreadQuery(options = {}) {
       const res = await api.get("/conversations/unread-count");
       return Number(res.data?.unreadCount || 0);
     },
-    refetchInterval: (query) => chatPollIntervalMs(CHAT_UNREAD_POLL_MS, query),
+    refetchInterval: (query) => {
+      if (isPermanentPlatformEntitlementError(query.state.error)) return false;
+      return chatPollIntervalMs(CHAT_UNREAD_POLL_MS, query);
+    },
     refetchIntervalInBackground: false,
     staleTime: 15_000,
     ...options,

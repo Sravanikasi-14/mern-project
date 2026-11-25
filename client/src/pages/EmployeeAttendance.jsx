@@ -244,10 +244,25 @@ export default function EmployeeAttendance() {
   const handleEnrollFaceSubmit = async ({ imageBase64, consentAccepted }) => {
     try {
       setCapturingFace(true);
+      let challengeId = null;
+      let challengeNonce = null;
+      try {
+        const challengeRes = await api.post("/employees/me/attendance/verification-challenge", {
+          purpose: "FACE_ENROLL",
+        });
+        if (challengeRes.data?.challengeId) {
+          challengeId = challengeRes.data.challengeId;
+          challengeNonce = challengeRes.data.nonce;
+        }
+      } catch (err) {
+        // If challenge store isn't available or fails, fall back to direct enrollment
+      }
+
       await api.post("/employees/me/face-enrollment", {
         imageBase64,
         consentAccepted,
         consentTextVersion: "v1",
+        ...(challengeId ? { challengeId, challengeNonce } : {}),
       });
       setShowEnrollModal(false);
       setActionSuccess("Face enrolled successfully.");
@@ -310,11 +325,29 @@ export default function EmployeeAttendance() {
         return;
       }
 
+      let faceChallenge = null;
+      if (faceImageBase64) {
+        try {
+          const chRes = await api.post("/employees/me/attendance/verification-challenge", {
+            purpose: "PUNCH",
+          });
+          if (chRes.data?.challengeId) {
+            faceChallenge = {
+              challengeId: chRes.data.challengeId,
+              challengeNonce: chRes.data.nonce,
+            };
+          }
+        } catch {
+          // If challenge issuance fails, let punch request proceed and report server error
+        }
+      }
+
       const response = await api.post("/employees/me/attendance/punch-in", {
         location: loc,
         sessionType: sessionType === "REMOTE" ? "REMOTE" : "OFFICE",
         ...(remoteWorkRequestId ? { remoteWorkRequestId } : {}),
         ...(faceImageBase64 ? { faceImageBase64 } : {}),
+        ...(faceChallenge ? { faceEvidence: faceChallenge } : {}),
         clientPlatform: "web",
       });
       setFaceImageBase64(null);
@@ -419,9 +452,27 @@ export default function EmployeeAttendance() {
         return;
       }
 
+      let faceChallenge = null;
+      if (faceImageBase64) {
+        try {
+          const chRes = await api.post("/employees/me/attendance/verification-challenge", {
+            purpose: "PUNCH",
+          });
+          if (chRes.data?.challengeId) {
+            faceChallenge = {
+              challengeId: chRes.data.challengeId,
+              challengeNonce: chRes.data.nonce,
+            };
+          }
+        } catch {
+          // If challenge issuance fails, let punch request proceed and report server error
+        }
+      }
+
       const response = await api.post("/employees/me/attendance/punch-out", {
         location: loc,
         ...(faceImageBase64 ? { faceImageBase64 } : {}),
+        ...(faceChallenge ? { faceEvidence: faceChallenge } : {}),
         clientPlatform: "web",
       });
       setFaceImageBase64(null);

@@ -378,6 +378,7 @@ export async function punchInEmployee({
   remoteWorkRequestId = null,
   wifiEvidence = null,
   faceImageBase64 = null,
+  faceEvidence = null,
   clientPlatform = "",
   clientClaims = null,
   companyId = null,
@@ -475,6 +476,7 @@ export async function punchInEmployee({
     geofenceMeta,
     wifiEvidence,
     faceImageBase64,
+    faceEvidence,
     clientPlatform,
     clientClaims,
   });
@@ -633,6 +635,7 @@ export async function punchOutEmployee({
   companyTimezone = "Asia/Kolkata",
   wifiEvidence = null,
   faceImageBase64 = null,
+  faceEvidence = null,
   clientPlatform = "",
   clientClaims = null,
   companyId = null,
@@ -796,6 +799,7 @@ export async function punchOutEmployee({
     geofenceMeta,
     wifiEvidence,
     faceImageBase64,
+    faceEvidence,
     clientPlatform,
     clientClaims,
   });

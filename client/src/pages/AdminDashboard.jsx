@@ -6,9 +6,9 @@ import AppHeader from "../components/AppHeader";
 import SoftRefresh from "../components/SoftRefresh";
 import { IconArrowLeft, IconArrowRight } from "../components/Icons";
 import MobileExpandable from "../components/mobile/MobileExpandable";
+import AttendanceTrends from "../components/AttendanceTrends";
 import { getCompanyBrandName } from "../utils/companyBrand";
 import { hrPortalAllows } from "../utils/hrPortalAccess";
-import { parseCivilDate, weekdaySunday0 } from "../utils/dateUtils";
 import {
   useAdminDashboardQuery,
   buildAdminDashboardFallback,
@@ -96,10 +96,6 @@ export default function AdminDashboard() {
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedDept, setSelectedDept] = useState("ALL");
   const [fallbackData, setFallbackData] = useState(null);
-
-  // Attendance Analytics Range ("TODAY" | "7D" | "30D")
-  const [attendanceRange, setAttendanceRange] = useState("7D");
-  const [hoveredDay, setHoveredDay] = useState(null);
 
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
@@ -196,99 +192,6 @@ export default function AdminDashboard() {
     payrollCycle.status !== "PAID" &&
     payrollCycle.status !== "CANCELLED";
   const totalPendingActions = pendingLeaves.length + pendingOffersCount + (hasPayrollAction ? 1 : 0);
-
-  // Attendance trend bars from real overview series (not month-tail slice / dummy data).
-  const weeklyBars = useMemo(() => {
-    const daysOfWeekLetters = ["S", "M", "T", "W", "T", "F", "S"];
-    const overview = data?.attendanceOverview || {};
-    const calendarDays = data?.attendanceCalendar?.days || [];
-    const activeHeadcount = Math.max(
-      1,
-      overview.activeEmployees || totalEmployees || 1
-    );
-
-    let sourceDays = [];
-    if (attendanceRange === "TODAY") {
-      const today =
-        (overview.week || overview.days || []).find((d) => d.isToday) ||
-        calendarDays.find((d) => d.isToday) ||
-        null;
-      sourceDays = today ? [today] : [];
-    } else if (attendanceRange === "30D") {
-      sourceDays = overview.thirtyDays || [];
-      if (!sourceDays.length && calendarDays.length) {
-        let end = calendarDays.findIndex((d) => d.isToday);
-        if (end < 0) {
-          end = calendarDays.length - 1;
-          for (let i = calendarDays.length - 1; i >= 0; i -= 1) {
-            if (!calendarDays[i].isFuture) {
-              end = i;
-              break;
-            }
-          }
-        }
-        const start = Math.max(0, end - 29);
-        sourceDays = calendarDays.slice(start, end + 1);
-      }
-    } else {
-      // 7D — prefer backend rolling week ending at selected/today date
-      sourceDays = overview.week || overview.days || [];
-      if (!sourceDays.length && calendarDays.length) {
-        let end = calendarDays.findIndex((d) => d.isToday);
-        if (end < 0) {
-          end = calendarDays.length - 1;
-          for (let i = calendarDays.length - 1; i >= 0; i -= 1) {
-            if (!calendarDays[i].isFuture) {
-              end = i;
-              break;
-            }
-          }
-        }
-        const start = Math.max(0, end - 6);
-        sourceDays = calendarDays.slice(start, end + 1);
-      }
-    }
-
-    if (!sourceDays.length) return [];
-
-    return sourceDays.map((d) => {
-      const present = d.presentCount ?? d.present ?? 0;
-      const parts = parseCivilDate(d.date);
-      const dayIdx =
-        d.dayOfWeek != null
-          ? d.dayOfWeek
-          : parts
-            ? weekdaySunday0(parts.year, parts.month, parts.day)
-            : 0;
-      const pct = Math.min(100, Math.round((present / activeHeadcount) * 100));
-      const heightVal = present > 0 ? Math.max(0.18, pct / 100) : 0.08;
-
-      return {
-        date: d.date,
-        dayLetter: daysOfWeekLetters[dayIdx] || "•",
-        pct,
-        heightVal,
-        present,
-        absent: d.absentCount ?? d.absent ?? 0,
-        late: d.lateCount ?? d.late ?? 0,
-        onLeave: d.leaveCount ?? d.onLeave ?? 0,
-        isWeekend: Boolean(d.isWeekend),
-        isToday: Boolean(d.isToday),
-        isHoliday: Boolean(d.isHoliday),
-        isFuture: Boolean(d.isFuture),
-      };
-    });
-  }, [
-    data?.attendanceOverview,
-    data?.attendanceCalendar?.days,
-    totalEmployees,
-    attendanceRange,
-  ]);
-
-  // Empty when no punch/leave activity — computed absents alone must not fake a flat chart.
-  const hasAttendanceTrendData = weeklyBars.some(
-    (b) => (b.present || 0) + (b.late || 0) + (b.onLeave || 0) > 0
-  );
 
   const payrollHistoryBars = useMemo(
     () => salaryExpenses.filter((s) => Number(s.amount || 0) > 0 && s.hasCycle !== false),
@@ -496,132 +399,15 @@ export default function AdminDashboard() {
         {/* Row: Attendance Trends (8) + Action Center (4) — equal card heights */}
         <div className="dash-pair-row dash-pair-row--trends">
           <MobileExpandable title="Insights and reports">
-            <section className="card analytics-card">
-              <div className="card__head">
-                <div>
-                  <h2 className="card__title">Attendance Trends</h2>
-                </div>
-                <div className="analytics-toolbar">
-                  <div className="seg-control" role="tablist" aria-label="Select date range">
-                    <button
-                      type="button"
-                      className={`seg-btn ${attendanceRange === "TODAY" ? "is-active" : ""}`}
-                      onClick={() => setAttendanceRange("TODAY")}
-                    >
-                      Today
-                    </button>
-                    <button
-                      type="button"
-                      className={`seg-btn ${attendanceRange === "7D" ? "is-active" : ""}`}
-                      onClick={() => setAttendanceRange("7D")}
-                    >
-                      7 Days
-                    </button>
-                    <button
-                      type="button"
-                      className={`seg-btn ${attendanceRange === "30D" ? "is-active" : ""}`}
-                      onClick={() => setAttendanceRange("30D")}
-                    >
-                      30 Days
-                    </button>
-                  </div>
-                  {canAttendance ? (
-                    <Link to="/admin/live-tracking" className="card-shortcut-pill" title="Live Attendance Tracking">
-                      <span className="pulse-dot" />
-                      <span>Live Tracking</span>
-                    </Link>
-                  ) : null}
-                  {canAttendance ? (
-                    <Link to="/admin/attendance" className="card-shortcut-link" title="Open Attendance">
-                      <span>Attendance Hub</span>
-                      <span aria-hidden="true">→</span>
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="card-scroll-body dash-card-body">
-              <div
-                className={`capsule-bars-container ${
-                  attendanceRange === "30D"
-                    ? "capsule-bars-container--month"
-                    : attendanceRange === "TODAY"
-                      ? "capsule-bars-container--today"
-                      : ""
-                }`}
-                role="img"
-                aria-label="Attendance trend capsule bars"
-              >
-                {attendanceRestricted ? (
-                  <p className="activity-empty">Attendance counts are unavailable for this access level.</p>
-                ) : weeklyBars.length === 0 || !hasAttendanceTrendData ? (
-                  <p className="activity-empty">
-                    No attendance records for this range yet. Punch-ins will appear here once employees check in.
-                  </p>
-                ) : (
-                  weeklyBars.map((bar, idx) => {
-                    const isPeak = bar.pct >= 90 && !bar.isWeekend && !bar.isHoliday;
-                    const isLight = bar.pct < 70 && !bar.isWeekend && !bar.isHoliday;
-                    const barClass = bar.isWeekend || bar.isHoliday
-                      ? "bar--weekend"
-                      : isPeak
-                        ? "bar--peak"
-                        : isLight
-                          ? "bar--light"
-                          : "bar--mid";
-
-                    return (
-                      <div
-                        key={`${bar.date || bar.dayLetter}-${idx}`}
-                        className={`capsule-bar-item ${bar.isToday ? "is-today" : ""}`}
-                        onMouseEnter={() => setHoveredDay(bar)}
-                        onMouseLeave={() => setHoveredDay(null)}
-                      >
-                        <div className="capsule-bar-track">
-                          <button
-                            type="button"
-                            className={`capsule-bar ${barClass}`}
-                            style={{ "--h": bar.heightVal }}
-                            aria-label={`${bar.date || "Day"}: ${bar.present} present, ${bar.absent} absent, ${bar.late} late (${bar.pct}%)`}
-                          >
-                            <span className="bar-fill" />
-                          </button>
-                        </div>
-                        <span className="bar-day-label">
-                          {attendanceRange === "30D" ? (bar.date || "").slice(8) : bar.dayLetter}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="attendance-breakdown-row">
-                <div className="attendance-legend-group">
-                  <span className="legend-item">
-                    <span className="legend-dot dot-present" />
-                    <span>Present: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.present : (summary.todayPresent ?? 0))}</b></span>
-                  </span>
-                  <span className="legend-item">
-                    <span className="legend-dot dot-late" />
-                    <span>Late: <b>{summary.todayLate == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.late : (summary.todayLate ?? 0))}</b></span>
-                  </span>
-                  <span className="legend-item">
-                    <span className="legend-dot dot-absent" />
-                    <span>Absent: <b>{attendanceRestricted ? "—" : (hoveredDay ? hoveredDay.absent : (summary.todayAbsent ?? 0))}</b></span>
-                  </span>
-                  <span className="legend-item">
-                    <span className="legend-dot dot-leave" />
-                    <span>On Leave: <b>{summary.onLeave == null && !hoveredDay ? "—" : (hoveredDay ? hoveredDay.onLeave : (summary.onLeave ?? 0))}</b></span>
-                  </span>
-                </div>
-                <div className="shift-status-pill">
-                  <span className="pulse-dot" />
-                  <span>{hoveredDay ? hoveredDay.date : `Starts ${meta.officeStartTime || "09:30 AM"}`}</span>
-                </div>
-              </div>
-              </div>
-            </section>
+            <AttendanceTrends
+              overview={data?.attendanceOverview}
+              calendarDays={data?.attendanceCalendar?.days}
+              totalEmployees={totalEmployees}
+              attendanceRestricted={attendanceRestricted}
+              canAttendance={canAttendance}
+              summary={summary}
+              meta={meta}
+            />
           </MobileExpandable>
 
           <section className="card pending-actions-card">
@@ -632,7 +418,7 @@ export default function AdminDashboard() {
               <span className="pending-count-chip">{totalPendingActions} pending</span>
               {canLeave ? <Link to="/admin/leave" className="m-view-all">View all</Link> : null}
             </div>
-            <div className="card-scroll-body dash-card-body pending-task-list">
+            <div className="dash-card-body pending-task-list">
               {canLeave ? (
                 <Link to="/admin/leave?status=PENDING" className="pending-task-item" title="Approve pending leaves">
                   <div className="task-icon-circle icon-leave">
@@ -704,7 +490,7 @@ export default function AdminDashboard() {
                 ) : null}
               </div>
             </div>
-            <div className="card-scroll-body dash-card-body">
+            <div className="dash-card-body">
               <div className="funnel-process-row">
                 <MetricCard linked={canHiring} to="/admin/hiring" className="funnel-stage-tile">
                   <div className="stage-top">
@@ -764,7 +550,7 @@ export default function AdminDashboard() {
                   </Link>
                 ) : null}
               </div>
-              <div className="card-scroll-body dash-card-body payroll-card-body">
+              <div className="dash-card-body payroll-card-body">
                 <div className="payroll-cycle-box">
                   <div>
                     <span className="payroll-net-amount">
@@ -908,7 +694,7 @@ export default function AdminDashboard() {
                   </Link>
                 ) : null}
               </div>
-              <div className="card-scroll-body dash-card-body activity-list">
+              <div className="dash-card-body activity-list">
                 {leaveRestricted ? (
                   <p className="activity-empty">
                     Leave activity is unavailable for this access level.
@@ -962,13 +748,13 @@ export default function AdminDashboard() {
                   </Link>
                 ) : null}
               </div>
-              <div className="card-scroll-body dash-card-body holidays-strip-row" role="list" aria-label="Upcoming holidays list">
+              <div className="dash-card-body holidays-strip-row" role="list" aria-label="Upcoming holidays list">
                 {upcomingHolidays.length === 0 ? (
                   <span style={{ fontSize: "12.5px", color: "var(--muted)" }}>
                     None remaining this month.
                   </span>
                 ) : (
-                  upcomingHolidays.map((h, idx) => (
+                  upcomingHolidays.slice(0, 5).map((h, idx) => (
                     <div key={`${h.name}-${idx}`} className="holiday-chip" role="listitem">
                       <span className="holiday-chip-date">{formatDisplayDate(h.date)}</span>
                       <div>
