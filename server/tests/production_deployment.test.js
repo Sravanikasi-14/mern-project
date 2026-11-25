@@ -53,6 +53,21 @@ describe("Production Deployment & Static Serving", () => {
       assert.ok(res.headers["access-control-allow-headers"].includes("Authorization"));
     });
 
+    it("OPTIONS /api/auth/login preflight from Android WebView succeeds", async () => {
+      const androidOrigin = "https://localhost";
+
+      const res = await request(app)
+        .options("/api/auth/login")
+        .set("Origin", androidOrigin)
+        .set("Access-Control-Request-Method", "POST")
+        .set("Access-Control-Request-Headers", "Content-Type,Authorization");
+
+      assert.equal(res.status, 204);
+      assert.equal(res.headers["access-control-allow-origin"], androidOrigin);
+      assert.equal(res.headers["access-control-allow-credentials"], "true");
+      assert.ok(res.headers["access-control-allow-methods"].includes("POST"));
+      assert.ok(res.headers["access-control-allow-headers"].includes("Authorization"));
+    });
     it("GET /api/auth/me unauthenticated returns 401 with proper CORS headers intact", async () => {
       const res = await request(app)
         .get("/api/auth/me")
@@ -64,16 +79,18 @@ describe("Production Deployment & Static Serving", () => {
       assert.equal(res.body.code, "UNAUTHORIZED");
     });
 
-    it("OPTIONS preflight for localhost development origin succeeds", async () => {
+    it("CORS rejects localhost development origin in production", async () => {
       const localOrigin = "http://localhost:5173";
+
       const res = await request(app)
         .options("/api/auth/me")
         .set("Origin", localOrigin)
         .set("Access-Control-Request-Method", "POST");
 
-      assert.equal(res.status, 204);
-      assert.equal(res.headers["access-control-allow-origin"], localOrigin);
-      assert.equal(res.headers["access-control-allow-credentials"], "true");
+      assert.notEqual(
+        res.headers["access-control-allow-origin"],
+        localOrigin
+      );
     });
 
     it("CORS rejects unauthorized arbitrary origin", async () => {
